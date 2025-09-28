@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile name="Annotation profile for Qhome Base Microservices" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <processorPath useClasspath="false">
+          <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.38/lombok-1.18.38.jar" />
+        </processorPath>
+        <module name="customer-interaction-service" />
+        <module name="base-service" />
+        <module name="services-card-service" />
+        <module name="api-gateway" />
+        <module name="asset-maintenance-service" />
+        <module name="staff-work-service" />
+        <module name="finance-billing-service" />
+        <module name="data-docs-service" />
+      </profile>
+    </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="webapp" target="17" />
+    </bytecodeTargetLevel>
+  </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="api-gateway" options="-parameters" />
+      <module name="asset-maintenance-service" options="-parameters" />
+      <module name="base-service" options="-parameters" />
+      <module name="customer-interaction-service" options="-parameters" />
+      <module name="data-docs-service" options="-parameters" />
+      <module name="finance-billing-service" options="-parameters" />
+      <module name="qhome-base" options="-parameters" />
+      <module name="services-card-service" options="-parameters" />
+      <module name="staff-work-service" options="-parameters" />
+      <module name="webapp" options="-parameters" />
+    </option>
+  </component>
+</project>

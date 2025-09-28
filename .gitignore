@@ -1,0 +1,9 @@
+# Project exclude paths
+/QhomeBase/api-gateway/target/
+/QhomeBase/asset-maintenance-service/target/
+/QhomeBase/base-service/target/
+/QhomeBase/customer-interaction-service/target/
+/QhomeBase/data-docs-service/target/
+/QhomeBase/finance-billing-service/target/
+/QhomeBase/services-card-service/target/
+/QhomeBase/staff-work-service/target/
