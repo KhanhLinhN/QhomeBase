@@ -43,5 +43,15 @@ jobs:
             ${{ inputs.docker_image }}:${{ github.sha }}
             ${{ inputs.docker_image }}:latest
 
-      - name: Trigger Render Deploy (CD)
-        run: curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK_CATALOG }}
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: 'qhome-customerinteraction' 
+          slot-name: 'production'
+          images: '${{ inputs.docker_image }}:${{ github.sha }}'
+  
