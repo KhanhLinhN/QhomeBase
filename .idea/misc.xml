@@ -5,11 +5,16 @@
     <option name="originalFiles">
       <list>
         <option value="$PROJECT_DIR$/QhomeBase/pom.xml" />
+        <option value="$PROJECT_DIR$/QhomeBaseApp/pom.xml" />
+        <option value="$PROJECT_DIR$/QhomeBaseApp/api-gateway-app/pom.xml" />
+        <option value="$PROJECT_DIR$/QhomeBaseApp/login-service/pom.xml" />
+        <option value="$PROJECT_DIR$/QhomeBaseApp/logic-service/pom.xml" />
       </list>
     </option>
     <option name="ignoredFiles">
       <set>
         <option value="$PROJECT_DIR$/QhomeBase/webapp/pom.xml" />
+        <option value="$PROJECT_DIR$/QhomeBaseApp/logic-service/pom.xml" />
       </set>
     </option>
   </component>
