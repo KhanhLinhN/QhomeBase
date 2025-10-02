@@ -170,7 +170,6 @@ public class UserController {
     private final EmailService emailService;
     private final JwtUtil jwtUtil;
 
-    // Rate limiting maps
     private final Map<String, Integer> otpRequestCount = new ConcurrentHashMap<>();
     private final Map<String, LocalDateTime> otpRequestTime = new ConcurrentHashMap<>();
     private final Map<String, Integer> loginFailCount = new ConcurrentHashMap<>();
@@ -184,7 +183,6 @@ public class UserController {
     private static final SecureRandom random = new SecureRandom();
     private static final String OTP_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-    // ---------------- LOGIN ----------------
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, String> body) {
@@ -195,7 +193,6 @@ public class UserController {
             return ResponseEntity.badRequest().body(Map.of("message", "Email and password required"));
         }
 
-        // Check login lock
         if (loginLockTime.containsKey(email) &&
                 loginLockTime.get(email).isAfter(LocalDateTime.now())) {
             return ResponseEntity.status(429)
@@ -212,18 +209,15 @@ public class UserController {
             return ResponseEntity.status(401).body(Map.of("message", "Invalid email or password"));
         }
 
-        // Reset fail count on successful login
         loginFailCount.put(email, 0);
 
         User user = userOpt.get();
         String token = jwtUtil.generateToken(user.getEmail());
 
-        // Return DTO, không lộ password
         UserResponse response = new UserResponse(user.getId(), user.getEmail(), user.getUsername(), token);
         return ResponseEntity.ok(response);
     }
 
-    // ---------------- LOGOUT ----------------
 
     @PostMapping("/logout")
     public ResponseEntity<?> logout() {
@@ -231,7 +225,6 @@ public class UserController {
         return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
     }
 
-    // ---------------- REQUEST OTP ----------------
 
     @PostMapping("/request-reset")
     public ResponseEntity<?> requestReset(@RequestBody Map<String, String> body) {
@@ -241,7 +234,6 @@ public class UserController {
             return ResponseEntity.badRequest().body(Map.of("message", "Email required"));
         }
 
-        // Rate limit OTP request
         otpRequestCount.putIfAbsent(email, 0);
         otpRequestTime.putIfAbsent(email, LocalDateTime.now().minusMinutes(OTP_EXPIRY_MINUTES));
 
@@ -254,7 +246,6 @@ public class UserController {
 
         Optional<User> userOpt = userService.getUserByEmail(email);
 
-        // Không tiết lộ email tồn tại
         if (userOpt.isPresent()) {
             User user = userOpt.get();
 
@@ -265,17 +256,13 @@ public class UserController {
 
             emailService.sendEmail(user.getEmail(), "Password Reset OTP",
                     "Your OTP is: " + otp + " (valid for 10 minutes)");
-
-            // Update rate limiting
             otpRequestCount.put(email, otpRequestCount.get(email) + 1);
             otpRequestTime.put(email, LocalDateTime.now());
         }
 
-        // Luôn trả message chung
         return ResponseEntity.ok(Map.of("message", "If the email exists, OTP has been sent"));
     }
 
-    // ---------------- VERIFY OTP ----------------
 
     @PostMapping("/verify-otp")
     public ResponseEntity<?> verifyOtp(@RequestBody Map<String, String> body) {
@@ -288,7 +275,6 @@ public class UserController {
 
         Optional<User> userOpt = userService.getUserByEmail(email);
         if (userOpt.isEmpty()) {
-            // Không tiết lộ email
             return ResponseEntity.status(401).body(Map.of("message", "Invalid OTP"));
         }
 
@@ -300,8 +286,6 @@ public class UserController {
 
         return ResponseEntity.ok(Map.of("message", "OTP valid"));
     }
-
-    // ---------------- CONFIRM RESET ----------------
 
     @PostMapping("/confirm-reset")
     public ResponseEntity<?> confirmReset(@RequestBody ResetPasswordRequest resetRequest) {
@@ -315,7 +299,6 @@ public class UserController {
 
         Optional<User> userOpt = userService.getUserByEmail(email);
         if (userOpt.isEmpty()) {
-            // Không tiết lộ email
             return ResponseEntity.status(401).body(Map.of("message", "Invalid OTP or email"));
         }
 
@@ -325,19 +308,16 @@ public class UserController {
             return ResponseEntity.status(401).body(Map.of("message", "Invalid or expired OTP"));
         }
 
-        // Password policy: min 8, 1 upper, 1 lower, 1 digit, 1 special
         Pattern pattern = Pattern.compile("^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$");
         if (!pattern.matcher(newPassword).matches()) {
             return ResponseEntity.badRequest().body(Map.of("message",
                     "Password must be at least 8 characters, include uppercase, lowercase, digit and special character"));
         }
 
-        // Bắt buộc password mới khác password cũ
         if (userService.checkPassword(newPassword, user.getPassword())) {
             return ResponseEntity.badRequest().body(Map.of("message", "New password must be different from old password"));
         }
 
-        // Update password
         user.setPassword(userService.encodePassword(newPassword));
         user.setResetOtp(null);
         user.setOtpExpiry(null);
@@ -346,7 +326,6 @@ public class UserController {
         return ResponseEntity.ok(Map.of("message", "Password updated successfully"));
     }
 
-    // ---------------- HELPER ----------------
 
     private String generateOtp(int length) {
         StringBuilder sb = new StringBuilder(length);
