@@ -1,9 +1,12 @@
+com\qhomebaseapp\loginservice\util\JwtUtil.class
 com\qhomebaseapp\loginservice\dto\UserDto.class
 com\qhomebaseapp\loginservice\entity\User.class
 com\qhomebaseapp\loginservice\mapper\UserMapper.class
 com\qhomebaseapp\loginservice\controller\UserController.class
 com\qhomebaseapp\loginservice\LoginServiceApplication.class
+com\qhomebaseapp\loginservice\service\EmailService.class
 com\qhomebaseapp\loginservice\repository\UserRepository.class
 com\qhomebaseapp\loginservice\entity\User$UserBuilder.class
 com\qhomebaseapp\loginservice\service\UserService.class
+com\qhomebaseapp\loginservice\dto\UserResponse.class
 com\qhomebaseapp\loginservice\dto\ResetPasswordRequest.class
