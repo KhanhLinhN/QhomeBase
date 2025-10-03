@@ -16,20 +16,25 @@
           <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.38/lombok-1.18.38.jar" />
         </processorPath>
         <module name="login-service" />
-        <module name="news-service" />
         <module name="customer-interaction-service" />
+        <module name="login-service (1) (com.QhomeBaseApp)" />
         <module name="base-service" />
         <module name="services-card-service" />
+        <module name="login-service (2) (com.login-service)" />
+        <module name="finance-billing-service" />
+        <module name="data-docs-service" />
+        <module name="news-service" />
         <module name="api-gateway" />
         <module name="api-gateway-app" />
         <module name="asset-maintenance-service" />
         <module name="staff-work-service" />
-        <module name="finance-billing-service" />
-        <module name="data-docs-service" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
+      <module name="api-gateway-app" target="17" />
       <module name="logic-service" target="25" />
+      <module name="login-service" target="17" />
+      <module name="QhomeBaseApp" target="17" />
       <module name="webapp" target="17" />
     </bytecodeTargetLevel>
   </component>
@@ -44,8 +49,11 @@
       <module name="data-docs-service" options="-parameters" />
       <module name="finance-billing-service" options="-parameters" />
       <module name="login-service" options="-parameters" />
+      <module name="login-service (1) (com.QhomeBaseApp)" options="-parameters" />
+      <module name="login-service (2) (com.login-service)" options="-parameters" />
       <module name="news-service" options="-parameters" />
       <module name="qhome-base" options="-parameters" />
+      <module name="qhome-base-app" options="-parameters" />
       <module name="services-card-service" options="-parameters" />
       <module name="staff-work-service" options="-parameters" />
       <module name="webapp" options="-parameters" />
