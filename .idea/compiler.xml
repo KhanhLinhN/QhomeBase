@@ -16,6 +16,7 @@
           <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.38/lombok-1.18.38.jar" />
         </processorPath>
         <module name="login-service" />
+        <module name="news-service" />
         <module name="customer-interaction-service" />
         <module name="base-service" />
         <module name="services-card-service" />
@@ -43,6 +44,7 @@
       <module name="data-docs-service" options="-parameters" />
       <module name="finance-billing-service" options="-parameters" />
       <module name="login-service" options="-parameters" />
+      <module name="news-service" options="-parameters" />
       <module name="qhome-base" options="-parameters" />
       <module name="services-card-service" options="-parameters" />
       <module name="staff-work-service" options="-parameters" />

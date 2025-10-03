@@ -29,6 +29,7 @@
 
     <modules>
         <module>login-service</module>
+        <module>news-service</module>
     </modules>
 
     <dependencyManagement>
