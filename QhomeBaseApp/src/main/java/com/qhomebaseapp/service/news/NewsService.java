@@ -1,0 +1,11 @@
+package com.qhomebaseapp.service.news;
+
+import com.qhomebaseapp.dto.NewsDto;
+import org.springframework.data.domain.Page;
+
+public interface NewsService {
+    Page<NewsDto> listNews(String categoryCode, Long userId, int page, int size);
+    NewsDto getNews(Long id, Long userId);
+    void markAsRead(Long newsId, Long userId);
+    long unreadCount(Long userId);
+}
