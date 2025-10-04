@@ -21,6 +21,10 @@
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
+      <module name="api-gateway-app" target="17" />
+      <module name="login-service" target="17" />
+      <module name="news-service" target="17" />
+      <module name="QhomeBaseApp" target="17" />
       <module name="webapp" target="17" />
     </bytecodeTargetLevel>
   </component>
