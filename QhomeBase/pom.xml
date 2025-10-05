@@ -36,6 +36,7 @@
         <module>finance-billing-service</module>
         <module>customer-interaction-service</module>
         <module>staff-work-service</module>
+        <module>iam-service</module>
         <module>api-gateway</module>
     </modules>
 

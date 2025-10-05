@@ -19,9 +19,20 @@
         <module name="finance-billing-service" />
         <module name="data-docs-service" />
       </profile>
+      <profile name="Annotation profile for iam-service" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <processorPath useClasspath="false">
+          <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.38/lombok-1.18.38.jar" />
+          <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.38/lombok-1.18.38.jar" />
+        </processorPath>
+        <module name="iam-service" />
+      </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
       <module name="api-gateway-app" target="17" />
+      <module name="asset-maintenance-service (1)" target="17" />
       <module name="login-service" target="17" />
       <module name="news-service" target="17" />
       <module name="QhomeBaseApp" target="17" />
@@ -36,6 +47,7 @@
       <module name="customer-interaction-service" options="-parameters" />
       <module name="data-docs-service" options="-parameters" />
       <module name="finance-billing-service" options="-parameters" />
+      <module name="iam-service" options="-parameters" />
       <module name="qhome-base" options="-parameters" />
       <module name="services-card-service" options="-parameters" />
       <module name="staff-work-service" options="-parameters" />
