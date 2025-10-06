@@ -1,6 +1,6 @@
 package com.qhomebaseapp.service.news;
 
-import com.qhomebaseapp.dto.NewsDto;
+import com.qhomebaseapp.dto.news.NewsDto;
 import org.springframework.data.domain.Page;
 
 public interface NewsService {

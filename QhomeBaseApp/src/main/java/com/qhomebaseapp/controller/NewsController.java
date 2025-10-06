@@ -1,11 +1,10 @@
 package com.qhomebaseapp.controller;
 
-import com.qhomebaseapp.dto.NewsDto;
+import com.qhomebaseapp.dto.news.NewsDto;
 import com.qhomebaseapp.service.news.NewsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController

@@ -1,15 +1,17 @@
 package com.qhomebaseapp.controller;
 
-
-
-import com.qhomebaseapp.dto.ResetPasswordRequest;
-import com.qhomebaseapp.dto.UserResponse;
+import com.qhomebaseapp.dto.user.LoginRequestDto;
+import com.qhomebaseapp.dto.user.ResetPasswordRequest;
+import com.qhomebaseapp.dto.user.UserResponse;
 import com.qhomebaseapp.model.User;
-import com.qhomebaseapp.service.EmailService;
-import com.qhomebaseapp.service.UserService;
+import com.qhomebaseapp.service.user.EmailService;
+import com.qhomebaseapp.service.user.UserService;
 import com.qhomebaseapp.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.SecureRandom;
@@ -26,6 +28,7 @@ public class UserController {
     private final UserService userService;
     private final EmailService emailService;
     private final JwtUtil jwtUtil;
+    private final AuthenticationManager authenticationManager;
 
     private final Map<String, Integer> otpRequestCount = new ConcurrentHashMap<>();
     private final Map<String, LocalDateTime> otpRequestTime = new ConcurrentHashMap<>();
@@ -42,9 +45,9 @@ public class UserController {
 
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody Map<String, String> body) {
-        String email = body.get("email");
-        String password = body.get("password");
+    public ResponseEntity<?> login(@RequestBody LoginRequestDto loginRequest) {
+        String email = loginRequest.getEmail();
+        String password = loginRequest.getPassword();
 
         if (email == null || password == null) {
             return ResponseEntity.badRequest().body(Map.of("message", "Email and password required"));
@@ -56,8 +59,11 @@ public class UserController {
                     .body(Map.of("message", "Too many failed login attempts. Try later."));
         }
 
-        Optional<User> userOpt = userService.getUserByEmail(email);
-        if (userOpt.isEmpty() || !userService.checkPassword(password, userOpt.get().getPassword())) {
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(email, password)
+            );
+        } catch (AuthenticationException e) {
             loginFailCount.put(email, loginFailCount.getOrDefault(email, 0) + 1);
             if (loginFailCount.get(email) >= LOGIN_MAX_FAILS) {
                 loginLockTime.put(email, LocalDateTime.now().plusMinutes(LOGIN_LOCK_MINUTES));
@@ -68,7 +74,7 @@ public class UserController {
 
         loginFailCount.put(email, 0);
 
-        User user = userOpt.get();
+        User user = userService.getUserByEmail(email).orElseThrow();
         String token = jwtUtil.generateToken(user.getEmail());
 
         UserResponse response = new UserResponse(user.getId(), user.getEmail(), user.getUsername(), token);
@@ -78,7 +84,6 @@ public class UserController {
 
     @PostMapping("/logout")
     public ResponseEntity<?> logout() {
-        // TODO: nếu dùng JWT, client xóa token là đủ
         return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
     }
 
@@ -192,5 +197,3 @@ public class UserController {
         return sb.toString();
     }
 }
-
-

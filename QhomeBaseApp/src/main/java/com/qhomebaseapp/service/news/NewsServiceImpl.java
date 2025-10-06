@@ -1,12 +1,8 @@
 package com.qhomebaseapp.service.news;
 
-import com.qhomebaseapp.dto.CreateNewsRequest;
-import com.qhomebaseapp.dto.NewsDto;
-import com.qhomebaseapp.dto.UpdateNewsRequest;
+import com.qhomebaseapp.dto.news.NewsDto;
 import com.qhomebaseapp.mapper.NewsMapper;
 import com.qhomebaseapp.model.News;
-import com.qhomebaseapp.model.NewsAttachment;
-import com.qhomebaseapp.model.NewsCategory;
 import com.qhomebaseapp.model.NewsRead;
 import com.qhomebaseapp.repository.news.NewsCategoryRepository;
 import com.qhomebaseapp.repository.news.NewsReadRepository;

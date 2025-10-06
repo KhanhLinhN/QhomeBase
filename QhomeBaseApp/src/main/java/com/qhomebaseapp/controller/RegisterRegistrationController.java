@@ -1,6 +1,6 @@
 package com.qhomebaseapp.controller;
 
-import com.qhomebaseapp.dto.RegisterServiceRequestDto;
+import com.qhomebaseapp.dto.registrationservice.RegisterServiceRequestDto;
 import com.qhomebaseapp.model.RegisterServiceRequest;
 import com.qhomebaseapp.service.registerregistration.RegisterRegistrationService;
 import lombok.RequiredArgsConstructor;

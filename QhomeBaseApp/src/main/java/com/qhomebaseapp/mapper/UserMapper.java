@@ -1,6 +1,6 @@
 package com.qhomebaseapp.mapper;
 
-import com.qhomebaseapp.dto.UserDto;
+import com.qhomebaseapp.dto.user.UserDto;
 import com.qhomebaseapp.model.User;
 
 public class UserMapper {

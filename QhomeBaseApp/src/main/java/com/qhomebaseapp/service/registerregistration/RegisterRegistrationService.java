@@ -2,7 +2,7 @@ package com.qhomebaseapp.service.registerregistration;
 
 
 
-import com.qhomebaseapp.dto.RegisterServiceRequestDto;
+import com.qhomebaseapp.dto.registrationservice.RegisterServiceRequestDto;
 import com.qhomebaseapp.model.RegisterServiceRequest;
 
 import java.util.List;

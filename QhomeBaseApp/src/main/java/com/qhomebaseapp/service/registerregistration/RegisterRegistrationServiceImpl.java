@@ -1,6 +1,6 @@
 package com.qhomebaseapp.service.registerregistration;
 
-import com.qhomebaseapp.dto.RegisterServiceRequestDto;
+import com.qhomebaseapp.dto.registrationservice.RegisterServiceRequestDto;
 import com.qhomebaseapp.mapper.RegisterServiceRequestMapper;
 import com.qhomebaseapp.model.RegisterServiceRequest;
 import com.qhomebaseapp.model.User;

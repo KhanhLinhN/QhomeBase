@@ -1,6 +1,6 @@
 package com.qhomebaseapp.mapper;
 
-import com.qhomebaseapp.dto.RegisterServiceRequestDto;
+import com.qhomebaseapp.dto.registrationservice.RegisterServiceRequestDto;
 import com.qhomebaseapp.model.RegisterServiceRequest;
 import org.mapstruct.Mapper;
 import org.mapstruct.factory.Mappers;

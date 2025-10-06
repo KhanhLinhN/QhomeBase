@@ -1,11 +1,10 @@
 package com.qhomebaseapp.mapper;
 
-import com.qhomebaseapp.dto.CreateNewsRequest;
-import com.qhomebaseapp.dto.NewsAttachmentDto;
-import com.qhomebaseapp.dto.NewsDto;
-import com.qhomebaseapp.dto.UpdateNewsRequest;
+import com.qhomebaseapp.dto.registrationservice.CreateNewsRequest;
+import com.qhomebaseapp.dto.news.NewsAttachmentDto;
+import com.qhomebaseapp.dto.news.NewsDto;
+import com.qhomebaseapp.dto.registrationservice.UpdateNewsRequest;
 import com.qhomebaseapp.model.News;
-import com.qhomebaseapp.model.NewsAttachment;
 import com.qhomebaseapp.model.NewsCategory;
 import org.springframework.stereotype.Component;
 
