@@ -7,11 +7,14 @@ import com.qhomebaseapp.model.NewsRead;
 import com.qhomebaseapp.repository.news.NewsCategoryRepository;
 import com.qhomebaseapp.repository.news.NewsReadRepository;
 import com.qhomebaseapp.repository.news.NewsRepository;
+import com.qhomebaseapp.repository.UserRepository;
+import com.qhomebaseapp.model.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.Principal;
 import java.time.LocalDateTime;
 
 @Service
@@ -22,10 +25,8 @@ public class NewsServiceImpl implements NewsService {
     private final NewsReadRepository newsReadRepository;
     private final NewsCategoryRepository newsCategoryRepository;
     private final NewsMapper newsMapper;
+    private final UserRepository userRepository;
 
-    /**
-     * Danh sách tin tức (cư dân xem), có phân trang và filter theo category
-     */
     @Override
     public Page<NewsDto> listNews(String categoryCode, Long userId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
@@ -43,9 +44,6 @@ public class NewsServiceImpl implements NewsService {
         });
     }
 
-    /**
-     * Xem chi tiết tin tức -> đồng thời đánh dấu là đã đọc
-     */
     @Override
     @Transactional
     public NewsDto getNews(Long id, Long userId) {
@@ -54,7 +52,6 @@ public class NewsServiceImpl implements NewsService {
 
         boolean isRead = userId != null && newsReadRepository.existsByUserIdAndNewsId(userId, news.getId());
 
-        // Nếu user chưa đọc thì đánh dấu là đã đọc khi mở tin
         if (userId != null && !isRead) {
             markAsRead(news.getId(), userId);
             isRead = true;
@@ -63,9 +60,6 @@ public class NewsServiceImpl implements NewsService {
         return newsMapper.toDto(news, isRead);
     }
 
-    /**
-     * Đánh dấu 1 tin tức là đã đọc
-     */
     @Override
     @Transactional
     public void markAsRead(Long newsId, Long userId) {
@@ -80,11 +74,20 @@ public class NewsServiceImpl implements NewsService {
         }
     }
 
-    /**
-     * Đếm số tin chưa đọc để hiển thị trên icon notification
-     */
     @Override
     public long unreadCount(Long userId) {
         return newsReadRepository.countUnreadByUserId(userId);
+    }
+
+    @Override
+    public Long getUserIdFromPrincipal(Principal principal) {
+        if (principal == null) {
+            return null;
+        }
+        String userEmail = principal.getName();
+
+        return userRepository.findByEmail(userEmail)
+                .map(User::getId)
+                .orElseThrow(() -> new RuntimeException("Authenticated user not found in database."));
     }
 }

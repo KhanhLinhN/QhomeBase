@@ -8,6 +8,8 @@ import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger; // Thêm import này
+import org.slf4j.LoggerFactory; // Thêm import này
 
 import java.security.Key;
 import java.util.Date;
@@ -18,6 +20,9 @@ import java.util.function.Function;
 @Component
 public class JwtUtil {
 
+    // Khai báo Logger
+    private static final Logger logger = LoggerFactory.getLogger(JwtUtil.class);
+
     @Value("${jwt.secret}")
     private String SECRET_KEY;
 
@@ -25,7 +30,18 @@ public class JwtUtil {
     private long expirationTime;
 
     private Key getSigningKey() {
+        // Log SECRET_KEY khi bean được khởi tạo
+        if (SECRET_KEY == null) {
+            logger.error("!!! JWT SECRET KEY IS NULL. Check application.properties or environment variables.");
+        }
+
         byte[] keyBytes = Decoders.BASE64.decode(SECRET_KEY);
+
+        // Cập nhật: Log độ dài byte của key sau khi decode
+        logger.info("JWT Secret Key loaded (first 5 chars: {}, byte length: {})",
+                SECRET_KEY.substring(0, Math.min(SECRET_KEY.length(), 5)),
+                keyBytes.length);
+
         return Keys.hmacShaKeyFor(keyBytes);
     }
 

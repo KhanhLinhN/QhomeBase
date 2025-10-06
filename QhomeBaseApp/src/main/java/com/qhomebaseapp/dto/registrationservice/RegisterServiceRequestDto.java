@@ -10,7 +10,14 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @Builder
 public class RegisterServiceRequestDto {
-    private Long userId;
+
     private String serviceType;
+
+    private String description;
+
+    private String phoneNumber;
+
+    private String address;
+
     private String note;
 }

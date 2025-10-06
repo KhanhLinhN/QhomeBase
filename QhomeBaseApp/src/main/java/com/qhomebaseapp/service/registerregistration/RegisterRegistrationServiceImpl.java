@@ -20,14 +20,13 @@ public class RegisterRegistrationServiceImpl implements RegisterRegistrationServ
     private final UserRepository userRepository;
 
     @Override
-    public RegisterServiceRequest registerService(RegisterServiceRequestDto dto) {
-        // ✅ Lấy user từ DB
-        User user = userRepository.findById(dto.getUserId())
-                .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + dto.getUserId()));
+    public RegisterServiceRequest registerService(RegisterServiceRequestDto dto, Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
 
-        // ✅ Tạo entity mới
         RegisterServiceRequest entity = RegisterServiceRequestMapper.INSTANCE.toEntity(dto);
         entity.setUser(user);
+
         entity.setStatus("PENDING");
         entity.setCreatedAt(OffsetDateTime.now());
         entity.setUpdatedAt(OffsetDateTime.now());

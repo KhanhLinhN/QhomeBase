@@ -43,12 +43,15 @@ public class SecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
+                        // Cho phép các endpoint Auth công khai
                         .requestMatchers("/api/auth/login",
                                 "/api/auth/request-reset",
                                 "/api/auth/verify-otp",
                                 "/api/auth/confirm-reset",
                                 "/api/auth/logout")
                         .permitAll()
+                        // Yêu cầu chỉ cần được xác thực (authenticated) cho tất cả các request còn lại.
+                        // Trong ứng dụng 1-role (resident), điều này là đủ và đáng tin cậy hơn.
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
