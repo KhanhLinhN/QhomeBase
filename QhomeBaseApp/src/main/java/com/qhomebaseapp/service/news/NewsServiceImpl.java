@@ -84,9 +84,9 @@ public class NewsServiceImpl implements NewsService {
         if (principal == null) {
             return null;
         }
-        String userEmail = principal.getName();
+        String email = principal.getName();
 
-        return userRepository.findByEmail(userEmail)
+        return userRepository.findByEmail(email)
                 .map(User::getId)
                 .orElseThrow(() -> new RuntimeException("Authenticated user not found in database."));
     }
