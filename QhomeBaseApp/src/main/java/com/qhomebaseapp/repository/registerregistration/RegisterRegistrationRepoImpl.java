@@ -10,12 +10,11 @@ import java.util.List;
 
 @Repository
 @Transactional
-public class RegisterRegistrationRepoImpl implements RegisterRegistrationRepository {
+public class RegisterRegistrationRepoImpl {
 
     @PersistenceContext
     private EntityManager em;
 
-    @Override
     public RegisterServiceRequest save(RegisterServiceRequest request) {
         if (request.getId() == null) {
             em.persist(request);
@@ -25,9 +24,8 @@ public class RegisterRegistrationRepoImpl implements RegisterRegistrationReposit
         }
     }
 
-    @Override
     public List<RegisterServiceRequest> findByUserId(Long userId) {
-        return em.createQuery("SELECT r FROM RegisterServiceRequest r WHERE r.userId = :userId", RegisterServiceRequest.class)
+        return em.createQuery("SELECT r FROM RegisterServiceRequest r WHERE r.user.id = :userId", RegisterServiceRequest.class)
                 .setParameter("userId", userId)
                 .getResultList();
     }

@@ -32,13 +32,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        // Các endpoint không yêu cầu xác thực
         String path = request.getServletPath();
-        return path.startsWith("/api/auth/login")
-                || path.startsWith("/api/auth/request-reset")
-                || path.startsWith("/api/auth/verify-otp")
-                || path.startsWith("/api/auth/confirm-reset")
-                || path.startsWith("/api/auth/refresh-token");
+        return path.startsWith("/api/auth/");
     }
 
     @Override
@@ -51,7 +46,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = null;
         String username = null;
 
-        // Lấy token từ header Authorization
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             token = authHeader.substring(7);
             try {
@@ -65,7 +59,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
 
-        // Xác thực người dùng
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             try {
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);

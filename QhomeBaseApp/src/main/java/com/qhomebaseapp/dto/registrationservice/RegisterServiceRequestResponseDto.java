@@ -5,14 +5,19 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.OffsetDateTime;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class RegisterServiceRequestDto {
+public class RegisterServiceRequestResponseDto {
+    private Long id;
     private String serviceType;
-    private String description;
-    private String phoneNumber;
-    private String address;
     private String note;
+    private String status;
+    private OffsetDateTime createdAt;
+    private OffsetDateTime updatedAt;
+    private Long userId;
+    private String userEmail;
 }
