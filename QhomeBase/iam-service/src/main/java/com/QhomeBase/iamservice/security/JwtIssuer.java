@@ -50,8 +50,5 @@ public class JwtIssuer {
         builder.claim("roles", new ArrayList<>(roles));
         builder.claim("perms", new ArrayList<>(perms));
         return builder.signWith(key, SignatureAlgorithm.HS256).compact();
-
-
-
     }
 }

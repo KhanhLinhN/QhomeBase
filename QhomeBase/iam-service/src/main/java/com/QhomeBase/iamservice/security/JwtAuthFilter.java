@@ -6,6 +6,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -20,9 +21,11 @@ import java.util.UUID;
 
 
 @Component
+@RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {
-    @Autowired
-    private JwtVerifier jwtVerifier;
+
+
+    private final JwtVerifier jwtVerifier;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
@@ -34,16 +37,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 
 
                 UUID uid = UUID.fromString(claims.get("uid", String.class));
-                String username = claims.getSubject(); // Sử dụng getSubject() thay vì get("username")
+                String username = claims.getSubject();
                 UUID tenant = UUID.fromString(claims.get("tenant", String.class));
                 List<String> roles = claims.get("roles", List.class);
                 List<String> perms = claims.get("perms", List.class);
-                
 
-                if (uid == null || username == null || tenant == null || roles == null || perms == null) {
-                    throw new IllegalArgumentException("Invalid JWT claims");
-                }
-                
                 var authorities = new ArrayList<SimpleGrantedAuthority>();
                 for (String role : roles) {
                     authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
@@ -64,7 +62,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
         
-        // Tiếp tục filter chain
+
         filterChain.doFilter(request, response);
     }
 }

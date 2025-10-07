@@ -7,5 +7,5 @@ import java.util.List;
 import java.util.UUID;
 
 public interface buildingRepository extends JpaRepository<building,UUID> {
-    List<building> findAllByTenantIdOrderByCodeAsc(UUID tenantId);;
+    List<building> findAllByTenantIdOrderByCodeAsc(UUID tenantId);
 }

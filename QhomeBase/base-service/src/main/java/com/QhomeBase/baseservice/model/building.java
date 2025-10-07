@@ -40,6 +40,10 @@ public class building {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private BuildingStatus status = BuildingStatus.ACTIVE;
+
 
     public UUID getId() {
         return this.id;

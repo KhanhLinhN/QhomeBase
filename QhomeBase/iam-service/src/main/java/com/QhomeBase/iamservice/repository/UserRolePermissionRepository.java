@@ -13,7 +13,7 @@ public interface UserRolePermissionRepository extends JpaRepository<UserRolePerm
     @Query(value = """
   WITH roles_global AS (
     SELECT ur.role
-    FROM iam.user_roles ur
+    FROM iam.user_roles ur  
     WHERE ur.user_id = :userId
   ),
   perms_global AS (
