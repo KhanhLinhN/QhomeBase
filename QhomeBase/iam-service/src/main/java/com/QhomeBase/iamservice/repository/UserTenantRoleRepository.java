@@ -18,4 +18,14 @@ FROM iam.user_tenant_roles
 WHERE user_id = :uid AND tenant_id = :tid
 """, nativeQuery = true)
     List<String> findRolesByUserAndTenant(@Param("uid") UUID userId, @Param("tid") UUID tenantId);
+
+
+    @Query(value = """
+     SELECT utr.user_id
+          FROM iam.user_tenant_roles utr
+          WHERE utr.tenant_id = :tenantId
+            AND utr.role IN ('tenant_manager','tenant_owner')
+           
+""", nativeQuery = true)
+    List<UUID> findManagerIdsByTenant(@Param("tid") UUID tenantId);
 }

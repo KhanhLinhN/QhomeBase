@@ -1,0 +1,335 @@
+{
+	"info": {
+		"_postman_id": "tenant-deletion-api-collection",
+		"name": "Tenant Deletion API",
+		"description": "Collection để test chức năng gửi và chấp nhận deletion request",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Generate Test Token",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"if (pm.response.code === 200) {",
+							"    const response = pm.response.json();",
+							"    pm.environment.set('jwt_token', response.token);",
+							"    console.log('Token saved:', response.token);",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"uid\": \"{{user_id}}\",\n    \"username\": \"{{username}}\",\n    \"tenantId\": \"{{tenant_id}}\",\n    \"roles\": [\"tenant_manager\"],\n    \"permissions\": [\"base.tenant.delete.request\", \"base.tenant.delete.approve\"]\n}"
+				},
+				"url": {
+					"raw": "{{iam_service_url}}/api/test/generate-token",
+					"host": [
+						"{{iam_service_url}}"
+					],
+					"path": [
+						"api",
+						"test",
+						"generate-token"
+					]
+				},
+				"description": "Tạo JWT token để test các API cần authentication"
+			},
+			"response": []
+		},
+		{
+			"name": "2. Create Deletion Request",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"if (pm.response.code === 200) {",
+							"    const response = pm.response.json();",
+							"    pm.environment.set('deletion_request_id', response.id);",
+							"    console.log('Deletion request created:', response.id);",
+							"    pm.test('Status is PENDING', function () {",
+							"        pm.expect(response.status).to.eql('PENDING');",
+							"    });",
+							"    pm.test('Tenant ID matches', function () {",
+							"        pm.expect(response.tenantId).to.eql(pm.environment.get('tenant_id'));",
+							"    });",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"tenantId\": \"{{tenant_id}}\",\n    \"reason\": \"Test deletion request - Tenant không còn sử dụng hệ thống\"\n}"
+				},
+				"url": {
+					"raw": "{{base_service_url}}/api/tenant-deletions",
+					"host": [
+						"{{base_service_url}}"
+					],
+					"path": [
+						"api",
+						"tenant-deletions"
+					]
+				},
+				"description": "Tạo deletion request cho tenant"
+			},
+			"response": []
+		},
+		{
+			"name": "3. Approve Deletion Request",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"if (pm.response.code === 200) {",
+							"    const response = pm.response.json();",
+							"    pm.test('Status is APPROVED', function () {",
+							"        pm.expect(response.status).to.eql('APPROVED');",
+							"    });",
+							"    pm.test('Note is set', function () {",
+							"        pm.expect(response.note).to.eql('Đã phê duyệt xóa tenant');",
+							"    });",
+							"    pm.test('Approved by is set', function () {",
+							"        pm.expect(response.approvedBy).to.not.be.null;",
+							"    });",
+							"    pm.test('Approved at is set', function () {",
+							"        pm.expect(response.approvedAt).to.not.be.null;",
+							"    });",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"note\": \"Đã phê duyệt xóa tenant\"\n}"
+				},
+				"url": {
+					"raw": "{{base_service_url}}/api/tenant-deletions/{{deletion_request_id}}/approve",
+					"host": [
+						"{{base_service_url}}"
+					],
+					"path": [
+						"api",
+						"tenant-deletions",
+						"{{deletion_request_id}}",
+						"approve"
+					]
+				},
+				"description": "Chấp nhận deletion request"
+			},
+			"response": []
+		},
+		{
+			"name": "4. Test Create with Invalid Tenant ID",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Should return 403 Forbidden', function () {",
+							"    pm.expect(pm.response.code).to.eql(403);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"tenantId\": \"{{invalid_tenant_id}}\",\n    \"reason\": \"Test với tenant ID không hợp lệ\"\n}"
+				},
+				"url": {
+					"raw": "{{base_service_url}}/api/tenant-deletions",
+					"host": [
+						"{{base_service_url}}"
+					],
+					"path": [
+						"api",
+						"tenant-deletions"
+					]
+				},
+				"description": "Test tạo deletion request với tenant ID không thuộc về user hiện tại"
+			},
+			"response": []
+		},
+		{
+			"name": "5. Test Create without Token",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Should return 401 Unauthorized', function () {",
+							"    pm.expect(pm.response.code).to.eql(401);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"tenantId\": \"{{tenant_id}}\",\n    \"reason\": \"Test không có token\"\n}"
+				},
+				"url": {
+					"raw": "{{base_service_url}}/api/tenant-deletions",
+					"host": [
+						"{{base_service_url}}"
+					],
+					"path": [
+						"api",
+						"tenant-deletions"
+					]
+				},
+				"description": "Test tạo deletion request mà không có JWT token"
+			},
+			"response": []
+		},
+		{
+			"name": "6. Test Approve with Empty Note",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Should return 400 Bad Request', function () {",
+							"    pm.expect(pm.response.code).to.eql(400);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"note\": \"\"\n}"
+				},
+				"url": {
+					"raw": "{{base_service_url}}/api/tenant-deletions/{{deletion_request_id}}/approve",
+					"host": [
+						"{{base_service_url}}"
+					],
+					"path": [
+						"api",
+						"tenant-deletions",
+						"{{deletion_request_id}}",
+						"approve"
+					]
+				},
+				"description": "Test approve với note rỗng (should fail validation)"
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Set default values if not already set",
+					"if (!pm.environment.get('user_id')) {",
+					"    pm.environment.set('user_id', pm.variables.replaceIn('{{$randomUUID}}'));",
+					"}",
+					"if (!pm.environment.get('tenant_id')) {",
+					"    pm.environment.set('tenant_id', pm.variables.replaceIn('{{$randomUUID}}'));",
+					"}",
+					"if (!pm.environment.get('invalid_tenant_id')) {",
+					"    pm.environment.set('invalid_tenant_id', pm.variables.replaceIn('{{$randomUUID}}'));",
+					"}",
+					"if (!pm.environment.get('username')) {",
+					"    pm.environment.set('username', 'testuser');",
+					"}"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_service_url",
+			"value": "http://localhost:8081",
+			"type": "string"
+		},
+		{
+			"key": "iam_service_url",
+			"value": "http://localhost:8082",
+			"type": "string"
+		}
+	]
+}
+

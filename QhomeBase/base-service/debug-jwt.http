@@ -1,0 +1,31 @@
+### Debug JWT Token
+### Test trực tiếp với curl để xem lỗi cụ thể
+
+### 1. Tạo token từ iam-service
+POST http://localhost:8088/api/test/generate-token
+Content-Type: application/json
+
+{
+    "uid": "550e8400-e29b-41d4-a716-446655440000",
+    "username": "testuser",
+    "tenantId": "550e8400-e29b-41d4-a716-446655440001",
+    "roles": ["tenant_manager"],
+    "permissions": ["base.tenant.delete.request", "base.tenant.delete.approve"]
+}
+
+### 2. Test token với base-service (thay YOUR_TOKEN_HERE bằng token từ bước 1)
+POST http://localhost:8081/api/tenant-deletions
+Authorization: Bearer YOUR_TOKEN_HERE
+Content-Type: application/json
+
+{
+    "tenantId": "550e8400-e29b-41d4-a716-446655440001",
+    "reason": "Test deletion request"
+}
+
+### 3. Test public endpoint của base-service
+GET http://localhost:8081/actuator/health
+
+### 4. Test public endpoint của iam-service  
+GET http://localhost:8088/api/test/public
+

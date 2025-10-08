@@ -1,4 +1,8 @@
+D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\client\TenantDeletionClient.java
+D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\client\WebClientService.java
+D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\config\WebClientConfig.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\controller\TestController.java
+D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\controller\UserTenantRoleController.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\IamServiceApplication.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\model\Roles.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\model\TenantRole.java
@@ -18,3 +22,4 @@ D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservi
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\security\JwtVerifier.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\security\SecurityConfig.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\security\UserPrincipal.java
+D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\UserTenantRoleService.java

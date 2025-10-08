@@ -2,7 +2,7 @@ package com.QhomeBase.baseservice.model;
 
 public enum TenantDeletionStatus {
     PENDING,
-    WAITING_SECOND_APPROVAL,
+    CANCELED,
     APPROVED,
     REJECTED
 }
