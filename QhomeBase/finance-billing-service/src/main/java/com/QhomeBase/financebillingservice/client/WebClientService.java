@@ -17,7 +17,7 @@ import java.util.UUID;
 @Slf4j
 public class WebClientService {
 
-    //@Autowired
+
     private WebClient webClient;
 
     @EventListener(ApplicationReadyEvent.class)

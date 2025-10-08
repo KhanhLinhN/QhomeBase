@@ -21,26 +21,29 @@ public class JwtVerifier {
 
     public JwtVerifier(
             @Value("${security.jwt.secret}") String secret,
-            @Value("${security.jwt.issuer}") String issuer,
-            @Value("${security.jwt.audience}") String expectedAudience
+            @Value("${security.jwt.issuer}") String issuer
     ) {
         byte[] raw = secret.getBytes(StandardCharsets.UTF_8);
         if (raw.length < 32)
             throw new IllegalStateException("JWT_SECRET must be >= 32 bytes");
         this.key = Keys.hmacShaKeyFor(raw);
         this.issuer = issuer;
-        this.expectedAudience = expectedAudience;
+        this.expectedAudience = null; // IAM service không check audience
     }
     public Claims verify(String token) {
-        return (Claims) Jwts.parserBuilder()
+        var builder = Jwts.parserBuilder()
                 .setSigningKey(key)
                 .requireIssuer(issuer)
-                .requireAudience(expectedAudience)
-                .setAllowedClockSkewSeconds(Duration.ofSeconds(30).getSeconds())
-                .build()
+                .setAllowedClockSkewSeconds(Duration.ofSeconds(30).getSeconds());
+        
+        // Chỉ check audience nếu có expectedAudience
+        if (expectedAudience != null) {
+            builder.requireAudience(expectedAudience);
+        }
+        
+        return (Claims) builder.build()
                 .parseClaimsJws(token)
                 .getBody();
-
     }
 
 }

@@ -13,7 +13,7 @@ import java.util.UUID;
 public class TenantDeletionClient {
     private final WebClientService webClientService;
     public Mono<Map> createDeletion(UUID tenantId, String reason) {
-        WebClient client = webClientService.getWebClient("http://localhost:8082", "base-service");
+        WebClient client = webClientService.getWebClient("http://localhost:8082", "qhome-base");
         return client.post()
                 .uri("/api/tenant-deletions")
                 .bodyValue(Map.of("tenantId", tenantId, "reason", reason))
@@ -22,7 +22,7 @@ public class TenantDeletionClient {
     }
 
     public Mono<Map> approveDeletion(UUID ticketId, String note) {
-        WebClient client = webClientService.getWebClient("http://localhost:8082", "base-service");
+        WebClient client = webClientService.getWebClient("http://localhost:8082", "qhome-base");
         return client.post()
                 .uri("/api/tenant-deletions/{id}/approve", ticketId)
                 .bodyValue(Map.of("note", note))

@@ -43,12 +43,15 @@ public class JwtIssuer {
         builder.setIssuer(issuer).setSubject(username)
                 .setId(UUID.randomUUID().toString())
                 .setIssuedAt(Date.from(Instant.now()))
-                .setExpiration(new Date(System.currentTimeMillis() + ttlMinutes*60*1000))
+                .setExpiration(new Date(System.currentTimeMillis() + ttlMinutes*1000))
                 .setAudience(audiences)
                 .claim("uid", uid.toString())
                 .claim("tenant", tenantId.toString());
         builder.claim("roles", new ArrayList<>(roles));
         builder.claim("perms", new ArrayList<>(perms));
         return builder.signWith(key, SignatureAlgorithm.HS256).compact();
+
+
+
     }
 }

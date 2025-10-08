@@ -1,5 +1,6 @@
 package com.QhomeBase.iamservice.client;
 
+import com.QhomeBase.iamservice.security.JwtAuthFilter;
 import com.QhomeBase.iamservice.security.JwtIssuer;
 import com.QhomeBase.iamservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
