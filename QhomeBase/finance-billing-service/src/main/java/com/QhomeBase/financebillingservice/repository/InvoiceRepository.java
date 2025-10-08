@@ -7,7 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
-import java.awt.print.Pageable;
+import org.springframework.data.domain.Pageable;
 import java.util.List;
 import java.util.UUID;
 
@@ -21,6 +21,6 @@ public interface InvoiceRepository extends JpaRepository<invoice,UUID> {
   join u.building b
   where i.tenantId = :tenantId and b.id = :buildingId
   """) */
-    Page<invoice> findByTenantAndBuilding(UUID tenantId, UUID buildingId, Pageable pageable);
+    Page<invoice> findByTenantId(UUID tenantId, Pageable pageable);
 
 }

@@ -18,7 +18,7 @@ public class billingCycle {
     private UUID id;
     @Column(name="tenant_id", nullable = false)
     private UUID  tenantId;
-    @Column(name="tenant_id", nullable = false)
+    @Column(name="name", nullable = false)
     private String name;
     @Column(name="period_from", nullable=false) private LocalDate periodFrom;
     @Column(name="period_to",   nullable=false) private LocalDate periodTo;

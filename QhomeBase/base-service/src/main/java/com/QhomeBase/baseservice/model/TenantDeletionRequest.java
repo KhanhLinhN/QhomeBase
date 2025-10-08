@@ -50,3 +50,4 @@ public class TenantDeletionRequest {
     @Builder.Default
     private TenantDeletionStatus status = TenantDeletionStatus.PENDING;
 }
+
