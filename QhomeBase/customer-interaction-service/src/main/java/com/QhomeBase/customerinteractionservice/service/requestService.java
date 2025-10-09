@@ -1,5 +1,6 @@
 package com.QhomeBase.customerinteractionservice.service;
 
+import com.QhomeBase.customerinteractionservice.dto.RequestDTO;
 import com.QhomeBase.customerinteractionservice.model.Request;
 import com.QhomeBase.customerinteractionservice.repository.requestRepository;
 
@@ -28,7 +29,24 @@ public class requestService {
         return requestRepository.save(newRequest);
     }
 
-    public Page<Request> getFilteredRequests(
+    public RequestDTO mapToDto(Request entity) {
+        return new RequestDTO(
+            entity.getId(),
+            entity.getTenantId(),
+            entity.getResidentId(),
+            entity.getResident_name(),
+            entity.getImage_path(),
+            entity.getTitle(),
+            entity.getContent(),
+            entity.getStatus(),
+            entity.getPriority(),
+            entity.getCreated_at(),
+            entity.getUpdated_at()
+        );          
+    }
+
+    // Method to get filtered requests with pagination
+    public Page<RequestDTO> getFilteredRequests(
             UUID requestId,
             String title,
             String residentName,
@@ -64,6 +82,48 @@ public class requestService {
 
         Pageable pageable = PageRequest.of(pageNo, PAGE_SIZE); 
 
-        return requestRepository.findAll(spec, pageable);
+        return requestRepository.findAll(spec, pageable).map(this::mapToDto);
+    }
+
+    // Create a new request
+    public void createNewRequest(RequestDTO dto) {
+        Request entity = new Request();
+        entity.setId(dto.getId());
+        entity.setTenantId(dto.getTenantId());
+        entity.setResidentId(dto.getResidentId());
+        entity.setResident_name(dto.getResident_name());
+        entity.setImage_path(dto.getImage_path());
+        entity.setTitle(dto.getTitle());
+        entity.setContent(dto.getContent());
+        entity.setStatus(dto.getStatus());
+        entity.setPriority(dto.getPriority());
+        entity.setCreated_at(dto.getCreated_at());
+        entity.setUpdated_at(dto.getUpdated_at());
+        requestRepository.save(entity);
+    }
+
+    // Update an existing request
+    public void updateRequest(RequestDTO dto) {
+        Request entity = requestRepository.findById(dto.getId())
+                .orElseThrow(() -> new RuntimeException("Request not found with id: " + dto.getId()));
+        entity.setTenantId(dto.getTenantId());
+        entity.setResidentId(dto.getResidentId());
+        entity.setResident_name(dto.getResident_name());
+        entity.setImage_path(dto.getImage_path());
+        entity.setTitle(dto.getTitle());
+        entity.setContent(dto.getContent());
+        entity.setStatus(dto.getStatus());
+        entity.setPriority(dto.getPriority());
+        entity.setCreated_at(dto.getCreated_at());
+        entity.setUpdated_at(dto.getUpdated_at());
+        requestRepository.save(entity);
+    }
+
+    // Update status of a request
+    public void updateStatus(UUID requestId, String newStatus) {
+        Request entity = requestRepository.findById(requestId)
+                .orElseThrow(() -> new RuntimeException("Request not found with id: " + requestId));
+        entity.setStatus(newStatus);
+        requestRepository.save(entity);
     }
 }

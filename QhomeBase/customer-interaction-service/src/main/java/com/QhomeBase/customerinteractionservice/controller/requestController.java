@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.QhomeBase.customerinteractionservice.dto.RequestDTO;
 import com.QhomeBase.customerinteractionservice.dto.RequestMapper;
-import com.QhomeBase.customerinteractionservice.model.Request;
 import com.QhomeBase.customerinteractionservice.service.requestService;
 
 @RestController
@@ -18,11 +17,9 @@ import com.QhomeBase.customerinteractionservice.service.requestService;
 public class requestController {
 
     private final requestService requestService;
-   private final RequestMapper requestMapper;
 
     public requestController(requestService requestService, RequestMapper requestMapper) {
         this.requestService = requestService;
-        this.requestMapper = requestMapper;
     }
 
    @GetMapping()
@@ -36,11 +33,11 @@ public class requestController {
            @RequestParam(defaultValue = "0") int pageNo)
    {
 
-       Page<Request> requestPage = requestService.getFilteredRequests(
+       Page<RequestDTO> requestPage = requestService.getFilteredRequests(
                requestId, title, residentName, tenantId, status, priority, pageNo
        );
 
-       return requestPage.map(requestMapper::toRequestDto);
+       return requestPage;
    }
 
 }
