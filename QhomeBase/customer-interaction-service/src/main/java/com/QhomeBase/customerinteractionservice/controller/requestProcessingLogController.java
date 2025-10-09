@@ -27,10 +27,20 @@ public class requestProcessingLogController {
         return processingLogService.getProcessingLogsById(id);
     }
 
+    @GetMapping("/{id}/logs")
+    public List<ProcessingLogDTO> getProcessingLogsByLogsId(@PathVariable UUID id) {
+        return processingLogService.getProcessingLogsById(id);
+    }
+
+    @GetMapping("/staff/{staffId}")
+    public List<ProcessingLogDTO> getProcessingLogsByStaffId(@PathVariable UUID staffId) {
+        return processingLogService.getProcessingLogsByStaffId(staffId);
+    }
+
     @PostMapping("addNewLog")
-    public String addNewProcessLog(@RequestBody ProcessingLogDTO entity) {
+    public ResponseEntity<ProcessingLogDTO> addNewProcessLog(@RequestBody ProcessingLogDTO entity) {
         processingLogService.addProcessingLog(entity);
-        return "Log added successfully";
+        return ResponseEntity.ok(entity);
     }
 
     

@@ -45,6 +45,11 @@ public class requestService {
         );          
     }
 
+    public RequestDTO getRequestById(UUID id) {
+        return requestRepository.findById(id).map(this::mapToDto)
+                .orElseThrow(() -> new RuntimeException("Request not found with id: " + id));
+    }
+
     // Method to get filtered requests with pagination
     public Page<RequestDTO> getFilteredRequests(
             UUID requestId,
@@ -59,7 +64,7 @@ public class requestService {
             List<Predicate> predicates = new ArrayList<>();
 
             if (requestId != null) {
-                predicates.add(cb.equal(root.get("id"), requestId));
+                predicates.add(cb.like(root.get("id"), "%" + requestId.toString() + "%"));
             }
             if (title != null && !title.isEmpty()) {
                 predicates.add(cb.like(cb.lower(root.get("title")), "%" + title.toLowerCase() + "%"));

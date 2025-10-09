@@ -24,6 +24,12 @@ public class ProcessingLog {
     private UUID staff_in_charge;
     @Column(name = "content", nullable = false)
     private String content;
+    @Column(name = "request_status", nullable = true)
+    private String request_status;
+    @Column(name = "log_type", nullable = true)
+    private String log_type;
+    @Column(name = "staff_in_charge_name", nullable = true)
+    private String staff_in_charge_name;
     @Column(name = "created_at", nullable = false)
     private Instant created_at;
 }

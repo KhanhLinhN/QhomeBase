@@ -18,5 +18,8 @@ public class ProcessingLogDTO {
     UUID record_id;
     UUID staff_in_charge;
     String content;
+    String request_status;
+    String log_type;
+    String staff_in_charge_name;
     Instant created_at;
 }
