@@ -44,11 +44,11 @@ public class TestController {
         try {
             // Tạo test token với dữ liệu từ request
             String token = jwtIssuer.issueForService(
-                request.getUid() != null ? request.getUid() : UUID.randomUUID(),
+                request.getUid() != null ? request.getUid() : UUID.fromString("550e8400-e29b-41d4-a716-446655440000"),
                 request.getUsername() != null ? request.getUsername() : "testuser",
-                request.getTenantId() != null ? request.getTenantId() : UUID.randomUUID(),
-                request.getRoles() != null ? request.getRoles() : List.of("USER"),
-                request.getPermissions() != null ? request.getPermissions() : List.of("READ"),
+                request.getTenantId() != null ? request.getTenantId() : UUID.fromString("2b5b2af5-9431-4649-8144-35830d866826"),
+                request.getRoles() != null ? request.getRoles() : List.of("tenant_manager"),
+                request.getPermissions() != null ? request.getPermissions() : List.of("base.building.create"),
                 "qhome-base"
             );
             
@@ -139,6 +139,7 @@ public class TestController {
         public void setPermissions(List<String> permissions) { this.permissions = permissions; }
     }
 }
+
 
 
 

@@ -33,13 +33,14 @@ public class TenantDeletionController {
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("@authz.canApproveTicket(#id)")
+    @PreAuthorize("@authz.canApproveTicket(#req.tenantId())")
     public TenantDeletionRequestDTO approve(@PathVariable("id") UUID id,
                                             @Valid @RequestBody ApproveDeletionReq req,
                                             Authentication auth) {
         var e = tenantDeletionRequestService.getTenantDeletionRequestDTO(id);
         return tenantDeletionRequestService.approve(id, req.note(), auth);
     }
+
 
 
 
