@@ -3,10 +3,8 @@ package com.QhomeBase.customerinteractionservice.service;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
-import com.QhomeBase.customerinteractionservice.dto.RequestDTO;
 import com.QhomeBase.customerinteractionservice.model.ProcessingLog;
 import com.QhomeBase.customerinteractionservice.dto.ProcessingLogDTO;
 import com.QhomeBase.customerinteractionservice.model.Request;

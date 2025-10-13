@@ -1,7 +1,5 @@
 package com.QhomeBase.customerinteractionservice.dto;
 
-import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 import lombok.AllArgsConstructor;
