@@ -9,7 +9,6 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.List;
 
-// Request khi update
 @Data @Builder
 @NoArgsConstructor
 @AllArgsConstructor

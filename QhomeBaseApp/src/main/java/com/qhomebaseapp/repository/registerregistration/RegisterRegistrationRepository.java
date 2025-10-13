@@ -8,8 +8,6 @@ import java.util.List;
 
 @Repository
 public interface RegisterRegistrationRepository extends JpaRepository<RegisterServiceRequest, Long> {
-
-    // Tìm tất cả request theo user
     List<RegisterServiceRequest> findByUser_Id(Long userId);
 
 }

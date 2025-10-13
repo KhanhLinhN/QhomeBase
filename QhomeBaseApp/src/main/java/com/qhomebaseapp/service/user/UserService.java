@@ -19,8 +19,6 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
-    // =================== CRUD / BASIC ===================
-
     public List<User> getAllUsers() {
         return userRepository.findAll();
     }
@@ -40,7 +38,6 @@ public class UserService {
         return userRepository.save(user);
     }
 
-
     public boolean checkPassword(String rawPassword, String encodedPassword) {
         return passwordEncoder.matches(rawPassword, encodedPassword);
     }
@@ -56,7 +53,6 @@ public class UserService {
         userRepository.save(user);
         return otp;
     }
-
     public void sendOtpViaSms(String phoneNumber, String otp) {
         System.out.println("📲 Gửi OTP " + otp + " đến số: " + phoneNumber);
     }

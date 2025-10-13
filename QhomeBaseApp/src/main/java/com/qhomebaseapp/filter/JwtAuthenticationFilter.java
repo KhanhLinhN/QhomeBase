@@ -2,8 +2,6 @@ package com.qhomebaseapp.filter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qhomebaseapp.util.JwtUtil;
-import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,7 +12,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -33,57 +30,41 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
-        return path.startsWith("/api/auth/");
+        return path.startsWith("/api/auth/") || path.startsWith("/api/public/");
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
-                                    FilterChain filterChain)
-            throws ServletException, IOException {
+                                    FilterChain filterChain) throws ServletException, IOException {
 
-        final String authHeader = request.getHeader("Authorization");
-        String token = null;
-        String username = null;
-
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            token = authHeader.substring(7);
-            try {
-                username = jwtUtil.extractUsername(token);
-            } catch (ExpiredJwtException e) {
-                sendJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, "Token expired");
-                return;
-            } catch (JwtException | IllegalArgumentException e) {
-                sendJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, "Invalid token");
-                return;
-            }
+        String header = request.getHeader("Authorization");
+        if (header == null || !header.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
+            return;
         }
 
-        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            try {
+        String token = header.substring(7);
+
+        try {
+            String username = jwtUtil.extractUsername(token);
+            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
-                if (jwtUtil.validateToken(token, userDetails, "access")) {
-                    UsernamePasswordAuthenticationToken auth =
-                            new UsernamePasswordAuthenticationToken(
-                                    userDetails, null, userDetails.getAuthorities());
-                    auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(auth);
-                } else {
-                    sendJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired access token");
-                    return;
+                if (jwtUtil.validateToken(token, userDetails.getUsername(), "access")) {
+                    UsernamePasswordAuthenticationToken authToken =
+                            new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
-            } catch (Exception e) {
-                sendJsonError(response, HttpServletResponse.SC_UNAUTHORIZED, "User not found");
-                return;
             }
+            filterChain.doFilter(request, response);
+        } catch (Exception e) {
+            sendError(response, "Invalid or expired token");
         }
-
-        filterChain.doFilter(request, response);
     }
 
-    private void sendJsonError(HttpServletResponse response, int status, String message) throws IOException {
-        response.setStatus(status);
+    private void sendError(HttpServletResponse response, String message) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         Map<String, Object> body = new HashMap<>();
         body.put("message", message);

@@ -23,9 +23,6 @@ public class User implements UserDetails {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /**
-     * Dùng email làm username login chính
-     */
     @Column(nullable = false, unique = true)
     private String email;
 
@@ -33,7 +30,7 @@ public class User implements UserDetails {
     private String password;
 
     @Column(nullable = false)
-    private String role; // ADMIN, USER, STAFF, etc.
+    private String role;
 
     @Column(nullable = false)
     private Boolean enabled = true;
@@ -71,9 +68,6 @@ public class User implements UserDetails {
         return List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
     }
 
-    /**
-     * Override lại để Spring Security sử dụng email làm "username" login
-     */
     @Override
     public String getUsername() {
         return this.email;

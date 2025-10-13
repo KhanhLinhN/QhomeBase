@@ -1,15 +1,14 @@
 package com.qhomebaseapp.config;
 
 import com.qhomebaseapp.filter.JwtAuthenticationFilter;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -19,11 +18,9 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 
 @Configuration
-@EnableWebSecurity
 @RequiredArgsConstructor
 @EnableMethodSecurity
 public class SecurityConfig {
@@ -31,55 +28,55 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final AuthenticationConfiguration authConfig;
 
-    // -------------------- PasswordEncoder --------------------
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        return new BCryptPasswordEncoder(12);
     }
 
-    // -------------------- AuthenticationManager --------------------
     @Bean
     public AuthenticationManager authenticationManager() throws Exception {
         return authConfig.getAuthenticationManager();
     }
 
-    // -------------------- SecurityFilterChain --------------------
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // REST API stateless
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-
-                // Exception handling cho unauthorized
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(
-                        (request, response, authException) -> {
-                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                            response.setContentType("application/json");
-                            response.getWriter().write("{\"message\":\"Unauthorized\"}");
+                        (req, res, excep) -> {
+                            res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            res.setContentType("application/json");
+                            res.getWriter().write("{\"message\":\"" + excep.getMessage() + "\"}");
                         }
                 ))
-
-                // Quy tắc phân quyền
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints cho auth
-                        .requestMatchers("/api/auth/**").permitAll()
-                        // Tất cả các request còn lại yêu cầu JWT
+                        .requestMatchers(
+                                "/api/auth/login",
+                                "/api/auth/request-reset",
+                                "/api/auth/verify-otp",
+                                "/api/auth/confirm-reset"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
-
-                // Thêm JWT filter
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .headers(headers -> headers
+                        .frameOptions(frame -> frame.sameOrigin())
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .maxAgeInSeconds(31536000)
+                                .includeSubDomains(true))
+                        .contentSecurityPolicy(csp -> csp
+                                .policyDirectives("default-src 'self'; img-src 'self' data:; connect-src 'self'"))
+                );
 
         return http.build();
     }
 
-    // -------------------- CORS --------------------
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("*")); // Cho Flutter mobile/web
+        config.setAllowedOrigins(List.of("your.mobile.app.scheme"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         config.setAllowCredentials(true);

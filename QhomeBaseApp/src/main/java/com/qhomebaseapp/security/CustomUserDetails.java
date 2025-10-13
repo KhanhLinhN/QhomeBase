@@ -32,7 +32,6 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public String getUsername() {
-        // ⚠️ sửa tại đây: dùng email làm username để Spring Security khớp chính xác
         return user.getEmail();
     }
 

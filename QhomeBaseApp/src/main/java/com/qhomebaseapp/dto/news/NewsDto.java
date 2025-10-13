@@ -15,16 +15,13 @@ import java.util.List;
 public class NewsDto {
     private Long id;
 
-    // category info
     private String categoryCode;
     private String categoryName;
 
-    // content
     private String title;
     private String summary;
     private String content;
 
-    // meta info
     private String author;
     private String source;
 
@@ -37,7 +34,6 @@ public class NewsDto {
     private String updatedBy;
     private LocalDateTime updatedAt;
 
-    // user-specific info
     private boolean read;
 
     private List<NewsAttachmentDto> attachments;

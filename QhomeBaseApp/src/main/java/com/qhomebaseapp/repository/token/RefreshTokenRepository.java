@@ -2,17 +2,22 @@ package com.qhomebaseapp.repository.token;
 
 import com.qhomebaseapp.model.RefreshToken;
 import com.qhomebaseapp.model.User;
+import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.Optional;
 
-@Repository
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long> {
-
     Optional<RefreshToken> findByToken(String token);
 
-    void deleteByUser(User user);
+    @Transactional
+    @Modifying
+    @Query("DELETE FROM RefreshToken rt WHERE rt.user = :user AND rt.deviceId = :deviceId")
+    void deleteByUserAndDevice(User user, String deviceId);
 
-    Optional<RefreshToken> findByUser(User user);
+    Optional<RefreshToken> findByUserAndDeviceId(User user, String deviceId);
+
+    void deleteByUser(User user);
 }

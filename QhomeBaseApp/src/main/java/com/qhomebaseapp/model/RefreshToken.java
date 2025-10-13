@@ -11,9 +11,9 @@ import java.time.Instant;
 @Entity
 @Table(name = "refresh_tokens", schema = "qhomebaseapp")
 @Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class RefreshToken {
 
     @Id
@@ -23,10 +23,13 @@ public class RefreshToken {
     @Column(nullable = false, unique = true)
     private String token;
 
-    @OneToOne
-    @JoinColumn(name = "user_id", referencedColumnName = "id")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
     @Column(name = "expiry_date", nullable = false)
     private Instant expiryDate;
+
+    @Column(name = "device_id", nullable = false)
+    private String deviceId;
 }

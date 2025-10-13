@@ -5,6 +5,7 @@ import com.qhomebaseapp.dto.registrationservice.RegisterServiceRequestResponseDt
 import com.qhomebaseapp.security.CustomUserDetails;
 import com.qhomebaseapp.service.registerregistration.RegisterRegistrationService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -14,6 +15,7 @@ import org.springframework.http.HttpStatus;
 
 import java.util.List;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/register-service")
 @RequiredArgsConstructor
@@ -28,7 +30,10 @@ public class RegisterRegistrationController {
             Authentication authentication) {
 
         Long userId = getUserIdFromAuthentication(authentication);
+
         RegisterServiceRequestResponseDto result = service.registerService(dto, userId);
+
+        log.info("User {} registered service {}", userId, dto.getServiceCode());
 
         return ResponseEntity.ok(result);
     }
@@ -39,6 +44,8 @@ public class RegisterRegistrationController {
 
         Long userId = getUserIdFromAuthentication(authentication);
         List<RegisterServiceRequestResponseDto> list = service.getByUserId(userId);
+
+        log.info("User {} fetched their registered services, count={}", userId, list.size());
 
         return ResponseEntity.ok(list);
     }
