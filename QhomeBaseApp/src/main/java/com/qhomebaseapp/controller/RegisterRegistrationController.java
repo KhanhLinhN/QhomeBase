@@ -33,7 +33,7 @@ public class RegisterRegistrationController {
 
         RegisterServiceRequestResponseDto result = service.registerService(dto, userId);
 
-        log.info("User {} registered service {}", userId, dto.getServiceCode());
+        log.info("User {} registered service {}", userId, dto.getServiceType());
 
         return ResponseEntity.ok(result);
     }

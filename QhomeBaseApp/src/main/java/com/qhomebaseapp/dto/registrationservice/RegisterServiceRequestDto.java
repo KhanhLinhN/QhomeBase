@@ -14,5 +14,4 @@ public class RegisterServiceRequestDto {
     private String phoneNumber;
     private String address;
     private String note;
-    private String serviceCode;
 }
