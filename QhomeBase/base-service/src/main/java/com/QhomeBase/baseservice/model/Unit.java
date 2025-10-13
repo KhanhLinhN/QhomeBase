@@ -6,6 +6,7 @@ import org.hibernate.type.SqlTypes;
 import org.hibernate.annotations.JdbcTypeCode;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 @Entity
@@ -46,11 +47,14 @@ public class Unit {
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false)
+    @Builder.Default
     private UnitStatus status = UnitStatus.ACTIVE;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private OffsetDateTime createdAt = OffsetDateTime.now();
+    @Builder.Default
+    private OffsetDateTime createdAt = OffsetDateTime.now(ZoneOffset.UTC);
 
     @Column(name = "updated_at", nullable = false)
-    private OffsetDateTime updatedAt = OffsetDateTime.now();
+    @Builder.Default
+    private OffsetDateTime updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
 }

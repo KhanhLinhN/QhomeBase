@@ -20,7 +20,20 @@ public interface buildingRepository extends JpaRepository<building,UUID> {
     LIMIT 1
 """, nativeQuery = true)
     String findTenantCodeByBuilding(@Param("buildingId") UUID buildingId);
+
+
     @Query(value = "select t.code from data.tenants t where t.id = :tenantId", nativeQuery = true)
     Optional<String> findTenantCodeByTenantId(@Param("tenantId") UUID tenantId);
+
+
+    @Query(value = """
+    SELECT t.id
+    FROM data.buildings b
+    JOIN data.tenants t ON t.id = b.tenant_id
+    WHERE b.id = :buildingId
+    LIMIT 1
+""", nativeQuery = true)
+    UUID findTenantIdByBuilding(@Param("buildingId") UUID buildingId);
+
 }
 

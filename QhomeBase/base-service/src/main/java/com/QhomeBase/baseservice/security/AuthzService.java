@@ -99,5 +99,55 @@ public class AuthzService {
         boolean okPerm = hasPerm("base.building.delete.approve");
         return okRole || okPerm;
     }
+    public boolean canCreateUnit(UUID tenantId) {
+        boolean st = sameTenant(tenantId);
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager"));
+        boolean okPerm = hasPerm("base.unit.create");
+        return st && (okRole || okPerm);
+    }
+
+    public boolean canUpdateUnit(UUID unitId) {
+        
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager"));
+        boolean okPerm = hasPerm("base.unit.update");
+        return okRole || okPerm;
+    }
+
+    public boolean canViewUnit(UUID unitId) {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager", "unit_owner"));
+        boolean okPerm = hasPerm("base.unit.view");
+        return okRole || okPerm;
+    }
+
+    public boolean canViewUnits() {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager"));
+        boolean okPerm = hasPerm("base.unit.view");
+        return okRole || okPerm;
+    }
+
+    public boolean canDeleteUnit(UUID unitId) {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager"));
+        boolean okPerm = hasPerm("base.unit.delete");
+        return okRole || okPerm;
+    }
+
+    public boolean canManageUnitStatus(UUID unitId) {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager"));
+        boolean okPerm = hasPerm("base.unit.status.manage");
+        return okRole || okPerm;
+    }
+
+    public boolean canViewUnitsByTenant(UUID tenantId) {
+        boolean st = sameTenant(tenantId);
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager"));
+        boolean okPerm = hasPerm("base.unit.view");
+        return st && (okRole || okPerm);
+    }
+
+    public boolean canViewUnitsByBuilding(UUID buildingId) {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager"));
+        boolean okPerm = hasPerm("base.unit.view");
+        return okRole || okPerm;
+    }
 
 }

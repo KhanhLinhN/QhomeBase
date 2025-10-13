@@ -28,21 +28,26 @@ public class tenant {
     private String email;
 
     @Column(nullable = false)
+    @Builder.Default
     private String status = "ACTIVE";
 
     @Column(name = "created_at", nullable = false, updatable = false)
+    @Builder.Default
     private Instant createdAt = Instant.now();
 
     @Column(name = "updated_at", nullable = false)
+    @Builder.Default
     private Instant updatedAt = Instant.now();
 
     @Column(name = "created_by", nullable = false)
+    @Builder.Default
     private String createdBy = "system";
 
     @Column(name = "updated_by")
     private String updatedBy;
 
     @Column(name = "is_deleted", nullable = false)
+    @Builder.Default
     private boolean isDeleted = false;
 
 
