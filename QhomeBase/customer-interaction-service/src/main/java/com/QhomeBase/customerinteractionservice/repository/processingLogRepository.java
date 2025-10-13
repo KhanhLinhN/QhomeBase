@@ -11,6 +11,8 @@ import com.QhomeBase.customerinteractionservice.model.ProcessingLog;
 @Repository
 public interface processingLogRepository extends JpaRepository<ProcessingLog, UUID> {
 
-   // List<ProcessingLog> findByRecord_id(UUID recordId);
+   List<ProcessingLog> findByRecordIdOrderByCreatedAtDesc(UUID recordId);
+
+   List<ProcessingLog> findByStaffInCharge(UUID staffId);
 
 }

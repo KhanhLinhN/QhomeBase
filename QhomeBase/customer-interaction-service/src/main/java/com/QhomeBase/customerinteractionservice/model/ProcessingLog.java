@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -17,19 +18,19 @@ public class ProcessingLog {
     @Column(name = "id", nullable = false)
     private UUID id;
     @Column(name = "record_type", nullable = false)
-    private String record_type;
+    private String recordType;
     @Column(name = "record_id", nullable = false)
-    private UUID record_id;
+    private UUID recordId;
     @Column(name = "staff_in_charge", nullable = true)
-    private UUID staff_in_charge;
+    private UUID staffInCharge;
     @Column(name = "content", nullable = false)
     private String content;
     @Column(name = "request_status", nullable = true)
-    private String request_status;
+    private String requestStatus;
     @Column(name = "log_type", nullable = true)
-    private String log_type;
+    private String logType;
     @Column(name = "staff_in_charge_name", nullable = true)
-    private String staff_in_charge_name;
+    private String staffInChargeName;
     @Column(name = "created_at", nullable = false)
-    private Instant created_at;
+    private LocalDateTime createdAt;
 }

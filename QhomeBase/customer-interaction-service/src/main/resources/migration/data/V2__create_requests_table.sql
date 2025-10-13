@@ -7,8 +7,8 @@ CREATE TABLE IF NOT EXISTS cs_service.requests (
     content TEXT NOT NULL,
     status cs_service.request_status NOT NULL,
     priority cs_service.priority_level NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
     );
 
 CREATE INDEX IF NOT EXISTS idx_req_status ON cs_service.requests (status);

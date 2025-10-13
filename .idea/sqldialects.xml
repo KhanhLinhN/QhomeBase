@@ -3,8 +3,15 @@
   <component name="SqlDialectMappings">
     <file url="file://$PROJECT_DIR$/QhomeBase/base-service/src/main/resources/migration/data/V2__data_schema_types_tables.sql" dialect="GenericSQL" />
     <file url="file://$PROJECT_DIR$/QhomeBase/customer-interaction-service/src/main/resources/migration/cust/V1__cust_schema_types_tables.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/QhomeBase/customer-interaction-service/src/main/resources/migration/data/V1__setup_schema_and_types.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/QhomeBase/customer-interaction-service/src/main/resources/migration/data/V2__create_requests_table.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/QhomeBase/customer-interaction-service/src/main/resources/migration/data/V3__create_complaints_table.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/QhomeBase/customer-interaction-service/src/main/resources/migration/data/V4__create_processing_logs_table.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/QhomeBase/customer-interaction-service/src/main/resources/migration/data/V5__add_tenant_id_to_base_tables.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/QhomeBase/customer-interaction-service/src/main/resources/migration/data/V6__add_status_log_type_log.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/QhomeBase/finance-billing-service/src/main/resources/migration/billing/V1__billing_schema_types_tables.sql" dialect="GenericSQL" />
     <file url="file://$PROJECT_DIR$/QhomeBase/finance-billing-service/src/main/resources/migration/finance/V1_1__finance_schema_and_types.sql" dialect="GenericSQL" />
     <file url="file://$PROJECT_DIR$/QhomeBase/iam-service/src/main/resources/migration/iam/V1__iam_schema_types_tables.sql" dialect="GenericSQL" />
+    <file url="PROJECT" dialect="PostgreSQL" />
   </component>
 </project>
