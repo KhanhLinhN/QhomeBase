@@ -43,10 +43,7 @@ public class UnitService {
     }
     public UnitDto updateUnit(UnitUpdateDto unit, UUID id) {
         Unit existingUnit = unitRepository.findByIdWithBuilding(id);
-        if (existingUnit == null) {
-            throw new IllegalArgumentException("Unit not found");
-        }
-        
+
         if (unit.floor() != null) {
             existingUnit.setFloor(unit.floor());
         }
@@ -65,7 +62,7 @@ public class UnitService {
     
     public void deleteUnit(UUID id) {
         Unit unit = unitRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Unit not found"));
+                .orElseThrow();
         unit.setStatus(UnitStatus.INACTIVE);
         unit.setUpdatedAt(nowUTC());
         
@@ -76,9 +73,6 @@ public class UnitService {
     
     public UnitDto getUnitById(UUID id) {
         Unit unit = unitRepository.findByIdWithBuilding(id);
-        if (unit == null) {
-            throw new IllegalArgumentException("Unit not found");
-        }
         return toDto(unit);
     }
     
@@ -105,7 +99,7 @@ public class UnitService {
     
     public void changeUnitStatus(UUID id, UnitStatus newStatus) {
         Unit unit = unitRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Unit not found"));
+                .orElseThrow();
         
         unit.setStatus(newStatus);
         unit.setUpdatedAt(nowUTC());
@@ -146,7 +140,7 @@ public class UnitService {
             try {
                 int now = Integer.parseInt(cleanSequence);
                 if (now > maxNow) maxNow = now;
-            } catch (NumberFormatException e) {
+            } catch (Exception e) {
             }
         }
         return String.format("%02d", maxNow + 1);

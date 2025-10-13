@@ -101,52 +101,164 @@ public class AuthzService {
     }
     public boolean canCreateUnit(UUID tenantId) {
         boolean st = sameTenant(tenantId);
-        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager"));
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
         boolean okPerm = hasPerm("base.unit.create");
         return st && (okRole || okPerm);
     }
 
     public boolean canUpdateUnit(UUID unitId) {
         
-        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager"));
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
         boolean okPerm = hasPerm("base.unit.update");
         return okRole || okPerm;
     }
 
     public boolean canViewUnit(UUID unitId) {
-        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager", "unit_owner"));
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "unit_owner"));
         boolean okPerm = hasPerm("base.unit.view");
         return okRole || okPerm;
     }
 
     public boolean canViewUnits() {
-        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager"));
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
         boolean okPerm = hasPerm("base.unit.view");
         return okRole || okPerm;
     }
 
     public boolean canDeleteUnit(UUID unitId) {
-        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager"));
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
         boolean okPerm = hasPerm("base.unit.delete");
         return okRole || okPerm;
     }
 
     public boolean canManageUnitStatus(UUID unitId) {
-        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager"));
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
         boolean okPerm = hasPerm("base.unit.status.manage");
         return okRole || okPerm;
     }
 
     public boolean canViewUnitsByTenant(UUID tenantId) {
         boolean st = sameTenant(tenantId);
-        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager"));
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
         boolean okPerm = hasPerm("base.unit.view");
         return st && (okRole || okPerm);
     }
 
     public boolean canViewUnitsByBuilding(UUID buildingId) {
-        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "building_manager"));
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
         boolean okPerm = hasPerm("base.unit.view");
+        return okRole || okPerm;
+    }
+
+
+    public boolean canCreateVehicle(UUID tenantId) {
+        boolean st = sameTenant(tenantId);
+
+        return st;
+    }
+
+    public boolean canUpdateVehicle(UUID vehicleId) {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "unit_owner", "resident"));
+        boolean okPerm = hasPerm("base.vehicle.update");
+        return okRole || okPerm;
+    }
+
+    public boolean canViewVehicle(UUID vehicleId) {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "unit_owner", "resident"));
+        boolean okPerm = hasPerm("base.vehicle.view");
+        return okRole || okPerm;
+    }
+
+    public boolean canViewVehicles() {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
+        boolean okPerm = hasPerm("base.vehicle.view");
+        return okRole || okPerm;
+    }
+
+    public boolean canDeleteVehicle(UUID vehicleId) {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
+        boolean okPerm = hasPerm("base.vehicle.delete");
+        return okRole || okPerm;
+    }
+
+    public boolean canManageVehicleStatus(UUID vehicleId) {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
+        boolean okPerm = hasPerm("base.vehicle.status.manage");
+        return okRole || okPerm;
+    }
+
+    public boolean canViewVehiclesByTenant(UUID tenantId) {
+        boolean st = sameTenant(tenantId);
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
+        boolean okPerm = hasPerm("base.vehicle.view");
+        return st && (okRole || okPerm);
+    }
+
+    public boolean canViewVehiclesByResident(UUID residentId) {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "unit_owner", "resident"));
+        boolean okPerm = hasPerm("base.vehicle.view");
+        return okRole || okPerm;
+    }
+
+    public boolean canViewVehiclesByUnit(UUID unitId) {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "unit_owner"));
+        boolean okPerm = hasPerm("base.vehicle.view");
+        return okRole || okPerm;
+    }
+
+    public boolean canCreateVehicleRegistration(UUID tenantId) {
+        boolean st = sameTenant(tenantId);
+        return st;
+    }
+
+    public boolean canApproveVehicleRegistration(UUID requestId) {
+
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
+        boolean okPerm = hasPerm("base.vehicle.registration.approve");
+        return okRole || okPerm;
+    }
+
+    public boolean canViewVehicleRegistration(UUID requestId) {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "unit_owner", "resident"));
+        boolean okPerm = hasPerm("base.vehicle.registration.view");
+        return okRole || okPerm;
+    }
+
+    public boolean canViewVehicleRegistrations() {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
+        boolean okPerm = hasPerm("base.vehicle.registration.view");
+        return okRole || okPerm;
+    }
+
+    public boolean canViewVehicleRegistrationsByTenant(UUID tenantId) {
+        boolean st = sameTenant(tenantId);
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
+        boolean okPerm = hasPerm("base.vehicle.registration.view");
+        return st && (okRole || okPerm);
+    }
+
+    public boolean canViewVehicleRegistrationsByResident(UUID residentId) {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "unit_owner", "resident"));
+        boolean okPerm = hasPerm("base.vehicle.registration.view");
+        return okRole || okPerm;
+    }
+
+    public boolean canViewVehicleRegistrationsByUnit(UUID unitId) {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "unit_owner"));
+        boolean okPerm = hasPerm("base.vehicle.registration.view");
+        return okRole || okPerm;
+    }
+
+    public boolean canViewAllVehicleRegistrations() {
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "admin"));
+        boolean okPerm = hasPerm("base.vehicle.registration.view");
+        return okRole || okPerm;
+    }
+
+    public boolean canCancelVehicleRegistration(UUID requestId) {
+
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "unit_owner", "resident"));
+        boolean okPerm = hasPerm("base.vehicle.registration.cancel");
         return okRole || okPerm;
     }
 
