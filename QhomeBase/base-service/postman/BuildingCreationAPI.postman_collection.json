@@ -1,0 +1,617 @@
+{
+	"info": {
+		"_postman_id": "building-creation-api",
+		"name": "Building Creation API",
+		"description": "API để test tạo và quản lý building",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Generate Test Token",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"if (pm.response.code === 200) {",
+							"    const response = pm.response.json();",
+							"    pm.environment.set('jwt_token', response.token);",
+							"    console.log('Token saved to environment:', response.token.substring(0, 50) + '...');",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"username\": \"testuser\",\n  \"uid\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"tenantId\": \"{{tenant_id}}\",\n  \"roles\": [\"tenant_manager\"],\n  \"permissions\": [\"base.building.create\", \"base.building.update\"]\n}"
+				},
+				"url": {
+					"raw": "{{iam_service_url}}/api/test/generate-token",
+					"host": [
+						"{{iam_service_url}}"
+					],
+					"path": [
+						"api",
+						"test",
+						"generate-token"
+					]
+				},
+				"description": "Tạo JWT token để test building creation và update API"
+			},
+			"response": []
+		},
+		{
+			"name": "1.1. Generate Test Token No Permission",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"if (pm.response.code === 200) {",
+							"    const response = pm.response.json();",
+							"    pm.environment.set('jwt_token_no_permission', response.token);",
+							"    console.log('No permission token saved:', response.token.substring(0, 50) + '...');",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"username\": \"testuser\",\n  \"uid\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"tenantId\": \"{{tenant_id}}\",\n  \"roles\": [\"tenant_manager\"],\n  \"permissions\": [\"base.building.create\"]\n}"
+				},
+				"url": {
+					"raw": "{{iam_service_url}}/api/test/generate-token",
+					"host": [
+						"{{iam_service_url}}"
+					],
+					"path": [
+						"api",
+						"test",
+						"generate-token"
+					]
+				},
+				"description": "Tạo JWT token KHÔNG có permission base.building.update"
+			},
+			"response": []
+		},
+		{
+			"name": "2. Create Building",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200', function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test('Response has building data', function () {",
+							"    const response = pm.response.json();",
+							"    pm.expect(response).to.have.property('id');",
+							"    pm.expect(response).to.have.property('code');",
+							"    pm.expect(response).to.have.property('name');",
+							"    pm.expect(response).to.have.property('tenantId');",
+							"});",
+							"",
+							"pm.test('Building code is generated', function () {",
+							"    const response = pm.response.json();",
+							"    pm.expect(response.code).to.match(/^[A-Za-z]+\\d{2}$/);",
+							"    console.log('Generated building code:', response.code);",
+							"});",
+							"",
+							"if (pm.response.code === 200) {",
+							"    const response = pm.response.json();",
+							"    pm.environment.set('created_building_id', response.id);",
+							"    pm.environment.set('created_building_code', response.code);",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"name\": \"Tòa A - Chung cư ABC\",\n  \"address\": \"123 Đường ABC, Quận 1, TP.HCM\"\n}"
+				},
+				"url": {
+					"raw": "{{base_service_url}}/api/buildings",
+					"host": [
+						"{{base_service_url}}"
+					],
+					"path": [
+						"api",
+						"buildings"
+					]
+				},
+				"description": "Tạo building mới với code được generate tự động"
+			},
+			"response": []
+		},
+		{
+			"name": "3. Create Another Building",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200', function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test('Second building has different code', function () {",
+							"    const response = pm.response.json();",
+							"    const firstCode = pm.environment.get('created_building_code');",
+							"    pm.expect(response.code).to.not.equal(firstCode);",
+							"    console.log('First building code:', firstCode);",
+							"    console.log('Second building code:', response.code);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"name\": \"Tòa B - Chung cư ABC\",\n  \"address\": \"123 Đường ABC, Quận 1, TP.HCM\"\n}"
+				},
+				"url": {
+					"raw": "{{base_service_url}}/api/buildings",
+					"host": [
+						"{{base_service_url}}"
+					],
+					"path": [
+						"api",
+						"buildings"
+					]
+				},
+				"description": "Tạo building thứ 2 để test code generation"
+			},
+			"response": []
+		},
+		{
+			"name": "4. Get All Buildings",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200', function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test('Response is array', function () {",
+							"    pm.expect(pm.response.json()).to.be.an('array');",
+							"});",
+							"",
+							"pm.test('Contains created buildings', function () {",
+							"    const buildings = pm.response.json();",
+							"    const firstCode = pm.environment.get('created_building_code');",
+							"    const found = buildings.find(b => b.code === firstCode);",
+							"    pm.expect(found).to.not.be.undefined;",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					}
+				],
+				"url": {
+					"raw": "{{base_service_url}}/api/buildings?tenantId=123e4567-e89b-12d3-a456-426614174000",
+					"host": [
+						"{{base_service_url}}"
+					],
+					"path": [
+						"api",
+						"buildings"
+					],
+					"query": [
+						{
+							"key": "tenantId",
+							"value": "{{tenant_id}}"
+						}
+					]
+				},
+				"description": "Lấy danh sách tất cả buildings của tenant"
+			},
+			"response": []
+		},
+		{
+			"name": "5. Test Validation - Missing Name",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 400', function () {",
+							"    pm.response.to.have.status(400);",
+							"});",
+							"",
+							"pm.test('Response contains validation error', function () {",
+							"    const response = pm.response.text();",
+							"    pm.expect(response).to.include('name');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"address\": \"123 Đường ABC, Quận 1, TP.HCM\"\n}"
+				},
+				"url": {
+					"raw": "{{base_service_url}}/api/buildings",
+					"host": [
+						"{{base_service_url}}"
+					],
+					"path": [
+						"api",
+						"buildings"
+					]
+				},
+				"description": "Test validation khi thiếu trường name (required)"
+			},
+			"response": []
+		},
+		{
+			"name": "6. Test Unauthorized - No Token",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 401', function () {",
+							"    pm.response.to.have.status(401);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"name\": \"Test Building\",\n  \"address\": \"Test Address\"\n}"
+				},
+				"url": {
+					"raw": "{{base_service_url}}/api/buildings",
+					"host": [
+						"{{base_service_url}}"
+					],
+					"path": [
+						"api",
+						"buildings"
+					]
+				},
+				"description": "Test 401 Unauthorized khi không có token"
+			},
+			"response": []
+		},
+		{
+			"name": "7. Test Forbidden - No Permission",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// Generate token without building.create permission",
+							"pm.sendRequest({",
+							"    url: pm.environment.get('iam_service_url') + '/api/test/generate-token',",
+							"    method: 'POST',",
+							"    header: {",
+							"        'Content-Type': 'application/json'",
+							"    },",
+							"    body: {",
+							"        mode: 'raw',",
+							"        raw: JSON.stringify({",
+							"            username: 'testuser',",
+							"            uid: '550e8400-e29b-41d4-a716-446655440000',",
+							"            tenant: '123e4567-e89b-12d3-a456-426614174000',",
+							"            roles: ['tenant_manager'],",
+							"            perms: ['base.tenant.delete.request'] // Không có base.building.create",
+							"        })",
+							"    }",
+							"}, function (err, response) {",
+							"    if (response.code === 200) {",
+							"        pm.environment.set('jwt_token_no_permission', response.json().token);",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 403', function () {",
+							"    pm.response.to.have.status(403);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token_no_permission}}"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"name\": \"Test Building\",\n  \"address\": \"Test Address\"\n}"
+				},
+				"url": {
+					"raw": "{{base_service_url}}/api/buildings",
+					"host": [
+						"{{base_service_url}}"
+					],
+					"path": [
+						"api",
+						"buildings"
+					]
+				},
+				"description": "Test 403 Forbidden khi không có permission base.building.create"
+			},
+			"response": []
+		},
+		{
+			"name": "4. Update Building",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200', function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test('Response has updated building data', function () {",
+							"    const response = pm.response.json();",
+							"    pm.expect(response).to.have.property('id');",
+							"    pm.expect(response).to.have.property('name');",
+							"    pm.expect(response).to.have.property('address');",
+							"    pm.expect(response.name).to.equal('Updated Building Name');",
+							"    pm.expect(response.address).to.equal('Updated Building Address');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"name\": \"Updated Building Name\",\n  \"address\": \"Updated Building Address\"\n}"
+				},
+				"url": {
+					"raw": "{{base_service_url}}/api/buildings/{{created_building_id}}",
+					"host": [
+						"{{base_service_url}}"
+					],
+					"path": [
+						"api",
+						"buildings",
+						"{{created_building_id}}"
+					]
+				},
+				"description": "Update building với thông tin mới"
+			},
+			"response": []
+		},
+		{
+			"name": "5. Update Building - No Permission",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 403', function () {",
+							"    pm.response.to.have.status(403);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token_no_permission}}"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"name\": \"Updated Building Name\",\n  \"address\": \"Updated Building Address\"\n}"
+				},
+				"url": {
+					"raw": "{{base_service_url}}/api/buildings/{{created_building_id}}",
+					"host": [
+						"{{base_service_url}}"
+					],
+					"path": [
+						"api",
+						"buildings",
+						"{{created_building_id}}"
+					]
+				},
+				"description": "Test 403 Forbidden khi không có permission base.building.update"
+			},
+			"response": []
+		},
+		{
+			"name": "6. Update Building - Not Found",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 404', function () {",
+							"    pm.response.to.have.status(404);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"name\": \"Updated Building Name\",\n  \"address\": \"Updated Building Address\"\n}"
+				},
+				"url": {
+					"raw": "{{base_service_url}}/api/buildings/00000000-0000-0000-0000-000000000000",
+					"host": [
+						"{{base_service_url}}"
+					],
+					"path": [
+						"api",
+						"buildings",
+						"00000000-0000-0000-0000-000000000000"
+					]
+				},
+				"description": "Test 404 Not Found khi building không tồn tại"
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_service_url",
+			"value": "http://localhost:8081",
+			"type": "string"
+		},
+		{
+			"key": "iam_service_url",
+			"value": "http://localhost:8088",
+			"type": "string"
+		}
+	]
+}

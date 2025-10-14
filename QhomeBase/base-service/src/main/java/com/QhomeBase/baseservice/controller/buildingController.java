@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -43,8 +43,8 @@ public class buildingController {
                             .code("BLD001")
                             .name("Tòa A - Chung cư ABC")
                             .address("123 Đường ABC, Quận 1, TP.HCM")
-                            .createdAt(Instant.now())
-                            .updatedAt(Instant.now())
+                            .createdAt(OffsetDateTime.now())
+                            .updatedAt(OffsetDateTime.now())
                             .build(),
                     building.builder()
                             .id(UUID.fromString("22222222-2222-2222-2222-222222222222"))
@@ -52,8 +52,8 @@ public class buildingController {
                             .code("BLD002")
                             .name("Tòa B - Chung cư ABC")
                             .address("123 Đường ABC, Quận 1, TP.HCM")
-                            .createdAt(Instant.now())
-                            .updatedAt(Instant.now())
+                            .createdAt(OffsetDateTime.now())
+                            .updatedAt(OffsetDateTime.now())
                             .build(),
                     building.builder()
                             .id(UUID.fromString("33333333-3333-3333-3333-333333333333"))
@@ -61,8 +61,8 @@ public class buildingController {
                             .code("BLD003")
                             .name("Tòa C - Chung cư ABC")
                             .address("123 Đường ABC, Quận 1, TP.HCM")
-                            .createdAt(Instant.now())
-                            .updatedAt(Instant.now())
+                            .createdAt(OffsetDateTime.now())
+                            .updatedAt(OffsetDateTime.now())
                             .build()
             );
         } else if (tenantIdStr.equals("550e8400-e29b-41d4-a716-446655440000")) {
@@ -73,8 +73,8 @@ public class buildingController {
                             .code("BLD001")
                             .name("Tòa A - Khu đô thị XYZ")
                             .address("456 Đường XYZ, Quận 2, TP.HCM")
-                            .createdAt(Instant.now())
-                            .updatedAt(Instant.now())
+                            .createdAt(OffsetDateTime.now())
+                            .updatedAt(OffsetDateTime.now())
                             .build(),
                     building.builder()
                             .id(UUID.fromString("55555555-5555-5555-5555-555555555555"))
@@ -82,8 +82,8 @@ public class buildingController {
                             .code("BLD002")
                             .name("Tòa B - Khu đô thị XYZ")
                             .address("456 Đường XYZ, Quận 2, TP.HCM")
-                            .createdAt(Instant.now())
-                            .updatedAt(Instant.now())
+                            .createdAt(OffsetDateTime.now())
+                            .updatedAt(OffsetDateTime.now())
                             .build()
             );
         } else {
@@ -95,8 +95,8 @@ public class buildingController {
                             .code("BLD001")
                             .name("Tòa A - Default")
                             .address("Default Address")
-                            .createdAt(Instant.now())
-                            .updatedAt(Instant.now())
+                            .createdAt(OffsetDateTime.now())
+                            .updatedAt(OffsetDateTime.now())
                             .build()
             );
         }

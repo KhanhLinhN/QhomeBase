@@ -4,10 +4,12 @@ import com.QhomeBase.baseservice.dto.TenantDeletionRequestDTO;
 import com.QhomeBase.baseservice.model.BuildingStatus;
 import com.QhomeBase.baseservice.model.TenantDeletionRequest;
 import com.QhomeBase.baseservice.model.TenantDeletionStatus;
+import com.QhomeBase.baseservice.model.Unit;
+import com.QhomeBase.baseservice.model.UnitStatus;
 import com.QhomeBase.baseservice.model.building;
 import com.QhomeBase.baseservice.repository.TenantDeletionRequestRepository;
+import com.QhomeBase.baseservice.repository.UnitRepository;
 import com.QhomeBase.baseservice.repository.buildingRepository;
-import com.QhomeBase.baseservice.repository.tenantRepository;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -21,8 +23,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class TenantDeletionService {
     private final buildingRepository buildingRepository;
-    private final tenantRepository tenantRepository;
     private final TenantDeletionRequestRepository repo;
+    private final UnitRepository unitRepository;
     public void changeStatusOfBuilding(UUID tenantid) {
         List<building> buildings = buildingRepository.findAllByTenantIdOrderByCodeAsc(tenantid);
         for (building building : buildings) {
@@ -30,6 +32,16 @@ public class TenantDeletionService {
                 building.setStatus(BuildingStatus.PENDING_DELETION);
             }
         }
+    }
+
+    public void changeStatusOfUnits(UUID tenantId) {
+        List<Unit> units = unitRepository.findAllByTenantId(tenantId);
+        for (Unit unit : units) {
+            if (unit.getStatus().equals(UnitStatus.ACTIVE)) {
+                unit.setStatus(UnitStatus.INACTIVE);
+            }
+        }
+        unitRepository.saveAll(units);
     }
     public TenantDeletionRequestDTO getTenantDeletionRequestDTO(UUID ticketTenantId) {
         var e = repo.findById(ticketTenantId).orElseThrow();
@@ -61,10 +73,15 @@ public class TenantDeletionService {
             throw new IllegalStateException("Ticket is not PENDING");
         }
 
+
+        changeStatusOfBuilding(e.getTenantId());
+        changeStatusOfUnits(e.getTenantId());
+
         e.setApprovedBy(p.uid());
         e.setNote(note);
         e.setApprovedAt(OffsetDateTime.now());
         e.setStatus(TenantDeletionStatus.APPROVED);
+        repo.save(e);
         return toDTO(e);
     }
 

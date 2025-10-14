@@ -1,0 +1,49 @@
+### 1. Generate Token với permission building.create
+POST http://localhost:8088/api/test/generate-token
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "uid": "550e8400-e29b-41d4-a716-446655440000",
+  "tenant": "123e4567-e89b-12d3-a456-426614174000",
+  "roles": ["tenant_manager"],
+  "perms": ["base.building.create"]
+}
+
+### 2. Test Create Building với token từ bước 1
+POST http://localhost:8081/api/buildings
+Authorization: Bearer {{token_from_step_1}}
+Content-Type: application/json
+
+{
+  "name": "Test Building",
+  "address": "Test Address"
+}
+
+### 3. Generate Token KHÔNG có permission building.create
+POST http://localhost:8088/api/test/generate-token
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "uid": "550e8400-e29b-41d4-a716-446655440000",
+  "tenant": "123e4567-e89b-12d3-a456-426614174000",
+  "roles": ["tenant_manager"],
+  "perms": ["base.tenant.delete.request"]
+}
+
+### 4. Test Create Building với token KHÔNG có permission (expect 403)
+POST http://localhost:8081/api/buildings
+Authorization: Bearer {{token_from_step_3}}
+Content-Type: application/json
+
+{
+  "name": "Test Building",
+  "address": "Test Address"
+}
+
+
+
+
+
+

@@ -10,7 +10,7 @@ public class webClientConfig {
     @Bean
     public WebClient webClient() {
         return WebClient.builder()
-                .baseUrl("http://localhost:8081")  // URL của base-service
+                .baseUrl("http://localhost:8081")
                 .defaultHeader("Content-Type", "application/json")
                 .defaultHeader("Accept", "application/json")
                 .build();
