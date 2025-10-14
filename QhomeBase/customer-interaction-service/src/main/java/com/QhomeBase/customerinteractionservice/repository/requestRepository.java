@@ -21,7 +21,6 @@ public interface requestRepository extends JpaRepository<Request, UUID>, JpaSpec
             "AND (:title IS NULL OR r.title LIKE CONCAT('%', :title, '%')) " +
             "AND (:residentName IS NULL OR r.resident_name LIKE CONCAT('%', :residentName, '%')) " +
             "AND (:tenantId IS NULL OR r.tenant_id = CAST(:tenantId AS UUID)) " +
-            "AND (:status IS NULL OR r.status = :status) " +
             "AND (:priority IS NULL OR r.priority = :priority) " +
             "AND (CAST(:dateFrom AS DATE) IS NULL OR r.created_at >= CAST(:dateFrom AS DATE)) " +
             "AND (CAST(:dateTo AS DATE) IS NULL OR r.created_at < (CAST(:dateTo AS DATE) + interval '1 day')) " +
@@ -31,7 +30,6 @@ public interface requestRepository extends JpaRepository<Request, UUID>, JpaSpec
             @Param("title") String title,
             @Param("residentName") String residentName,
             @Param("tenantId") UUID tenantId,
-            @Param("status") String status,
             @Param("priority") String priority,
             @Param("dateFrom") String dateFrom,
             @Param("dateTo") String dateTo

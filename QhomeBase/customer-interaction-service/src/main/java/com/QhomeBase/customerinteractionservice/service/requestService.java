@@ -26,10 +26,12 @@ import org.springframework.stereotype.Service;
 @Service
 public class requestService {
     private final requestRepository requestRepository;
+    private final processingLogRepository processingLogRepository;
     private static final int PAGE_SIZE = 5;
 
-    public requestService(requestRepository requestRepository) {
+    public requestService(requestRepository requestRepository, processingLogRepository processingLogRepository) {
         this.requestRepository = requestRepository;
+        this.processingLogRepository = processingLogRepository;
     }
 
     public Request createRequest(Request newRequest) {
@@ -110,10 +112,10 @@ public class requestService {
         return requestRepository.findAll(spec, pageable).map(this::mapToDto);
     }
 
-    public Map<String, Long> getRequestCounts(String projectCode, String title, String residentName, UUID tenantId, String status, String priority, String dateFrom, String dateTo) {
+    public Map<String, Long> getRequestCounts(String projectCode, String title, String residentName, UUID tenantId, String priority, String dateFrom, String dateTo) {
 
         List<StatusCountDTO> countsByStatus = requestRepository.countRequestsByStatus(
-                projectCode, title, residentName, tenantId, status, priority, dateFrom, dateTo
+                projectCode, title, residentName, tenantId, priority, dateFrom, dateTo
         );
 
         Map<String, Long> result = countsByStatus.stream()
@@ -140,6 +142,16 @@ public class requestService {
         entity.setStatus(dto.getStatus());
         entity.setPriority(dto.getPriority());
         entity.setCreatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
+        ProcessingLogDTO newLog = new ProcessingLogDTO();
+        newLog.setRecordType("Request");
+        newLog.setRequestId(entity.getId());
+        newLog.setStaffInCharge(null);
+        newLog.setStaffInChargeName(null);
+        newLog.setContent("Request created by: " + entity.getResidentName());
+        newLog.setRequestStatus(entity.getStatus());
+        newLog.setLogType(null);
+        newLog.setTimestamp(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
+        processingLogRepository.save(newLog);
         requestRepository.save(entity);
     }
 
@@ -159,11 +171,4 @@ public class requestService {
         requestRepository.save(entity);
     }
 
-    // Update status of a request
-    public void updateStatus(UUID requestId, String newStatus) {
-        Request entity = requestRepository.findById(requestId)
-                .orElseThrow(() -> new RuntimeException("Request not found with id: " + requestId));
-        entity.setStatus(newStatus);
-        requestRepository.save(entity);
-    }
 }

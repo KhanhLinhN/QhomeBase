@@ -46,13 +46,12 @@ public class requestController {
             @RequestParam(required = false) String title,
             @RequestParam(required = false) String residentName,
             @RequestParam(required = false) UUID tenantId,
-            @RequestParam(required = false) String status,
             @RequestParam(required = false) String priority,
             @RequestParam(required = false) String dateFrom,
             @RequestParam(required = false) String dateTo)
     {
         return requestService.getRequestCounts(
-                projectCode, title, residentName, tenantId, status, priority, dateFrom, dateTo
+                projectCode, title, residentName, tenantId, priority, dateFrom, dateTo
         );
     }
 
@@ -60,6 +59,13 @@ public class requestController {
     public RequestDTO getRequest(@PathVariable UUID id)
     {
         return requestService.getRequestById(id);
+    }
+
+    @PostMapping("/createRequest")
+    public ResponseEntity<RequestDTO> addNewRequest(@RequestBody RequestDTO requestDTO)
+    {
+        RequestDTO createdRequest = requestService.addRequest(requestDTO);
+        return ResponseEntity.status(HttpStatus.CREATED).body(createdRequest);
     }
 
 }

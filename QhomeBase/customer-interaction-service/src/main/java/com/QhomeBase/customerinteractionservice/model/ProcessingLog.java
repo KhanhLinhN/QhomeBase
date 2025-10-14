@@ -22,7 +22,7 @@ public class ProcessingLog {
     private UUID recordId;
     @Column(name = "staff_in_charge", nullable = true)
     private UUID staffInCharge;
-    @Column(name = "content", nullable = false)
+    @Column(name = "content", nullable = true)
     private String content;
     @Column(name = "request_status", nullable = true)
     private String requestStatus;
