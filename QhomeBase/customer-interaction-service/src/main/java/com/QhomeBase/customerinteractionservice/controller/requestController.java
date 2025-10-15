@@ -1,46 +1,73 @@
 package com.QhomeBase.customerinteractionservice.controller;
 
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 import com.QhomeBase.customerinteractionservice.dto.RequestDTO;
-import com.QhomeBase.customerinteractionservice.dto.RequestMapper;
-import com.QhomeBase.customerinteractionservice.model.Request;
 import com.QhomeBase.customerinteractionservice.service.requestService;
 
+@CrossOrigin(origins = "http://localhost:3000")
 @RestController
-@RequestMapping("/api/requests")
+@RequestMapping("/api/customer-interaction/requests")
 public class requestController {
 
     private final requestService requestService;
-   private final RequestMapper requestMapper;
 
-    public requestController(requestService requestService, RequestMapper requestMapper) {
+    public requestController(requestService requestService) {
         this.requestService = requestService;
-        this.requestMapper = requestMapper;
     }
 
    @GetMapping()
-   public Page<RequestDTO> getRequests(
-           @RequestParam(required = false) UUID requestId,
+   public Page<RequestDTO> getRequestsList(
+           @RequestParam(required = false) String projectCode,
            @RequestParam(required = false) String title,
            @RequestParam(required = false) String residentName,
            @RequestParam(required = false) UUID tenantId,
            @RequestParam(required = false) String status,
            @RequestParam(required = false) String priority,
-           @RequestParam(defaultValue = "0") int pageNo)
+           @RequestParam(defaultValue = "0") int pageNo,
+           @RequestParam(required = false) String dateFrom,
+           @RequestParam(required = false) String dateTo)
    {
 
-       Page<Request> requestPage = requestService.getFilteredRequests(
-               requestId, title, residentName, tenantId, status, priority, pageNo
+       Page<RequestDTO> requestPage = requestService.getFilteredRequests(
+               projectCode, title, residentName, tenantId, status, priority, pageNo, dateFrom, dateTo
        );
 
-       return requestPage.map(requestMapper::toRequestDto);
+       return requestPage;
    }
+
+    @GetMapping("/counts")
+    public Map<String, Long> getRequestCounts(
+            @RequestParam(required = false) String projectCode,
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false) String residentName,
+            @RequestParam(required = false) UUID tenantId,
+            @RequestParam(required = false) String priority,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo)
+    {
+        return requestService.getRequestCounts(
+                projectCode, title, residentName, tenantId, priority, dateFrom, dateTo
+        );
+    }
+
+    @GetMapping("/{id}")
+    public RequestDTO getRequest(@PathVariable UUID id)
+    {
+        return requestService.getRequestById(id);
+    }
+
+    @PostMapping("/createRequest")
+    public ResponseEntity<RequestDTO> addNewRequest(@RequestBody RequestDTO requestDTO)
+    {
+        RequestDTO savedRequest = requestService.createNewRequest(requestDTO);
+        return ResponseEntity.status(HttpStatus.CREATED).body(savedRequest);
+    }
 
 }

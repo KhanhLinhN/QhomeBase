@@ -1,12 +1,13 @@
 package com.QhomeBase.customerinteractionservice.model;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -16,14 +17,16 @@ public class Request {
     @Id @GeneratedValue
     @Column(name = "id", nullable = false)
     private UUID id;
+    @Column(name = "request_code", nullable = false)
+    private String requestCode;
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
     @Column(name = "resident_id", nullable = false)
     private UUID residentId;
     @Column(name = "resident_name", nullable = false)
-    private String resident_name;
+    private String residentName;
     @Column(name = "image_path", nullable = true)
-    private String image_path;
+    private String imagePath;
     @Column(name = "title", nullable = false)
     private String title;
     @Column(name = "content", nullable = false)
@@ -33,7 +36,9 @@ public class Request {
     @Column(name = "priority", nullable = false)
     private String priority;
     @Column(name = "created_at", nullable = false)
-    private Instant created_at;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime createdAt;
     @Column(name = "updated_at", nullable = true)
-    private Instant updated_at;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime updatedAt;
 }

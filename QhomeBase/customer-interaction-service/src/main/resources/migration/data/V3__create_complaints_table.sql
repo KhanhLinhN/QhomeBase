@@ -8,8 +8,8 @@ CREATE TABLE IF NOT EXISTS cs_service.complaints (
     status cs_service.complaint_status NOT NULL,
     priority cs_service.priority_level NOT NULL,
     final_resolution_plan TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_comp_status ON cs_service.complaints (status);
