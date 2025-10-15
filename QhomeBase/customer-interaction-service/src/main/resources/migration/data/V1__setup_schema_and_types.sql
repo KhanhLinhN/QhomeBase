@@ -8,7 +8,7 @@ BEGIN
         SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
         WHERE t.typname = 'request_status' AND n.nspname = 'cs_service'
     ) THEN
-CREATE TYPE cs_service.request_status AS ENUM ('New', ' Processing', ' Completed', ' Closed');
+CREATE TYPE cs_service.request_status AS ENUM ('New', 'Processing', 'Completed', 'Closed');
 END IF;
 END$$;
 
@@ -18,7 +18,7 @@ BEGIN
         SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
         WHERE t.typname = 'complaint_status' AND n.nspname = 'cs_service'
     ) THEN
-CREATE TYPE cs_service.complaint_status AS ENUM ('New', ' Processing', 'Investigating', 'Resolved', 'Closed');
+CREATE TYPE cs_service.complaint_status AS ENUM ('New', 'Processing', 'Investigating', 'Resolved', 'Closed');
 END IF;
 END$$;
 

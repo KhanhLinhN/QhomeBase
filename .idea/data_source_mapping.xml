@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DataSourcePerFileMappings">
+    <file url="file://$PROJECT_DIR$/QhomeBase/customer-interaction-service/src/main/resources/migration/data/V1__setup_schema_and_types.sql" value="3b6e6d42-516d-4a65-b0db-f36042d3fd63" />
+    <file url="file://$PROJECT_DIR$/QhomeBase/customer-interaction-service/src/main/resources/migration/data/V2__create_requests_table.sql" value="3b6e6d42-516d-4a65-b0db-f36042d3fd63" />
+    <file url="file://$PROJECT_DIR$/QhomeBase/customer-interaction-service/src/main/resources/migration/data/V3__create_complaints_table.sql" value="3b6e6d42-516d-4a65-b0db-f36042d3fd63" />
+    <file url="file://$PROJECT_DIR$/QhomeBase/customer-interaction-service/src/main/resources/migration/data/V4__create_processing_logs_table.sql" value="3b6e6d42-516d-4a65-b0db-f36042d3fd63" />
+    <file url="file://$PROJECT_DIR$/QhomeBase/customer-interaction-service/src/main/resources/migration/data/V5__add_tenant_id_to_base_tables.sql" value="3b6e6d42-516d-4a65-b0db-f36042d3fd63" />
+    <file url="file://$PROJECT_DIR$/QhomeBase/customer-interaction-service/src/main/resources/migration/data/V6__add_status_log_type_log.sql" value="3b6e6d42-516d-4a65-b0db-f36042d3fd63" />
+  </component>
+</project>

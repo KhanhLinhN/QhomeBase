@@ -1,30 +1,48 @@
 package com.QhomeBase.customerinteractionservice.controller;
 
-//import java.util.UUID;
-//
-//import org.springframework.http.ResponseEntity;
-//import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-//import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-//import com.QhomeBase.customerinteractionservice.dto.ProcessingLogDTO;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.UUID;
+
+import com.QhomeBase.customerinteractionservice.dto.ProcessingLogDTO;
 import com.QhomeBase.customerinteractionservice.service.processingLogService;
 
+@CrossOrigin(origins = "http://localhost:3000")
+
 @RestController
-@RequestMapping("/api/requests-logs")
+@RequestMapping("/api/customer-interaction/requests-logs")
 public class requestProcessingLogController {
+    
     private final processingLogService processingLogService;
+    
     public requestProcessingLogController(processingLogService processingLogService) {
         this.processingLogService = processingLogService;
     }
 
-//     @GetMapping("/{id}")
-//     public ResponseEntity<ProcessingLogDTO> getProcessingLog(@RequestParam UUID id) {
-//         ProcessingLogDTO processingLog = processingLogService.getProcessingLogsById(id);
-//         if (processingLog != null) {
-//             return ResponseEntity.ok(processingLog);
-//         } else {
-//             return ResponseEntity.notFound().build();
-//         }
-//     }
+    @GetMapping("/{id}")
+    public List<ProcessingLogDTO> getProcessingLog(@PathVariable("id") UUID id) {
+        return processingLogService.getProcessingLogsById(id);
+    }
+
+    @GetMapping("/{id}/logs")
+    public List<ProcessingLogDTO> getProcessingLogsByLogsId(@PathVariable("id") UUID id) {
+        return processingLogService.getProcessingLogsById(id);
+    }
+
+    @GetMapping("/staff/{staffId}")
+    public List<ProcessingLogDTO> getProcessingLogsByStaffId(@PathVariable("staffId") UUID staffId) {
+        return processingLogService.getProcessingLogsByStaffId(staffId);
+    }
+
+    @PostMapping("/{requestId}/logs")
+    public ResponseEntity<ProcessingLogDTO> addNewProcessLog(
+            @PathVariable("requestId") UUID id,
+            @RequestBody ProcessingLogDTO logData) {
+
+        ProcessingLogDTO newLog = processingLogService.addProcessingLog(id, logData);
+        return ResponseEntity.ok(newLog);
+    }
+
 }
