@@ -11,7 +11,7 @@ Content-Type: application/json
 }
 
 ### 2. Test Create Building với token từ bước 1
-POST http://localhost:8081/api/buildings
+POST http://localhost:8081/api/Buildings
 Authorization: Bearer {{token_from_step_1}}
 Content-Type: application/json
 
@@ -33,7 +33,7 @@ Content-Type: application/json
 }
 
 ### 4. Test Create Building với token KHÔNG có permission (expect 403)
-POST http://localhost:8081/api/buildings
+POST http://localhost:8081/api/Buildings
 Authorization: Bearer {{token_from_step_3}}
 Content-Type: application/json
 
@@ -41,6 +41,7 @@ Content-Type: application/json
   "name": "Test Building",
   "address": "Test Address"
 }
+
 
 
 

@@ -14,7 +14,7 @@ create table if not EXISTS data.tenants (
     );
 
 
-ALTER TABLE data.buildings
+ALTER TABLE data.Buildings
     ADD CONSTRAINT fk_buildings_tenant FOREIGN KEY (tenant_id) REFERENCES data.tenants(id) ON DELETE CASCADE;
 
 ALTER TABLE data.units

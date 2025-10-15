@@ -1,7 +1,7 @@
 package com.QhomeBase.baseservice.controller;
 
-import com.QhomeBase.baseservice.model.building;
-import com.QhomeBase.baseservice.service.buildingService;
+import com.QhomeBase.baseservice.model.Building;
+import com.QhomeBase.baseservice.service.BuildingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,26 +18,26 @@ import java.util.UUID;
 public class buildingController {
 
     @Autowired
-    private buildingService service;
+    private BuildingService service;
 
     @GetMapping
-    public ResponseEntity<List<building>> findAll(@RequestParam(required = false) UUID tenantId) {
+    public ResponseEntity<List<Building>> findAll(@RequestParam(required = false) UUID tenantId) {
         if (tenantId == null) {
             return ResponseEntity.badRequest().build();
         }
 
 
-        List<building> mockBuildings = createMockBuildings(tenantId);
+        List<Building> mockBuildings = createMockBuildings(tenantId);
         return ResponseEntity.ok(mockBuildings);
     }
 
-    private List<building> createMockBuildings(UUID tenantId) {
+    private List<Building> createMockBuildings(UUID tenantId) {
         String tenantIdStr = tenantId.toString();
 
 
         if (tenantIdStr.equals("123e4567-e89b-12d3-a456-426614174000")) {
             return List.of(
-                    building.builder()
+                    Building.builder()
                             .id(UUID.fromString("11111111-1111-1111-1111-111111111111"))
                             .tenantId(tenantId)
                             .code("BLD001")
@@ -46,7 +46,7 @@ public class buildingController {
                             .createdAt(OffsetDateTime.now())
                             .updatedAt(OffsetDateTime.now())
                             .build(),
-                    building.builder()
+                    Building.builder()
                             .id(UUID.fromString("22222222-2222-2222-2222-222222222222"))
                             .tenantId(tenantId)
                             .code("BLD002")
@@ -55,7 +55,7 @@ public class buildingController {
                             .createdAt(OffsetDateTime.now())
                             .updatedAt(OffsetDateTime.now())
                             .build(),
-                    building.builder()
+                    Building.builder()
                             .id(UUID.fromString("33333333-3333-3333-3333-333333333333"))
                             .tenantId(tenantId)
                             .code("BLD003")
@@ -67,7 +67,7 @@ public class buildingController {
             );
         } else if (tenantIdStr.equals("550e8400-e29b-41d4-a716-446655440000")) {
             return List.of(
-                    building.builder()
+                    Building.builder()
                             .id(UUID.fromString("44444444-4444-4444-4444-444444444444"))
                             .tenantId(tenantId)
                             .code("BLD001")
@@ -76,7 +76,7 @@ public class buildingController {
                             .createdAt(OffsetDateTime.now())
                             .updatedAt(OffsetDateTime.now())
                             .build(),
-                    building.builder()
+                    Building.builder()
                             .id(UUID.fromString("55555555-5555-5555-5555-555555555555"))
                             .tenantId(tenantId)
                             .code("BLD002")
@@ -89,7 +89,7 @@ public class buildingController {
         } else {
 
             return List.of(
-                    building.builder()
+                    Building.builder()
                             .id(UUID.randomUUID())
                             .tenantId(tenantId)
                             .code("BLD001")

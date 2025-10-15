@@ -2,7 +2,7 @@ package com.QhomeBase.baseservice.controller;
 
 import com.QhomeBase.baseservice.dto.BuildingDto;
 import com.QhomeBase.baseservice.dto.BuildingUpdateReq;
-import com.QhomeBase.baseservice.service.buildingService;
+import com.QhomeBase.baseservice.service.BuildingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -10,14 +10,12 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
-
 @RestController
 @RequestMapping("/api/buildings")
 @RequiredArgsConstructor
 public class BuildingUpdateController {
     
-    private final buildingService buildingService;
+    private final BuildingService buildingService;
     
     @PutMapping("/{buildingId}")
     @PreAuthorize("@authz.canUpdateBuilding()")

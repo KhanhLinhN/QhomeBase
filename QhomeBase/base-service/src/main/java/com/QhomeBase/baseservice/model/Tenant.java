@@ -13,7 +13,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class tenant {
+public class Tenant {
     @Id
     @GeneratedValue
     private UUID id;
@@ -26,6 +26,7 @@ public class tenant {
 
     private String contact;
     private String email;
+    private String address;
 
     @Column(nullable = false)
     @Builder.Default

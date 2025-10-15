@@ -16,3 +16,4 @@ public record VehicleRegistrationCreateDto(
         String reason
 ) {}
 
+

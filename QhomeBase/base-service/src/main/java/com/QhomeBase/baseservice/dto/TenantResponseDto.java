@@ -7,12 +7,13 @@ import java.util.UUID;
 @Data
 @NoArgsConstructor @AllArgsConstructor
 @Builder
-public class tenantResponseDto {
+public class TenantResponseDto {
         UUID id;;
         String code;
         String name;
         String contact;
         String email;
+        String address;
         String status;
         String description;
         Instant createdAt;

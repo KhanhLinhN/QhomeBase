@@ -61,3 +61,4 @@ public class Resident {
     private OffsetDateTime updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
 }
 
+

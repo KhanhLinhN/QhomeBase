@@ -16,7 +16,7 @@ import java.util.UUID;
 indexes = @Index(name="idx_buildings_tenant",columnList = "tenant_id"))
 @Data
 @NoArgsConstructor @AllArgsConstructor @Builder
-public class building {
+public class Building {
     @GeneratedValue
     @Id
     private UUID id;

@@ -30,7 +30,7 @@ public class Unit {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "building_id", nullable = false,
             foreignKey = @ForeignKey(name = "fk_units_building"))
-    private building building;
+    private Building building;
 
     @Column(nullable = false)
     private String code;

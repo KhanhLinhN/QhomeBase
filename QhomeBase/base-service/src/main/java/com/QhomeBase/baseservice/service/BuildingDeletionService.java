@@ -11,7 +11,7 @@ import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.model.UnitStatus;
 import com.QhomeBase.baseservice.repository.BuildingDeletionRequestRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
-import com.QhomeBase.baseservice.repository.buildingRepository;
+import com.QhomeBase.baseservice.repository.BuildingRepository;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -25,7 +25,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class BuildingDeletionService {
     private final BuildingDeletionRequestRepository repo;
-    private final buildingRepository buildingRepository;
+    private final BuildingRepository buildingRepository;
     private final UnitRepository unitRepository;
 
     private static BuildingDeletionRequestDto toDto(BuildingDeletionRequest t) {
@@ -75,6 +75,8 @@ public class BuildingDeletionService {
         return toDto(e);
     }
     public BuildingDeletionRequestDto approve(UUID requestId, BuildingDeletionApproveReq req, Authentication auth) {
+        validateNote(req.note());
+        
         var p = (UserPrincipal) auth.getPrincipal();
         var e = repo.findById(requestId).orElseThrow(() -> new IllegalArgumentException("Request not found"));
 
@@ -99,6 +101,8 @@ public class BuildingDeletionService {
     }
 
     public BuildingDeletionRequestDto reject(UUID requestId, BuildingDeletionRejectReq req, Authentication auth) {
+        validateNote(req.note());
+        
         var p = (UserPrincipal) auth.getPrincipal();
         var e = repo.findById(requestId).orElseThrow(() -> new IllegalArgumentException("Request not found"));
         if (e.getStatus() != BuildingDeletionStatus.PENDING) {
@@ -156,5 +160,16 @@ public class BuildingDeletionService {
         unitRepository.saveAll(b);
     }
 
+    private void validateNote(String note) {
+        if (note == null) {
+            throw new NullPointerException("Note cannot be null");
+        }
+        if (note.trim().isEmpty()) {
+            throw new IllegalArgumentException("Note cannot be empty");
+        }
+        if (note.length() > 500) {
+            throw new IllegalArgumentException("Note cannot exceed 500 characters");
+        }
+    }
 
 }

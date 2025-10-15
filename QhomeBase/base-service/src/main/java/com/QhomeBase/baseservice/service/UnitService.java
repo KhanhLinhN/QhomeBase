@@ -7,10 +7,11 @@ import com.QhomeBase.baseservice.dto.UnitUpdateDto;
 import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.model.UnitStatus;
 import com.QhomeBase.baseservice.repository.UnitRepository;
-import com.QhomeBase.baseservice.repository.buildingRepository;
+import com.QhomeBase.baseservice.repository.BuildingRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
@@ -19,13 +20,15 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UnitService {
     private final UnitRepository unitRepository;
-    private final buildingRepository buildingRepository;
+    private final BuildingRepository buildingRepository;
     
     private OffsetDateTime nowUTC() {
         return OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public UnitDto createUnit(UnitCreateDto unitCreateDto) {
+        validateUnitCreateDto(unitCreateDto);
+        
         String generatedCode = generateNextCode(unitCreateDto.buildingId(), unitCreateDto.floor());
         var unit = Unit.builder()
                 .tenantId(unitCreateDto.tenantId())
@@ -42,6 +45,8 @@ public class UnitService {
         return toDto(savedUnit);
     }
     public UnitDto updateUnit(UnitUpdateDto unit, UUID id) {
+        validateUnitUpdateDto(unit);
+        
         Unit existingUnit = unitRepository.findByIdWithBuilding(id);
 
         if (unit.floor() != null) {
@@ -199,5 +204,65 @@ public class UnitService {
                 unit.getCreatedAt(),
                 unit.getUpdatedAt()
         );
+    }
+
+    private void validateUnitCreateDto(UnitCreateDto dto) {
+        if (dto.tenantId() == null) {
+            throw new NullPointerException("Tenant ID cannot be null");
+        }
+        if (dto.buildingId() == null) {
+            throw new NullPointerException("Building ID cannot be null");
+        }
+        if (dto.floor() == null) {
+            throw new NullPointerException("Floor cannot be null");
+        }
+        if (dto.floor() <= 0) {
+            throw new IllegalArgumentException("Floor must be positive");
+        }
+        if (dto.floor() != Math.floor(dto.floor())) {
+            throw new IllegalArgumentException("Floor must be an integer");
+        }
+        if (dto.areaM2() == null) {
+            throw new NullPointerException("Area cannot be null");
+        }
+        if (dto.areaM2().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Area must be positive");
+        }
+        if (dto.bedrooms() == null) {
+            throw new NullPointerException("Bedrooms cannot be null");
+        }
+        if (dto.bedrooms() <= 0) {
+            throw new IllegalArgumentException("Bedrooms must be positive");
+        }
+        if (dto.bedrooms() != Math.floor(dto.bedrooms())) {
+            throw new IllegalArgumentException("Bedrooms must be an integer");
+        }
+    }
+
+    private void validateUnitUpdateDto(UnitUpdateDto dto) {
+        if (dto.floor() == null) {
+            throw new NullPointerException("Floor cannot be null");
+        }
+        if (dto.floor() <= 0) {
+            throw new IllegalArgumentException("Floor must be positive");
+        }
+        if (dto.floor() != Math.floor(dto.floor())) {
+            throw new IllegalArgumentException("Floor must be an integer");
+        }
+        if (dto.areaM2() == null) {
+            throw new NullPointerException("Area cannot be null");
+        }
+        if (dto.areaM2().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Area must be positive");
+        }
+        if (dto.bedrooms() == null) {
+            throw new NullPointerException("Bedrooms cannot be null");
+        }
+        if (dto.bedrooms() <= 0) {
+            throw new IllegalArgumentException("Bedrooms must be positive");
+        }
+        if (dto.bedrooms() != Math.floor(dto.bedrooms())) {
+            throw new IllegalArgumentException("Bedrooms must be an integer");
+        }
     }
 }

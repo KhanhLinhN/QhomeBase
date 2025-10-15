@@ -63,3 +63,4 @@ public class VehicleRegistrationRequest {
     private OffsetDateTime updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
 }
 
+

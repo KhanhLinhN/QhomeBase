@@ -21,3 +21,4 @@ public record VehicleUpdateDto(
         Boolean active
 ) {}
 
+

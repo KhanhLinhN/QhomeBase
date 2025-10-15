@@ -29,6 +29,8 @@ public class VehicleRegistrationService {
     }
 
     public VehicleRegistrationDto createRegistrationRequest(VehicleRegistrationCreateDto dto, Authentication authentication) {
+        validateVehicleRegistrationCreateDto(dto);
+        
         var u = (UserPrincipal) authentication.getPrincipal();
         UUID requestById = u.uid();
         if (vehicleRegistrationRepository.existsByTenantIdAndVehicleId(dto.tenantId(), dto.vehicleId())) {
@@ -52,6 +54,8 @@ public class VehicleRegistrationService {
     }
 
     public VehicleRegistrationDto approveRequest(UUID requestId, VehicleRegistrationApproveDto dto, Authentication authentication) {
+        validateVehicleRegistrationApproveDto(dto);
+        
         var u = (UserPrincipal) authentication.getPrincipal();
         UUID requestById = u.uid();
         var request = vehicleRegistrationRepository.findById(requestId)
@@ -72,6 +76,8 @@ public class VehicleRegistrationService {
     }
 
     public VehicleRegistrationDto rejectRequest(UUID requestId, VehicleRegistrationRejectDto dto, Authentication authentication) {
+        validateVehicleRegistrationRejectDto(dto);
+        
         var u = (UserPrincipal) authentication.getPrincipal();
         UUID requestById = u.uid();
         var request = vehicleRegistrationRepository.findById(requestId)
@@ -190,5 +196,41 @@ public class VehicleRegistrationService {
                 request.getCreatedAt(),
                 request.getUpdatedAt()
         );
+    }
+
+    private void validateVehicleRegistrationCreateDto(VehicleRegistrationCreateDto dto) {
+        if (dto.tenantId() == null) {
+            throw new NullPointerException("Tenant ID cannot be null");
+        }
+        if (dto.vehicleId() == null) {
+            throw new NullPointerException("Vehicle ID cannot be null");
+        }
+        if (dto.reason() != null && dto.reason().length() > 500) {
+            throw new IllegalArgumentException("Reason cannot exceed 500 characters");
+        }
+    }
+
+    private void validateVehicleRegistrationApproveDto(VehicleRegistrationApproveDto dto) {
+        if (dto.approvedBy() == null) {
+            throw new NullPointerException("Approved by cannot be null");
+        }
+        if (dto.note() != null && dto.note().length() > 500) {
+            throw new IllegalArgumentException("Note cannot exceed 500 characters");
+        }
+    }
+
+    private void validateVehicleRegistrationRejectDto(VehicleRegistrationRejectDto dto) {
+        if (dto.rejectedBy() == null) {
+            throw new NullPointerException("Rejected by cannot be null");
+        }
+        if (dto.reason() == null) {
+            throw new NullPointerException("Reason cannot be null");
+        }
+        if (dto.reason().trim().isEmpty()) {
+            throw new IllegalArgumentException("Reason cannot be empty");
+        }
+        if (dto.reason().length() > 500) {
+            throw new IllegalArgumentException("Reason cannot exceed 500 characters");
+        }
     }
 }

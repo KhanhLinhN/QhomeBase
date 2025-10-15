@@ -26,7 +26,7 @@ CREATE TYPE data.vehicle_kind AS ENUM ('CAR','MOTORBIKE','BICYCLE','ELECTRIC_SCO
 END IF;
 END$$;
 
-CREATE TABLE IF NOT EXISTS data.buildings (
+CREATE TABLE IF NOT EXISTS data.Buildings (
                                               id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id  UUID NOT NULL,
     code       TEXT NOT NULL,
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS data.buildings (
 CREATE TABLE IF NOT EXISTS data.units (
                                           id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id   UUID NOT NULL,
-    building_id UUID NOT NULL REFERENCES data.buildings(id) ON DELETE CASCADE,
+    building_id UUID NOT NULL REFERENCES data.Buildings(id) ON DELETE CASCADE,
     code        TEXT NOT NULL,
     floor       INTEGER,
     area_m2     NUMERIC(10,2) CHECK (area_m2 IS NULL OR area_m2 >= 0),
@@ -165,7 +165,7 @@ WHERE up.end_date IS NULL OR up.end_date >= CURRENT_DATE;
 CREATE OR REPLACE VIEW data.v_active_vehicles AS
 SELECT v.* FROM data.vehicles v WHERE v.active = TRUE;
 
-CREATE INDEX IF NOT EXISTS idx_buildings_tenant ON data.buildings (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_buildings_tenant ON data.Buildings (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_units_tenant_status ON data.units (tenant_id, status);
 CREATE INDEX IF NOT EXISTS idx_units_building ON data.units (building_id);
 CREATE INDEX IF NOT EXISTS idx_residents_tenant_status ON data.residents (tenant_id, status);

@@ -59,3 +59,4 @@ public class Vehicle {
     private OffsetDateTime updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
 }
 
+

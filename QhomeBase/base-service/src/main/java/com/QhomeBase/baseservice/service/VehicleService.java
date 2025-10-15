@@ -30,6 +30,8 @@ public class VehicleService {
     }
 
     public VehicleDto createVehicle(VehicleCreateDto dto) {
+        validateVehicleCreateDto(dto);
+        
         if (vehicleRepository.existsByTenantIdAndPlateNo(dto.tenantId(), dto.plateNo())) {
             throw new IllegalStateException("Vehicle with this plate number already exists");
         }
@@ -63,6 +65,8 @@ public class VehicleService {
     }
 
     public VehicleDto updateVehicle(VehicleUpdateDto dto, UUID id) {
+        validateVehicleUpdateDto(dto);
+        
         var vehicle = vehicleRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Vehicle not found"));
 
@@ -189,5 +193,38 @@ public class VehicleService {
                 vehicle.getCreatedAt(),
                 vehicle.getUpdatedAt()
         );
+    }
+
+    private void validateVehicleCreateDto(VehicleCreateDto dto) {
+        if (dto.tenantId() == null) {
+            throw new NullPointerException("Tenant ID cannot be null");
+        }
+        if (dto.plateNo() == null) {
+            throw new NullPointerException("Plate number cannot be null");
+        }
+        if (dto.plateNo().trim().isEmpty()) {
+            throw new IllegalArgumentException("Plate number cannot be empty");
+        }
+        if (dto.plateNo().length() > 20) {
+            throw new IllegalArgumentException("Plate number cannot exceed 20 characters");
+        }
+        if (dto.color() != null && dto.color().length() > 50) {
+            throw new IllegalArgumentException("Color cannot exceed 50 characters");
+        }
+    }
+
+    private void validateVehicleUpdateDto(VehicleUpdateDto dto) {
+        if (dto.plateNo() == null) {
+            throw new NullPointerException("Plate number cannot be null");
+        }
+        if (dto.plateNo().trim().isEmpty()) {
+            throw new IllegalArgumentException("Plate number cannot be empty");
+        }
+        if (dto.plateNo().length() > 20) {
+            throw new IllegalArgumentException("Plate number cannot exceed 20 characters");
+        }
+        if (dto.color() != null && dto.color().length() > 50) {
+            throw new IllegalArgumentException("Color cannot exceed 50 characters");
+        }
     }
 }

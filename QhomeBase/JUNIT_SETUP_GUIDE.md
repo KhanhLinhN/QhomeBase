@@ -161,3 +161,4 @@ Dự án đã có sẵn các test mẫu:
 Để cập nhật version JUnit hoặc các dependencies khác:
 1. Sửa version trong `QhomeBase/pom.xml` (dependencyManagement section)
 2. Chạy `mvn clean install` để download dependencies mới
+

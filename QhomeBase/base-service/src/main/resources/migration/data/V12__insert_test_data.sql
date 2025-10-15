@@ -13,7 +13,7 @@ VALUES (
 ) ON CONFLICT (id) DO NOTHING;
 
 -- Insert test building (if not exists)
-INSERT INTO data.buildings (id, tenant_id, code, name, address, status, created_at, updated_at, is_deleted, created_by)
+INSERT INTO data.Buildings (id, tenant_id, code, name, address, status, created_at, updated_at, is_deleted, created_by)
 VALUES (
     '550e8400-e29b-41d4-a716-446655440003'::uuid,
     '550e8400-e29b-41d4-a716-446655440001'::uuid,
@@ -28,7 +28,7 @@ VALUES (
 ) ON CONFLICT (id) DO NOTHING;
 
 -- Insert test building 2 (for additional testing)
-INSERT INTO data.buildings (id, tenant_id, code, name, address, status, created_at, updated_at, is_deleted, created_by)
+INSERT INTO data.Buildings (id, tenant_id, code, name, address, status, created_at, updated_at, is_deleted, created_by)
 VALUES (
     '550e8400-e29b-41d4-a716-446655440004'::uuid,
     '550e8400-e29b-41d4-a716-446655440001'::uuid,

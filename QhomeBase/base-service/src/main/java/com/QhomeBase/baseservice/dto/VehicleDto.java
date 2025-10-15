@@ -20,3 +20,4 @@ public record VehicleDto(
         OffsetDateTime updatedAt
 ) {}
 
+

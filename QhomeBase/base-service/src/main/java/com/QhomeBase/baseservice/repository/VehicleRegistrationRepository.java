@@ -39,3 +39,4 @@ public interface VehicleRegistrationRepository extends JpaRepository<VehicleRegi
     boolean existsByTenantIdAndVehicleIdAndIdNot(UUID tenantId, UUID vehicleId, UUID id);
 }
 
+

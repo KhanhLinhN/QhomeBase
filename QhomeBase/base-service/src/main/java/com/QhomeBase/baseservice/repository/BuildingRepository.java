@@ -1,6 +1,6 @@
 package com.QhomeBase.baseservice.repository;
 
-import com.QhomeBase.baseservice.model.building;
+import com.QhomeBase.baseservice.model.Building;
 import io.lettuce.core.dynamic.annotation.Param;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -9,12 +9,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface buildingRepository extends JpaRepository<building,UUID> {
-    List<building> findAllByTenantIdOrderByCodeAsc(UUID tenantId);
+public interface BuildingRepository extends JpaRepository<Building,UUID> {
+    List<Building> findAllByTenantIdOrderByCodeAsc(UUID tenantId);
 
     @Query(value = """
     SELECT t.code
-    FROM data.buildings b
+    FROM data.Buildings b
     JOIN data.tenants t ON t.id = b.tenant_id
     WHERE b.id = :buildingId
     LIMIT 1
@@ -28,7 +28,7 @@ public interface buildingRepository extends JpaRepository<building,UUID> {
 
     @Query(value = """
     SELECT t.id
-    FROM data.buildings b
+    FROM data.Buildings b
     JOIN data.tenants t ON t.id = b.tenant_id
     WHERE b.id = :buildingId
     LIMIT 1
