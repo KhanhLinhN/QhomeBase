@@ -4,6 +4,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.QhomeBase.customerinteractionservice.dto.RequestDTO;
@@ -64,8 +66,8 @@ public class requestController {
     @PostMapping("/createRequest")
     public ResponseEntity<RequestDTO> addNewRequest(@RequestBody RequestDTO requestDTO)
     {
-        RequestDTO createdRequest = requestService.addRequest(requestDTO);
-        return ResponseEntity.status(HttpStatus.CREATED).body(createdRequest);
+        RequestDTO savedRequest = requestService.createNewRequest(requestDTO);
+        return ResponseEntity.status(HttpStatus.CREATED).body(savedRequest);
     }
 
 }

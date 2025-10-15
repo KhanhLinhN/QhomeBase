@@ -1,8 +1,11 @@
 package com.QhomeBase.customerinteractionservice.service;
 
+import com.QhomeBase.customerinteractionservice.dto.ProcessingLogDTO;
 import com.QhomeBase.customerinteractionservice.dto.RequestDTO;
 import com.QhomeBase.customerinteractionservice.dto.StatusCountDTO;
+import com.QhomeBase.customerinteractionservice.model.ProcessingLog;
 import com.QhomeBase.customerinteractionservice.model.Request;
+import com.QhomeBase.customerinteractionservice.repository.processingLogRepository;
 import com.QhomeBase.customerinteractionservice.repository.requestRepository;
 
 import org.springframework.data.domain.Page;
@@ -129,7 +132,7 @@ public class requestService {
 
 
     // Create a new request
-    public void createNewRequest(RequestDTO dto) {
+    public RequestDTO createNewRequest(RequestDTO dto) {
         Request entity = new Request();
         entity.setId(dto.getId());
         entity.setRequestCode(dto.getRequestCode());
@@ -142,33 +145,20 @@ public class requestService {
         entity.setStatus(dto.getStatus());
         entity.setPriority(dto.getPriority());
         entity.setCreatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
-        ProcessingLogDTO newLog = new ProcessingLogDTO();
+        Request savedRequest = requestRepository.save(entity);
+
+        // create processinglog
+        ProcessingLog newLog = new ProcessingLog();
         newLog.setRecordType("Request");
-        newLog.setRequestId(entity.getId());
+        newLog.setRecordId(savedRequest.getId());
         newLog.setStaffInCharge(null);
         newLog.setStaffInChargeName(null);
-        newLog.setContent("Request created by: " + entity.getResidentName());
-        newLog.setRequestStatus(entity.getStatus());
+        newLog.setContent("Request created by: " + savedRequest.getResidentName());
+        newLog.setRequestStatus(savedRequest.getStatus());
         newLog.setLogType(null);
-        newLog.setTimestamp(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
+        newLog.setCreatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
         processingLogRepository.save(newLog);
-        requestRepository.save(entity);
-    }
-
-    // Update an existing request
-    public void updateRequest(RequestDTO dto) {
-        Request entity = requestRepository.findById(dto.getId())
-                .orElseThrow(() -> new RuntimeException("Request not found with id: " + dto.getId()));
-        entity.setTenantId(dto.getTenantId());
-        entity.setResidentId(dto.getResidentId());
-        entity.setResidentName(dto.getResidentName());
-        entity.setImagePath(dto.getImagePath());
-        entity.setTitle(dto.getTitle());
-        entity.setContent(dto.getContent());
-        entity.setStatus(dto.getStatus());
-        entity.setPriority(dto.getPriority());
-        entity.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
-        requestRepository.save(entity);
+        return this.mapToDto(savedRequest);
     }
 
 }

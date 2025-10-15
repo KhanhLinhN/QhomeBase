@@ -14,7 +14,9 @@ import com.QhomeBase.customerinteractionservice.service.processingLogService;
 @RestController
 @RequestMapping("/api/customer-interaction/requests-logs")
 public class requestProcessingLogController {
+    
     private final processingLogService processingLogService;
+    
     public requestProcessingLogController(processingLogService processingLogService) {
         this.processingLogService = processingLogService;
     }
@@ -42,9 +44,5 @@ public class requestProcessingLogController {
         ProcessingLogDTO newLog = processingLogService.addProcessingLog(id, logData);
         return ResponseEntity.ok(newLog);
     }
-
-
-
-
 
 }
