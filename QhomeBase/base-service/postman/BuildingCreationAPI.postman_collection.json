@@ -247,7 +247,7 @@
 					}
 				],
 				"url": {
-					"raw": "{{base_service_url}}/api/buildings?tenantId=123e4567-e89b-12d3-a456-426614174000",
+					"raw": "{{base_service_url}}/api/buildings?tenantId={{tenant_id}}",
 					"host": [
 						"{{base_service_url}}"
 					],

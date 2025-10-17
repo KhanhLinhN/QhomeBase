@@ -8,6 +8,7 @@ import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.model.UnitStatus;
 import com.QhomeBase.baseservice.repository.BuildingRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
+import com.QhomeBase.baseservice.repository.TenantRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,6 +36,9 @@ class UnitServiceTest {
     
     @Mock 
     private BuildingRepository buildingRepository;
+    
+    @Mock 
+    private TenantRepository tenantRepository;
 
     private UnitService unitService;
     
@@ -44,7 +48,7 @@ class UnitServiceTest {
 
     @BeforeEach
     void setUp() {
-        unitService = new UnitService(unitRepository, buildingRepository);
+        unitService = new UnitService(unitRepository, buildingRepository, tenantRepository);
 
         testTenantId = UUID.randomUUID();
         testBuildingId = UUID.randomUUID();

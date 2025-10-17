@@ -8,6 +8,7 @@ import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.model.UnitStatus;
 import com.QhomeBase.baseservice.repository.UnitRepository;
 import com.QhomeBase.baseservice.repository.BuildingRepository;
+import com.QhomeBase.baseservice.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +22,7 @@ import java.util.UUID;
 public class UnitService {
     private final UnitRepository unitRepository;
     private final BuildingRepository buildingRepository;
+    private final TenantRepository tenantRepository;
     
     private OffsetDateTime nowUTC() {
         return OffsetDateTime.now(ZoneOffset.UTC);
@@ -28,6 +30,10 @@ public class UnitService {
 
     public UnitDto createUnit(UnitCreateDto unitCreateDto) {
         validateUnitCreateDto(unitCreateDto);
+        
+        if (!tenantRepository.existsById(unitCreateDto.tenantId())) {
+            throw new IllegalArgumentException("Tenant with ID " + unitCreateDto.tenantId() + " does not exist");
+        }
         
         String generatedCode = generateNextCode(unitCreateDto.buildingId(), unitCreateDto.floor());
         var unit = Unit.builder()

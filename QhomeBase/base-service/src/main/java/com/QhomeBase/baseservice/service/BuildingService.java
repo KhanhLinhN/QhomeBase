@@ -5,6 +5,7 @@ import com.QhomeBase.baseservice.dto.BuildingDto;
 import com.QhomeBase.baseservice.dto.BuildingUpdateReq;
 import com.QhomeBase.baseservice.model.Building;
 import com.QhomeBase.baseservice.repository.BuildingRepository;
+import com.QhomeBase.baseservice.repository.TenantRepository;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import jakarta.transaction.Transactional;
 import org.springframework.security.core.Authentication;
@@ -20,9 +21,11 @@ import java.util.stream.Collectors;
 public class BuildingService {
 
     private final BuildingRepository respo;
+    private final TenantRepository tenantRepository;
 
-    public BuildingService(BuildingRepository respo) {
+    public BuildingService(BuildingRepository respo, TenantRepository tenantRepository) {
         this.respo = respo;
+        this.tenantRepository = tenantRepository;
     }
 
     public List<Building> findAllByTenantIdOrderByCodeAsc(UUID tenantId) {
@@ -63,55 +66,44 @@ public class BuildingService {
                 0
         );
     }
-    public BuildingDto createBuilding(BuildingCreateReq req, Authentication auth) {
-        validateBuildingName(req.name());
-        validateBuildingAddress(req.address());
+    public BuildingDto createBuilding(BuildingCreateReq req, UUID tenantId, String createdBy) {
+        if (!tenantRepository.existsById(tenantId)) {
+            throw new IllegalArgumentException("Tenant with ID " + tenantId + " does not exist");
+        }
         
-        var u = (UserPrincipal) auth.getPrincipal();
-        String newCode = generateNextCode(u.tenant());
+        String newCode = generateNextCode(tenantId);
 
         var b = Building.builder()
-                .tenantId(u.tenant())
+                .tenantId(tenantId)
                 .code(newCode)
                 .name(req.name())
                 .address(req.address())
-                .createdBy(u.username())
+                .createdBy(createdBy)
                 .build();
         Building saved = respo.save(b);
 
         return toDto(saved);
     }
-    public BuildingDto updateBuilding(BuildingUpdateReq req, Authentication auth) {
-        validateBuildingName(req.name());
-        validateBuildingAddress(req.address());
-        
+    public BuildingDto updateBuilding(UUID buildingId, BuildingUpdateReq req, Authentication auth) {
         var u = (UserPrincipal) auth.getPrincipal();
-        var b = Building.builder()
-                .tenantId(u.tenant())
-                .name(req.name())
-                .address(req.address())
-                .createdBy(u.username())
-                .build();
-        Building saved = respo.save(b);
+        
 
+        if (!tenantRepository.existsById(u.tenant())) {
+            throw new IllegalArgumentException("Tenant with ID " + u.tenant() + " does not exist");
+        }
+        
+        var existing = respo.findById(buildingId)
+                .orElseThrow(() -> new IllegalArgumentException("Building not found"));
+
+        if (!existing.getTenantId().equals(u.tenant())) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied");
+        }
+
+        existing.setName(req.name());
+        existing.setAddress(req.address());
+        existing.setUpdatedBy(u.username());
+
+        Building saved = respo.save(existing);
         return toDto(saved);
-    }
-
-    private void validateBuildingName(String name) {
-        if (name == null) {
-            throw new NullPointerException("Building name cannot be null");
-        }
-        if (name.trim().isEmpty()) {
-            throw new IllegalArgumentException("Building name cannot be empty");
-        }
-        if (name.length() > 255) {
-            throw new IllegalArgumentException("Building name cannot exceed 255 characters");
-        }
-    }
-
-    private void validateBuildingAddress(String address) {
-        if (address != null && address.length() > 512) {
-            throw new IllegalArgumentException("Building address cannot exceed 512 characters");
-        }
     }
 }

@@ -42,7 +42,6 @@ public class TestController {
     @PostMapping("/generate-token")
     public ResponseEntity<TokenResponse> generateTestToken(@RequestBody TokenRequest request) {
         try {
-            // Tạo test token với dữ liệu từ request
             String token = jwtIssuer.issueForService(
                 request.getUid() != null ? request.getUid() : UUID.fromString("550e8400-e29b-41d4-a716-446655440000"),
                 request.getUsername() != null ? request.getUsername() : "testuser",
@@ -74,7 +73,7 @@ public class TestController {
         return ResponseEntity.badRequest().body(null);
     }
 
-    // DTOs
+
     public static class TokenRequest {
         private UUID uid;
         private String username;
@@ -82,7 +81,7 @@ public class TestController {
         private List<String> roles;
         private List<String> permissions;
 
-        // Getters and setters
+
         public UUID getUid() { return uid; }
         public void setUid(UUID uid) { this.uid = uid; }
         public String getUsername() { return username; }

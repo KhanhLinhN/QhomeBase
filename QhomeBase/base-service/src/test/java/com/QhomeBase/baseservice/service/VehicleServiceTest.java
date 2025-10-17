@@ -10,6 +10,7 @@ import com.QhomeBase.baseservice.model.VehicleKind;
 import com.QhomeBase.baseservice.repository.ResidentRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
 import com.QhomeBase.baseservice.repository.VehicleRepository;
+import com.QhomeBase.baseservice.repository.TenantRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,6 +39,9 @@ class VehicleServiceTest {
     
     @Mock 
     private UnitRepository unitRepository;
+    
+    @Mock 
+    private TenantRepository tenantRepository;
 
     private VehicleService vehicleService;
     
@@ -48,7 +52,7 @@ class VehicleServiceTest {
 
     @BeforeEach
     void setUp() {
-        vehicleService = new VehicleService(vehicleRepository, residentRepository, unitRepository);
+        vehicleService = new VehicleService(vehicleRepository, residentRepository, unitRepository, tenantRepository);
 
         testTenantId = UUID.randomUUID();
         testResidentId = UUID.randomUUID();

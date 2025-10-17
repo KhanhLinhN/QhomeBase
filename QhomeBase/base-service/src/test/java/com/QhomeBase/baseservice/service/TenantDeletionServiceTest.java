@@ -4,7 +4,9 @@ import com.QhomeBase.baseservice.dto.TenantDeletionRequestDTO;
 import com.QhomeBase.baseservice.model.*;
 import com.QhomeBase.baseservice.repository.BuildingRepository;
 import com.QhomeBase.baseservice.repository.TenantDeletionRequestRepository;
+import com.QhomeBase.baseservice.repository.TenantRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
+import com.QhomeBase.baseservice.repository.BuildingDeletionRequestRepository;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import jakarta.validation.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +40,12 @@ class TenantDeletionServiceTest {
     
     @Mock 
     private UnitRepository unitRepository;
+    
+    @Mock 
+    private TenantRepository tenantRepository;
+    
+    @Mock 
+    private BuildingDeletionRequestRepository buildingDeletionRequestRepository;
 
     @Mock
     private Authentication authentication;
@@ -57,11 +65,14 @@ class TenantDeletionServiceTest {
         tenantDeletionService = new TenantDeletionService(
                 buildingRepository, 
                 tenantDeletionRequestRepository, 
-                unitRepository
+                unitRepository,
+                tenantRepository,
+                buildingDeletionRequestRepository
         );
 
-        ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
-        validator = factory.getValidator();
+        try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+            validator = factory.getValidator();
+        }
 
         testTenantId = UUID.randomUUID();
         testUserId = UUID.randomUUID();

@@ -16,6 +16,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -400,6 +402,96 @@ class TenantServiceTest {
 
             reset(tenantRepository);
         }
+    }
+
+    @Test
+    void getAllTenants_ShouldReturnAllNonDeletedTenants() {
+        // Create test tenants
+        Tenant tenant1 = Tenant.builder()
+                .id(UUID.randomUUID())
+                .code("TENANT001")
+                .name("Building A")
+                .contact("+84 123 456 789")
+                .email("buildingA@example.com")
+                .address("Address A")
+                .status("ACTIVE")
+                .description("Building A description")
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .createdBy(testUserId.toString())
+                .updatedBy(testUserId.toString())
+                .isDeleted(false)
+                .build();
+
+        Tenant tenant2 = Tenant.builder()
+                .id(UUID.randomUUID())
+                .code("TENANT002")
+                .name("Building B")
+                .contact("+84 987 654 321")
+                .email("buildingB@example.com")
+                .address("Address B")
+                .status("ACTIVE")
+                .description("Building B description")
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .createdBy(testUserId.toString())
+                .updatedBy(testUserId.toString())
+                .isDeleted(false)
+                .build();
+
+        Tenant deletedTenant = Tenant.builder()
+                .id(UUID.randomUUID())
+                .code("TENANT003")
+                .name("Deleted Building")
+                .contact("+84 111 222 333")
+                .email("deleted@example.com")
+                .address("Deleted Address")
+                .status("ACTIVE")
+                .description("This building is deleted")
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .createdBy(testUserId.toString())
+                .updatedBy(testUserId.toString())
+                .isDeleted(true)
+                .build();
+
+        List<Tenant> allTenants = Arrays.asList(tenant1, tenant2, deletedTenant);
+
+        when(tenantRepository.findAll()).thenReturn(allTenants);
+
+        List<TenantResponseDto> result = tenantService.getAllTenants();
+
+        assertNotNull(result);
+        assertEquals(2, result.size()); // Only non-deleted tenants should be returned
+
+        // Verify the first tenant
+        TenantResponseDto resultTenant1 = result.get(0);
+        assertEquals(tenant1.getId(), resultTenant1.getId());
+        assertEquals(tenant1.getCode(), resultTenant1.getCode());
+        assertEquals(tenant1.getName(), resultTenant1.getName());
+        assertEquals(tenant1.getContact(), resultTenant1.getContact());
+        assertEquals(tenant1.getEmail(), resultTenant1.getEmail());
+        assertEquals(tenant1.getAddress(), resultTenant1.getAddress());
+        assertEquals(tenant1.getStatus(), resultTenant1.getStatus());
+        assertEquals(tenant1.getDescription(), resultTenant1.getDescription());
+        assertEquals(tenant1.getCreatedAt(), resultTenant1.getCreatedAt());
+        assertEquals(tenant1.getUpdatedAt(), resultTenant1.getUpdatedAt());
+        assertEquals(tenant1.getCreatedBy(), resultTenant1.getCreatedBy());
+        assertEquals(tenant1.getUpdatedBy(), resultTenant1.getUpdatedBy());
+        assertEquals(tenant1.isDeleted(), resultTenant1.isDeleted());
+
+        // Verify the second tenant
+        TenantResponseDto resultTenant2 = result.get(1);
+        assertEquals(tenant2.getId(), resultTenant2.getId());
+        assertEquals(tenant2.getCode(), resultTenant2.getCode());
+        assertEquals(tenant2.getName(), resultTenant2.getName());
+
+        // Verify that deleted tenant is not included
+        boolean deletedTenantFound = result.stream()
+                .anyMatch(t -> t.getCode().equals("TENANT003"));
+        assertFalse(deletedTenantFound, "Deleted tenant should not be included in results");
+
+        verify(tenantRepository).findAll();
     }
 
 }

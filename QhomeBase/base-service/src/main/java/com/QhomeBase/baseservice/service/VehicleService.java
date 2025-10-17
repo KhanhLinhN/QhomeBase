@@ -8,6 +8,7 @@ import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.model.Vehicle;
 import com.QhomeBase.baseservice.model.VehicleKind;
 import com.QhomeBase.baseservice.repository.ResidentRepository;
+import com.QhomeBase.baseservice.repository.TenantRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
 import com.QhomeBase.baseservice.repository.VehicleRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class VehicleService {
     private final VehicleRepository vehicleRepository;
     private final ResidentRepository residentRepository;
     private final UnitRepository unitRepository;
+    private final TenantRepository tenantRepository;
 
     private OffsetDateTime nowUTC() {
         return OffsetDateTime.now(ZoneOffset.UTC);
@@ -31,6 +33,11 @@ public class VehicleService {
 
     public VehicleDto createVehicle(VehicleCreateDto dto) {
         validateVehicleCreateDto(dto);
+        
+        // Validate that the tenant exists before creating the vehicle
+        if (!tenantRepository.existsById(dto.tenantId())) {
+            throw new IllegalArgumentException("Tenant with ID " + dto.tenantId() + " does not exist");
+        }
         
         if (vehicleRepository.existsByTenantIdAndPlateNo(dto.tenantId(), dto.plateNo())) {
             throw new IllegalStateException("Vehicle with this plate number already exists");

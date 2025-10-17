@@ -4,5 +4,6 @@ public enum TenantDeletionStatus {
     PENDING,
     CANCELED,
     APPROVED,
-    REJECTED
+    REJECTED,
+    COMPLETED
 }

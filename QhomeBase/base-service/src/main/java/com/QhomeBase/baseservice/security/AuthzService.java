@@ -38,6 +38,24 @@ public class AuthzService {
         return sameTenant && (okRole || okPerm);
     }
 
+    public boolean canRequestDeleteTenant(UUID tenantId) {
+        var p = principal();
+        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
+        boolean okPerm = hasPerm("base.tenant.delete.request");
+        
+        System.out.println("=== canRequestDeleteTenant Debug ===");
+        System.out.println("Tenant ID: " + tenantId);
+        System.out.println("User Principal: " + p);
+        System.out.println("User Roles: " + p.roles());
+        System.out.println("User Perms: " + p.perms());
+        System.out.println("okRole: " + okRole);
+        System.out.println("okPerm: " + okPerm);
+        System.out.println("Final Result: " + (okRole || okPerm));
+        System.out.println("=====================================");
+        
+        return okRole || okPerm;
+    }
+
     public boolean canApproveTicket(UUID ticketTenantId) {
         var p = (UserPrincipal) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         boolean sameTenant = p.tenant().equals(ticketTenantId);
@@ -78,6 +96,12 @@ public class AuthzService {
     public boolean canDeleteBuilding() {
         boolean okPerm = hasPerm("base.building.delete");
         return okPerm;
+    }
+
+    public boolean canCompleteBuildingDeletion() {
+        boolean okRole = hasAnyRole(Set.of("admin", "tenant_owner", "tenant_manager"));
+        boolean okPerm = hasPerm("base.building.delete.approve");
+        return okRole || okPerm;
     }
 
     public boolean canRejectDeleteBuilding(UUID tenantId) {
@@ -259,6 +283,18 @@ public class AuthzService {
 
         boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "unit_owner", "resident"));
         boolean okPerm = hasPerm("base.vehicle.registration.cancel");
+        return okRole || okPerm;
+    }
+
+    public boolean canViewAllTenantDeletionRequests() {
+        boolean okRole = hasAnyRole(Set.of("admin", "tenant_owner"));
+        boolean okPerm = hasPerm("base.tenant.delete.approve");
+        return okRole || okPerm;
+    }
+
+    public boolean canViewTenantDeletionRequest(UUID requestId) {
+        boolean okRole = hasAnyRole(Set.of("admin", "tenant_owner"));
+        boolean okPerm = hasPerm("base.tenant.delete.approve");
         return okRole || okPerm;
     }
 

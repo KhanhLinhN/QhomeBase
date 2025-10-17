@@ -17,7 +17,7 @@ class JwtVerifierTest {
     @BeforeEach
     void setUp() {
         String secret = "qhome-iam-secret-key-2024-very-long-and-secure-key-for-jwt-token-generation";
-        jwtVerifier = new JwtVerifier(secret, "qhome-iam", "qhome-base");
+        jwtVerifier = new JwtVerifier(secret, "qhome-iam");
         jwtIssuer = new JwtIssuer(secret, "qhome-iam", 15L);
     }
 
@@ -134,7 +134,7 @@ class JwtVerifierTest {
     void testConstructor_WithShortSecret_ShouldThrowException() {
         // When & Then
         assertThrows(IllegalStateException.class, () -> {
-            new JwtVerifier("short", "qhome-iam", "qhome-base");
+            new JwtVerifier("short", "qhome-iam");
         });
     }
 }

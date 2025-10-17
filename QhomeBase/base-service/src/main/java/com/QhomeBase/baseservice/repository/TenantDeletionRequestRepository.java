@@ -1,7 +1,5 @@
 package com.QhomeBase.baseservice.repository;
 
-import com.QhomeBase.baseservice.model.BuildingDeletionRequest;
-import com.QhomeBase.baseservice.model.BuildingDeletionStatus;
 import com.QhomeBase.baseservice.model.TenantDeletionRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -52,7 +50,11 @@ public interface TenantDeletionRequestRepository extends JpaRepository<TenantDel
     """, nativeQuery = true)
     long findDeletedTenant(@Param("tenantId") UUID tenantId);
 
-
-
+    @Query(value = """
+    SELECT td.* FROM data.tenant_deletion_requests td
+    WHERE td.tenant_id = :tenantId
+    ORDER BY td.created_at DESC
+    """, nativeQuery = true)
+    java.util.List<TenantDeletionRequest> findByTenantId(@Param("tenantId") UUID tenantId);
 
 }

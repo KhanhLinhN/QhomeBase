@@ -12,11 +12,12 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.*;
 
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @Validated
@@ -54,6 +55,13 @@ public class TenantService {
                 .updatedBy(createdId)
                 .build();
         Tenant save =  tenantRepository.save(entity);
+
+        System.out.println("=== TENANT CREATED ===");
+        System.out.println("Tenant ID: " + save.getId());
+        System.out.println("Tenant Code: " + save.getCode());
+        System.out.println("Tenant Name: " + save.getName());
+        System.out.println("======================");
+        
         return mapToResponse(save);
     }
     public TenantResponseDto mapToResponse(Tenant t) {
@@ -75,11 +83,17 @@ public class TenantService {
         );
     }
     public TenantResponseDto findTenant (UUID id) {
+
         Tenant t = tenantRepository.findById(id).orElse(null);
+
+        
         return mapToResponse(t);
     }
     public TenantResponseDto updateTenant (TenantUpdateDto dto, UUID id,  Authentication authentication) {
         Tenant t = tenantRepository.findById(id).orElse(null);
+        if (t == null) {
+            throw new IllegalArgumentException("Tenant not found with ID: " + id);
+        }
         var u = (UserPrincipal) authentication.getPrincipal();
         var createdId = u.uid().toString();
         t.setName((dto.getName()));
@@ -92,6 +106,14 @@ public class TenantService {
         t.setUpdatedBy(createdId);
         Tenant save =   tenantRepository.save(t);
         return mapToResponse(save);
+    }
+
+    public List<TenantResponseDto> getAllTenants() {
+        List<Tenant> tenants = tenantRepository.findAll();
+        return tenants.stream()
+                .filter(tenant -> !tenant.isDeleted()) // Only return non-deleted tenants
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
     }
 
 }
