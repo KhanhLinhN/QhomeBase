@@ -550,26 +550,5 @@ class VehicleServiceTest {
         verify(vehicleRepository).save(existingVehicle);
     }
 
-    @Test
-    void hardDeleteVehicle_WithValidId_ShouldDeleteVehicle() {
-        when(vehicleRepository.existsById(testVehicleId)).thenReturn(true);
-
-        vehicleService.hardDeleteVehicle(testVehicleId);
-
-        verify(vehicleRepository).existsById(testVehicleId);
-        verify(vehicleRepository).deleteById(testVehicleId);
-    }
-
-    @Test
-    void hardDeleteVehicle_WithNonExistentId_ShouldThrow() {
-        when(vehicleRepository.existsById(testVehicleId)).thenReturn(false);
-
-        assertThrows(IllegalArgumentException.class,
-                () -> vehicleService.hardDeleteVehicle(testVehicleId));
-
-        verify(vehicleRepository).existsById(testVehicleId);
-        verify(vehicleRepository, never()).deleteById(testVehicleId);
-    }
-
 
 }

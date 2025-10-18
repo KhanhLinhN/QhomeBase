@@ -49,7 +49,6 @@ public class BuildingService {
                 return tenantCode.trim();
             }
         } catch (Exception e) {
-
         }
         return "Tenant";
     }
@@ -87,7 +86,6 @@ public class BuildingService {
     public BuildingDto updateBuilding(UUID buildingId, BuildingUpdateReq req, Authentication auth) {
         var u = (UserPrincipal) auth.getPrincipal();
         
-
         if (!tenantRepository.existsById(u.tenant())) {
             throw new IllegalArgumentException("Tenant with ID " + u.tenant() + " does not exist");
         }

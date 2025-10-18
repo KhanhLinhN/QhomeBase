@@ -56,12 +56,6 @@ public class TenantService {
                 .build();
         Tenant save =  tenantRepository.save(entity);
 
-        System.out.println("=== TENANT CREATED ===");
-        System.out.println("Tenant ID: " + save.getId());
-        System.out.println("Tenant Code: " + save.getCode());
-        System.out.println("Tenant Name: " + save.getName());
-        System.out.println("======================");
-        
         return mapToResponse(save);
     }
     public TenantResponseDto mapToResponse(Tenant t) {
@@ -83,10 +77,7 @@ public class TenantService {
         );
     }
     public TenantResponseDto findTenant (UUID id) {
-
         Tenant t = tenantRepository.findById(id).orElse(null);
-
-        
         return mapToResponse(t);
     }
     public TenantResponseDto updateTenant (TenantUpdateDto dto, UUID id,  Authentication authentication) {
@@ -111,7 +102,7 @@ public class TenantService {
     public List<TenantResponseDto> getAllTenants() {
         List<Tenant> tenants = tenantRepository.findAll();
         return tenants.stream()
-                .filter(tenant -> !tenant.isDeleted()) // Only return non-deleted tenants
+                .filter(tenant -> !tenant.isDeleted())
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }

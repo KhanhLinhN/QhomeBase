@@ -80,8 +80,6 @@ public class UnitService {
         unitRepository.save(unit);
     }
     
-
-    
     public UnitDto getUnitById(UUID id) {
         Unit unit = unitRepository.findByIdWithBuilding(id);
         return toDto(unit);

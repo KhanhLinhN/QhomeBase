@@ -39,9 +39,6 @@ public class tenantController {
         return ResponseEntity.ok(tenantService.getAllTenants());
     }
 
-
-
-
     @PutMapping("/{id}")
     public ResponseEntity<TenantResponseDto> updateTenant(@PathVariable UUID id, @Valid @RequestBody TenantUpdateDto dto, Authentication authentication) {
         return ResponseEntity.ok(tenantService.updateTenant(dto, id, authentication));

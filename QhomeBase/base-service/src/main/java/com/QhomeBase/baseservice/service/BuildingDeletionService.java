@@ -9,12 +9,10 @@ import com.QhomeBase.baseservice.model.UnitStatus;
 import com.QhomeBase.baseservice.repository.BuildingDeletionRequestRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
 import com.QhomeBase.baseservice.repository.BuildingRepository;
-import com.QhomeBase.baseservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
-import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,8 +42,6 @@ public class BuildingDeletionService {
     }
 
     public void doBuildingDeletion(UUID buildingId, Authentication auth) {
-        var p = (UserPrincipal) auth.getPrincipal();
-        
         var building = buildingRepository.findById(buildingId)
                 .orElseThrow(() -> new IllegalArgumentException("Building not found"));
         
@@ -84,13 +80,11 @@ public class BuildingDeletionService {
     }
 
     public List<BuildingDeletionRequestDto> getDeletingBuildings() {
-        // Tìm tất cả buildings đang có status DELETING
         var deletingBuildings = buildingRepository.findAll()
                 .stream()
                 .filter(building -> building.getStatus() == BuildingStatus.DELETING)
                 .toList();
         
-        // Tìm BuildingDeletionRequest tương ứng với các buildings DELETING
         return repo.findAll()
                 .stream()
                 .filter(req -> deletingBuildings.stream()
@@ -100,14 +94,12 @@ public class BuildingDeletionService {
     }
 
     public List<BuildingDeletionRequestDto> getDeletingBuildingsByTenantId(UUID tenantId) {
-
         var deletingBuildings = buildingRepository.findAll()
                 .stream()
                 .filter(building -> building.getTenantId().equals(tenantId))
                 .filter(building -> building.getStatus() == BuildingStatus.DELETING)
                 .toList();
         
-
         return repo.findAll()
                 .stream()
                 .filter(req -> req.getTenantId().equals(tenantId))
@@ -132,13 +124,6 @@ public class BuildingDeletionService {
                 .toList();
     }
 
-    public List<com.QhomeBase.baseservice.model.Building> getAllDeletingBuildings() {
-        return buildingRepository.findAll()
-                .stream()
-                .filter(building -> building.getStatus() == BuildingStatus.DELETING)
-                .toList();
-    }
-
     public List<com.QhomeBase.baseservice.model.Building> getDeletingBuildingsRawByTenantId(UUID tenantId) {
         return buildingRepository.findAll()
                 .stream()
@@ -146,6 +131,7 @@ public class BuildingDeletionService {
                 .filter(building -> building.getStatus() == BuildingStatus.DELETING)
                 .toList();
     }
+
     public void changeStatusOfUnitsBuilding(UUID buildingId) {
         var b = unitRepository.findAllByBuildingId(buildingId);
         for (Unit u : b) {
@@ -172,29 +158,22 @@ public class BuildingDeletionService {
         
         Map<String, Object> status = new HashMap<>();
         
-
         Map<String, Long> unitStatusCount = units.stream()
                 .collect(Collectors.groupingBy(
                     u -> u.getStatus().toString(),
                     Collectors.counting()
                 ));
         
-
         long unitsInactive = unitStatusCount.getOrDefault("INACTIVE", 0L);
         
-
         boolean unitsReady = units.size() == 0 || unitsInactive == units.size();
         boolean allTargetsReady = unitsReady;
         
         status.put("units", unitStatusCount);
         status.put("totalUnits", units.size());
-        
-
         status.put("unitsInactive", unitsInactive);
         status.put("unitsReady", unitsReady);
         status.put("allTargetsReady", allTargetsReady);
-        
-
         status.put("requirements", Map.of(
             "units", "All units must be INACTIVE"
         ));
@@ -203,7 +182,6 @@ public class BuildingDeletionService {
     }
 
     public BuildingDeletionRequestDto completeBuildingDeletion(UUID requestId, Authentication auth) {
-        var p = (UserPrincipal) auth.getPrincipal();
         var request = repo.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Building deletion request not found with ID: " + requestId));
         
@@ -211,7 +189,6 @@ public class BuildingDeletionService {
             throw new IllegalStateException("Request must be APPROVED before completion");
         }
         
-
         Map<String, Object> targetsStatus = getBuildingDeletionTargetsStatus(request.getBuildingId());
         boolean allTargetsReady = (Boolean) targetsStatus.get("allTargetsReady");
         
@@ -219,13 +196,11 @@ public class BuildingDeletionService {
             throw new IllegalStateException("All targets must be INACTIVE before completion. Current status: " + targetsStatus);
         }
         
-
         var building = buildingRepository.findById(request.getBuildingId())
                 .orElseThrow(() -> new IllegalArgumentException("Building not found with ID: " + request.getBuildingId()));
         building.setStatus(BuildingStatus.ARCHIVED);
         buildingRepository.save(building);
         
-
         request.setStatus(BuildingDeletionStatus.COMPLETED);
         repo.save(request);
         

@@ -118,13 +118,6 @@ public class VehicleService {
         vehicleRepository.save(vehicle);
     }
 
-    public void hardDeleteVehicle(UUID id) {
-        if (!vehicleRepository.existsById(id)) {
-            throw new IllegalArgumentException("Vehicle not found");
-        }
-        vehicleRepository.deleteById(id);
-    }
-
     public VehicleDto getVehicleById(UUID id) {
         var vehicle = vehicleRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Vehicle not found"));

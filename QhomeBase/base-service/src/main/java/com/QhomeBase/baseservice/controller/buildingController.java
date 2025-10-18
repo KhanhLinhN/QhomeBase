@@ -29,7 +29,6 @@ public class buildingController {
     private final BuildingDeletionService buildingDeletionService;
     private final AuthzService authzService;
 
-    // ========== Building CRUD Operations ==========
 
     @GetMapping
     public ResponseEntity<List<Building>> findAll(@RequestParam(required = false) UUID tenantId) {
@@ -67,7 +66,6 @@ public class buildingController {
         }
     }
 
-    // ========== Building Deletion Operations ==========
 
     @PostMapping("/{buildingId}/do")
     @PreAuthorize("@authz.canRequestDeleteBuilding(#buildingId)")

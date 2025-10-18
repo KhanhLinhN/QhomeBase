@@ -33,19 +33,6 @@ public class VehicleController {
         }
     }
 
-    @PostMapping("/create")
-    @PreAuthorize("@authz.canCreateVehicle(#dto.tenantId())")
-    public ResponseEntity<VehicleDto> registerVehicle(@Valid @RequestBody VehicleCreateDto dto) {
-        try {
-            VehicleDto result = vehicleService.createVehicle(dto);
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
-        } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
     @PutMapping("/{id}")
     @PreAuthorize("@authz.canUpdateVehicle(#id)")
     public ResponseEntity<VehicleDto> updateVehicle(@PathVariable UUID id, @Valid @RequestBody VehicleUpdateDto dto) {
@@ -62,17 +49,6 @@ public class VehicleController {
     public ResponseEntity<Void> deleteVehicle(@PathVariable UUID id) {
         try {
             vehicleService.deleteVehicle(id);
-            return ResponseEntity.ok().build();
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    @DeleteMapping("/{id}/hard")
-    @PreAuthorize("@authz.canDeleteVehicle(#id)")
-    public ResponseEntity<Void> hardDeleteVehicle(@PathVariable UUID id) {
-        try {
-            vehicleService.hardDeleteVehicle(id);
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
