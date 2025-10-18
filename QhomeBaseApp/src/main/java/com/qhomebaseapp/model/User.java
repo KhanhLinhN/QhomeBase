@@ -6,6 +6,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -41,8 +42,44 @@ public class User implements UserDetails {
     @Column(name = "otp_expiry")
     private LocalDateTime otpExpiry;
 
+    @Column(name = "full_name")
+    private String fullName;
+
+    @Column(name = "gender")
+    private String gender;
+
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
     @Column(name = "phone_number")
     private String phoneNumber;
+
+    @Column(name = "avatar_url")
+    private String avatarUrl;
+
+    @Column(name = "apartment_name")
+    private String apartmentName;
+
+    @Column(name = "building_block")
+    private String buildingBlock;
+
+    @Column(name = "floor_number")
+    private Integer floorNumber;
+
+    @Column(name = "unit_number")
+    private String unitNumber;
+
+    @Column(name = "address")
+    private String address;
+
+    @Column(name = "citizen_id")
+    private String citizenId;
+
+    @Column(name = "verified")
+    private Boolean verified = false;
+
+    @Column(name = "last_login")
+    private LocalDateTime lastLogin;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -61,8 +98,6 @@ public class User implements UserDetails {
         this.updatedAt = LocalDateTime.now();
     }
 
-    /* ======================= UserDetails Interface ======================= */
-
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
@@ -74,22 +109,14 @@ public class User implements UserDetails {
     }
 
     @Override
-    public boolean isAccountNonExpired() {
-        return true;
-    }
+    public boolean isAccountNonExpired() { return true; }
 
     @Override
-    public boolean isAccountNonLocked() {
-        return true;
-    }
+    public boolean isAccountNonLocked() { return true; }
 
     @Override
-    public boolean isCredentialsNonExpired() {
-        return true;
-    }
+    public boolean isCredentialsNonExpired() { return true; }
 
     @Override
-    public boolean isEnabled() {
-        return Boolean.TRUE.equals(this.enabled);
-    }
+    public boolean isEnabled() { return Boolean.TRUE.equals(this.enabled); }
 }

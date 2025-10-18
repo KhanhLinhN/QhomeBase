@@ -33,7 +33,7 @@ public class NewsMapper {
                 .createdAt(entity.getCreatedAt())
                 .updatedBy(entity.getUpdatedBy())
                 .updatedAt(entity.getUpdatedAt())
-                .read(isRead)
+                .isRead(isRead)
                 .attachments(entity.getAttachments() != null
                         ? entity.getAttachments().stream()
                         .map(att -> NewsAttachmentDto.builder()

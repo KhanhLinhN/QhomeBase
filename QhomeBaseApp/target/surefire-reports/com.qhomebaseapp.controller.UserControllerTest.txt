@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.qhomebaseapp.controller.UserControllerTest
+-------------------------------------------------------------------------------
+Tests run: 24, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.996 s -- in com.qhomebaseapp.controller.UserControllerTest

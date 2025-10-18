@@ -34,7 +34,7 @@ public class NewsDto {
     private String updatedBy;
     private LocalDateTime updatedAt;
 
-    private boolean read;
+    private boolean isRead;
 
     private List<NewsAttachmentDto> attachments;
 }

@@ -14,7 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
 import java.util.List;
-
+@CrossOrigin(origins = "*")
 @Slf4j
 @RestController
 @RequestMapping("/api/register-service")

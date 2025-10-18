@@ -3,6 +3,7 @@ com\qhomebaseapp\mapper\NewsMapper.class
 com\qhomebaseapp\dto\registrationservice\RegisterServiceRequestResponseDto$RegisterServiceRequestResponseDtoBuilder.class
 com\qhomebaseapp\dto\user\UserResponse.class
 com\qhomebaseapp\dto\user\UserDto.class
+com\qhomebaseapp\config\StaticResourceConfig.class
 com\qhomebaseapp\mapper\RegisterServiceRequestResponseMapper.class
 com\qhomebaseapp\service\token\RefreshTokenServiceImpl.class
 com\qhomebaseapp\repository\UserRepository.class
@@ -15,6 +16,7 @@ com\qhomebaseapp\model\NewsRead$Id.class
 com\qhomebaseapp\service\user\UserDetailsServiceImpl.class
 com\qhomebaseapp\repository\news\NewsRepository.class
 com\qhomebaseapp\security\CustomUserDetails.class
+com\qhomebaseapp\dto\user\UpdateProfileRequest.class
 com\qhomebaseapp\repository\news\NewsReadRepository.class
 com\qhomebaseapp\dto\token\JwtResponse$JwtResponseBuilder.class
 com\qhomebaseapp\exception\GlobalExceptionHandler.class
@@ -24,13 +26,13 @@ com\qhomebaseapp\dto\registrationservice\RegisterServiceRequestDto$RegisterServi
 com\qhomebaseapp\util\JwtKeyService.class
 com\qhomebaseapp\model\NewsRead$NewsReadBuilder.class
 com\qhomebaseapp\model\RegisterServiceRequest.class
+com\qhomebaseapp\config\WebConfig.class
 com\qhomebaseapp\mapper\RegisterServiceRequestMapper.class
 com\qhomebaseapp\dto\registrationservice\RegisterServiceRequestDto.class
 com\qhomebaseapp\mapper\RegisterServiceRequestMapperImpl.class
 com\qhomebaseapp\service\registerregistration\RegisterRegistrationServiceImpl.class
 com\qhomebaseapp\config\RedisConfig.class
 com\qhomebaseapp\service\user\EmailService.class
-com\qhomebaseapp\UserApplication.class
 com\qhomebaseapp\model\RegisterServiceRequest$RegisterServiceRequestBuilder.class
 com\qhomebaseapp\model\News$NewsBuilder.class
 com\qhomebaseapp\dto\news\NewsDto.class
@@ -43,12 +45,15 @@ com\qhomebaseapp\repository\registerregistration\RegisterRegistrationRepoImpl.cl
 com\qhomebaseapp\mapper\RegisterServiceRequestResponseMapperImpl.class
 com\qhomebaseapp\service\news\NewsServiceImpl.class
 com\qhomebaseapp\dto\token\TokenRefreshRequest.class
+com\qhomebaseapp\QhomeApplication.class
 com\qhomebaseapp\util\JwtUtil.class
 com\qhomebaseapp\service\news\NewsService.class
 com\qhomebaseapp\dto\registrationservice\UpdateNewsRequest.class
 com\qhomebaseapp\service\user\UserService.class
 com\qhomebaseapp\model\RefreshToken$RefreshTokenBuilder.class
+com\qhomebaseapp\controller\AuthController.class
 com\qhomebaseapp\repository\token\RefreshTokenRepository.class
+com\qhomebaseapp\service\user\UserServiceImpl.class
 com\qhomebaseapp\dto\news\NewsAttachmentDto.class
 com\qhomebaseapp\dto\registrationservice\CreateNewsRequest.class
 com\qhomebaseapp\repository\registerregistration\RegisterRegistrationRepository.class

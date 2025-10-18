@@ -56,7 +56,9 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/api/auth/request-reset",
                                 "/api/auth/verify-otp",
-                                "/api/auth/confirm-reset"
+                                "/api/auth/confirm-reset",
+                                "/api/auth/refresh-token",
+                                "/uploads/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
@@ -76,13 +78,18 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("your.mobile.app.scheme"));
+
+        config.setAllowedOriginPatterns(List.of("*"));
+
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin"));
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
     }
+
+
+
 }

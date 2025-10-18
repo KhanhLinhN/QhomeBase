@@ -1,65 +1,27 @@
 package com.qhomebaseapp.service.user;
 
 import com.qhomebaseapp.model.User;
-import com.qhomebaseapp.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.Random;
 
-@Service
-@RequiredArgsConstructor
-public class UserService {
+public interface UserService {
 
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    List<User> getAllUsers();
 
-    public List<User> getAllUsers() {
-        return userRepository.findAll();
-    }
+    Optional<User> getUserByEmail(String email);
 
-    public Optional<User> getUserByEmail(String email) {
-        return userRepository.findByEmail(email);
-    }
+    boolean existsByEmail(String email);
 
-    public boolean existsByEmail(String email) {
-        return userRepository.existsByEmail(email);
-    }
+    User saveUser(User user);
 
-    public User saveUser(User user) {
-        if (user.getPassword() != null && !user.getPassword().startsWith("$2a$")) {
-            user.setPassword(passwordEncoder.encode(user.getPassword()));
-        }
-        return userRepository.save(user);
-    }
+    boolean checkPassword(String rawPassword, String encodedPassword);
 
-    public boolean checkPassword(String rawPassword, String encodedPassword) {
-        return passwordEncoder.matches(rawPassword, encodedPassword);
-    }
+    String encodePassword(String rawPassword);
 
-    public String encodePassword(String rawPassword) {
-        return passwordEncoder.encode(rawPassword);
-    }
+    String generateAndSaveOtp(User user);
 
-    public String generateAndSaveOtp(User user) {
-        String otp = String.format("%06d", new Random().nextInt(999999));
-        user.setResetOtp(otp);
-        user.setOtpExpiry(LocalDateTime.now().plusMinutes(3));
-        userRepository.save(user);
-        return otp;
-    }
-    public void sendOtpViaSms(String phoneNumber, String otp) {
-        System.out.println("📲 Gửi OTP " + otp + " đến số: " + phoneNumber);
-    }
+    void sendOtpViaSms(String phoneNumber, String otp);
 
-    public boolean verifyOtp(User user, String otp) {
-        if (user.getResetOtp() == null || user.getOtpExpiry() == null) return false;
-        if (!otp.equals(user.getResetOtp())) return false;
-        return !user.getOtpExpiry().isBefore(LocalDateTime.now());
-    }
+    boolean verifyOtp(User user, String otp);
 }

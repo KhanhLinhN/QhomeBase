@@ -6,8 +6,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface NewsReadRepository extends JpaRepository<NewsRead, NewsRead.Id> {
-
-    long countByUserIdAndReadAtIsNotNull(Long userId);
     @Query("SELECT COUNT(n) FROM News n WHERE n.visibleToAll = true " +
             "AND NOT EXISTS (SELECT 1 FROM NewsRead r WHERE r.newsId = n.id AND r.userId = :userId)")
     long countUnreadByUserId(@Param("userId") Long userId);

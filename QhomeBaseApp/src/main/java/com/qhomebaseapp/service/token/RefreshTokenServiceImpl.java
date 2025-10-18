@@ -31,24 +31,27 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     @Override
     @Transactional
     public RefreshToken createRefreshToken(User user, String deviceId) {
-        refreshTokenRepository.findByUserAndDeviceId(user, deviceId).ifPresent(oldToken -> {
+        final String finalDeviceId = (deviceId == null || deviceId.isBlank()) ? "default" : deviceId;
+
+        refreshTokenRepository.findByUserAndDeviceId(user, finalDeviceId).ifPresent(oldToken -> {
             blacklistToken(oldToken.getToken(), oldToken.getExpiryDate());
-            refreshTokenRepository.deleteByUserAndDevice(user, deviceId); // Xóa trực tiếp
-            log.info("Deleted old refresh token for user {} device {}", user.getEmail(), deviceId);
+            refreshTokenRepository.deleteByUserAndDevice(user, finalDeviceId);
+            log.info("Deleted old refresh token for user {} device {}", user.getEmail(), finalDeviceId);
         });
 
         String tokenValue = jwtUtil.generateRefreshToken(user.getUsername());
         RefreshToken token = RefreshToken.builder()
                 .user(user)
-                .deviceId(deviceId)
+                .deviceId(finalDeviceId)
                 .token(tokenValue)
                 .expiryDate(Instant.now().plusMillis(refreshTokenDurationMs))
                 .build();
 
         RefreshToken saved = refreshTokenRepository.save(token);
-        log.info("Created refresh token for user {} device {}", user.getEmail(), deviceId);
+        log.info("Created refresh token for user {} device {}", user.getEmail(), finalDeviceId);
         return saved;
     }
+
 
     private void blacklistToken(String token, Instant expiry) {
         try {

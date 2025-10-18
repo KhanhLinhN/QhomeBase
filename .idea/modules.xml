@@ -4,6 +4,7 @@
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/QhomeBase.iml" filepath="$PROJECT_DIR$/.idea/QhomeBase.iml" />
       <module fileurl="file://$PROJECT_DIR$/QhomeBaseApp/QhomeBaseApp.iml" filepath="$PROJECT_DIR$/QhomeBaseApp/QhomeBaseApp.iml" />
+      <module fileurl="file://$PROJECT_DIR$/QhomeBaseApp/api-gateway-app/login-service.iml" filepath="$PROJECT_DIR$/QhomeBaseApp/api-gateway-app/login-service.iml" />
     </modules>
   </component>
 </project>
