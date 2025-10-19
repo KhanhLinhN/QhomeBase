@@ -49,50 +49,6 @@ public class AuthController {
     private static final SecureRandom random = new SecureRandom();
     private static final String OTP_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-//    @PostMapping("/login")
-//    public ResponseEntity<?> login(@Valid @RequestBody LoginRequestDto loginRequest,
-//                                   @RequestHeader(value = "X-Device-Id", required = false) String deviceId) {
-//
-//        String email = loginRequest.getEmail();
-//        String password = loginRequest.getPassword();
-//
-//        if (loginAttemptService.isBlocked(email))
-//            return ResponseEntity.status(429).body(Map.of("message", "Too many failed attempts. Try later."));
-//
-//        try {
-//            Authentication authentication = authenticationManager.authenticate(
-//                    new UsernamePasswordAuthenticationToken(email, password)
-//            );
-//            SecurityContextHolder.getContext().setAuthentication(authentication);
-//            loginAttemptService.loginSucceeded(email);
-//        } catch (AuthenticationException e) {
-//            loginAttemptService.loginFailed(email);
-//            log.warn("Login failed for {}", email);
-//            return ResponseEntity.status(401).body(Map.of("message", "Invalid email or password"));
-//        }
-//
-//        User user = userService.getUserByEmail(email)
-//                .orElseThrow(() -> new RuntimeException("User not found after authentication"));
-//
-//        String accessToken = jwtUtil.generateAccessToken(user);
-//        deviceId = (deviceId != null && !deviceId.isBlank()) ? deviceId : "default";
-//
-//        final RefreshToken refreshToken = refreshTokenService.createRefreshToken(user, deviceId);
-//
-//        log.info("User {} logged in from device {}", email, deviceId);
-//
-//        JwtResponse jwtResponse = JwtResponse.builder()
-//                .accessToken(accessToken)
-//                .refreshToken(refreshToken.getToken())
-//                .userId(user.getId())
-//                .username(user.getEmail())
-//                .role(user.getRole())
-//                .build();
-//
-//        return ResponseEntity.ok(jwtResponse);
-//    }
-
-
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequestDto loginRequest,
                                    @RequestHeader(value = "X-Device-Id", required = false) String deviceId) {

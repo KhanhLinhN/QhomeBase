@@ -38,7 +38,6 @@ public class NewsServiceImpl implements NewsService {
             newsPage = newsRepository.findAllByOrderByPublishedAtDesc(pageable);
         }
 
-        // ✅ Map tin tức sang DTO và gắn cờ isRead
         return newsPage.map(n -> {
             boolean isRead = userId != null && newsReadRepository.existsByUserIdAndNewsId(userId, n.getId());
             return newsMapper.toDto(n, isRead);
@@ -53,7 +52,6 @@ public class NewsServiceImpl implements NewsService {
 
         boolean isRead = userId != null && newsReadRepository.existsByUserIdAndNewsId(userId, news.getId());
 
-        // ✅ Nếu chưa đọc thì tự động đánh dấu là đã đọc khi người dùng mở chi tiết
         if (userId != null && !isRead) {
             markAsRead(news.getId(), userId);
             isRead = true;
