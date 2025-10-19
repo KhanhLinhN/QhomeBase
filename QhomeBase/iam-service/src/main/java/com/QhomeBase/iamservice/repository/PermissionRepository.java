@@ -39,3 +39,4 @@ public interface PermissionRepository extends JpaRepository<Permission, String> 
     @Query("SELECT p FROM Permission p WHERE p.code LIKE 'system.%'")
     List<Permission> findSystemServicePermissions();
 }
+

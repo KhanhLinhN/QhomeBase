@@ -7,3 +7,4 @@ INSERT INTO iam.roles (role, description, is_global) VALUES
 ON CONFLICT (role) DO UPDATE SET
     description = EXCLUDED.description,
     is_global = EXCLUDED.is_global;
+

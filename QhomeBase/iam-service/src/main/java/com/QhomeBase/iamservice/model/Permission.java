@@ -49,3 +49,4 @@ public class Permission {
         return this.code.startsWith("system.");
     }
 }
+
