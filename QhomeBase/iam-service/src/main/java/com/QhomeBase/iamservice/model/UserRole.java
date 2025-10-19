@@ -1,27 +1,39 @@
 package com.QhomeBase.iamservice.model;
 
-import jakarta.persistence.*;
-import lombok.*;
-
-import java.util.UUID;
-
-@Entity
-@Table(name = "user_roles", schema = "iam")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-public class UserRole {
-
-    @EmbeddedId
-    private UserRoleId id;
-
-    @Column(name = "granted_at", insertable = false, updatable = false)
-    private java.time.Instant grantedAt;
-
-    @Transient
-    public UUID getUserId() { return id != null ? id.getUserId() : null; }
-
-    @Transient
-    public String getRole() { return id != null ? id.getRole() : null; }
+public enum UserRole {
+    ACCOUNT("Account"),
+    ADMIN("Administrator"),
+    TENANT_OWNER("Tenant Owner"),
+    TECHNICIAN("Technician"),
+    SUPPORTER("Supporter");
+    
+    private final String description;
+    
+    UserRole(String description) {
+        this.description = description;
+    }
+    
+    public String getDescription() {
+        return description;
+    }
+    
+    public boolean isAdmin() {
+        return this == ADMIN;
+    }
+    
+    public boolean isTenantOwner() {
+        return this == TENANT_OWNER;
+    }
+    
+    public boolean isTechnician() {
+        return this == TECHNICIAN;
+    }
+    
+    public boolean isSupporter() {
+        return this == SUPPORTER;
+    }
+    
+    public boolean isAccount() {
+        return this == ACCOUNT;
+    }
 }

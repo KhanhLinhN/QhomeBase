@@ -59,6 +59,7 @@ public class TestController {
     }
 
     @GetMapping("/user-info")
+    @PreAuthorize("@authz.canViewUserInfo()")
     public ResponseEntity<UserInfoResponse> getUserInfo(Authentication authentication) {
         if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal) {
             UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
@@ -103,7 +104,6 @@ public class TestController {
             this.message = message;
         }
 
-        // Getters and setters
         public String getToken() { return token; }
         public void setToken(String token) { this.token = token; }
         public String getMessage() { return message; }
@@ -125,7 +125,6 @@ public class TestController {
             this.permissions = permissions;
         }
 
-        // Getters and setters
         public UUID getUid() { return uid; }
         public void setUid(UUID uid) { this.uid = uid; }
         public String getUsername() { return username; }

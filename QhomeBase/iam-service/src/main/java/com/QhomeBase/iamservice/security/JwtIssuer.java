@@ -3,6 +3,7 @@ package com.QhomeBase.iamservice.security;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -35,7 +36,7 @@ public class JwtIssuer {
     }
     public String issueForService ( UUID uid,
                                     String username,
-                                    UUID tenantId,
+                                    @Nullable UUID tenantId,
                                     List<String> roles,
                                     List<String> perms,
                                     String audiences) {

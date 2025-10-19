@@ -28,7 +28,7 @@ public class JwtVerifier {
             throw new IllegalStateException("JWT_SECRET must be >= 32 bytes");
         this.key = Keys.hmacShaKeyFor(raw);
         this.issuer = issuer;
-        this.expectedAudience = null; // IAM service không check audience
+        this.expectedAudience = null;
     }
     public Claims verify(String token) {
         var builder = Jwts.parserBuilder()
@@ -36,7 +36,7 @@ public class JwtVerifier {
                 .requireIssuer(issuer)
                 .setAllowedClockSkewSeconds(Duration.ofSeconds(30).getSeconds());
         
-        // Chỉ check audience nếu có expectedAudience
+
         if (expectedAudience != null) {
             builder.requireAudience(expectedAudience);
         }
