@@ -20,6 +20,7 @@ D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\util\JwtUtil.jav
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\news\NewsCategoryDto.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\bill\BillStatisticsDto.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\security\LoginAttemptService.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\storage\FileStorageService.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\model\Bill.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\token\RefreshTokenRepository.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\controller\BillController.java
@@ -52,6 +53,7 @@ D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\token\JwtRes
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\registerregistration\RegisterRegistrationRepository.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\controller\NewsController.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\registrationservice\CreateNewsRequest.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\model\RegisterServiceImage.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\controller\RegisterRegistrationController.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\news\NewsDto.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\filter\JwtAuthenticationFilter.java
@@ -61,7 +63,7 @@ D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\UserR
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\security\CustomUserDetails.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\news\NewsService.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\user\ResetPasswordRequest.java
-D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\bill\BillServiceImpl.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\registerregistration\RegisterServiceImageRepository.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\config\WebConfig.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\bill\BillDto.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\exception\GlobalExceptionHandler.java

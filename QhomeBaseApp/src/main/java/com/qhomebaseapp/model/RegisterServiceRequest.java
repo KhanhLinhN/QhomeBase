@@ -1,10 +1,10 @@
 package com.qhomebaseapp.model;
 
-
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "register_service_request", schema = "qhomebaseapp")
@@ -13,6 +13,7 @@ import java.time.OffsetDateTime;
 @AllArgsConstructor
 @Builder
 public class RegisterServiceRequest {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -35,4 +36,31 @@ public class RegisterServiceRequest {
 
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
+
+    @Column(name = "vehicle_type")
+    private String vehicleType; // "Xe máy" hoặc "Ô tô"
+
+    @Column(name = "license_plate")
+    private String licensePlate;
+
+    @Column(name = "vehicle_brand")
+    private String vehicleBrand;
+
+    @Column(name = "vehicle_color")
+    private String vehicleColor;
+
+
+    @OneToMany(mappedBy = "registerServiceRequest", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<RegisterServiceImage> images = new ArrayList<>();
+
+    public void addImage(RegisterServiceImage image) {
+        images.add(image);
+        image.setRegisterServiceRequest(this);
+    }
+
+    public void removeImage(RegisterServiceImage image) {
+        images.remove(image);
+        image.setRegisterServiceRequest(null);
+    }
 }

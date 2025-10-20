@@ -4,12 +4,14 @@ import com.qhomebaseapp.dto.registrationservice.RegisterServiceRequestResponseDt
 import com.qhomebaseapp.model.RegisterServiceRequest;
 import com.qhomebaseapp.model.User;
 import javax.annotation.processing.Generated;
+import org.springframework.stereotype.Component;
 
 @Generated(
     value = "org.mapstruct.ap.MappingProcessor",
-    date = "2025-10-19T15:55:31+0700",
+    date = "2025-10-20T22:47:14+0700",
     comments = "version: 1.5.5.Final, compiler: javac, environment: Java 17.0.11 (Oracle Corporation)"
 )
+@Component
 public class RegisterServiceRequestResponseMapperImpl implements RegisterServiceRequestResponseMapper {
 
     @Override
@@ -28,6 +30,12 @@ public class RegisterServiceRequestResponseMapperImpl implements RegisterService
         registerServiceRequestResponseDto.status( entity.getStatus() );
         registerServiceRequestResponseDto.createdAt( entity.getCreatedAt() );
         registerServiceRequestResponseDto.updatedAt( entity.getUpdatedAt() );
+        registerServiceRequestResponseDto.vehicleType( entity.getVehicleType() );
+        registerServiceRequestResponseDto.licensePlate( entity.getLicensePlate() );
+        registerServiceRequestResponseDto.vehicleBrand( entity.getVehicleBrand() );
+        registerServiceRequestResponseDto.vehicleColor( entity.getVehicleColor() );
+
+        registerServiceRequestResponseDto.imageUrls( mapImages(entity) );
 
         return registerServiceRequestResponseDto.build();
     }

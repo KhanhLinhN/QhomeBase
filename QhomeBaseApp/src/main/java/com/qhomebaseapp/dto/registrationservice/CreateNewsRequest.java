@@ -23,4 +23,10 @@ public class CreateNewsRequest {
     private Boolean visibleToAll;
     private LocalDateTime publishedAt;
     private List<NewsAttachmentDto> attachments;
+    private String vehicleType;
+    private String licensePlate;
+    private String vehicleBrand;
+    private String vehicleColor;
+    private String imageUrl;
+
 }

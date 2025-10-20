@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -20,4 +21,10 @@ public class RegisterServiceRequestResponseDto {
     private OffsetDateTime updatedAt;
     private Long userId;
     private String userEmail;
+    private String vehicleType;
+    private String licensePlate;
+    private String vehicleBrand;
+    private String vehicleColor;
+    private List<String> imageUrls;
+
 }
