@@ -32,8 +32,7 @@ public class AuthService {
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + loginRequestDto.username()));
         log.debug("Found user id={} active={} locked={} failedAttempts={} for username={}",
                 user.getId(), user.isActive(), user.isAccountLocked(), user.getFailedLoginAttempts(), loginRequestDto.username());
-
-        // Temporarily allow plain-text password comparison in addition to encoded match
+    // Temporarily allow plain-text password comparison in addition to encoded match
         boolean passwordMatches = passwordEncoder.matches(loginRequestDto.password(), user.getPasswordHash())
                 || loginRequestDto.password().equals(user.getPasswordHash());
         if (!passwordMatches) {

@@ -26,14 +26,24 @@ public class JwtVerifier {
     }
 
     public Claims verify(String token) {
-        return (Claims) Jwts.parserBuilder()
+        Claims claims = (Claims) Jwts.parserBuilder()
                 .setSigningKey(key)
                 .requireIssuer(issuer)
-                .requireAudience(expectedAudience)
+                // Không check audience vì JWT có audience là list services
+                // .requireAudience(expectedAudience)
                 .setAllowedClockSkewSeconds(Duration.ofMinutes(5).getSeconds())
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
-
+        
+        // Optional: Verify audience contains "base-service"
+        String aud = claims.getAudience();
+        if (aud != null && !aud.contains("base-service")) {
+            throw new io.jsonwebtoken.security.SecurityException(
+                "JWT audience does not include base-service"
+            );
+        }
+        
+        return claims;
     }
 }

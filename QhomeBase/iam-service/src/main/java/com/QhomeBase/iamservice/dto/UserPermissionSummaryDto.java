@@ -33,3 +33,4 @@ public class UserPermissionSummaryDto {
     private int totalEffectivePermissions;
 }
 
+

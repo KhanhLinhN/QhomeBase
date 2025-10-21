@@ -31,7 +31,6 @@ public class AuthController {
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             log.warn("Login failed for user={} tenantId={} reason={}", loginRequest.username(), loginRequest.tenantId(), e.getMessage());
-            // Expose error for debugging temporarily
             return ResponseEntity.badRequest().body(new ErrorResponseDto(e.getMessage()));
         }
     }
