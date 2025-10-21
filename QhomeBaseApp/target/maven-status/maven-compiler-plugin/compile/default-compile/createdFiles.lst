@@ -12,7 +12,9 @@ com\qhomebaseapp\model\Bill.class
 com\qhomebaseapp\model\NewsAttachment$NewsAttachmentBuilder.class
 com\qhomebaseapp\dto\token\JwtResponse.class
 com\qhomebaseapp\model\NewsRead$Id.class
+com\qhomebaseapp\repository\news\NewsAttachmentRepository.class
 com\qhomebaseapp\repository\news\NewsRepository.class
+com\qhomebaseapp\controller\DemoNewsController.class
 com\qhomebaseapp\dto\bill\BillStatisticsDto.class
 com\qhomebaseapp\exception\GlobalExceptionHandler.class
 com\qhomebaseapp\dto\registrationservice\RegisterServiceRequestDto$RegisterServiceRequestDtoBuilder.class
@@ -21,6 +23,7 @@ com\qhomebaseapp\config\WebConfig.class
 com\qhomebaseapp\mapper\RegisterServiceRequestMapper.class
 com\qhomebaseapp\repository\bill\BillRepositoryImpl.class
 com\qhomebaseapp\mapper\RegisterServiceRequestMapperImpl.class
+com\qhomebaseapp\dto\news\NewsNotificationDto.class
 com\qhomebaseapp\config\RedisConfig.class
 com\qhomebaseapp\dto\bill\BillStatisticsDto$BillStatisticsDtoBuilder.class
 com\qhomebaseapp\model\RegisterServiceRequest$RegisterServiceRequestBuilder.class
@@ -43,6 +46,8 @@ com\qhomebaseapp\dto\news\NewsAttachmentDto$NewsAttachmentDtoBuilder.class
 com\qhomebaseapp\model\Payment.class
 com\qhomebaseapp\exception\TokenRefreshException.class
 com\qhomebaseapp\model\User$UserBuilder.class
+com\qhomebaseapp\config\WebSocketConfig.class
+com\qhomebaseapp\dto\news\NewsNotificationDto$NewsNotificationDtoBuilder.class
 com\qhomebaseapp\model\NewsCategory.class
 com\qhomebaseapp\dto\news\NewsCategoryDto$NewsCategoryDtoBuilder.class
 com\qhomebaseapp\model\RefreshToken.class
@@ -53,6 +58,7 @@ com\qhomebaseapp\dto\registrationservice\RegisterServiceRequestResponseDto$Regis
 com\qhomebaseapp\mapper\RegisterServiceRequestResponseMapper.class
 com\qhomebaseapp\dto\news\NewsCategoryDto.class
 com\qhomebaseapp\service\user\UserDetailsServiceImpl.class
+com\qhomebaseapp\service\news\NewsNotifier.class
 com\qhomebaseapp\security\CustomUserDetails.class
 com\qhomebaseapp\dto\user\UpdateProfileRequest.class
 com\qhomebaseapp\repository\news\NewsReadRepository.class
@@ -64,6 +70,7 @@ com\qhomebaseapp\model\NewsRead$NewsReadBuilder.class
 com\qhomebaseapp\dto\registrationservice\RegisterServiceRequestDto.class
 com\qhomebaseapp\service\registerregistration\RegisterRegistrationServiceImpl.class
 com\qhomebaseapp\service\user\EmailService.class
+com\qhomebaseapp\service\news\NotificationService.class
 com\qhomebaseapp\repository\bill\BillRepository.class
 com\qhomebaseapp\filter\JwtAuthenticationFilter.class
 com\qhomebaseapp\model\NewsRead.class
@@ -83,6 +90,7 @@ com\qhomebaseapp\repository\token\RefreshTokenRepository.class
 com\qhomebaseapp\dto\news\NewsAttachmentDto.class
 com\qhomebaseapp\repository\news\NewsCategoryRepository.class
 com\qhomebaseapp\model\NewsAttachment.class
+com\qhomebaseapp\controller\NewsWebSocketController.class
 com\qhomebaseapp\dto\registrationservice\UpdateNewsRequest$UpdateNewsRequestBuilder.class
 com\qhomebaseapp\service\token\RefreshTokenService.class
 com\qhomebaseapp\model\RegisterServiceImage.class

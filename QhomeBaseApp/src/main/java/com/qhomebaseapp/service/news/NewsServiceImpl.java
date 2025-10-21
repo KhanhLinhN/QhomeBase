@@ -11,6 +11,7 @@ import com.qhomebaseapp.repository.UserRepository;
 import com.qhomebaseapp.model.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +27,9 @@ public class NewsServiceImpl implements NewsService {
     private final NewsCategoryRepository newsCategoryRepository;
     private final NewsMapper newsMapper;
     private final UserRepository userRepository;
+
+    // ✅ Thêm SimpMessagingTemplate
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Override
     public Page<NewsDto> listNews(String categoryCode, Long userId, int page, int size) {
@@ -89,5 +93,37 @@ public class NewsServiceImpl implements NewsService {
         return userRepository.findByEmail(email)
                 .map(User::getId)
                 .orElseThrow(() -> new RuntimeException("Authenticated user not found in database."));
+    }
+
+    // ----------------------
+    // ✅ Hàm tạo news mới + broadcast WebSocket
+    @Transactional
+    public NewsDto createNews(News news) {
+        News saved = newsRepository.save(news);
+
+        // gửi real-time notification đến tất cả client đang subscribe
+        messagingTemplate.convertAndSend("/topic/news", newsMapper.toDto(saved, false));
+
+        return newsMapper.toDto(saved, false);
+    }
+
+    // ✅ Optional: Hàm update news nếu cần broadcast
+    @Transactional
+    public NewsDto updateNews(Long id, News updatedNews) {
+        News news = newsRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("News not found"));
+
+        news.setTitle(updatedNews.getTitle());
+        news.setSummary(updatedNews.getSummary());
+        news.setContent(updatedNews.getContent());
+        news.setPublishedAt(updatedNews.getPublishedAt());
+        news.setAttachments(updatedNews.getAttachments());
+
+        News saved = newsRepository.save(news);
+
+        // broadcast nếu muốn thông báo update cho client
+        messagingTemplate.convertAndSend("/topic/news", newsMapper.toDto(saved, false));
+
+        return newsMapper.toDto(saved, false);
     }
 }

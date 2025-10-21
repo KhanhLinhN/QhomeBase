@@ -58,7 +58,8 @@ public class SecurityConfig {
                                 "/api/auth/verify-otp",
                                 "/api/auth/confirm-reset",
                                 "/api/auth/refresh-token",
-                                "/uploads/**"
+                                "/uploads/**",
+                                "/ws/**" // ✅ mở quyền WebSocket
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
@@ -69,7 +70,8 @@ public class SecurityConfig {
                                 .maxAgeInSeconds(31536000)
                                 .includeSubDomains(true))
                         .contentSecurityPolicy(csp -> csp
-                                .policyDirectives("default-src 'self'; img-src 'self' data:; connect-src 'self'"))
+                                // ✅ Cho phép connect đến IP LAN 192.168.x.x
+                                .policyDirectives("default-src 'self'; img-src 'self' data:; connect-src *"))
                 );
 
         return http.build();
@@ -78,9 +80,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-
         config.setAllowedOriginPatterns(List.of("*"));
-
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin"));
         config.setAllowCredentials(true);
@@ -89,7 +89,4 @@ public class SecurityConfig {
         source.registerCorsConfiguration("/**", config);
         return source;
     }
-
-
-
 }

@@ -172,6 +172,11 @@
             </exclusions>
         </dependency>
 
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
         <!-- MOCKITO & BYTE-BUDDY (JDK 25 ready) -->
         <dependency>
             <groupId>org.mockito</groupId>
