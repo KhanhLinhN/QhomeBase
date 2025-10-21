@@ -9,6 +9,8 @@ import com.QhomeBase.iamservice.repository.UserTenantRoleRepository;
 import com.QhomeBase.iamservice.repository.UserRolePermissionRepository;
 import com.QhomeBase.iamservice.security.JwtIssuer;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +20,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtIssuer jwtIssuer;
@@ -26,31 +29,42 @@ public class AuthService {
 
     public LoginResponseDto login(LoginRequestDto loginRequestDto) {
         User user = userRepository.findByUsername(loginRequestDto.username())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid username or password"));
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + loginRequestDto.username()));
+        log.debug("Found user id={} active={} locked={} failedAttempts={} for username={}",
+                user.getId(), user.isActive(), user.isAccountLocked(), user.getFailedLoginAttempts(), loginRequestDto.username());
 
-        if (!passwordEncoder.matches(loginRequestDto.password(), user.getPasswordHash())) {
+        // Temporarily allow plain-text password comparison in addition to encoded match
+        boolean passwordMatches = passwordEncoder.matches(loginRequestDto.password(), user.getPasswordHash())
+                || loginRequestDto.password().equals(user.getPasswordHash());
+        if (!passwordMatches) {
             handleFailedLogin(user);
-            throw new IllegalArgumentException("Invalid username or password");
+            log.warn("Password mismatch for user={} (failedAttempts={})", user.getUsername(), user.getFailedLoginAttempts());
+            throw new IllegalArgumentException("Password mismatch for user: " + loginRequestDto.username());
         }
 
         if (!user.isActive()) {
-            throw new IllegalArgumentException("User account is disabled");
+            log.warn("User account disabled: {}", user.getUsername());
+            throw new IllegalArgumentException("User account is disabled: " + user.getUsername());
         }
 
         if (user.isAccountLocked()) {
-            throw new IllegalArgumentException("User account is locked due to multiple failed login attempts");
+            log.warn("User account locked: {}", user.getUsername());
+            throw new IllegalArgumentException("User account is locked: " + user.getUsername());
         }
 
         List<UUID> tenantIds = userTenantRoleRepository.findTenantIdsByUserId(user.getId());
         if (tenantIds.isEmpty()) {
-            throw new IllegalArgumentException("User has no access to any tenant");
+            log.warn("User has no tenant access: {}", user.getUsername());
+            throw new IllegalArgumentException("User has no access to any tenant: " + user.getUsername());
         }
 
-        UUID selectedTenantId = validateTenantAccess(loginRequestDto.tennantId(), tenantIds);
+        UUID selectedTenantId = validateTenantAccess(loginRequestDto.tenantId(), tenantIds);
         List<String> userRoles = userTenantRoleRepository.findRolesInTenant(user.getId(), selectedTenantId);
+        log.debug("User roles in tenant {}: {}", selectedTenantId, userRoles);
 
         if (userRoles.isEmpty()) {
-            throw new IllegalArgumentException("User has no roles in the selected tenant");
+            log.warn("User has no roles in tenant {}: {}", selectedTenantId, user.getUsername());
+            throw new IllegalArgumentException("User has no roles in the selected tenant: " + selectedTenantId);
         }
 
         user.resetFailedLoginAttempts();
@@ -95,7 +109,7 @@ public class AuthService {
             if (userTenantIds.contains(requestedTenantId)) {
                 return requestedTenantId;
             } else {
-                throw new IllegalArgumentException("User does not have access to the requested tenant");
+                throw new IllegalArgumentException("No access to requested tenant: " + requestedTenantId);
             }
         } else {
             if (userTenantIds.size() == 1) {

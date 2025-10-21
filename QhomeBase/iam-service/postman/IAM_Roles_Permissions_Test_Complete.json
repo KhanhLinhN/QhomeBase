@@ -261,7 +261,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"username\": \"admin\",\n    \"password\": \"password\",\n    \"tenantId\": \"2b5b2af5-9431-4649-8144-35830d866826\"\n}"
+                            "raw": "{\n    \"username\": \"admin_test\",\n    \"password\": \"password\",\n    \"tenantId\": \"2b5b2af5-9431-4649-8144-35830d866826\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/auth/login",
@@ -281,13 +281,14 @@
 							"listen": "test",
 							"script": {
 								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const response = pm.response.json();",
-									"    pm.collectionVariables.set('admin_login_token', response.accessToken);",
-									"    console.log('Admin login token saved:', response.accessToken);",
-									"} else {",
-									"    console.log('Admin login failed:', pm.response.text());",
-									"}"
+                                    "if (pm.response.code === 200) {",
+                                    "    const response = pm.response.json();",
+                                    "    pm.collectionVariables.set('admin_login_token', response.accessToken);",
+                                    "    pm.collectionVariables.set('auth_token', response.accessToken);",
+                                    "    console.log('Admin login token saved:', response.accessToken);",
+                                    "} else {",
+                                    "    console.log('Admin login failed:', pm.response.text());",
+                                    "}"
 								],
 								"type": "text/javascript"
 							}
@@ -307,7 +308,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"username\": \"tenant_owner\",\n    \"password\": \"password\",\n    \"tenantId\": \"2b5b2af5-9431-4649-8144-35830d866826\"\n}"
+                            "raw": "{\n    \"username\": \"tenant_owner_test\",\n    \"password\": \"password\",\n    \"tenantId\": \"2b5b2af5-9431-4649-8144-35830d866826\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/auth/login",
@@ -327,13 +328,14 @@
 							"listen": "test",
 							"script": {
 								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const response = pm.response.json();",
-									"    pm.collectionVariables.set('tenant_owner_login_token', response.accessToken);",
-									"    console.log('Tenant Owner login token saved:', response.accessToken);",
-									"} else {",
-									"    console.log('Tenant Owner login failed:', pm.response.text());",
-									"}"
+                                    "if (pm.response.code === 200) {",
+                                    "    const response = pm.response.json();",
+                                    "    pm.collectionVariables.set('tenant_owner_login_token', response.accessToken);",
+                                    "    pm.collectionVariables.set('auth_token', response.accessToken);",
+                                    "    console.log('Tenant Owner login token saved:', response.accessToken);",
+                                    "} else {",
+                                    "    console.log('Tenant Owner login failed:', pm.response.text());",
+                                    "}"
 								],
 								"type": "text/javascript"
 							}
@@ -353,7 +355,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"username\": \"technician\",\n    \"password\": \"password\",\n    \"tenantId\": \"2b5b2af5-9431-4649-8144-35830d866826\"\n}"
+                            "raw": "{\n    \"username\": \"technician_test\",\n    \"password\": \"password\",\n    \"tenantId\": \"2b5b2af5-9431-4649-8144-35830d866826\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/auth/login",
@@ -373,13 +375,14 @@
 							"listen": "test",
 							"script": {
 								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const response = pm.response.json();",
-									"    pm.collectionVariables.set('technician_login_token', response.accessToken);",
-									"    console.log('Technician login token saved:', response.accessToken);",
-									"} else {",
-									"    console.log('Technician login failed:', pm.response.text());",
-									"}"
+                                    "if (pm.response.code === 200) {",
+                                    "    const response = pm.response.json();",
+                                    "    pm.collectionVariables.set('technician_login_token', response.accessToken);",
+                                    "    pm.collectionVariables.set('auth_token', response.accessToken);",
+                                    "    console.log('Technician login token saved:', response.accessToken);",
+                                    "} else {",
+                                    "    console.log('Technician login failed:', pm.response.text());",
+                                    "}"
 								],
 								"type": "text/javascript"
 							}
@@ -399,7 +402,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"username\": \"supporter\",\n    \"password\": \"password\",\n    \"tenantId\": \"2b5b2af5-9431-4649-8144-35830d866826\"\n}"
+                            "raw": "{\n    \"username\": \"supporter_test\",\n    \"password\": \"password\",\n    \"tenantId\": \"2b5b2af5-9431-4649-8144-35830d866826\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/auth/login",
@@ -419,13 +422,14 @@
 							"listen": "test",
 							"script": {
 								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const response = pm.response.json();",
-									"    pm.collectionVariables.set('supporter_login_token', response.accessToken);",
-									"    console.log('Supporter login token saved:', response.accessToken);",
-									"} else {",
-									"    console.log('Supporter login failed:', pm.response.text());",
-									"}"
+                                    "if (pm.response.code === 200) {",
+                                    "    const response = pm.response.json();",
+                                    "    pm.collectionVariables.set('supporter_login_token', response.accessToken);",
+                                    "    pm.collectionVariables.set('auth_token', response.accessToken);",
+                                    "    console.log('Supporter login token saved:', response.accessToken);",
+                                    "} else {",
+                                    "    console.log('Supporter login failed:', pm.response.text());",
+                                    "}"
 								],
 								"type": "text/javascript"
 							}
@@ -445,7 +449,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"username\": \"account\",\n    \"password\": \"password\",\n    \"tenantId\": \"2b5b2af5-9431-4649-8144-35830d866826\"\n}"
+                            "raw": "{\n    \"username\": \"account_test\",\n    \"password\": \"password\",\n    \"tenantId\": \"2b5b2af5-9431-4649-8144-35830d866826\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/auth/login",
@@ -465,13 +469,14 @@
 							"listen": "test",
 							"script": {
 								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const response = pm.response.json();",
-									"    pm.collectionVariables.set('account_login_token', response.accessToken);",
-									"    console.log('Account login token saved:', response.accessToken);",
-									"} else {",
-									"    console.log('Account login failed:', pm.response.text());",
-									"}"
+                                    "if (pm.response.code === 200) {",
+                                    "    const response = pm.response.json();",
+                                    "    pm.collectionVariables.set('account_login_token', response.accessToken);",
+                                    "    pm.collectionVariables.set('auth_token', response.accessToken);",
+                                    "    console.log('Account login token saved:', response.accessToken);",
+                                    "} else {",
+                                    "    console.log('Account login failed:', pm.response.text());",
+                                    "}"
 								],
 								"type": "text/javascript"
 							}

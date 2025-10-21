@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -19,39 +20,55 @@ public class PermissionService {
     }
 
     public Optional<Permission> getPermissionByCode(String code) {
-        return permissionRepository.findByCode(code);
+        return permissionRepository.findById(code);
     }
 
     public List<Permission> getPermissionsByService(String servicePrefix) {
-        return permissionRepository.findByCodePrefix(servicePrefix);
+        return permissionRepository.findAll().stream()
+                .filter(permission -> permission.getCode().startsWith(servicePrefix + "."))
+                .collect(Collectors.toList());
     }
 
     public List<Permission> getBaseServicePermissions() {
-        return permissionRepository.findBaseServicePermissions();
+        return permissionRepository.findAll().stream()
+                .filter(Permission::isBaseService)
+                .collect(Collectors.toList());
     }
 
     public List<Permission> getIamServicePermissions() {
-        return permissionRepository.findIamServicePermissions();
+        return permissionRepository.findAll().stream()
+                .filter(Permission::isIamService)
+                .collect(Collectors.toList());
     }
 
     public List<Permission> getMaintenanceServicePermissions() {
-        return permissionRepository.findMaintenanceServicePermissions();
+        return permissionRepository.findAll().stream()
+                .filter(Permission::isMaintenanceService)
+                .collect(Collectors.toList());
     }
 
     public List<Permission> getFinanceServicePermissions() {
-        return permissionRepository.findFinanceServicePermissions();
+        return permissionRepository.findAll().stream()
+                .filter(Permission::isFinanceService)
+                .collect(Collectors.toList());
     }
 
     public List<Permission> getDocumentServicePermissions() {
-        return permissionRepository.findDocumentServicePermissions();
+        return permissionRepository.findAll().stream()
+                .filter(Permission::isDocumentService)
+                .collect(Collectors.toList());
     }
 
     public List<Permission> getReportServicePermissions() {
-        return permissionRepository.findReportServicePermissions();
+        return permissionRepository.findAll().stream()
+                .filter(Permission::isReportService)
+                .collect(Collectors.toList());
     }
 
     public List<Permission> getSystemServicePermissions() {
-        return permissionRepository.findSystemServicePermissions();
+        return permissionRepository.findAll().stream()
+                .filter(Permission::isSystemService)
+                .collect(Collectors.toList());
     }
 
     public Permission createPermission(String code, String description) {
@@ -62,7 +79,7 @@ public class PermissionService {
     }
 
     public Permission updatePermission(String code, String description) {
-        Optional<Permission> existingPermission = permissionRepository.findByCode(code);
+        Optional<Permission> existingPermission = permissionRepository.findById(code);
         if (existingPermission.isPresent()) {
             Permission permission = existingPermission.get();
             permission.setDescription(description);

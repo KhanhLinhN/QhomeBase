@@ -2,7 +2,10 @@ package com.QhomeBase.iamservice.controller;
 
 import com.QhomeBase.iamservice.dto.LoginRequestDto;
 import com.QhomeBase.iamservice.dto.LoginResponseDto;
+import com.QhomeBase.iamservice.dto.ErrorResponseDto;
 import com.QhomeBase.iamservice.service.AuthService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -18,14 +21,18 @@ import java.util.UUID;
 public class AuthController {
 
     private final AuthService authService;
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponseDto> login(@Valid @RequestBody LoginRequestDto loginRequest) {
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequestDto loginRequest) {
         try {
             LoginResponseDto response = authService.login(loginRequest);
+            log.info("Login success for user={} tenantId={}", loginRequest.username(), loginRequest.tenantId());
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
+            log.warn("Login failed for user={} tenantId={} reason={}", loginRequest.username(), loginRequest.tenantId(), e.getMessage());
+            // Expose error for debugging temporarily
+            return ResponseEntity.badRequest().body(new ErrorResponseDto(e.getMessage()));
         }
     }
 

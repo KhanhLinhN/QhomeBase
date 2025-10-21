@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
-import java.time.OffsetDateTime;
+
 @Entity
 @Table(name = "roles", schema = "iam")
 @Getter
@@ -20,15 +20,11 @@ import java.time.OffsetDateTime;
 public class Roles {
     @Id
     @Column(name = "role", nullable = false, updatable = false)
-    private String role; // khóa chính
+    private String role;
 
     @Column(name = "description")
     private String description;
 
-    @Column(name = "is_global", nullable = false)
-    private boolean isGlobal = true;
-
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
-
 }

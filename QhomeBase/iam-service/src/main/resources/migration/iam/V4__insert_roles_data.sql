@@ -8,3 +8,6 @@ ON CONFLICT (role) DO UPDATE SET
     description = EXCLUDED.description,
     is_global = EXCLUDED.is_global;
 
+
+
+

@@ -1,5 +1,0 @@
-# Created at 2025-10-06T14:50:16.655
-Boot Manifest-JAR contains absolute paths in classpath 'D:\Capstone\QhomeBase\QhomeBase\iam-service\target\test-classes'
-Hint: <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
-'other' has different root
-

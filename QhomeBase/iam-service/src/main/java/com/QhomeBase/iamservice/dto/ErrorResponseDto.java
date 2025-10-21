@@ -1,0 +1,6 @@
+package com.QhomeBase.iamservice.dto;
+
+public record ErrorResponseDto(String error) {}
+
+
+

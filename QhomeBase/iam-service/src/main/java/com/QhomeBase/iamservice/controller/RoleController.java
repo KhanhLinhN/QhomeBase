@@ -25,6 +25,8 @@ public class RoleController {
     @GetMapping("/all")
     @PreAuthorize("@authz.canViewAllRoles()")
     public ResponseEntity<List<UserRole>> getAllRoles() {
+
+        System.out.println("hi");
         return ResponseEntity.ok(roleService.getAllRoles());
     }
 
@@ -37,7 +39,7 @@ public class RoleController {
     @GetMapping("/tenant/{tenantId}/users")
     @PreAuthorize("@authz.canViewTenantRoles(#tenantId)")
     public ResponseEntity<List<UUID>> getUsersInTenant(@PathVariable UUID tenantId) {
-        List<UUID> userIds = userTenantRoleRepository.findTenantIdsByUserId(tenantId);
+        List<UUID> userIds = userTenantRoleRepository.findUserIdsByTenantId(tenantId);
         return ResponseEntity.ok(userIds);
     }
 
@@ -48,7 +50,7 @@ public class RoleController {
             @PathVariable String role) {
         try {
             UserRole userRole = UserRole.valueOf(role.toUpperCase());
-            List<UUID> userIds = userTenantRoleRepository.findUsersByRoleInTenant(tenantId, userRole.name().toLowerCase());
+            List<UUID> userIds = userTenantRoleRepository.findUserIdsByTenantIdAndRole(tenantId, userRole.name().toLowerCase());
             return ResponseEntity.ok(userIds);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
