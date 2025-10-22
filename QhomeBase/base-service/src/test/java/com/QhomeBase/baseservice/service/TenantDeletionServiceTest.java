@@ -1,5 +1,6 @@
 package com.QhomeBase.baseservice.service;
 
+import com.QhomeBase.baseservice.client.WebSeverClient;
 import com.QhomeBase.baseservice.dto.TenantDeletionRequestDTO;
 import com.QhomeBase.baseservice.model.*;
 import com.QhomeBase.baseservice.repository.BuildingRepository;
@@ -48,6 +49,9 @@ class TenantDeletionServiceTest {
     private BuildingDeletionRequestRepository buildingDeletionRequestRepository;
 
     @Mock
+    private WebSeverClient webSeverClient;
+
+    @Mock
     private Authentication authentication;
 
     @Mock
@@ -67,7 +71,8 @@ class TenantDeletionServiceTest {
                 tenantDeletionRequestRepository, 
                 unitRepository,
                 tenantRepository,
-                buildingDeletionRequestRepository
+                buildingDeletionRequestRepository,
+                webSeverClient
         );
 
         try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {

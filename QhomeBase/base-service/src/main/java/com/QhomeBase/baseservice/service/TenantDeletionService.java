@@ -1,5 +1,6 @@
 package com.QhomeBase.baseservice.service;
 
+import com.QhomeBase.baseservice.client.WebSeverClient;
 import com.QhomeBase.baseservice.dto.TenantDeletionRequestDTO;
 import com.QhomeBase.baseservice.model.*;
 import com.QhomeBase.baseservice.repository.TenantDeletionRequestRepository;
@@ -27,6 +28,7 @@ public class TenantDeletionService {
     private final UnitRepository unitRepository;
     private final TenantRepository tenantRepository;
     private final BuildingDeletionRequestRepository buildingDeletionRequestRepository;
+    private final WebSeverClient webSeverClient;
     public void changeStatusOfBuilding(UUID tenantid) {
         List<Building> Buildings = buildingRepository.findAllByTenantIdOrderByCodeAsc(tenantid);
         for (Building building : Buildings) {
@@ -53,17 +55,17 @@ public class TenantDeletionService {
         if (tenant.isEmpty()) {
             throw new IllegalArgumentException("Tenant not found with ID: " + tenantId);
         }
-        
+
         List<Building> buildings = buildingRepository.findAllByTenantIdOrderByCodeAsc(tenantId);
         boolean changed = false;
-        
+
         for (Building b : buildings) {
             if (b.getStatus() == from) {
                 b.setStatus(to);
                 changed = true;
             }
         }
-        
+
         if (changed) {
             buildingRepository.saveAll(buildings);
         }
@@ -82,6 +84,20 @@ public class TenantDeletionService {
                 return false;
             }
         }
+        
+        
+        try {
+            List<Object> employees = webSeverClient.getEmployeesInTenant(tenantId).block();
+            if (employees != null && !employees.isEmpty()) {
+                System.out.println("Found " + employees.size() + " employees still assigned to tenant " + tenantId + ". Cannot complete deletion yet.");
+                return false;
+            }
+        } catch (Exception e) {
+            // If IAM check fails, do not block deletion - log and continue
+            System.err.println("[TenantDeletion] Warning: error checking employees for tenant " + tenantId + ": " + e.getMessage() + ". Assuming no employees remain.");
+            return true;
+        }
+        
         return true;
     }
 
@@ -89,16 +105,28 @@ public class TenantDeletionService {
         if (!areAllTargetsReached(tenantId)) {
             return;
         }
+        
+      
+        try {
+            System.out.println("Starting tenant deletion process for tenant: " + tenantId);
+            webSeverClient.unassignAllEmployeesFromTenantSync(tenantId);
+            System.out.println("Successfully completed employee unassignment for tenant: " + tenantId);
+        } catch (Exception e) {
+           
+            System.err.println("Warning: Failed to unassign employees from tenant " + tenantId + ": " + e.getMessage());
+        }
+        
         tenantRepository.findById(tenantId).ifPresent(tenant -> {
             tenant.setStatus("ARCHIVED");
             tenant.setDeleted(true);
             tenantRepository.save(tenant);
+          
         });
     }
 
     private void createBuildingDeletionRequests(UUID tenantId, UUID approvedBy) {
         List<Building> buildings = buildingRepository.findAllByTenantIdOrderByCodeAsc(tenantId);
-        
+
         for (Building building : buildings) {
             if (building.getStatus() == BuildingStatus.DELETING) {
                 BuildingDeletionRequest request = BuildingDeletionRequest.builder()
@@ -112,7 +140,7 @@ public class TenantDeletionService {
                         .createdAt(OffsetDateTime.now())
                         .approvedAt(OffsetDateTime.now())
                         .build();
-                
+
                 buildingDeletionRequestRepository.save(request);
             }
         }
@@ -138,30 +166,30 @@ public class TenantDeletionService {
 
     public TenantDeletionRequestDTO completeTenantDeletion(UUID requestId, Authentication auth) {
         var request = repo.findById(requestId).orElseThrow();
-        
+
         if (request.getStatus() != TenantDeletionStatus.APPROVED) {
             throw new IllegalStateException("Request must be APPROVED before completion");
         }
-        
+
         Map<String, Object> targetsStatus = getTenantDeletionTargetsStatus(request.getTenantId());
         boolean allTargetsReady = (Boolean) targetsStatus.get("allTargetsReady");
-        
+
         if (!allTargetsReady) {
             throw new IllegalStateException("All targets must be ARCHIVED/INACTIVE before completion. Current status: " + targetsStatus);
         }
-        
+
         completeTenantDeletionIfReady(request.getTenantId());
-        
+
         request.setStatus(TenantDeletionStatus.COMPLETED);
         repo.save(request);
-        
+
         return toDTO(request);
     }
 
     public TenantDeletionRequestDTO rejectTenantDeletion(UUID requestId, String note, Authentication auth) {
         var p = (UserPrincipal) auth.getPrincipal();
         var request = repo.findById(requestId).orElseThrow();
-        
+
         if (request.getStatus() != TenantDeletionStatus.PENDING) {
             throw new IllegalStateException("Request must be PENDING before rejection");
         }
@@ -171,35 +199,57 @@ public class TenantDeletionService {
         request.setApprovedBy(p.uid());
         request.setApprovedAt(OffsetDateTime.now());
         repo.save(request);
-        
+
         return toDTO(request);
     }
 
     public Map<String, Object> getTenantDeletionTargetsStatus(UUID tenantId) {
         List<Building> buildings = buildingRepository.findAllByTenantIdOrderByCodeAsc(tenantId);
         List<Unit> units = unitRepository.findAllByTenantId(tenantId);
-        
+
         Map<String, Object> status = new HashMap<>();
-        
+
         Map<String, Long> buildingStatusCount = buildings.stream()
                 .collect(Collectors.groupingBy(
-                    b -> b.getStatus().toString(),
-                    Collectors.counting()
+                        b -> b.getStatus().toString(),
+                        Collectors.counting()
                 ));
-        
+
         Map<String, Long> unitStatusCount = units.stream()
                 .collect(Collectors.groupingBy(
-                    u -> u.getStatus().toString(),
-                    Collectors.counting()
+                        u -> u.getStatus().toString(),
+                        Collectors.counting()
                 ));
-        
+
         long buildingsArchived = buildingStatusCount.getOrDefault("ARCHIVED", 0L);
         long unitsInactive = unitStatusCount.getOrDefault("INACTIVE", 0L);
-        
+
         boolean buildingsReady = buildings.size() == 0 || buildingsArchived == buildings.size();
         boolean unitsReady = units.size() == 0 || unitsInactive == units.size();
-        boolean allTargetsReady = buildingsReady && unitsReady;
         
+        
+        int employeesCount = 0;
+        boolean employeesReady = true;
+        try {
+            List<Object> employees = webSeverClient.getEmployeesInTenant(tenantId).block();
+            employeesCount = employees != null ? employees.size() : 0;
+            employeesReady = employeesCount == 0;
+        } catch (Exception e) {
+            // Do not block the flow if IAM is temporarily unavailable
+            System.err.println("[TenantDeletion] Warning: error checking employees for tenant " + tenantId + ": " + e.getMessage() + ". Treating employees as ready (0).");
+            employeesCount = 0;
+            employeesReady = true;
+        }
+        
+        boolean allTargetsReady = buildingsReady && unitsReady && employeesReady;
+
+        // Debug log of computed readiness
+        System.out.println("[TenantDeletion] targets status for tenant=" + tenantId +
+                " | buildingsReady=" + buildingsReady + " (archived=" + buildingsArchived + "/" + buildings.size() + ")" +
+                " | unitsReady=" + unitsReady + " (inactive=" + unitsInactive + "/" + units.size() + ")" +
+                " | employeesReady=" + employeesReady + " (count=" + employeesCount + ")" +
+                " | allTargetsReady=" + allTargetsReady);
+
         status.put("buildings", buildingStatusCount);
         status.put("units", unitStatusCount);
         status.put("totalBuildings", buildings.size());
@@ -208,15 +258,18 @@ public class TenantDeletionService {
         status.put("unitsInactive", unitsInactive);
         status.put("buildingsReady", buildingsReady);
         status.put("unitsReady", unitsReady);
+        status.put("employeesCount", employeesCount);
+        status.put("employeesReady", employeesReady);
         status.put("allTargetsReady", allTargetsReady);
         status.put("requirements", Map.of(
-            "buildings", "All buildings must be ARCHIVED",
-            "units", "All units must be INACTIVE"
+                "buildings", "All buildings must be ARCHIVED",
+                "units", "All units must be INACTIVE",
+                "employees", "All employees must be unassigned from tenant"
         ));
-        
+
         return status;
     }
-    
+
     private static TenantDeletionRequestDTO toDTO(TenantDeletionRequest e) {
         return new TenantDeletionRequestDTO(
                 e.getId(), e.getTenantId(), e.getRequestedBy(), e.getApprovedBy(),
@@ -261,7 +314,7 @@ public class TenantDeletionService {
         e.setApprovedAt(OffsetDateTime.now());
         e.setStatus(TenantDeletionStatus.APPROVED);
         repo.save(e);
-        
+
         return toDTO(e);
     }
 

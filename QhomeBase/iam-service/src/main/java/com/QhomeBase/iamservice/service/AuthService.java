@@ -52,12 +52,15 @@ public class AuthService {
         }
 
         List<UUID> tenantIds = userTenantRoleRepository.findTenantIdsByUserId(user.getId());
+        log.debug("User {} has access to {} tenants: {}", user.getUsername(), tenantIds.size(), tenantIds);
+        
         if (tenantIds.isEmpty()) {
             log.warn("User has no tenant access: {}", user.getUsername());
             throw new IllegalArgumentException("User has no access to any tenant: " + user.getUsername());
         }
 
         UUID selectedTenantId = validateTenantAccess(loginRequestDto.tenantId(), tenantIds);
+        log.debug("Selected tenant for user {}: {} (requested: {})", user.getUsername(), selectedTenantId, loginRequestDto.tenantId());
         List<String> userRoles = userTenantRoleRepository.findRolesInTenant(user.getId(), selectedTenantId);
         log.debug("User roles in tenant {}: {}", selectedTenantId, userRoles);
 

@@ -23,7 +23,12 @@ public class EmployeeRoleManagementController {
     private final EmployeeRoleManagementService employeeRoleManagementService;
 
 
-
+    @PostMapping("/{tenantId}/employees/unassign-all")
+    @PreAuthorize("@authz.canRemoveEmployeeRole(#tenantId, T(java.util.UUID).randomUUID())")
+    public ResponseEntity<Void> unassignAllEmployeesFromTenant(@PathVariable UUID tenantId) {
+            employeeRoleManagementService.unassignAllEmployeesFromTenant(tenantId);
+            return ResponseEntity.ok().build();
+    }
 
 
     @GetMapping("/tenant/{tenantId}")

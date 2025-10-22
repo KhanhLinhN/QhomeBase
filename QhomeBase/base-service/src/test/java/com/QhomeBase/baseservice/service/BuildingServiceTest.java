@@ -6,6 +6,7 @@ import com.QhomeBase.baseservice.dto.BuildingUpdateReq;
 import com.QhomeBase.baseservice.model.Building;
 import com.QhomeBase.baseservice.model.BuildingStatus;
 import com.QhomeBase.baseservice.repository.BuildingRepository;
+import com.QhomeBase.baseservice.repository.TenantRepository;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,9 @@ class BuildingServiceTest {
     private BuildingRepository buildingRepository;
     
     @Mock 
+    private TenantRepository tenantRepository;
+    
+    @Mock 
     private Authentication authentication;
     
     @Mock 
@@ -50,7 +54,7 @@ class BuildingServiceTest {
         testBuildingId = UUID.randomUUID();
         testUsername = "testuser";
 
-        buildingService = new BuildingService(buildingRepository);
+        buildingService = new BuildingService(buildingRepository, tenantRepository);
 
         when(authentication.getPrincipal()).thenReturn(userPrincipal);
         when(userPrincipal.tenant()).thenReturn(testTenantId);
@@ -86,7 +90,7 @@ class BuildingServiceTest {
         when(buildingRepository.save(any(Building.class)))
                 .thenReturn(savedBuilding);
 
-        BuildingDto result = buildingService.createBuilding(request, authentication);
+        BuildingDto result = buildingService.createBuilding(request, testTenantId, testUsername);
 
         assertNotNull(result);
         assertEquals(testBuildingId, result.id());
@@ -156,7 +160,7 @@ class BuildingServiceTest {
         BuildingCreateReq request = new BuildingCreateReq(null, "Valid address");
 
         assertThrows(NullPointerException.class,
-                () -> buildingService.createBuilding(request, authentication));
+                () -> buildingService.createBuilding(request, testTenantId, testUsername));
 
         verifyNoInteractions(buildingRepository);
     }
@@ -166,7 +170,7 @@ class BuildingServiceTest {
         BuildingCreateReq request = new BuildingCreateReq("", "Valid address");
 
         assertThrows(IllegalArgumentException.class,
-                () -> buildingService.createBuilding(request, authentication));
+                () -> buildingService.createBuilding(request, testTenantId, testUsername));
 
         verifyNoInteractions(buildingRepository);
     }
@@ -177,7 +181,7 @@ class BuildingServiceTest {
         BuildingCreateReq request = new BuildingCreateReq(longName, "Valid address");
 
         assertThrows(IllegalArgumentException.class,
-                () -> buildingService.createBuilding(request, authentication));
+                () -> buildingService.createBuilding(request, testTenantId, testUsername));
 
         verifyNoInteractions(buildingRepository);
     }
@@ -188,7 +192,7 @@ class BuildingServiceTest {
         BuildingCreateReq request = new BuildingCreateReq("Valid name", longAddress);
 
         assertThrows(IllegalArgumentException.class,
-                () -> buildingService.createBuilding(request, authentication));
+                () -> buildingService.createBuilding(request, testTenantId, testUsername));
 
         verifyNoInteractions(buildingRepository);
     }

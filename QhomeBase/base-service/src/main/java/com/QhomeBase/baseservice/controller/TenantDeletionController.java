@@ -80,6 +80,9 @@ public class TenantDeletionController {
     @GetMapping("/my-requests")
     public ResponseEntity<List<TenantDeletionRequestDTO>> getMyTenantDeletionRequests(Authentication auth) {
         var p = (UserPrincipal) auth.getPrincipal();
+        if (p.tenant() == null) {
+            return ResponseEntity.badRequest().build();
+        }
         return ResponseEntity.ok(tenantDeletionRequestService.getTenantDeletionRequestsByTenantId(p.tenant()));
     }
 

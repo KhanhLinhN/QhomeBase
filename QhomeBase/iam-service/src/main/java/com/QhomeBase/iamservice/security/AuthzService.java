@@ -360,6 +360,12 @@ public class AuthzService {
         return sameTenant && okRole;
     }
     
+    public boolean canManageTenantEmployees(UUID tenantId) {
+        boolean sameTenant = sameTenant(tenantId);
+        boolean okRole = hasPerm("iam.employee.manage") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        return sameTenant && okRole;
+    }
+    
     public boolean canManageBuilding(UUID tenantId) {
         boolean sameTenant = sameTenant(tenantId);
         boolean okRole = hasPerm("base.building.manage") || hasAnyRole(Set.of("admin", "tenant_owner"));

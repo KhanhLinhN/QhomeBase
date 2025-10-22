@@ -31,6 +31,18 @@ public class EmployeeRoleManagementService {
     private final RolesRepository rolesRepository;
 
 
+    @Transactional
+    public void unassignAllEmployeesFromTenant(UUID tenantId) {
+        List<UserTenantRole> tenantRoles = userTenantRoleRepository.findByTenantId(tenantId);
+
+        if (!tenantRoles.isEmpty()) {
+            userTenantRoleRepository.deleteAll(tenantRoles);
+        }
+
+
+        userRolePermissionRepository.deleteByTenantId(tenantId);
+    }
+
     public List<EmployeeRoleDto> getEmployeesInTenant(UUID tenantId) {
         List<UUID> userIds = userTenantRoleRepository.findUserIdsByTenantId(tenantId);
         return userRepository.findAllById(userIds)

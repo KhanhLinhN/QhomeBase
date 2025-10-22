@@ -86,6 +86,10 @@ public class BuildingService {
     public BuildingDto updateBuilding(UUID buildingId, BuildingUpdateReq req, Authentication auth) {
         var u = (UserPrincipal) auth.getPrincipal();
         
+        if (u.tenant() == null) {
+            throw new IllegalArgumentException("User has no tenant assigned");
+        }
+        
         if (!tenantRepository.existsById(u.tenant())) {
             throw new IllegalArgumentException("Tenant with ID " + u.tenant() + " does not exist");
         }

@@ -26,7 +26,7 @@ public class UserPermissionSummaryDto {
     private int temporaryGrants;
     private int temporaryDenies;
     
-    // For frontend permission management UI
+   
     private List<String> inheritedFromRoles;   // Permissions from roles
     private List<String> grantedPermissions;   // Direct grants (permission codes)
     private List<String> deniedPermissions;    // Direct denies (permission codes)

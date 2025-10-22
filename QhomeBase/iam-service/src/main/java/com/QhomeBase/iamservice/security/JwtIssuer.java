@@ -47,7 +47,7 @@ public class JwtIssuer {
                 .setExpiration(new Date(System.currentTimeMillis() + ttlMinutes*60*1000))
                 .setAudience(audiences)
                 .claim("uid", uid.toString())
-                .claim("tenant", tenantId.toString());
+                .claim("tenant", tenantId != null ? tenantId.toString() : null);
         builder.claim("roles", new ArrayList<>(roles));
         builder.claim("perms", new ArrayList<>(perms));
         return builder.signWith(key, SignatureAlgorithm.HS256).compact();

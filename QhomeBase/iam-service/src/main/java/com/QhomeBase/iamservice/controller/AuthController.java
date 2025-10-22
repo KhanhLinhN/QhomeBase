@@ -27,7 +27,8 @@ public class AuthController {
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequestDto loginRequest) {
         try {
             LoginResponseDto response = authService.login(loginRequest);
-            log.info("Login success for user={} tenantId={}", loginRequest.username(), loginRequest.tenantId());
+            log.info("Login success for user={} requestedTenantId={} selectedTenantId={}", 
+                    loginRequest.username(), loginRequest.tenantId(), response.userInfo().tenantId());
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             log.warn("Login failed for user={} tenantId={} reason={}", loginRequest.username(), loginRequest.tenantId(), e.getMessage());

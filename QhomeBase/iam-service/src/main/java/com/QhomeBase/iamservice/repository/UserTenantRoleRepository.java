@@ -130,4 +130,13 @@ public interface UserTenantRoleRepository extends JpaRepository<UserTenantRole, 
         WHERE ur.user_id = :userId
         """, nativeQuery = true)
     List<String> findGlobalRolesByUserId(@Param("userId") UUID userId);
+
+    List<UserTenantRole> findByTenantId(@Param("tenantId") UUID tenantId);
+
+    @Query(value = """
+    select utr
+        from iam.user_tenant_roles utr
+    where utr.tenand_id = :tenantId And utr.user_id = :userId
+""", nativeQuery = true)
+    List<UserTenantRole> findByUserIdAndTenantId(@Param("userId") UUID userI, @Param("tenantId") UUID tenantId);
 }
