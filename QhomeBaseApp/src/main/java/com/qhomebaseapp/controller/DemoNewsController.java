@@ -7,6 +7,7 @@ import com.qhomebaseapp.model.NewsAttachment;
 import com.qhomebaseapp.repository.news.NewsAttachmentRepository;
 import com.qhomebaseapp.repository.news.NewsRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -26,28 +27,41 @@ public class DemoNewsController {
     private final NewsAttachmentRepository newsAttachmentRepository;
 
     @PostMapping("/send-news-notification")
-    public String sendNewsNotification(
+    public ResponseEntity<NewsNotificationDto> sendNewsNotification(
             @RequestParam String title,
             @RequestParam String summary,
+            @RequestParam(required = false) String content,
+            @RequestParam(required = false) String author,
+            @RequestParam(required = false) String source,
+            @RequestParam(required = false) Boolean pinned,
+            @RequestParam(required = false) Boolean visibleToAll,
+            @RequestParam(required = false) String createdBy,
             @RequestParam(required = false) Long categoryId,
             @RequestPart(required = false) List<MultipartFile> files
     ) throws IOException {
 
-        // 1️⃣ Tạo News
+        if (title == null || title.trim().isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+
         News news = News.builder()
                 .title(title)
                 .summary(summary)
-                .content(summary)
+                .content(content != null ? content : summary)
+                .author(author)
+                .source(source)
+                .pinned(pinned != null ? pinned : false)
+                .visibleToAll(visibleToAll != null ? visibleToAll : true)
+                .createdBy(createdBy)
+                .createdAt(LocalDateTime.now())
                 .publishedAt(LocalDateTime.now())
-                .visibleToAll(true)
-                .pinned(false)
                 .build();
+
         newsRepository.save(news);
 
-        // 2️⃣ Xử lý files nếu có
         List<NewsAttachmentDto> attachments = new ArrayList<>();
+
         if (files != null && !files.isEmpty()) {
-            // Thư mục uploads/newsAttachments
             String projectDir = new File("").getAbsolutePath();
             String folderPath = projectDir + File.separator + "uploads" + File.separator + "newsAttachments";
             File folder = new File(folderPath);
@@ -57,11 +71,10 @@ public class DemoNewsController {
                 File destFile = new File(folder, file.getOriginalFilename());
                 file.transferTo(destFile);
 
-                // Lưu attachment vào DB
                 NewsAttachment attachment = NewsAttachment.builder()
                         .news(news)
                         .filename(file.getOriginalFilename())
-                        .url("/uploads/newsAttachments/" + file.getOriginalFilename()) // URL public
+                        .url("/uploads/newsAttachments/" + file.getOriginalFilename())
                         .build();
                 newsAttachmentRepository.save(attachment);
 
@@ -75,17 +88,17 @@ public class DemoNewsController {
             }
         }
 
-        // 3️⃣ Tạo DTO và gửi qua websocket
         NewsNotificationDto dto = NewsNotificationDto.builder()
                 .newsId(news.getId())
-                .title(title)
-                .summary(summary)
+                .title(news.getTitle())
+                .summary(news.getSummary())
                 .publishedAt(news.getPublishedAt())
                 .attachments(attachments)
                 .build();
 
+
         newsWebSocketController.sendNotification(dto);
 
-        return "News created with ID=" + news.getId();
+        return ResponseEntity.ok(dto);
     }
 }

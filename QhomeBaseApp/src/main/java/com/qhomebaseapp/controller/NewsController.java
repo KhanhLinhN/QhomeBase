@@ -10,6 +10,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
 @CrossOrigin(origins = "*")
 @Slf4j
 @RestController
@@ -82,4 +85,17 @@ public class NewsController {
 
         return ResponseEntity.ok(count);
     }
+
+    @GetMapping("/unread")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<NewsDto>> getUnread(Authentication authentication) {
+        Long userId = getAuthenticatedUserId(authentication);
+        if (userId == null) {
+            return ResponseEntity.status(401).body(List.of());
+        }
+        List<NewsDto> unreadNews = newsService.listUnread(userId);
+        return ResponseEntity.ok(unreadNews);
+    }
+
+
 }

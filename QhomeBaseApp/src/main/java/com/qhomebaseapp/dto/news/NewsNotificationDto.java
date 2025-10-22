@@ -18,4 +18,8 @@ public class NewsNotificationDto {
     private String summary;
     private LocalDateTime publishedAt;
     private List<NewsAttachmentDto> attachments;
+    private String author;
+    private String source;
+    private Boolean pinned;
+    private Boolean visibleToAll;
 }

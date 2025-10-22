@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.Principal;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -27,8 +29,6 @@ public class NewsServiceImpl implements NewsService {
     private final NewsCategoryRepository newsCategoryRepository;
     private final NewsMapper newsMapper;
     private final UserRepository userRepository;
-
-    // ✅ Thêm SimpMessagingTemplate
     private final SimpMessagingTemplate messagingTemplate;
 
     @Override
@@ -75,6 +75,14 @@ public class NewsServiceImpl implements NewsService {
                     .readAt(LocalDateTime.now())
                     .build();
             newsReadRepository.save(read);
+
+            messagingTemplate.convertAndSend(
+                    "/topic/notifications/" + userId,
+                    Map.of(
+                            "newsId", newsId,
+                            "isRead", true
+                    )
+            );
         }
     }
 
@@ -95,8 +103,6 @@ public class NewsServiceImpl implements NewsService {
                 .orElseThrow(() -> new RuntimeException("Authenticated user not found in database."));
     }
 
-    // ----------------------
-    // ✅ Hàm tạo news mới + broadcast WebSocket
     @Transactional
     public NewsDto createNews(News news) {
         News saved = newsRepository.save(news);
@@ -107,7 +113,6 @@ public class NewsServiceImpl implements NewsService {
         return newsMapper.toDto(saved, false);
     }
 
-    // ✅ Optional: Hàm update news nếu cần broadcast
     @Transactional
     public NewsDto updateNews(Long id, News updatedNews) {
         News news = newsRepository.findById(id)
@@ -121,9 +126,20 @@ public class NewsServiceImpl implements NewsService {
 
         News saved = newsRepository.save(news);
 
-        // broadcast nếu muốn thông báo update cho client
         messagingTemplate.convertAndSend("/topic/news", newsMapper.toDto(saved, false));
 
         return newsMapper.toDto(saved, false);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<NewsDto> listUnread(Long userId) {
+        Pageable pageable = Pageable.unpaged();
+        Page<News> unreadNewsPage = newsRepository.findUnreadNewsByUserId(userId, pageable);
+
+        return unreadNewsPage.stream()
+                .map(n -> newsMapper.toDto(n, false))
+                .toList();
+    }
+
 }

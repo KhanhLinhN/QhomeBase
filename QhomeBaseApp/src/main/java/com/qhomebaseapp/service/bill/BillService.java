@@ -6,6 +6,7 @@ import com.qhomebaseapp.model.User;
 import com.qhomebaseapp.repository.bill.BillRepository;
 import com.qhomebaseapp.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -22,6 +23,7 @@ public class BillService {
 
     private final BillRepository billRepository;
     private final UserRepository userRepository;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public List<Bill> getUnpaidBillsByUserId(Long userId) {
         User user = userRepository.findById(userId)
@@ -35,18 +37,6 @@ public class BillService {
         return billRepository.findByUserAndStatus(user, "PAID");
     }
 
-    public Bill payBill(Long billId, Long userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        Bill bill = billRepository.findById(billId)
-                .filter(b -> b.getUser().getId().equals(userId))
-                .orElseThrow(() -> new RuntimeException("Bill not found"));
-
-        bill.setStatus("PAID");
-        bill.setPaymentDate(LocalDateTime.now());
-        return billRepository.save(bill);
-    }
 
     public Bill getBillDetail(Long billId, Long userId) {
         User user = userRepository.findById(userId)
@@ -56,6 +46,7 @@ public class BillService {
                 .filter(b -> b.getUser().getId().equals(userId))
                 .orElseThrow(() -> new RuntimeException("Bill not found"));
     }
+
     public List<BillStatisticsDto> getStatisticsByUserId(Long userId, String billTypeFilter) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -91,6 +82,7 @@ public class BillService {
                 .sorted(Comparator.comparing(BillStatisticsDto::getMonth))
                 .toList();
     }
+
     public List<Bill> getBillsByMonth(Long userId, String month, String billTypeFilter) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -121,5 +113,28 @@ public class BillService {
         return bills;
     }
 
+    public Bill payBill(Long billId, Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Bill bill = billRepository.findById(billId)
+                .filter(b -> b.getUser().getId().equals(userId))
+                .orElseThrow(() -> new RuntimeException("Bill not found"));
+
+        bill.setStatus("PAID");
+        bill.setPaymentDate(LocalDateTime.now());
+        Bill savedBill = billRepository.save(bill);
+
+        // gửi event real-time cho user
+        messagingTemplate.convertAndSend(
+                "/topic/bills/" + userId,
+                Map.of(
+                        "billId", savedBill.getId(),
+                        "status", savedBill.getStatus()
+                )
+        );
+
+        return savedBill;
+    }
 
 }

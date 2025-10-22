@@ -11,18 +11,18 @@ import com.qhomebaseapp.repository.UserRepository;
 import com.qhomebaseapp.repository.registerregistration.RegisterRegistrationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
-
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -130,5 +130,13 @@ public class RegisterRegistrationServiceImpl implements RegisterRegistrationServ
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error uploading images: " + e.getMessage());
         }
+    }
+
+    @Override
+    public Page<RegisterServiceRequestResponseDto> getByUserIdPaginated(Long userId, int page, int size) {
+        Page<RegisterServiceRequest> pageResult =
+                repository.findByUser_IdOrderByCreatedAtDesc(userId, PageRequest.of(page, size));
+
+        return pageResult.map(registerServiceRequestResponseMapper::toDto);
     }
 }

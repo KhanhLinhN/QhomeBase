@@ -6,6 +6,7 @@ import com.qhomebaseapp.security.CustomUserDetails;
 import com.qhomebaseapp.service.registerregistration.RegisterRegistrationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -82,4 +83,29 @@ public class RegisterRegistrationController {
         }
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found in authentication");
     }
+
+    @GetMapping("/me/paginated")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> getByUserPaginated(
+            Authentication authentication,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        Long userId = getUserIdFromAuthentication(authentication);
+
+        // Spring Pageable index bắt đầu từ 0
+        int pageIndex = page > 0 ? page - 1 : 0;
+
+        Page<RegisterServiceRequestResponseDto> result = service.getByUserIdPaginated(userId, pageIndex, size);
+
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Danh sách thẻ xe đã đăng ký",
+                "data", result.getContent(),
+                "totalPages", result.getTotalPages(),
+                "totalElements", result.getTotalElements(),
+                "currentPage", page
+        ));
+    }
+
 }

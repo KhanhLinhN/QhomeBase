@@ -1,4 +1,5 @@
 com\qhomebaseapp\service\registerregistration\RegisterRegistrationService.class
+com\qhomebaseapp\event\NotificationEvent.class
 com\qhomebaseapp\mapper\NewsMapper.class
 com\qhomebaseapp\dto\user\UserResponse.class
 com\qhomebaseapp\dto\user\UserDto.class
@@ -58,7 +59,6 @@ com\qhomebaseapp\dto\registrationservice\RegisterServiceRequestResponseDto$Regis
 com\qhomebaseapp\mapper\RegisterServiceRequestResponseMapper.class
 com\qhomebaseapp\dto\news\NewsCategoryDto.class
 com\qhomebaseapp\service\user\UserDetailsServiceImpl.class
-com\qhomebaseapp\service\news\NewsNotifier.class
 com\qhomebaseapp\security\CustomUserDetails.class
 com\qhomebaseapp\dto\user\UpdateProfileRequest.class
 com\qhomebaseapp\repository\news\NewsReadRepository.class
@@ -70,8 +70,8 @@ com\qhomebaseapp\model\NewsRead$NewsReadBuilder.class
 com\qhomebaseapp\dto\registrationservice\RegisterServiceRequestDto.class
 com\qhomebaseapp\service\registerregistration\RegisterRegistrationServiceImpl.class
 com\qhomebaseapp\service\user\EmailService.class
-com\qhomebaseapp\service\news\NotificationService.class
 com\qhomebaseapp\repository\bill\BillRepository.class
+com\qhomebaseapp\event\BillEvent.class
 com\qhomebaseapp\filter\JwtAuthenticationFilter.class
 com\qhomebaseapp\model\NewsRead.class
 com\qhomebaseapp\controller\BillController.class

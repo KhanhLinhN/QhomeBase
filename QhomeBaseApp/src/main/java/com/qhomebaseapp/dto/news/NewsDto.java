@@ -14,27 +14,20 @@ import java.util.List;
 @Builder
 public class NewsDto {
     private Long id;
-
     private String categoryCode;
     private String categoryName;
-
     private String title;
     private String summary;
     private String content;
-
     private String author;
     private String source;
-
     private LocalDateTime publishedAt;
     private Boolean pinned;
     private Boolean visibleToAll;
-
     private String createdBy;
     private LocalDateTime createdAt;
     private String updatedBy;
     private LocalDateTime updatedAt;
-
     private boolean isRead;
-
     private List<NewsAttachmentDto> attachments;
 }

@@ -9,7 +9,6 @@ D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\mapper\NewsMappe
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\registerregistration\RegisterRegistrationService.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\token\RefreshTokenService.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\news\NewsNotificationDto.java
-D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\news\NewsNotifier.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\registrationservice\UpdateNewsRequest.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\user\UserService.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\news\NewsAttachmentDto.java
@@ -38,8 +37,8 @@ D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\token\Re
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\user\UpdateProfileRequest.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\model\User.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\model\NewsRead.java
-D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\news\NotificationService.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\bill\BillRepositoryImpl.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\event\BillEvent.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\controller\AuthController.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\registerregistration\RegisterRegistrationRepoImpl.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\controller\UserController.java
@@ -66,6 +65,7 @@ D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\news\NewsDto
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\filter\JwtAuthenticationFilter.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\model\News.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\bill\BillRepository.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\event\NotificationEvent.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\UserRepository.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\security\CustomUserDetails.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\news\NewsService.java
