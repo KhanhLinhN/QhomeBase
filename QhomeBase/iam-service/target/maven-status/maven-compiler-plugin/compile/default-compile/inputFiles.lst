@@ -66,6 +66,7 @@ D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservi
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\EmployeeManagementService.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\EmployeeRoleManagementService.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\PermissionService.java
+D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\RolePermissionService.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\RoleService.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\TenantRolePermissionService.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\UserGrantService.java

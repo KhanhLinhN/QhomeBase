@@ -3,6 +3,7 @@ package com.QhomeBase.iamservice.controller;
 import com.QhomeBase.iamservice.dto.UserInfoDto;
 import com.QhomeBase.iamservice.repository.UserRepository;
 import com.QhomeBase.iamservice.repository.UserRolePermissionRepository;
+import com.QhomeBase.iamservice.repository.UserTenantRoleRepository;
 import com.QhomeBase.iamservice.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,7 @@ public class UserController {
     private final UserRepository userRepository;
     private final AuthService authService;
     private final UserRolePermissionRepository userRolePermissionRepository;
+    private final UserTenantRoleRepository userTenantRoleRepository;
 
     @GetMapping("/{userId}")
     @PreAuthorize("@authz.canViewUser(#userId)")
@@ -95,6 +97,32 @@ public class UserController {
                     return ResponseEntity.ok(status);
                 })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/available-staff")
+    @PreAuthorize("@authz.canViewAllUsers()")
+    public ResponseEntity<List<UserInfoDto>> getAvailableStaff() {
+        try {
+            List<UserInfoDto> availableStaff = userRepository.findAvailableStaff()
+                    .stream()
+                    .map(user -> {
+                        List<String> roles = userTenantRoleRepository.findGlobalRolesByUserId(user.getId());
+                        
+                        return new UserInfoDto(
+                                user.getId().toString(),
+                                user.getUsername(),
+                                user.getEmail(),
+                                null,
+                                null,
+                                roles,
+                                List.of()
+                        );
+                    })
+                    .toList();
+            return ResponseEntity.ok(availableStaff);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     public record UserStatusResponse(

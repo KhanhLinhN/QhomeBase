@@ -13,9 +13,7 @@ import java.util.UUID;
 @Repository
 public interface UserRepository extends JpaRepository<User, UUID> {
     
-    /**
-     * Tìm user theo tenant ID thông qua user_tenant_roles
-     */
+
     @Query(value = """
         SELECT DISTINCT u.* FROM iam.users u
         JOIN iam.user_tenant_roles utr ON u.id = utr.user_id
@@ -23,9 +21,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
         """, nativeQuery = true)
     List<User> findByTenantId(@Param("tenantId") UUID tenantId);
     
-    /**
-     * Tìm user theo tenant ID và role
-     */
+
     @Query(value = """
         SELECT DISTINCT u.* FROM iam.users u
         JOIN iam.user_tenant_roles utr ON u.id = utr.user_id
@@ -33,19 +29,13 @@ public interface UserRepository extends JpaRepository<User, UUID> {
         """, nativeQuery = true)
     List<User> findByTenantIdAndRole(@Param("tenantId") UUID tenantId, @Param("roleName") String roleName);
     
-    /**
-     * Tìm user theo username
-     */
+
     Optional<User> findByUsername(String username);
     
-    /**
-     * Tìm user theo email
-     */
+
     Optional<User> findByEmail(String email);
     
-    /**
-     * Tìm user theo username và tenant ID thông qua user_tenant_roles
-     */
+
     @Query(value = """
         SELECT DISTINCT u.* FROM iam.users u
         JOIN iam.user_tenant_roles utr ON u.id = utr.user_id
@@ -53,9 +43,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
         """, nativeQuery = true)
     Optional<User> findByUsernameAndTenantId(@Param("username") String username, @Param("tenantId") UUID tenantId);
     
-    /**
-     * Tìm user theo email và tenant ID thông qua user_tenant_roles
-     */
+
     @Query(value = """
         SELECT DISTINCT u.* FROM iam.users u
         JOIN iam.user_tenant_roles utr ON u.id = utr.user_id
@@ -63,9 +51,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
         """, nativeQuery = true)
     Optional<User> findByEmailAndTenantId(@Param("email") String email, @Param("tenantId") UUID tenantId);
     
-    /**
-     * Đếm số user trong tenant thông qua user_tenant_roles
-     */
+
     @Query(value = """
         SELECT COUNT(DISTINCT u.id) FROM iam.users u
         JOIN iam.user_tenant_roles utr ON u.id = utr.user_id
@@ -73,9 +59,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
         """, nativeQuery = true)
     long countByTenantId(@Param("tenantId") UUID tenantId);
     
-    /**
-     * Tìm user active trong tenant thông qua user_tenant_roles
-     */
+
     @Query(value = """
         SELECT DISTINCT u.* FROM iam.users u
         JOIN iam.user_tenant_roles utr ON u.id = utr.user_id
@@ -84,5 +68,21 @@ public interface UserRepository extends JpaRepository<User, UUID> {
         ORDER BY u.created_at DESC
         """, nativeQuery = true)
     List<User> findActiveUsersByTenantId(@Param("tenantId") UUID tenantId);
+
+
+    @Query(value = """
+        SELECT DISTINCT u.* 
+        FROM iam.users u
+        JOIN iam.user_roles ur ON u.id = ur.user_id
+        WHERE ur.role IN ('technician', 'supporter', 'account') 
+        AND u.id NOT IN (
+            SELECT DISTINCT user_id 
+            FROM iam.user_tenant_roles 
+            WHERE tenant_id IS NOT NULL
+        )
+        AND u.active = true
+        """, nativeQuery = true)
+    List<User> findAvailableStaff();
+
     
 }

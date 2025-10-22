@@ -35,7 +35,6 @@ class JwtEndToEndTest {
 
     @Test
     void testJwtFlow_EndToEnd() throws Exception {
-        // Step 1: Generate a JWT token
         TestController.TokenRequest tokenRequest = new TestController.TokenRequest();
         tokenRequest.setUid(UUID.randomUUID());
         tokenRequest.setUsername("testuser");
@@ -52,22 +51,18 @@ class JwtEndToEndTest {
                 .getResponse()
                 .getContentAsString();
 
-        // Extract token from response
         String token = objectMapper.readTree(tokenResponse).get("token").asText();
 
-        // Step 2: Use the token to access protected endpoint
         mockMvc.perform(get("/api/test/protected")
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(content().string("Hello testuser! This is a protected endpoint."));
 
-        // Step 3: Use the token to access admin endpoint
         mockMvc.perform(get("/api/test/admin")
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(content().string("Hello Admin testuser! This is an admin-only endpoint."));
 
-        // Step 4: Get user info using the token
         mockMvc.perform(get("/api/test/user-info")
                 .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
@@ -78,17 +73,14 @@ class JwtEndToEndTest {
 
     @Test
     void testJwtFlow_WithInvalidToken() throws Exception {
-        // Test with invalid token
         mockMvc.perform(get("/api/test/protected")
                 .header("Authorization", "Bearer invalid-token"))
                 .andExpect(status().isUnauthorized());
 
-        // Test with malformed token
         mockMvc.perform(get("/api/test/protected")
                 .header("Authorization", "Bearer not.a.valid.jwt"))
                 .andExpect(status().isUnauthorized());
 
-        // Test without Authorization header
         mockMvc.perform(get("/api/test/protected"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("This is a protected endpoint - JWT required"));
@@ -96,8 +88,6 @@ class JwtEndToEndTest {
 
     @Test
     void testJwtFlow_WithExpiredToken() throws Exception {
-        // This test would require a way to generate an expired token
-        // For now, we'll test with a malformed token that should fail
         mockMvc.perform(get("/api/test/protected")
                 .header("Authorization", "Bearer expired.token.here"))
                 .andExpect(status().isUnauthorized());
@@ -105,8 +95,6 @@ class JwtEndToEndTest {
 
     @Test
     void testJwtFlow_WithWrongAudience() throws Exception {
-        // This test would require generating a token with wrong audience
-        // For now, we'll test with a malformed token
         mockMvc.perform(get("/api/test/protected")
                 .header("Authorization", "Bearer wrong.audience.token"))
                 .andExpect(status().isUnauthorized());

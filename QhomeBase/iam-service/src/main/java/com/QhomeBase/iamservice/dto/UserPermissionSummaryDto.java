@@ -16,11 +16,9 @@ public class UserPermissionSummaryDto {
     private UUID userId;
     private UUID tenantId;
     
-    // User-level overrides
     private List<UserPermissionOverrideDto> grants;
     private List<UserPermissionOverrideDto> denies;
     
-    // Counts
     private int totalGrants;
     private int totalDenies;
     private int activeGrants;
@@ -28,9 +26,14 @@ public class UserPermissionSummaryDto {
     private int temporaryGrants;
     private int temporaryDenies;
     
-    // Final effective permissions (after all calculations)
+    // For frontend permission management UI
+    private List<String> inheritedFromRoles;   // Permissions from roles
+    private List<String> grantedPermissions;   // Direct grants (permission codes)
+    private List<String> deniedPermissions;    // Direct denies (permission codes)
+    
     private List<String> effectivePermissions;
     private int totalEffectivePermissions;
 }
+
 
 

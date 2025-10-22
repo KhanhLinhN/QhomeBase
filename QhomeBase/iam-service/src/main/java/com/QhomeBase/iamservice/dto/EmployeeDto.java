@@ -26,7 +26,6 @@ public class EmployeeDto {
     private Instant createdAt;
     private Instant updatedAt;
     
-    // Permission status indicators
     private EmployeePermissionStatus permissionStatus;
     private int grantedOverrides;
     private int deniedOverrides;

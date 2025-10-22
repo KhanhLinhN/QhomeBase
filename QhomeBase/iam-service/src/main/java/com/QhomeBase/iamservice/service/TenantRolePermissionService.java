@@ -24,6 +24,11 @@ public class TenantRolePermissionService {
     private final TenantRolePermissionRepository tenantRolePermissionRepository;
     private final UserRolePermissionRepository userRolePermissionRepository;
 
+
+    public List<String> getSelectedRolesInTenant(UUID tenantId) {
+        return tenantRolePermissionRepository.getSelectedRoleInTenant(tenantId);
+    }
+
     @Transactional
     public void grantPermissionsToRole(UUID tenantId, RolePermissionGrantRequest request, Authentication authentication) {
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
@@ -45,14 +50,7 @@ public class TenantRolePermissionService {
             tenantRolePermissionRepository.removePermission(tenantId, request.getRole(), permissionCode);
         }
     }
-  
-    /**
-     * Get all effective permissions in a tenant (across all roles)
-     * This combines:
-     * - Base/global permissions from roles used in tenant
-     * - Tenant-specific grants (granted=true)
-     * - Minus tenant-specific denies (granted=false)
-     */
+
     public List<String> getAllEffectivePermissionsInTenant(UUID tenantId) {
         return tenantRolePermissionRepository.findAllEffectivePermissionsInTenant(tenantId);
     }

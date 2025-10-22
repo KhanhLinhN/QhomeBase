@@ -89,7 +89,6 @@ public class EmployeeManagementService {
         List<String> globalRoles = userTenantRoleRepository.findGlobalRolesByUserId(user.getId());
         String roleInfo = globalRoles.isEmpty() ? "No roles" : String.join(", ", globalRoles);
         
-        // Calculate permission status if tenantId is provided
         EmployeePermissionStatus permissionStatus = EmployeePermissionStatus.STANDARD;
         int grantedOverrides = 0;
         int deniedOverrides = 0;

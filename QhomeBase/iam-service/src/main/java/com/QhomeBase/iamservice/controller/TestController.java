@@ -129,7 +129,6 @@ public class TestController {
             debugInfo.put("requestTenantId", tenantId);
             debugInfo.put("sameTenant", principal.tenant() != null && principal.tenant().equals(tenantId));
             
-            // Test authorization methods
             debugInfo.put("authorization", Map.of(
                 "canViewTenantEmployees", authzService.canViewTenantEmployees(tenantId),
                 "isAdmin", authzService.isAdmin(),
@@ -154,7 +153,6 @@ public class TestController {
         Map<String, Object> result = new HashMap<>();
         
         try {
-            // Simulate the same logic as the actual endpoint
             boolean canView = authzService.canViewTenantEmployees(tenantId);
             result.put("canViewTenantEmployees", canView);
             
@@ -204,7 +202,6 @@ public class TestController {
             this.message = message;
         }
 
-        // Getters and setters
         public String getToken() { return token; }
         public void setToken(String token) { this.token = token; }
         public String getMessage() { return message; }
@@ -226,7 +223,6 @@ public class TestController {
             this.permissions = permissions;
         }
 
-        // Getters and setters
         public UUID getUid() { return uid; }
         public void setUid(UUID uid) { this.uid = uid; }
         public String getUsername() { return username; }
@@ -245,7 +241,6 @@ public class TestController {
         Map<String, Object> debug = new HashMap<>();
         
         try {
-            // Check tenant_role_permissions table - get roles first
             List<String> rolesInTenant = tenantRolePermissionRepository.findRolesWithPermissionsInTenant(tenantId);
             debug.put("roles_in_tenant", rolesInTenant);
             
@@ -263,7 +258,6 @@ public class TestController {
             debug.put("tenant_role_permissions_count", permissions.size());
             debug.put("tenant_role_permissions", permissions);
             
-            // Check roles table
             List<Object[]> globalRoles = rolesRepository.findGlobalRoles();
             List<Map<String, Object>> roles = globalRoles.stream()
                 .map(r -> Map.of("role", r[0], "description", r[1], "created_at", r[2]))
@@ -271,7 +265,6 @@ public class TestController {
             debug.put("roles_count", roles.size());
             debug.put("roles", roles);
             
-            // Check permissions table
             List<Permission> allPermissions = permissionRepository.findAll();
             debug.put("permissions_count", allPermissions.size());
             debug.put("permissions", allPermissions.stream()
@@ -308,11 +301,9 @@ public class TestController {
             debug.put("input_permissionCodes", permissionCodes);
             debug.put("tenantId", tenantId);
             
-            // Check if role exists
             boolean roleExists = rolesRepository.isValidRole(role);
             debug.put("role_exists", roleExists);
             
-            // Check if permissions exist
             List<Permission> allPermissions = permissionRepository.findAll();
             List<String> existingPermissions = allPermissions.stream()
                     .map(Permission::getCode)
@@ -327,7 +318,6 @@ public class TestController {
             debug.put("valid_permissions", validPermissions);
             debug.put("invalid_permissions", invalidPermissions);
             
-            // Try to grant permissions
             if (roleExists && !validPermissions.isEmpty()) {
                 RolePermissionGrantRequest grantRequest = new RolePermissionGrantRequest();
                 grantRequest.setRole(role);
@@ -337,7 +327,6 @@ public class TestController {
                 
                 debug.put("grant_result", "success");
                 
-                // Check after grant
                 List<Object[]> afterRolePerms = tenantRolePermissionRepository.findPermissionsByTenantAndRole(tenantId, role);
                 List<Map<String, Object>> afterPermissions = afterRolePerms.stream()
                         .map(perm -> Map.of("permission_code", perm[0], "granted", perm[1]))
@@ -369,7 +358,6 @@ public class TestController {
         Map<String, Object> debug = new HashMap<>();
         
         try {
-            // Test the same query used in AuthService.login()
             List<String> userPermissions = userRolePermissionRepository.getUserRolePermissionsCodeByUserIdAndTenantId(userId, tenantId);
             
             debug.put("user_id", userId);
@@ -377,12 +365,10 @@ public class TestController {
             debug.put("permissions_count", userPermissions.size());
             debug.put("permissions", userPermissions);
             
-            // Check user roles in tenant
             List<String> userRoles = userTenantRoleRepository.findRolesInTenant(userId, tenantId);
             debug.put("user_roles_count", userRoles.size());
             debug.put("user_roles", userRoles);
             
-            // Check tenant_role_permissions for this user's roles
             List<Map<String, Object>> tenantRolePermissions = new ArrayList<>();
             for (String role : userRoles) {
                 List<Object[]> rolePerms = tenantRolePermissionRepository.findPermissionsByTenantAndRole(tenantId, role);
@@ -420,11 +406,9 @@ public class TestController {
             debug.put("user_id", userId);
             debug.put("tenant_id", tenantId);
             
-            // Check user roles in tenant
             List<String> userRoles = userTenantRoleRepository.findRolesInTenant(userId, tenantId);
             debug.put("user_roles", userRoles);
             
-            // Check global permissions for these roles
             List<String> globalPermissions = new ArrayList<>();
             for (String role : userRoles) {
                 List<String> rolePerms = rolesRepository.findPermissionsByRole(role);
@@ -433,7 +417,6 @@ public class TestController {
             debug.put("global_permissions_count", globalPermissions.size());
             debug.put("global_permissions", globalPermissions);
             
-            // Check tenant-specific permissions for these roles
             List<Map<String, Object>> userTenantPermissions = new ArrayList<>();
             for (String role : userRoles) {
                 List<Object[]> rolePerms = tenantRolePermissionRepository.findPermissionsByTenantAndRole(tenantId, role);
@@ -448,7 +431,6 @@ public class TestController {
             debug.put("tenant_permissions_count", userTenantPermissions.size());
             debug.put("tenant_permissions", userTenantPermissions);
             
-            // Check final combined permissions (same as login)
             List<String> finalPermissions = userRolePermissionRepository.getUserRolePermissionsCodeByUserIdAndTenantId(userId, tenantId);
             debug.put("final_permissions_count", finalPermissions.size());
             debug.put("final_permissions", finalPermissions);

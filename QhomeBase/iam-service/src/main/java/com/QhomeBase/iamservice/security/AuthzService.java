@@ -20,7 +20,6 @@ public class AuthzService {
             return (UserPrincipal) principal;
         }
         
-        // If principal is String (anonymous user), return null
         return null;
     }
     
@@ -278,11 +277,15 @@ public class AuthzService {
         return principal().tenant();
     }
     
-    // Employee Management Methods
+
     public boolean canViewTenantEmployees(UUID tenantId) {
+        if (hasAnyRole(Set.of("admin"))) {
+            return true;
+        }
+        
         boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.employee.read") || hasAnyRole(Set.of("admin", "tenant_owner"));
-        return sameTenant && okRole;
+        boolean isTenantOwner = hasAnyRole(Set.of("tenant_owner"));
+        return sameTenant && isTenantOwner;
     }
     
     public boolean canAssignEmployeeRole(UUID tenantId, UUID employeeId) {
@@ -330,9 +333,13 @@ public class AuthzService {
     }
     
     public boolean canManagePermissions(UUID tenantId) {
+        if (hasAnyRole(Set.of("admin"))) {
+            return true;
+        }
+        
         boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.permission.manage") || hasAnyRole(Set.of("admin", "tenant_owner"));
-        return sameTenant && okRole;
+        boolean isTenantOwner = hasAnyRole(Set.of("tenant_owner"));
+        return sameTenant && isTenantOwner;
     }
     
     public boolean canBulkAssignRoles(UUID tenantId) {

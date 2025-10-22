@@ -25,6 +25,7 @@ public class EmployeeRoleManagementController {
 
 
 
+
     @GetMapping("/tenant/{tenantId}")
     @PreAuthorize("@authz.canViewTenantEmployees(#tenantId)")
     public ResponseEntity<List<EmployeeRoleDto>> getEmployeesInTenant(@PathVariable UUID tenantId) {

@@ -16,7 +16,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -124,11 +123,12 @@ public class EmployeeRoleManagementService {
     }
 
     private EmployeeRoleDto mapToEmployeeRoleDto(User user, UUID tenantId, String assignedBy) {
+
         List<String> tenantRoles = userTenantRoleRepository.findRolesInTenant(user.getId(), tenantId);
-        List<String> globalRoles = userTenantRoleRepository.findGlobalRolesByUserId(user.getId());
         
+
         List<EmployeeRoleDto.RoleAssignmentDto> assignedRoles = tenantRoles.stream()
-                .filter(role -> role != null)
+                .filter(role -> role != null && !role.isEmpty())
                 .map(roleName -> EmployeeRoleDto.RoleAssignmentDto.builder()
                         .roleName(roleName)
                         .roleDescription("Role description for " + roleName)
@@ -137,21 +137,7 @@ public class EmployeeRoleManagementService {
                         .isActive(true)
                         .build())
                 .collect(Collectors.toList());
-        
-        List<EmployeeRoleDto.RoleAssignmentDto> globalRoleAssignments = globalRoles.stream()
-                .map(roleName -> EmployeeRoleDto.RoleAssignmentDto.builder()
-                        .roleName(roleName + " (Global)")
-                        .roleDescription("Global role: " + roleName)
-                        .assignedAt(Instant.now())
-                        .assignedBy(assignedBy != null ? assignedBy : "System")
-                        .isActive(true)
-                        .build())
-                .collect(Collectors.toList());
-        
-        List<EmployeeRoleDto.RoleAssignmentDto> allRoles = new ArrayList<>();
-        allRoles.addAll(assignedRoles);
-        allRoles.addAll(globalRoleAssignments);
-        
+
         List<String> permissions = getEmployeePermissions(user.getId(), tenantId);
         
         return EmployeeRoleDto.builder()
@@ -164,7 +150,7 @@ public class EmployeeRoleManagementService {
                 .position(null)
                 .tenantId(tenantId)
                 .tenantName("Building " + tenantId)
-                .assignedRoles(allRoles)
+                .assignedRoles(assignedRoles)
                 .allPermissions(permissions)
                 .createdAt(user.getCreatedAt() != null ? user.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant() : null)
                 .updatedAt(user.getUpdatedAt() != null ? user.getUpdatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant() : null)

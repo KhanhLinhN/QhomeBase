@@ -18,12 +18,14 @@ public class TenantRolePermissionController {
 
     private final TenantRolePermissionService tenantRolePermissionService;
 
+    @GetMapping("getSelectedRoles/{tenantId}")
+    @PreAuthorize("@authz.canManagePermissions(#tenantId)")
+    public ResponseEntity<List<String>> getSlectedRoleInTenant( @PathVariable UUID tenantId) {
+        List<String> roles = tenantRolePermissionService.getSelectedRolesInTenant(tenantId);
+        return ResponseEntity.ok(roles);
+    }
 
 
-    /**
-     * Get all effective permissions in a tenant (across all roles)
-     * Combines base permissions + tenant grants - tenant denies
-     */
     @GetMapping("/permissions/{tenantId}")
     @PreAuthorize("@authz.canManagePermissions(#tenantId)")
     public ResponseEntity<List<String>> getAllEffectivePermissionsInTenant(@PathVariable UUID tenantId) {

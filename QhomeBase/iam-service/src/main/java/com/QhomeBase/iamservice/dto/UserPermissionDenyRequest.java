@@ -17,8 +17,9 @@ public class UserPermissionDenyRequest {
     private UUID userId;
     private UUID tenantId;
     private List<String> permissionCodes;
-    private Instant expiresAt;  // NULL = permanent, set date = temporary
+    private Instant expiresAt;
     private String reason;
 }
+
 
 

@@ -34,7 +34,6 @@ public class VehicleService {
     public VehicleDto createVehicle(VehicleCreateDto dto) {
         validateVehicleCreateDto(dto);
         
-        // Validate that the tenant exists before creating the vehicle
         if (!tenantRepository.existsById(dto.tenantId())) {
             throw new IllegalArgumentException("Tenant with ID " + dto.tenantId() + " does not exist");
         }

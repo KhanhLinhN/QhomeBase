@@ -5,12 +5,14 @@ import com.QhomeBase.iamservice.model.Permission;
 import com.QhomeBase.iamservice.repository.UserTenantRoleRepository;
 import com.QhomeBase.iamservice.service.PermissionService;
 import com.QhomeBase.iamservice.service.RoleService;
+import com.QhomeBase.iamservice.service.RolePermissionService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -21,6 +23,7 @@ public class RoleController {
     private final UserTenantRoleRepository userTenantRoleRepository;
     private final PermissionService permissionService;
     private final RoleService roleService;
+    private final RolePermissionService rolePermissionService;
 
     @GetMapping("/all")
     @PreAuthorize("@authz.canViewAllRoles()")
@@ -145,5 +148,95 @@ public class RoleController {
     @PreAuthorize("@authz.canViewRolePermissions('supporter')")
     public ResponseEntity<List<Permission>> getSupporterPermissions() {
         return ResponseEntity.ok(roleService.getSupporterPermissions());
+    }
+
+    @PostMapping("/{role}/permissions")
+    @PreAuthorize("@authz.canManageRolePermissions(#role)")
+    public ResponseEntity<Void> addPermissionToRole(
+            @PathVariable String role,
+            @RequestBody Map<String, String> request) {
+        try {
+            String permissionCode = request.get("permissionCode");
+            if (permissionCode == null || permissionCode.isBlank()) {
+                return ResponseEntity.badRequest().build();
+            }
+            rolePermissionService.addPermissionToRole(role.toLowerCase(), permissionCode);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @DeleteMapping("/{role}/permissions/{permissionCode}")
+    @PreAuthorize("@authz.canManageRolePermissions(#role)")
+    public ResponseEntity<Void> removePermissionFromRole(
+            @PathVariable String role,
+            @PathVariable String permissionCode) {
+        try {
+            rolePermissionService.removePermissionFromRole(role.toLowerCase(), permissionCode);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/{role}/permissions/batch")
+    @PreAuthorize("@authz.canManageRolePermissions(#role)")
+    public ResponseEntity<Void> addMultiplePermissionsToRole(
+            @PathVariable String role,
+            @RequestBody Map<String, List<String>> request) {
+        try {
+            List<String> permissionCodes = request.get("permissionCodes");
+            if (permissionCodes == null || permissionCodes.isEmpty()) {
+                return ResponseEntity.badRequest().build();
+            }
+            rolePermissionService.addMultiplePermissionsToRole(role.toLowerCase(), permissionCodes);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @DeleteMapping("/{role}/permissions/batch")
+    @PreAuthorize("@authz.canManageRolePermissions(#role)")
+    public ResponseEntity<Void> removeMultiplePermissionsFromRole(
+            @PathVariable String role,
+            @RequestBody Map<String, List<String>> request) {
+        try {
+            List<String> permissionCodes = request.get("permissionCodes");
+            if (permissionCodes == null || permissionCodes.isEmpty()) {
+                return ResponseEntity.badRequest().build();
+            }
+            rolePermissionService.removeMultiplePermissionsFromRole(role.toLowerCase(), permissionCodes);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PutMapping("/{role}/permissions")
+    @PreAuthorize("@authz.canManageRolePermissions(#role)")
+    public ResponseEntity<Void> updateRolePermissions(
+            @PathVariable String role,
+            @RequestBody Map<String, List<String>> request) {
+        try {
+            List<String> permissionCodes = request.get("permissionCodes");
+            if (permissionCodes == null) {
+                return ResponseEntity.badRequest().build();
+            }
+            rolePermissionService.updateRolePermissions(role.toLowerCase(), permissionCodes);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @GetMapping("/{role}/permissions/check/{permissionCode}")
+    @PreAuthorize("@authz.canViewRolePermissions(#role)")
+    public ResponseEntity<Map<String, Boolean>> checkRolePermission(
+            @PathVariable String role,
+            @PathVariable String permissionCode) {
+        boolean hasPermission = rolePermissionService.hasPermission(role.toLowerCase(), permissionCode);
+        return ResponseEntity.ok(Map.of("hasPermission", hasPermission));
     }
 }

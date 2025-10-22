@@ -23,7 +23,7 @@ public interface UserTenantRoleRepository extends JpaRepository<UserTenantRole, 
     List<UUID> findTenantIdsByUserId(@Param("userId") UUID userId);
 
     @Query(value = """
-        SELECT utr.role
+        SELECT DISTINCT utr.role
         FROM iam.user_tenant_roles utr
         WHERE utr.user_id = :userId AND utr.tenant_id = :tenantId
         """, nativeQuery = true)
@@ -125,7 +125,7 @@ public interface UserTenantRoleRepository extends JpaRepository<UserTenantRole, 
     void removeUserFromTenant(@Param("userId") UUID userId, @Param("tenantId") UUID tenantId);
     
     @Query(value = """
-        SELECT ur.role
+        SELECT DISTINCT ur.role
         FROM iam.user_roles ur
         WHERE ur.user_id = :userId
         """, nativeQuery = true)

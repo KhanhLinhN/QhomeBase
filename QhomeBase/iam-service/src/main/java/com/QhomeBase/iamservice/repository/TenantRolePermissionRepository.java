@@ -87,30 +87,25 @@ public interface TenantRolePermissionRepository extends JpaRepository<TenantRole
 
     @Query(value = """
         WITH tenant_roles AS (
-            
             SELECT DISTINCT role
             FROM iam.user_tenant_roles
             WHERE tenant_id = :tenantId
         ),
         global_permissions AS (
-          
             SELECT DISTINCT rp.permission_code
             FROM tenant_roles tr
             JOIN iam.role_permissions rp ON tr.role = rp.role
         ),
         tenant_grants AS (
-           
             SELECT DISTINCT permission_code
             FROM iam.tenant_role_permissions
             WHERE tenant_id = :tenantId AND granted = true
         ),
         tenant_denies AS (
-           
             SELECT DISTINCT permission_code
             FROM iam.tenant_role_permissions
             WHERE tenant_id = :tenantId AND granted = false
         )
-        -- Combine global + grants, then exclude denies
         SELECT DISTINCT permission_code
         FROM (
             SELECT permission_code FROM global_permissions
@@ -121,6 +116,13 @@ public interface TenantRolePermissionRepository extends JpaRepository<TenantRole
         ORDER BY permission_code
         """, nativeQuery = true)
     List<String> findAllEffectivePermissionsInTenant(@Param("tenantId") UUID tenantId);
+
+    @Query(value = """
+    select utr.role
+    from iam.user_tenant_roles utr
+    where utr.tenant_id = :tenantId
+""", nativeQuery = true)
+    List<String> getSelectedRoleInTenant(@Param("tenantId") UUID tenantId);
 
 }
 

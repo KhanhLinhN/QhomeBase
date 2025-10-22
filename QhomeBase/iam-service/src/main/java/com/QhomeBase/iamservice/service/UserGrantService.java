@@ -141,6 +141,22 @@ public class UserGrantService {
         List<String> effectivePermissions = userRolePermissionRepository
                 .getUserRolePermissionsCodeByUserIdAndTenantId(userId, tenantId);
 
+
+        List<String> grantedPermissionCodes = grants.stream()
+                .filter(g -> !g.isExpired())
+                .map(UserPermissionOverrideDto::getPermissionCode)
+                .toList();
+        
+        List<String> deniedPermissionCodes = denies.stream()
+                .filter(d -> !d.isExpired())
+                .map(UserPermissionOverrideDto::getPermissionCode)
+                .toList();
+        
+
+        List<String> inheritedPermissions = effectivePermissions.stream()
+                .filter(p -> !grantedPermissionCodes.contains(p))
+                .toList();
+
         return UserPermissionSummaryDto.builder()
                 .userId(userId)
                 .tenantId(tenantId)
@@ -152,6 +168,11 @@ public class UserGrantService {
                 .activeDenies(activeDenies)
                 .temporaryGrants(temporaryGrants)
                 .temporaryDenies((int) denies.stream().filter(UserPermissionOverrideDto::isTemporary).count())
+                // New fields for frontend
+                .inheritedFromRoles(inheritedPermissions)
+                .grantedPermissions(grantedPermissionCodes)
+                .deniedPermissions(deniedPermissionCodes)
+                // Existing fields
                 .effectivePermissions(effectivePermissions)
                 .totalEffectivePermissions(effectivePermissions.size())
                 .build();

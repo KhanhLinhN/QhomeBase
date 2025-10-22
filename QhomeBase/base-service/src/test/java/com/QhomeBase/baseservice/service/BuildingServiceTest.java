@@ -1,4 +1,4 @@
-/*package com.QhomeBase.baseservice.service;
+package com.QhomeBase.baseservice.service;
 
 import com.QhomeBase.baseservice.dto.BuildingCreateReq;
 import com.QhomeBase.baseservice.dto.BuildingDto;
@@ -238,4 +238,3 @@ class BuildingServiceTest {
 
 
 }
-*/
