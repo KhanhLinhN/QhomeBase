@@ -22,4 +22,6 @@ public class NewsNotificationDto {
     private String source;
     private Boolean pinned;
     private Boolean visibleToAll;
+
+
 }

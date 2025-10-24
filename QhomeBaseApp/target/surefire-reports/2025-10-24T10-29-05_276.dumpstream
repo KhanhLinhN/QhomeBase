@@ -1,0 +1,5 @@
+# Created at 2025-10-24T10:29:05.458
+Boot Manifest-JAR contains absolute paths in classpath 'D:\GitHub\QhomeBase\QhomeBaseApp\target\test-classes'
+Hint: <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+'other' has different root
+

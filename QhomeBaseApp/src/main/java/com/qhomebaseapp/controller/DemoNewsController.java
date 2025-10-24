@@ -87,7 +87,6 @@ public class DemoNewsController {
                 );
             }
         }
-
         NewsNotificationDto dto = NewsNotificationDto.builder()
                 .newsId(news.getId())
                 .title(news.getTitle())
@@ -95,8 +94,6 @@ public class DemoNewsController {
                 .publishedAt(news.getPublishedAt())
                 .attachments(attachments)
                 .build();
-
-
         newsWebSocketController.sendNotification(dto);
 
         return ResponseEntity.ok(dto);

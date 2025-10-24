@@ -47,7 +47,6 @@ public class UserController {
         User user = userRepository.findByEmail(userDetails.getUsername())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // ✅ Chỉ cập nhật nếu không null (tránh ghi đè null do readonly)
         if (request.getFullName() != null && !request.getFullName().isBlank()) {
             user.setFullName(request.getFullName());
         }
@@ -96,7 +95,6 @@ public class UserController {
             user.setAvatarUrl(avatarUrl);
             userRepository.save(user);
 
-            // ✅ Trả về đơn giản đúng như Flutter mong đợi
             return ResponseEntity.ok(Map.of("avatarUrl", avatarUrl));
 
         } catch (Exception e) {
