@@ -14,6 +14,7 @@ import com.QhomeBase.baseservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -22,6 +23,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class VehicleRegistrationService {
     private final VehicleRegistrationRepository vehicleRegistrationRepository;
     private final VehicleRepository vehicleRepository;
@@ -31,6 +33,7 @@ public class VehicleRegistrationService {
         return OffsetDateTime.now(ZoneOffset.UTC);
     }
 
+    @Transactional
     public VehicleRegistrationDto createRegistrationRequest(VehicleRegistrationCreateDto dto, Authentication authentication) {
         var u = (UserPrincipal) authentication.getPrincipal();
         UUID requestById = u.uid();
@@ -54,37 +57,50 @@ public class VehicleRegistrationService {
         return toDto(savedRequest);
     }
 
+    @Transactional
     public VehicleRegistrationDto approveRequest(UUID requestId, VehicleRegistrationApproveDto dto, Authentication authentication) {
         var u = (UserPrincipal) authentication.getPrincipal();
         UUID approvedBy = u.uid();
+        OffsetDateTime now = nowUTC();
+        
         var request = vehicleRegistrationRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Registration request not found"));
 
-        if (request.getStatus() != VehicleRegistrationStatus.PENDING) {
-            throw new IllegalStateException("Request is not PENDING");
+        if (!VehicleRegistrationStatus.PENDING.equals(request.getStatus())) {
+            throw new IllegalStateException("Request is not PENDING. Current status: " + request.getStatus());
         }
 
         request.setApprovedBy(approvedBy);
         request.setNote(dto.note());
-        request.setApprovedAt(nowUTC());
+        request.setApprovedAt(now);
         request.setStatus(VehicleRegistrationStatus.APPROVED);
-        request.setUpdatedAt(nowUTC());
+        request.setUpdatedAt(now);
 
         var savedRequest = vehicleRegistrationRepository.save(request);
+
+        var vehicle = request.getVehicle();
+        if (vehicle != null) {
+            vehicle.setActivatedAt(now);
+            vehicle.setRegistrationApprovedAt(now);
+            vehicle.setApprovedBy(approvedBy);
+            vehicle.setUpdatedAt(now);
+            vehicleRepository.save(vehicle);
+        }
         
         notifyVehicleActivated(savedRequest);
 
         return toDto(savedRequest);
     }
 
+    @Transactional
     public VehicleRegistrationDto rejectRequest(UUID requestId, VehicleRegistrationRejectDto dto, Authentication authentication) {
         var u = (UserPrincipal) authentication.getPrincipal();
         UUID rejectedBy = u.uid();
         var request = vehicleRegistrationRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Registration request not found"));
 
-        if (request.getStatus() != VehicleRegistrationStatus.PENDING) {
-            throw new IllegalStateException("Request is not PENDING");
+        if (!VehicleRegistrationStatus.PENDING.equals(request.getStatus())) {
+            throw new IllegalStateException("Request is not PENDING. Current status: " + request.getStatus());
         }
 
         request.setApprovedBy(rejectedBy);
@@ -97,6 +113,7 @@ public class VehicleRegistrationService {
         return toDto(savedRequest);
     }
 
+    @Transactional
     public VehicleRegistrationDto cancelRequest(UUID requestId, Authentication authentication) {
         var u = (UserPrincipal) authentication.getPrincipal();
         UUID userId = u.uid();
@@ -158,13 +175,46 @@ public class VehicleRegistrationService {
                 .toList();
     }
 
+    /**
+     * Get pending requests by tenant (all buildings)
+     */
+    public List<VehicleRegistrationDto> getPendingRequestsByTenant(UUID tenantId) {
+        var requests = vehicleRegistrationRepository.findAllByTenantIdAndStatus(
+            tenantId, VehicleRegistrationStatus.PENDING
+        );
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    /**
+     * Get pending requests by tenant and building
+     */
+    public List<VehicleRegistrationDto> getPendingRequestsByTenantAndBuilding(
+            UUID tenantId, UUID buildingId) {
+        var requests = vehicleRegistrationRepository.findPendingByTenantAndBuilding(
+            tenantId, buildingId
+        );
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    /**
+     * Get requests by tenant, building, and status
+     */
+    public List<VehicleRegistrationDto> getRequestsByTenantAndBuildingAndStatus(
+            UUID tenantId, UUID buildingId, VehicleRegistrationStatus status) {
+        var requests = vehicleRegistrationRepository.findByTenantAndBuildingAndStatus(
+            tenantId, buildingId, status
+        );
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
     private void notifyVehicleActivated(VehicleRegistrationRequest request) {
         OffsetDateTime now = nowUTC();
-        int dayOfMonth = now.getDayOfMonth();
-
-        if (dayOfMonth <= 5) {
-            return;
-        }
 
         var vehicle = request.getVehicle();
         if (vehicle == null) {
@@ -175,7 +225,7 @@ public class VehicleRegistrationService {
                 .vehicleId(vehicle.getId())
                 .tenantId(request.getTenantId())
                 .unitId(vehicle.getUnit() != null ? vehicle.getUnit().getId() : null)
-                .residentId(vehicle.getResident() != null ? vehicle.getResident().getId() : null)
+                .residentId(vehicle.getResidentId())
                 .plateNo(vehicle.getPlateNo())
                 .vehicleKind(vehicle.getKind() != null ? vehicle.getKind().name() : null)
                 .activatedAt(now)

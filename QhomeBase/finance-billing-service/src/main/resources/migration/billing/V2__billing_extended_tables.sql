@@ -183,5 +183,3 @@ COMMENT ON COLUMN billing.late_payment_config.penalty_type IS 'PERCENTAGE: % tr�
 COMMENT ON COLUMN billing.late_payment_charges.waived IS 'true nếu đã miễn giảm phí phạt';
 COMMENT ON COLUMN billing.payment_reminders.days_before_due IS 'Nhắc trước X ngày đến hạn (NULL nếu nhắc sau khi quá hạn)';
 COMMENT ON COLUMN billing.payment_reminders.days_after_due IS 'Nhắc sau X ngày quá hạn (NULL nếu nhắc trước khi đến hạn)';
-
-

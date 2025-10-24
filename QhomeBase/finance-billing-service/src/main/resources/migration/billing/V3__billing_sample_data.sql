@@ -20,4 +20,3 @@ ON CONFLICT (tenant_id, days_overdue) DO NOTHING;
 
 COMMENT ON TABLE billing.service_pricing IS 'Sample data với tenant_id = 00000000-0000-0000-0000-000000000000 chỉ để tham khảo. Production cần thay bằng tenant thực tế.';
 
-

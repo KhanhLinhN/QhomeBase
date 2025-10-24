@@ -1,5 +1,6 @@
 package com.QhomeBase.baseservice.service;
 
+import com.QhomeBase.baseservice.client.FinanceBillingClient;
 import com.QhomeBase.baseservice.dto.VehicleRegistrationApproveDto;
 import com.QhomeBase.baseservice.dto.VehicleRegistrationCreateDto;
 import com.QhomeBase.baseservice.dto.VehicleRegistrationDto;
@@ -38,6 +39,9 @@ class VehicleRegistrationServiceTest {
     @Mock 
     private VehicleRepository vehicleRepository;
     
+    @Mock
+    private FinanceBillingClient financeBillingClient;
+    
     @Mock 
     private Authentication authentication;
 
@@ -50,7 +54,7 @@ class VehicleRegistrationServiceTest {
 
     @BeforeEach
     void setUp() {
-        vehicleRegistrationService = new VehicleRegistrationService(vehicleRegistrationRepository, vehicleRepository);
+        vehicleRegistrationService = new VehicleRegistrationService(vehicleRegistrationRepository, vehicleRepository, financeBillingClient);
 
         testTenantId = UUID.randomUUID();
         testVehicleId = UUID.randomUUID();
@@ -197,7 +201,6 @@ class VehicleRegistrationServiceTest {
     @Test
     void approveRequest_WithValidData_ShouldReturnVehicleRegistrationDto() {
         VehicleRegistrationApproveDto approveDto = new VehicleRegistrationApproveDto(
-                testUserId,
                 "Approved for parking"
         );
         
@@ -261,7 +264,6 @@ class VehicleRegistrationServiceTest {
     @Test
     void approveRequest_WithNullApprovedBy_ShouldThrow() {
         VehicleRegistrationApproveDto approveDto = new VehicleRegistrationApproveDto(
-                null,
                 "Approved for parking"
         );
 
@@ -275,7 +277,6 @@ class VehicleRegistrationServiceTest {
     void approveRequest_WithNoteTooLong_ShouldThrow() {
         String longNote = "A".repeat(501);
         VehicleRegistrationApproveDto approveDto = new VehicleRegistrationApproveDto(
-                testUserId,
                 longNote
         );
 
@@ -288,7 +289,6 @@ class VehicleRegistrationServiceTest {
     @Test
     void approveRequest_WithNonExistentRequest_ShouldThrow() {
         VehicleRegistrationApproveDto approveDto = new VehicleRegistrationApproveDto(
-                testUserId,
                 "Approved for parking"
         );
 
@@ -303,7 +303,6 @@ class VehicleRegistrationServiceTest {
     @Test
     void approveRequest_WithNonPendingStatus_ShouldThrow() {
         VehicleRegistrationApproveDto approveDto = new VehicleRegistrationApproveDto(
-                testUserId,
                 "Approved for parking"
         );
 
@@ -324,7 +323,6 @@ class VehicleRegistrationServiceTest {
     @Test
     void rejectRequest_WithValidData_ShouldReturnVehicleRegistrationDto() {
         VehicleRegistrationRejectDto rejectDto = new VehicleRegistrationRejectDto(
-                testUserId,
                 "Vehicle not eligible for parking"
         );
         
@@ -388,7 +386,6 @@ class VehicleRegistrationServiceTest {
     @Test
     void rejectRequest_WithNullRejectedBy_ShouldThrow() {
         VehicleRegistrationRejectDto rejectDto = new VehicleRegistrationRejectDto(
-                null,
                 "Vehicle not eligible for parking"
         );
 
@@ -401,7 +398,6 @@ class VehicleRegistrationServiceTest {
     @Test
     void rejectRequest_WithNullReason_ShouldThrow() {
         VehicleRegistrationRejectDto rejectDto = new VehicleRegistrationRejectDto(
-                testUserId,
                 null
         );
 
@@ -414,7 +410,6 @@ class VehicleRegistrationServiceTest {
     @Test
     void rejectRequest_WithEmptyReason_ShouldThrow() {
         VehicleRegistrationRejectDto rejectDto = new VehicleRegistrationRejectDto(
-                testUserId,
                 ""
         );
 
@@ -428,7 +423,6 @@ class VehicleRegistrationServiceTest {
     void rejectRequest_WithReasonTooLong_ShouldThrow() {
         String longReason = "A".repeat(501);
         VehicleRegistrationRejectDto rejectDto = new VehicleRegistrationRejectDto(
-                testUserId,
                 longReason
         );
 
@@ -441,7 +435,6 @@ class VehicleRegistrationServiceTest {
     @Test
     void rejectRequest_WithNonExistentRequest_ShouldThrow() {
         VehicleRegistrationRejectDto rejectDto = new VehicleRegistrationRejectDto(
-                testUserId,
                 "Vehicle not eligible for parking"
         );
 
@@ -456,7 +449,6 @@ class VehicleRegistrationServiceTest {
     @Test
     void rejectRequest_WithNonPendingStatus_ShouldThrow() {
         VehicleRegistrationRejectDto rejectDto = new VehicleRegistrationRejectDto(
-                testUserId,
                 "Vehicle not eligible for parking"
         );
 

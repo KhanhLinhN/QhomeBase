@@ -98,6 +98,12 @@ public class AuthzService {
         return okPerm;
     }
 
+    public boolean canApproveBuildingDeletion() {
+        boolean okRole = hasAnyRole(Set.of("admin", "tenant_owner", "tenant_manager"));
+        boolean okPerm = hasPerm("base.building.delete.approve");
+        return okRole || okPerm;
+    }
+
     public boolean canCompleteBuildingDeletion() {
         boolean okRole = hasAnyRole(Set.of("admin", "tenant_owner", "tenant_manager"));
         boolean okPerm = hasPerm("base.building.delete.approve");

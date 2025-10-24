@@ -9,10 +9,12 @@ import com.QhomeBase.baseservice.model.UnitStatus;
 import com.QhomeBase.baseservice.repository.BuildingDeletionRequestRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
 import com.QhomeBase.baseservice.repository.BuildingRepository;
+import com.QhomeBase.baseservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -179,6 +181,99 @@ public class BuildingDeletionService {
         ));
         
         return status;
+    }
+
+    public BuildingDeletionRequestDto createBuildingDeletionRequest(UUID buildingId, String reason, Authentication auth) {
+        var user = (UserPrincipal) auth.getPrincipal();
+        
+        
+        var building = buildingRepository.findById(buildingId)
+                .orElseThrow(() -> new IllegalArgumentException("Building not found with ID: " + buildingId));
+        
+        
+        if (building.getStatus() == BuildingStatus.DELETING || building.getStatus() == BuildingStatus.ARCHIVED) {
+            throw new IllegalStateException("Building is already in deletion process or archived");
+        }
+        
+       
+        var existingRequests = repo.findByTenantIdAndBuildingId(null, buildingId);
+        boolean hasActiveRequest = existingRequests.stream()
+                .anyMatch(req -> req.getStatus() == BuildingDeletionStatus.PENDING 
+                        || req.getStatus() == BuildingDeletionStatus.APPROVED);
+        
+        if (hasActiveRequest) {
+            throw new IllegalStateException("There is already an active deletion request for this building");
+        }
+        
+
+        building.setStatus(BuildingStatus.PENDING_DELETION);
+        buildingRepository.save(building);
+        
+   
+        var request = BuildingDeletionRequest.builder()
+                .tenantId(building.getTenantId())
+                .buildingId(buildingId)
+                .requestedBy(user.uid())
+                .reason(reason != null ? reason : "Building deletion request")
+                .status(BuildingDeletionStatus.PENDING)
+                .createdAt(OffsetDateTime.now())
+                .build();
+        
+        repo.save(request);
+        return toDto(request);
+    }
+
+    public BuildingDeletionRequestDto approveBuildingDeletionRequest(UUID requestId, String note, Authentication auth) {
+        var user = (UserPrincipal) auth.getPrincipal();
+        
+        var request = repo.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Building deletion request not found with ID: " + requestId));
+        
+        if (request.getStatus() != BuildingDeletionStatus.PENDING) {
+            throw new IllegalStateException("Only PENDING requests can be approved");
+        }
+        
+        var building = buildingRepository.findById(request.getBuildingId())
+                .orElseThrow(() -> new IllegalArgumentException("Building not found"));
+        
+
+        building.setStatus(BuildingStatus.DELETING);
+        buildingRepository.save(building);
+        
+
+        request.setStatus(BuildingDeletionStatus.APPROVED);
+        request.setApprovedBy(user.uid());
+        request.setNote(note);
+        request.setApprovedAt(OffsetDateTime.now());
+        repo.save(request);
+        
+        return toDto(request);
+    }
+
+    public BuildingDeletionRequestDto rejectBuildingDeletionRequest(UUID requestId, String note, Authentication auth) {
+        var user = (UserPrincipal) auth.getPrincipal();
+        
+        var request = repo.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Building deletion request not found with ID: " + requestId));
+        
+        if (request.getStatus() != BuildingDeletionStatus.PENDING) {
+            throw new IllegalStateException("Only PENDING requests can be rejected");
+        }
+        
+        var building = buildingRepository.findById(request.getBuildingId())
+                .orElseThrow(() -> new IllegalArgumentException("Building not found"));
+        
+          building.setStatus(BuildingStatus.ACTIVE);
+        buildingRepository.save(building);
+        
+
+        request.setStatus(BuildingDeletionStatus.REJECTED);
+        request.setApprovedBy(user.uid());
+        request.setNote(note);
+        request.setApprovedAt(OffsetDateTime.now());
+        repo.save(request);
+        
+        return toDto(request);
     }
 
     public BuildingDeletionRequestDto completeBuildingDeletion(UUID requestId, Authentication auth) {

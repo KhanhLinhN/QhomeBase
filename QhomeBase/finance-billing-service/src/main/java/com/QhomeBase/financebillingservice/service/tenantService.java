@@ -2,20 +2,19 @@ package com.QhomeBase.financebillingservice.service;
 
 import com.QhomeBase.financebillingservice.client.WebClientService;
 import com.QhomeBase.financebillingservice.dto.BuildingDto;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-public class tenantService {
-    private final WebClientService webClientService;
-    public tenantService(WebClientService webClientService) {
-        this.webClientService = webClientService;
-    }
-    public List<BuildingDto> getAllBuildings(UUID tenantId) throws Exception{
-        List<BuildingDto> buildingDtos = new ArrayList<>();
-        buildingDtos = webClientService.getAllBuildings(tenantId).collectList().block();
-        return buildingDtos;
-    }
+@Service
+@RequiredArgsConstructor
+public class TenantService {
 
+    private final WebClientService webClientService;
+
+    public List<BuildingDto> getAllBuildings(UUID tenantId) throws Exception {
+        return webClientService.getAllBuildings(tenantId).collectList().block();
+    }
 }

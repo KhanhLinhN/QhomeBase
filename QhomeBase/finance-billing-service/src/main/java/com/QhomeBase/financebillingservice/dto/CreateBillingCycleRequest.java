@@ -9,14 +9,14 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 @Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class BillingCycleDto {
-    private UUID id;
+public class CreateBillingCycleRequest {
     private UUID tenantId;
     private String name;
     private LocalDate periodFrom;
     private LocalDate periodTo;
     private String status;
 }
+

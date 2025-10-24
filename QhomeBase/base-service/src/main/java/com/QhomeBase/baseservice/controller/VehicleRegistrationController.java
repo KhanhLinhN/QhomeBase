@@ -99,4 +99,46 @@ public class VehicleRegistrationController {
     public ResponseEntity<VehicleRegistrationStatus[]> getRegistrationStatuses() {
         return ResponseEntity.ok(VehicleRegistrationStatus.values());
     }
+
+    /**
+     * Get pending requests by tenant (all buildings)
+     * API: GET /api/vehicle-registrations/tenant/{tenantId}/pending
+     */
+    @GetMapping("/tenant/{tenantId}/pending")
+    @PreAuthorize("@authz.canViewVehicleRegistrationsByTenant(#tenantId)")
+    public ResponseEntity<List<VehicleRegistrationDto>> getPendingRequestsByTenant(
+            @PathVariable UUID tenantId) {
+        List<VehicleRegistrationDto> result = vehicleRegistrationService
+                .getPendingRequestsByTenant(tenantId);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Get pending requests by tenant and building
+     * API: GET /api/vehicle-registrations/tenant/{tenantId}/building/{buildingId}/pending
+     */
+    @GetMapping("/tenant/{tenantId}/building/{buildingId}/pending")
+    @PreAuthorize("@authz.canViewVehicleRegistrationsByTenant(#tenantId)")
+    public ResponseEntity<List<VehicleRegistrationDto>> getPendingRequestsByBuilding(
+            @PathVariable UUID tenantId,
+            @PathVariable UUID buildingId) {
+        List<VehicleRegistrationDto> result = vehicleRegistrationService
+                .getPendingRequestsByTenantAndBuilding(tenantId, buildingId);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Get requests by tenant, building, and status
+     * API: GET /api/vehicle-registrations/tenant/{tenantId}/building/{buildingId}/status/{status}
+     */
+    @GetMapping("/tenant/{tenantId}/building/{buildingId}/status/{status}")
+    @PreAuthorize("@authz.canViewVehicleRegistrationsByTenant(#tenantId)")
+    public ResponseEntity<List<VehicleRegistrationDto>> getRequestsByBuildingAndStatus(
+            @PathVariable UUID tenantId,
+            @PathVariable UUID buildingId,
+            @PathVariable VehicleRegistrationStatus status) {
+        List<VehicleRegistrationDto> result = vehicleRegistrationService
+                .getRequestsByTenantAndBuildingAndStatus(tenantId, buildingId, status);
+        return ResponseEntity.ok(result);
+    }
 }

@@ -16,6 +16,9 @@ public record VehicleDto(
         VehicleKind kind,
         String color,
         Boolean active,
+        OffsetDateTime activatedAt,
+        OffsetDateTime registrationApprovedAt,
+        UUID approvedBy,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {}

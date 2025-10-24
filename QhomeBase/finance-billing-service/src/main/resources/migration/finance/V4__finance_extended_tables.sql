@@ -177,4 +177,3 @@ COMMENT ON COLUMN finance.ledger_entries.entry_type IS 'CHARGE: Phát sinh phí,
 COMMENT ON COLUMN finance.cash_accounts.account_type IS 'CASH: Tiền mặt, BANK: Tài khoản ngân hàng, E_WALLET: Ví điện tử';
 COMMENT ON COLUMN finance.payment_reconciliation.status IS 'IN_PROGRESS: Đang đối soát, COMPLETED: Hoàn thành, PENDING_REVIEW: Chờ xem xét';
 
-

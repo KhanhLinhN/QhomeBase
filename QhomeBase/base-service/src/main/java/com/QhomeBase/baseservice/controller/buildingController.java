@@ -4,6 +4,9 @@ import com.QhomeBase.baseservice.dto.BuildingCreateReq;
 import com.QhomeBase.baseservice.dto.BuildingDto;
 import com.QhomeBase.baseservice.dto.BuildingUpdateReq;
 import com.QhomeBase.baseservice.dto.BuildingDeletionRequestDto;
+import com.QhomeBase.baseservice.dto.BuildingDeletionCreateReq;
+import com.QhomeBase.baseservice.dto.BuildingDeletionApproveReq;
+import com.QhomeBase.baseservice.dto.BuildingDeletionRejectReq;
 import com.QhomeBase.baseservice.model.Building;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import com.QhomeBase.baseservice.security.AuthzService;
@@ -76,6 +79,70 @@ public class buildingController {
         }
     }
 
+
+    
+    @PostMapping("/{buildingId}/deletion-request")
+    @PreAuthorize("@authz.canRequestDeleteBuilding(#buildingId)")
+    public ResponseEntity<BuildingDeletionRequestDto> createBuildingDeletionRequest(
+            @PathVariable UUID buildingId,
+            @Valid @RequestBody BuildingDeletionCreateReq req,
+            Authentication auth) {
+        try {
+            BuildingDeletionRequestDto request = buildingDeletionService.createBuildingDeletionRequest(
+                    buildingId, req.reason(), auth);
+            return ResponseEntity.ok(request);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/deletion-requests/{requestId}/approve")
+    @PreAuthorize("@authz.canApproveBuildingDeletion()")
+    public ResponseEntity<BuildingDeletionRequestDto> approveBuildingDeletionRequest(
+            @PathVariable UUID requestId,
+            @Valid @RequestBody BuildingDeletionApproveReq req,
+            Authentication auth) {
+        try {
+            BuildingDeletionRequestDto request = buildingDeletionService.approveBuildingDeletionRequest(
+                    requestId, req.note(), auth);
+            return ResponseEntity.ok(request);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/deletion-requests/{requestId}/reject")
+    @PreAuthorize("@authz.canApproveBuildingDeletion()")
+    public ResponseEntity<BuildingDeletionRequestDto> rejectBuildingDeletionRequest(
+            @PathVariable UUID requestId,
+            @Valid @RequestBody BuildingDeletionRejectReq req,
+            Authentication auth) {
+        try {
+            BuildingDeletionRequestDto request = buildingDeletionService.rejectBuildingDeletionRequest(
+                    requestId, req.note(), auth);
+            return ResponseEntity.ok(request);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @GetMapping("/deletion-requests/pending")
+    @PreAuthorize("@authz.canViewAllDeleteBuildings()")
+    public ResponseEntity<List<BuildingDeletionRequestDto>> getPendingBuildingDeletionRequests() {
+        return ResponseEntity.ok(buildingDeletionService.getPendingRequests());
+    }
+
+    @GetMapping("/deletion-requests/{requestId}")
+    public ResponseEntity<BuildingDeletionRequestDto> getBuildingDeletionRequest(
+            @PathVariable UUID requestId,
+            Authentication auth) {
+        try {
+            BuildingDeletionRequestDto request = buildingDeletionService.getById(requestId);
+            return ResponseEntity.ok(request);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
 
     @PostMapping("/{buildingId}/do")
     @PreAuthorize("@authz.canRequestDeleteBuilding(#buildingId)")

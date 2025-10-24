@@ -27,9 +27,8 @@ public class Vehicle {
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "resident_id")
-    private Resident resident;
+    @Column(name = "resident_id")
+    private UUID residentId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "unit_id")
@@ -49,6 +48,15 @@ public class Vehicle {
     @Column(name = "active", nullable = false)
     @Builder.Default
     private Boolean active = true;
+
+    @Column(name = "activated_at")
+    private OffsetDateTime activatedAt;
+
+    @Column(name = "registration_approved_at")
+    private OffsetDateTime registrationApprovedAt;
+
+    @Column(name = "approved_by")
+    private UUID approvedBy;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default

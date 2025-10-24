@@ -37,6 +37,44 @@ public interface VehicleRegistrationRepository extends JpaRepository<VehicleRegi
     boolean existsByTenantIdAndVehicleId(UUID tenantId, UUID vehicleId);
     
     boolean existsByTenantIdAndVehicleIdAndIdNot(UUID tenantId, UUID vehicleId, UUID id);
+    
+    /**
+     * Find vehicle registration requests by tenant, building, and status
+     * Useful for filtering pending requests by building
+     */
+    @Query("""
+        SELECT vrr FROM VehicleRegistrationRequest vrr
+        JOIN FETCH vrr.vehicle v
+        LEFT JOIN FETCH v.unit u
+        LEFT JOIN FETCH u.building b
+        WHERE vrr.tenantId = :tenantId
+          AND b.id = :buildingId
+          AND vrr.status = :status
+        ORDER BY vrr.requestedAt DESC
+        """)
+    List<VehicleRegistrationRequest> findByTenantAndBuildingAndStatus(
+        @Param("tenantId") UUID tenantId,
+        @Param("buildingId") UUID buildingId,
+        @Param("status") VehicleRegistrationStatus status
+    );
+    
+    /**
+     * Find all pending requests by tenant and building
+     */
+    @Query("""
+        SELECT vrr FROM VehicleRegistrationRequest vrr
+        JOIN FETCH vrr.vehicle v
+        LEFT JOIN FETCH v.unit u
+        LEFT JOIN FETCH u.building b
+        WHERE vrr.tenantId = :tenantId
+          AND b.id = :buildingId
+          AND vrr.status = 'PENDING'
+        ORDER BY vrr.requestedAt DESC
+        """)
+    List<VehicleRegistrationRequest> findPendingByTenantAndBuilding(
+        @Param("tenantId") UUID tenantId,
+        @Param("buildingId") UUID buildingId
+    );
 }
 
 
