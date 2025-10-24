@@ -57,15 +57,15 @@ public class VehicleRegistrationService {
         validateVehicleRegistrationApproveDto(dto);
         
         var u = (UserPrincipal) authentication.getPrincipal();
-        UUID requestById = u.uid();
+        UUID approvedBy = u.uid();
         var request = vehicleRegistrationRepository.findById(requestId)
-                .orElseThrow();
+                .orElseThrow(() -> new IllegalArgumentException("Registration request not found"));
 
         if (request.getStatus() != VehicleRegistrationStatus.PENDING) {
             throw new IllegalStateException("Request is not PENDING");
         }
 
-        request.setApprovedBy(requestById);
+        request.setApprovedBy(approvedBy);
         request.setNote(dto.note());
         request.setApprovedAt(nowUTC());
         request.setStatus(VehicleRegistrationStatus.APPROVED);
@@ -79,7 +79,7 @@ public class VehicleRegistrationService {
         validateVehicleRegistrationRejectDto(dto);
         
         var u = (UserPrincipal) authentication.getPrincipal();
-        UUID requestById = u.uid();
+        UUID rejectedBy = u.uid();
         var request = vehicleRegistrationRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Registration request not found"));
 
@@ -87,7 +87,7 @@ public class VehicleRegistrationService {
             throw new IllegalStateException("Request is not PENDING");
         }
 
-        request.setApprovedBy(requestById);
+        request.setApprovedBy(rejectedBy);
         request.setNote(dto.reason());
         request.setApprovedAt(nowUTC());
         request.setStatus(VehicleRegistrationStatus.REJECTED);
@@ -102,14 +102,20 @@ public class VehicleRegistrationService {
         UUID userId = u.uid();
         
         var request = vehicleRegistrationRepository.findById(requestId)
-                .orElseThrow();
+                .orElseThrow(() -> new IllegalArgumentException("Registration request not found"));
 
         if (request.getStatus() != VehicleRegistrationStatus.PENDING) {
             throw new IllegalStateException("Request is not PENDING");
         }
 
-        if (!request.getRequestedBy().equals(userId)) {
-            throw new IllegalStateException("Only the requester can cancel the request");
+        boolean isRequester = request.getRequestedBy().equals(userId);
+        boolean hasManagerRole = u.roles() != null && 
+            (u.roles().contains("tenant_manager") || 
+             u.roles().contains("tenant_owner") || 
+             u.roles().contains("admin"));
+        
+        if (!isRequester && !hasManagerRole) {
+            throw new IllegalStateException("Only the requester or tenant manager can cancel the request");
         }
 
         request.setStatus(VehicleRegistrationStatus.CANCELED);
@@ -211,18 +217,12 @@ public class VehicleRegistrationService {
     }
 
     private void validateVehicleRegistrationApproveDto(VehicleRegistrationApproveDto dto) {
-        if (dto.approvedBy() == null) {
-            throw new NullPointerException("Approved by cannot be null");
-        }
         if (dto.note() != null && dto.note().length() > 500) {
             throw new IllegalArgumentException("Note cannot exceed 500 characters");
         }
     }
 
     private void validateVehicleRegistrationRejectDto(VehicleRegistrationRejectDto dto) {
-        if (dto.rejectedBy() == null) {
-            throw new NullPointerException("Rejected by cannot be null");
-        }
         if (dto.reason() == null) {
             throw new NullPointerException("Reason cannot be null");
         }

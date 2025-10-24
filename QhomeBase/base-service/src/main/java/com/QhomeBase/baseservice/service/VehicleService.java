@@ -110,7 +110,7 @@ public class VehicleService {
 
     public void deleteVehicle(UUID id) {
         var vehicle = vehicleRepository.findById(id)
-                .orElseThrow();
+                .orElseThrow(() -> new IllegalArgumentException("Vehicle not found"));
 
         vehicle.setActive(false);
         vehicle.setUpdatedAt(nowUTC());

@@ -23,47 +23,29 @@ public class VehicleController {
     @PostMapping
     @PreAuthorize("@authz.canCreateVehicle(#dto.tenantId())")
     public ResponseEntity<VehicleDto> createVehicle(@Valid @RequestBody VehicleCreateDto dto) {
-        try {
-            VehicleDto result = vehicleService.createVehicle(dto);
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
-        } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().build();
-        }
+        VehicleDto result = vehicleService.createVehicle(dto);
+        return ResponseEntity.ok(result);
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("@authz.canUpdateVehicle(#id)")
     public ResponseEntity<VehicleDto> updateVehicle(@PathVariable UUID id, @Valid @RequestBody VehicleUpdateDto dto) {
-        try {
-            VehicleDto result = vehicleService.updateVehicle(dto, id);
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
+        VehicleDto result = vehicleService.updateVehicle(dto, id);
+        return ResponseEntity.ok(result);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("@authz.canDeleteVehicle(#id)")
     public ResponseEntity<Void> deleteVehicle(@PathVariable UUID id) {
-        try {
-            vehicleService.deleteVehicle(id);
-            return ResponseEntity.ok().build();
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
+        vehicleService.deleteVehicle(id);
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("@authz.canViewVehicle(#id)")
     public ResponseEntity<VehicleDto> getVehicleById(@PathVariable UUID id) {
-        try {
-            VehicleDto result = vehicleService.getVehicleById(id);
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
+        VehicleDto result = vehicleService.getVehicleById(id);
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/tenant/{tenantId}")
@@ -97,12 +79,8 @@ public class VehicleController {
     @PatchMapping("/{id}/status")
     @PreAuthorize("@authz.canManageVehicleStatus(#id)")
     public ResponseEntity<Void> changeVehicleStatus(@PathVariable UUID id, @RequestParam Boolean active) {
-        try {
-            vehicleService.changeVehicleStatus(id, active);
-            return ResponseEntity.ok().build();
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
+        vehicleService.changeVehicleStatus(id, active);
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/kinds")

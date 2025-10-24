@@ -40,6 +40,16 @@ public class buildingController {
         return ResponseEntity.ok(buildings);
     }
 
+    @GetMapping("/{buildingId}")
+    public ResponseEntity<BuildingDto> getBuildingById(@PathVariable UUID buildingId) {
+        try {
+            BuildingDto building = buildingService.getBuildingById(buildingId);
+            return ResponseEntity.ok(building);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     @PostMapping
     @PreAuthorize("@authz.canCreateBuilding()")
     public ResponseEntity<BuildingDto> createBuilding(

@@ -27,14 +27,8 @@ public class VehicleRegistrationController {
     public ResponseEntity<VehicleRegistrationDto> createRegistrationRequest(
             @Valid @RequestBody VehicleRegistrationCreateDto dto, 
             Authentication auth) {
-        try {
-            VehicleRegistrationDto result = vehicleRegistrationService.createRegistrationRequest(dto, auth);
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
-        } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().build();
-        }
+        VehicleRegistrationDto result = vehicleRegistrationService.createRegistrationRequest(dto, auth);
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/{id}/approve")
@@ -43,14 +37,8 @@ public class VehicleRegistrationController {
             @PathVariable UUID id, 
             @Valid @RequestBody VehicleRegistrationApproveDto dto, 
             Authentication auth) {
-        try {
-            VehicleRegistrationDto result = vehicleRegistrationService.approveRequest(id, dto, auth);
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().build();
-        }
+        VehicleRegistrationDto result = vehicleRegistrationService.approveRequest(id, dto, auth);
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/{id}/reject")
@@ -59,14 +47,8 @@ public class VehicleRegistrationController {
             @PathVariable UUID id, 
             @Valid @RequestBody VehicleRegistrationRejectDto dto, 
             Authentication auth) {
-        try {
-            VehicleRegistrationDto result = vehicleRegistrationService.rejectRequest(id, dto, auth);
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().build();
-        }
+        VehicleRegistrationDto result = vehicleRegistrationService.rejectRequest(id, dto, auth);
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/{id}/cancel")
@@ -74,25 +56,15 @@ public class VehicleRegistrationController {
     public ResponseEntity<VehicleRegistrationDto> cancelRequest(
             @PathVariable UUID id, 
             Authentication auth) {
-        try {
-            VehicleRegistrationDto result = vehicleRegistrationService.cancelRequest(id, auth);
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().build();
-        }
+        VehicleRegistrationDto result = vehicleRegistrationService.cancelRequest(id, auth);
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("@authz.canViewVehicleRegistration(#id)")
     public ResponseEntity<VehicleRegistrationDto> getRequestById(@PathVariable UUID id) {
-        try {
-            VehicleRegistrationDto result = vehicleRegistrationService.getRequestById(id);
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
+        VehicleRegistrationDto result = vehicleRegistrationService.getRequestById(id);
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/tenant/{tenantId}")

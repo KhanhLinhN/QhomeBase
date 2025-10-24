@@ -55,3 +55,5 @@ public interface NewsViewRepository extends JpaRepository<NewsView, UUID> {
 }
 
 
+
+

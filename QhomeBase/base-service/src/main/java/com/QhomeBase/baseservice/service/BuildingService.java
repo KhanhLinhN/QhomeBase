@@ -34,6 +34,12 @@ public class BuildingService {
                 .collect(Collectors.toList());
     }
 
+    public BuildingDto getBuildingById(UUID buildingId) {
+        Building building = respo.findById(buildingId)
+                .orElseThrow(() -> new IllegalArgumentException("Building not found with id: " + buildingId));
+        return toDto(building);
+    }
+
     private String generateNextCode(UUID tenantId) {
         List<Building> Buildings = respo.findAllByTenantIdOrderByCodeAsc(tenantId);
         String tenantCode = getTenantCode(tenantId);
