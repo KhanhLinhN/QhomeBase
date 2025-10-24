@@ -11,6 +11,7 @@ import com.QhomeBase.baseservice.repository.BuildingRepository;
 import com.QhomeBase.baseservice.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -19,15 +20,18 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class UnitService {
     private final UnitRepository unitRepository;
     private final BuildingRepository buildingRepository;
     private final TenantRepository tenantRepository;
+    private final HouseholdService householdService;
     
     private OffsetDateTime nowUTC() {
         return OffsetDateTime.now(ZoneOffset.UTC);
     }
 
+    @Transactional
     public UnitDto createUnit(UnitCreateDto unitCreateDto) {
         validateUnitCreateDto(unitCreateDto);
         
@@ -50,6 +54,8 @@ public class UnitService {
         var savedUnit = unitRepository.save(unit);
         return toDto(savedUnit);
     }
+    
+    @Transactional
     public UnitDto updateUnit(UnitUpdateDto unit, UUID id) {
         validateUnitUpdateDto(unit);
         
@@ -71,6 +77,7 @@ public class UnitService {
         return toDto(savedUnit);
     }
     
+    @Transactional
     public void deleteUnit(UUID id) {
         Unit unit = unitRepository.findById(id)
                 .orElseThrow();
@@ -106,6 +113,7 @@ public class UnitService {
                 .toList();
     }
     
+    @Transactional
     public void changeUnitStatus(UUID id, UnitStatus newStatus) {
         Unit unit = unitRepository.findById(id)
                 .orElseThrow();
@@ -194,6 +202,8 @@ public class UnitService {
         } catch (Exception e) {
         }
         
+        UUID primaryResidentId = householdService.getPayerForUnit(unit.getId());
+        
         return new UnitDto(
                 unit.getId(),
                 unit.getTenantId(),
@@ -205,6 +215,7 @@ public class UnitService {
                 unit.getAreaM2(),
                 unit.getBedrooms(),
                 unit.getStatus(),
+                primaryResidentId,
                 unit.getCreatedAt(),
                 unit.getUpdatedAt()
         );

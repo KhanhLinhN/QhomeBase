@@ -28,6 +28,7 @@ public class VehicleRegistrationService {
     private final VehicleRegistrationRepository vehicleRegistrationRepository;
     private final VehicleRepository vehicleRepository;
     private final FinanceBillingClient financeBillingClient;
+    private final HouseholdService householdService;
 
     private OffsetDateTime nowUTC() {
         return OffsetDateTime.now(ZoneOffset.UTC);
@@ -221,11 +222,24 @@ public class VehicleRegistrationService {
             return;
         }
 
+        UUID unitId = vehicle.getUnit() != null ? vehicle.getUnit().getId() : null;
+        
+
+        UUID payerResidentId = null;
+        if (unitId != null) {
+            payerResidentId = householdService.getPayerForUnit(unitId);
+        }
+        
+
+        if (payerResidentId == null) {
+            payerResidentId = vehicle.getResidentId();
+        }
+
         var event = VehicleActivatedEvent.builder()
                 .vehicleId(vehicle.getId())
                 .tenantId(request.getTenantId())
-                .unitId(vehicle.getUnit() != null ? vehicle.getUnit().getId() : null)
-                .residentId(vehicle.getResidentId())
+                .unitId(unitId)
+                .residentId(payerResidentId)
                 .plateNo(vehicle.getPlateNo())
                 .vehicleKind(vehicle.getKind() != null ? vehicle.getKind().name() : null)
                 .activatedAt(now)

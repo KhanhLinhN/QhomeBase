@@ -17,6 +17,7 @@ public record UnitDto(
         BigDecimal areaM2,
         Integer bedrooms,
         UnitStatus status,
+        UUID primaryResidentId,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {}
