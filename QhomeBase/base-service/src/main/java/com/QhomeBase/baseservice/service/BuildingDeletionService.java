@@ -236,11 +236,11 @@ public class BuildingDeletionService {
         var building = buildingRepository.findById(request.getBuildingId())
                 .orElseThrow(() -> new IllegalArgumentException("Building not found"));
         
-
+        
         building.setStatus(BuildingStatus.DELETING);
         buildingRepository.save(building);
         
-
+    
         request.setStatus(BuildingDeletionStatus.APPROVED);
         request.setApprovedBy(user.uid());
         request.setNote(note);
@@ -263,10 +263,11 @@ public class BuildingDeletionService {
         var building = buildingRepository.findById(request.getBuildingId())
                 .orElseThrow(() -> new IllegalArgumentException("Building not found"));
         
-          building.setStatus(BuildingStatus.ACTIVE);
+       
+        building.setStatus(BuildingStatus.ACTIVE);
         buildingRepository.save(building);
         
-
+        
         request.setStatus(BuildingDeletionStatus.REJECTED);
         request.setApprovedBy(user.uid());
         request.setNote(note);
