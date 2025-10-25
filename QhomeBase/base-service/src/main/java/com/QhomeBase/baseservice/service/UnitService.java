@@ -25,7 +25,6 @@ public class UnitService {
     private final UnitRepository unitRepository;
     private final BuildingRepository buildingRepository;
     private final TenantRepository tenantRepository;
-    private final HouseholdService householdService;
     
     private OffsetDateTime nowUTC() {
         return OffsetDateTime.now(ZoneOffset.UTC);
@@ -202,8 +201,6 @@ public class UnitService {
         } catch (Exception e) {
         }
         
-        UUID primaryResidentId = householdService.getPayerForUnit(unit.getId());
-        
         return new UnitDto(
                 unit.getId(),
                 unit.getTenantId(),
@@ -215,7 +212,7 @@ public class UnitService {
                 unit.getAreaM2(),
                 unit.getBedrooms(),
                 unit.getStatus(),
-                primaryResidentId,
+                null,  // primaryResidentId - không gắn owner khi tạo unit
                 unit.getCreatedAt(),
                 unit.getUpdatedAt()
         );
