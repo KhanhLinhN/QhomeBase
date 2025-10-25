@@ -27,7 +27,18 @@ public class AuthzService {
 
     private boolean sameTenant(UUID tenantId) {
         var p = principal();
+        
+        // Global admin (tenantId = null) can access any tenant
+        if (p.tenant() == null && hasAnyRole(Set.of("admin"))) {
+            return true;
+        }
+        
         return p.tenant() != null && p.tenant().equals(tenantId);
+    }
+    
+    private boolean isGlobalAdmin() {
+        var p = principal();
+        return p.tenant() == null && hasAnyRole(Set.of("admin"));
     }
 
     public boolean canManageTenant(UUID tenantId) {
@@ -39,21 +50,13 @@ public class AuthzService {
     }
 
     public boolean canRequestDeleteTenant(UUID tenantId) {
-        var p = principal();
+        boolean st = sameTenant(tenantId);
         boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner"));
         boolean okPerm = hasPerm("base.tenant.delete.request");
+        boolean isAdmin = hasAnyRole(Set.of("admin"));
         
-        System.out.println("=== canRequestDeleteTenant Debug ===");
-        System.out.println("Tenant ID: " + tenantId);
-        System.out.println("User Principal: " + p);
-        System.out.println("User Roles: " + p.roles());
-        System.out.println("User Perms: " + p.perms());
-        System.out.println("okRole: " + okRole);
-        System.out.println("okPerm: " + okPerm);
-        System.out.println("Final Result: " + (okRole || okPerm));
-        System.out.println("=====================================");
-        
-        return okRole || okPerm;
+        // Admin can delete any tenant, others must be in same tenant
+        return (st && (okRole || okPerm)) || isAdmin;
     }
 
     public boolean canApproveTicket(UUID ticketTenantId) {
