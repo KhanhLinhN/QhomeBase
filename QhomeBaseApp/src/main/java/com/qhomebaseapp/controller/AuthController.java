@@ -43,7 +43,7 @@ public class AuthController {
     private final LoginAttemptService loginAttemptService;
     private final Map<String, Integer> otpRequestCount = new ConcurrentHashMap<>();
     private final Map<String, LocalDateTime> otpRequestTime = new ConcurrentHashMap<>();
-    private static final int OTP_EXPIRY_MINUTES = 10;
+    private static final int OTP_EXPIRY_MINUTES = 120;
     private static final int OTP_MAX_REQUESTS = 3;
     private static final int OTP_LENGTH = 8;
     private static final SecureRandom random = new SecureRandom();
