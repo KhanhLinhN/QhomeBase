@@ -14,10 +14,13 @@ com\qhomebaseapp\model\Bill.class
 com\qhomebaseapp\model\NewsAttachment$NewsAttachmentBuilder.class
 com\qhomebaseapp\dto\token\JwtResponse.class
 com\qhomebaseapp\model\NewsRead$Id.class
+com\qhomebaseapp\model\NewsTest.class
 com\qhomebaseapp\repository\news\NewsAttachmentRepository.class
 com\qhomebaseapp\repository\news\NewsRepository.class
+com\qhomebaseapp\dto\news\WebSocketNewsMessage$WebSocketNewsMessageBuilder.class
 com\qhomebaseapp\controller\DemoNewsController.class
 com\qhomebaseapp\dto\bill\BillStatisticsDto.class
+com\qhomebaseapp\service\news\NewsWebSocketListener$2.class
 com\qhomebaseapp\exception\GlobalExceptionHandler.class
 com\qhomebaseapp\dto\registrationservice\RegisterServiceRequestDto$RegisterServiceRequestDtoBuilder.class
 com\qhomebaseapp\model\RegisterServiceRequest.class
@@ -33,6 +36,7 @@ com\qhomebaseapp\model\RegisterServiceRequest$RegisterServiceRequestBuilder.clas
 com\qhomebaseapp\model\News$NewsBuilder.class
 com\qhomebaseapp\dto\news\NewsDto.class
 com\qhomebaseapp\repository\registerregistration\RegisterServiceImageRepository.class
+com\qhomebaseapp\service\news\NewsWebSocketListener$1.class
 com\qhomebaseapp\controller\NewsController.class
 com\qhomebaseapp\dto\bill\BillDto.class
 com\qhomebaseapp\dto\post\CommentDto$CommentDtoBuilder.class
@@ -42,6 +46,7 @@ com\qhomebaseapp\model\Post.class
 com\qhomebaseapp\dto\user\LoginRequestDto.class
 com\qhomebaseapp\mapper\RegisterServiceRequestResponseMapperImpl.class
 com\qhomebaseapp\service\news\NewsServiceImpl.class
+com\qhomebaseapp\service\news\NewsWebSocketListener.class
 com\qhomebaseapp\QhomeApplication.class
 com\qhomebaseapp\model\PostImage$PostImageBuilder.class
 com\qhomebaseapp\service\user\UserService.class
@@ -65,6 +70,7 @@ com\qhomebaseapp\dto\post\PostLikeDto.class
 com\qhomebaseapp\config\SecurityConfig.class
 com\qhomebaseapp\controller\UserController.class
 com\qhomebaseapp\repository\post\PostShareRepository.class
+com\qhomebaseapp\config\WebSocketClientConfig.class
 com\qhomebaseapp\model\PostLike.class
 com\qhomebaseapp\dto\post\LikeDto.class
 com\qhomebaseapp\dto\registrationservice\RegisterServiceRequestResponseDto$RegisterServiceRequestResponseDtoBuilder.class
@@ -82,13 +88,17 @@ com\qhomebaseapp\model\NewsCategory$NewsCategoryBuilder.class
 com\qhomebaseapp\service\security\LoginAttemptService.class
 com\qhomebaseapp\util\JwtKeyService.class
 com\qhomebaseapp\model\NewsRead$NewsReadBuilder.class
+com\qhomebaseapp\config\JacksonConfig.class
 com\qhomebaseapp\dto\registrationservice\RegisterServiceRequestDto.class
+com\qhomebaseapp\model\NewsTest$NewsTestBuilder.class
 com\qhomebaseapp\service\registerregistration\RegisterRegistrationServiceImpl.class
 com\qhomebaseapp\repository\post\PostLikeRepository.class
 com\qhomebaseapp\dto\post\CreateCommentRequest.class
 com\qhomebaseapp\service\user\EmailService.class
+com\qhomebaseapp\dto\news\WebSocketNewsMessage.class
 com\qhomebaseapp\repository\bill\BillRepository.class
 com\qhomebaseapp\mapper\PostMapper.class
+com\qhomebaseapp\repository\news\NewsTestRepository.class
 com\qhomebaseapp\repository\post\PostRepository.class
 com\qhomebaseapp\model\Post$PostBuilder.class
 com\qhomebaseapp\model\PostComment.class
