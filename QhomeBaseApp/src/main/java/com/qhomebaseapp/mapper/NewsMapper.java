@@ -1,77 +1,67 @@
 package com.qhomebaseapp.mapper;
 
 import com.qhomebaseapp.dto.registrationservice.CreateNewsRequest;
-import com.qhomebaseapp.dto.news.NewsAttachmentDto;
 import com.qhomebaseapp.dto.news.NewsDto;
 import com.qhomebaseapp.dto.registrationservice.UpdateNewsRequest;
 import com.qhomebaseapp.model.News;
-import com.qhomebaseapp.model.NewsCategory;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
-import java.util.stream.Collectors;
+import java.time.Instant;
 
 @Component
 public class NewsMapper {
 
-    public NewsDto toDto(News entity, boolean isRead) {
+    public NewsDto toDto(News entity) {
         if (entity == null) return null;
 
         return NewsDto.builder()
                 .id(entity.getId())
-                .categoryCode(entity.getCategory() != null ? entity.getCategory().getCode() : null)
-                .categoryName(entity.getCategory() != null ? entity.getCategory().getName() : null)
+                .newsUuid(entity.getNewsUuid())
                 .title(entity.getTitle())
                 .summary(entity.getSummary())
-                .content(entity.getContent())
-                .author(entity.getAuthor())
-                .source(entity.getSource())
-                .publishedAt(entity.getPublishedAt())
-                .pinned(entity.getPinned())
-                .visibleToAll(entity.getVisibleToAll())
-                .createdBy(entity.getCreatedBy())
+                .bodyHtml(entity.getBodyHtml())
+                .coverImageUrl(entity.getCoverImageUrl())
+                .deepLink(entity.getDeepLink())
+                .status(entity.getStatus())
+                .publishAt(entity.getPublishAt())
+                .expireAt(entity.getExpireAt())
+                .receivedAt(entity.getReceivedAt())
+                .isRead(entity.getIsRead())
+                .rawPayload(entity.getRawPayload())
                 .createdAt(entity.getCreatedAt())
-                .updatedBy(entity.getUpdatedBy())
                 .updatedAt(entity.getUpdatedAt())
-                .isRead(isRead)
-                .attachments(entity.getAttachments() != null
-                        ? entity.getAttachments().stream()
-                        .map(att -> NewsAttachmentDto.builder()
-                                .id(att.getId())
-                                .filename(att.getFilename())
-                                .url(att.getUrl())
-                                .build())
-                        .collect(Collectors.toList())
-                        : null)
                 .build();
     }
 
-    public News fromCreateRequest(CreateNewsRequest req, NewsCategory category, String username) {
+    public News fromCreateRequest(CreateNewsRequest req) {
         return News.builder()
-                .category(category)
+                .newsUuid(req.getNewsUuid())
                 .title(req.getTitle())
                 .summary(req.getSummary())
-                .content(req.getContent())
-                .author(req.getAuthor())
-                .source(req.getSource())
-                .publishedAt(LocalDateTime.now())
-                .pinned(req.getPinned())
-                .visibleToAll(req.getVisibleToAll())
-                .createdBy(username)
-                .createdAt(LocalDateTime.now())
+                .bodyHtml(req.getBodyHtml())
+                .coverImageUrl(req.getCoverImageUrl())
+                .deepLink(req.getDeepLink())
+                .status(req.getStatus())
+                .publishAt(req.getPublishAt())
+                .expireAt(req.getExpireAt())
+                .receivedAt(Instant.now())
+                .isRead(false)
+                .rawPayload(req.getRawPayload())
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
                 .build();
     }
 
-    public void updateEntity(News entity, UpdateNewsRequest req, NewsCategory category, String username) {
-        entity.setCategory(category);
+    public void updateEntity(News entity, UpdateNewsRequest req) {
         entity.setTitle(req.getTitle());
         entity.setSummary(req.getSummary());
-        entity.setContent(req.getContent());
-        entity.setAuthor(req.getAuthor());
-        entity.setSource(req.getSource());
-        entity.setPinned(req.getPinned());
-        entity.setVisibleToAll(req.getVisibleToAll());
-        entity.setUpdatedBy(username);
-        entity.setUpdatedAt(LocalDateTime.now());
+        entity.setBodyHtml(req.getBodyHtml());
+        entity.setCoverImageUrl(req.getCoverImageUrl());
+        entity.setDeepLink(req.getDeepLink());
+        entity.setStatus(req.getStatus());
+        entity.setPublishAt(req.getPublishAt());
+        entity.setExpireAt(req.getExpireAt());
+        entity.setRawPayload(req.getRawPayload());
+        entity.setUpdatedAt(Instant.now());
     }
 }

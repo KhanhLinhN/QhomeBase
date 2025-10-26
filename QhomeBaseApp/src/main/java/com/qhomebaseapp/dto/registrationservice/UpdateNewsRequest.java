@@ -6,27 +6,30 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
 import java.util.List;
-
+import java.time.Instant;
 @Data @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+
+
 public class UpdateNewsRequest {
-    private String categoryCode;
     private String title;
     private String summary;
-    private String content;
-    private String author;
-    private String source;
-    private Boolean pinned;
-    private Boolean visibleToAll;
-    private LocalDateTime publishedAt;
+    private String bodyHtml;
+    private String coverImageUrl;
+    private String deepLink;
+    private String status;
+    private Instant publishAt;
+    private Instant expireAt;
+    private String rawPayload;
+    private Instant updatedAt;
+
     private List<NewsAttachmentDto> attachments;
+
     private String vehicleType;
     private String licensePlate;
     private String vehicleBrand;
     private String vehicleColor;
     private String imageUrl;
-
 }

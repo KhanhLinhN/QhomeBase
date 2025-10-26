@@ -4,11 +4,10 @@ import com.qhomebaseapp.dto.news.NewsDto;
 import com.qhomebaseapp.mapper.NewsMapper;
 import com.qhomebaseapp.model.News;
 import com.qhomebaseapp.model.NewsRead;
-import com.qhomebaseapp.repository.news.NewsCategoryRepository;
+import com.qhomebaseapp.model.User;
+import com.qhomebaseapp.repository.UserRepository;
 import com.qhomebaseapp.repository.news.NewsReadRepository;
 import com.qhomebaseapp.repository.news.NewsRepository;
-import com.qhomebaseapp.repository.UserRepository;
-import com.qhomebaseapp.model.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -16,7 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.Principal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -26,25 +25,19 @@ public class NewsServiceImpl implements NewsService {
 
     private final NewsRepository newsRepository;
     private final NewsReadRepository newsReadRepository;
-    private final NewsCategoryRepository newsCategoryRepository;
     private final NewsMapper newsMapper;
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
 
     @Override
     public Page<NewsDto> listNews(String categoryCode, Long userId, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "publishedAt"));
-        Page<News> newsPage;
-
-        if (categoryCode != null) {
-            newsPage = newsRepository.findByCategory_CodeOrderByPublishedAtDesc(categoryCode, pageable);
-        } else {
-            newsPage = newsRepository.findAllByOrderByPublishedAtDesc(pageable);
-        }
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "publishAt"));
+        Page<News> newsPage = newsRepository.findAllByOrderByPublishAtDesc(pageable);
 
         return newsPage.map(n -> {
             boolean isRead = userId != null && newsReadRepository.existsByUserIdAndNewsId(userId, n.getId());
-            return newsMapper.toDto(n, isRead);
+            n.setIsRead(isRead);
+            return newsMapper.toDto(n);
         });
     }
 
@@ -58,10 +51,12 @@ public class NewsServiceImpl implements NewsService {
 
         if (userId != null && !isRead) {
             markAsRead(news.getId(), userId);
-            isRead = true;
+            news.setIsRead(true);
+        } else {
+            news.setIsRead(isRead);
         }
 
-        return newsMapper.toDto(news, isRead);
+        return newsMapper.toDto(news);
     }
 
     @Override
@@ -72,16 +67,13 @@ public class NewsServiceImpl implements NewsService {
             NewsRead read = NewsRead.builder()
                     .userId(userId)
                     .newsId(newsId)
-                    .readAt(LocalDateTime.now())
+                    .readAt(Instant.now())
                     .build();
             newsReadRepository.save(read);
 
             messagingTemplate.convertAndSend(
                     "/topic/notifications/" + userId,
-                    Map.of(
-                            "newsId", newsId,
-                            "isRead", true
-                    )
+                    Map.of("newsId", newsId, "isRead", true)
             );
         }
     }
@@ -93,9 +85,7 @@ public class NewsServiceImpl implements NewsService {
 
     @Override
     public Long getUserIdFromPrincipal(Principal principal) {
-        if (principal == null) {
-            return null;
-        }
+        if (principal == null) return null;
         String email = principal.getName();
 
         return userRepository.findByEmail(email)
@@ -105,12 +95,16 @@ public class NewsServiceImpl implements NewsService {
 
     @Transactional
     public NewsDto createNews(News news) {
+        news.setReceivedAt(news.getReceivedAt() != null ? news.getReceivedAt() : Instant.now());
+        news.setCreatedAt(Instant.now());
+        news.setUpdatedAt(Instant.now());
+        news.setIsRead(false);
+
         News saved = newsRepository.save(news);
 
-        // gửi real-time notification đến tất cả client đang subscribe
-        messagingTemplate.convertAndSend("/topic/news", newsMapper.toDto(saved, false));
+        messagingTemplate.convertAndSend("/topic/news", newsMapper.toDto(saved));
 
-        return newsMapper.toDto(saved, false);
+        return newsMapper.toDto(saved);
     }
 
     @Transactional
@@ -120,15 +114,20 @@ public class NewsServiceImpl implements NewsService {
 
         news.setTitle(updatedNews.getTitle());
         news.setSummary(updatedNews.getSummary());
-        news.setContent(updatedNews.getContent());
-        news.setPublishedAt(updatedNews.getPublishedAt());
-        news.setAttachments(updatedNews.getAttachments());
+        news.setBodyHtml(updatedNews.getBodyHtml());
+        news.setCoverImageUrl(updatedNews.getCoverImageUrl());
+        news.setDeepLink(updatedNews.getDeepLink());
+        news.setStatus(updatedNews.getStatus());
+        news.setPublishAt(updatedNews.getPublishAt());
+        news.setExpireAt(updatedNews.getExpireAt());
+        news.setRawPayload(updatedNews.getRawPayload());
+        news.setUpdatedAt(Instant.now());
 
         News saved = newsRepository.save(news);
 
-        messagingTemplate.convertAndSend("/topic/news", newsMapper.toDto(saved, false));
+        messagingTemplate.convertAndSend("/topic/news", newsMapper.toDto(saved));
 
-        return newsMapper.toDto(saved, false);
+        return newsMapper.toDto(saved);
     }
 
     @Override
@@ -138,8 +137,8 @@ public class NewsServiceImpl implements NewsService {
         Page<News> unreadNewsPage = newsRepository.findUnreadNewsByUserId(userId, pageable);
 
         return unreadNewsPage.stream()
-                .map(n -> newsMapper.toDto(n, false))
+                .peek(n -> n.setIsRead(false))
+                .map(newsMapper::toDto)
                 .toList();
     }
-
 }

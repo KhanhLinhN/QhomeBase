@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.io.Serializable;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "news_read", schema = "qhomebaseapp")
@@ -14,7 +14,6 @@ import java.time.LocalDateTime;
 @Builder
 @IdClass(NewsRead.Id.class)
 public class NewsRead {
-
     @jakarta.persistence.Id
     @Column(name = "user_id")
     private Long userId;
@@ -23,13 +22,17 @@ public class NewsRead {
     @Column(name = "news_id")
     private Long newsId;
 
-    private LocalDateTime readAt;
+    @Column(name = "read_at")
+    private Instant readAt;
 
     public static class Id implements Serializable {
         private Long userId;
         private Long newsId;
-        public Id() {}
-        public Id(Long userId, Long newsId) { this.userId = userId; this.newsId = newsId; }
 
+        public Id() {}
+        public Id(Long userId, Long newsId) {
+            this.userId = userId;
+            this.newsId = newsId;
+        }
     }
 }

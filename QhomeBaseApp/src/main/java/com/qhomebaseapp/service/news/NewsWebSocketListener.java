@@ -3,6 +3,7 @@ package com.qhomebaseapp.service.news;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qhomebaseapp.dto.news.WebSocketNewsMessage;
 import com.qhomebaseapp.model.NewsTest;
+import com.qhomebaseapp.repository.news.NewsRepository;
 import com.qhomebaseapp.repository.news.NewsTestRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -11,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.stomp.*;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 import org.springframework.util.concurrent.ListenableFuture;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
@@ -21,14 +23,13 @@ import java.time.Instant;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-@Service
-@RequiredArgsConstructor
+@Component
 public class NewsWebSocketListener {
 
     private static final Logger log = LoggerFactory.getLogger(NewsWebSocketListener.class);
 
     private final WebSocketStompClient stompClient;
-    private final NewsTestRepository newsRepository;
+    private final NewsRepository newsRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.websocket.url}")
@@ -44,6 +45,12 @@ public class NewsWebSocketListener {
     private static final Duration RECONNECT_DELAY = Duration.ofSeconds(10);
     private static final int CONNECT_TIMEOUT_SECONDS = 10;
 
+    public NewsWebSocketListener(WebSocketStompClient stompClient, NewsRepository newsRepository, ObjectMapper objectMapper) {
+        this.stompClient = stompClient;
+        this.newsRepository = newsRepository;
+        this.objectMapper = objectMapper;
+    }
+
     @PostConstruct
     public void start() {
         log.info("🚀 Starting WebSocket listener for tenantId={}", tenantId);
@@ -52,12 +59,9 @@ public class NewsWebSocketListener {
 
     private void connectWithRetry(long initialDelaySeconds) {
         scheduler.schedule(() -> {
-            if (connected.get()) {
-                log.info("🟢 Already connected, skipping reconnect attempt.");
-                return;
-            }
+            if (connected.get()) return;
             try {
-                log.info("🔌 Attempting to connect to WebSocket: {}", websocketUrl);
+                log.info("🔌 Connecting to WebSocket: {}", websocketUrl);
                 ListenableFuture<StompSession> future = stompClient.connect(websocketUrl, new StompSessionHandlerAdapter() {
                     @Override
                     public void afterConnected(StompSession session, StompHeaders connectedHeaders) {
@@ -73,14 +77,7 @@ public class NewsWebSocketListener {
                         connected.set(false);
                         scheduleReconnect();
                     }
-
-                    @Override
-                    public void handleException(StompSession session, StompCommand command, StompHeaders headers,
-                                                byte[] payload, Throwable exception) {
-                        log.error("❌ STOMP exception", exception);
-                    }
                 });
-
                 stompSession = future.get(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             } catch (Exception ex) {
                 log.error("❌ Failed to connect to WebSocket server: {}", ex.getMessage());
@@ -116,18 +113,21 @@ public class NewsWebSocketListener {
     private void handleMessage(WebSocketNewsMessage msg) {
         try {
             String json = objectMapper.writeValueAsString(msg);
+            Instant now = Instant.now();
 
-            newsRepository.insertWithJsonb(
+            newsRepository.upsertWithJsonb(
                     msg.getNewsId(),
                     msg.getTitle(),
                     msg.getSummary(),
                     msg.getCoverImageUrl(),
                     msg.getDeepLink(),
-                    msg.getTimestamp() != null ? msg.getTimestamp() : Instant.now(),
-                    json
+                    msg.getTimestamp() != null ? msg.getTimestamp() : now,
+                    json,
+                    now,
+                    now
             );
 
-            log.info("💾 Saved news {} to database (news_test)", msg.getNewsId());
+            log.info("💾 Saved or updated news {} in qhomebaseapp.news", msg.getNewsId());
         } catch (Exception ex) {
             log.error("💥 Failed to save news to DB", ex);
         }

@@ -18,7 +18,6 @@ com\qhomebaseapp\model\NewsTest.class
 com\qhomebaseapp\repository\news\NewsAttachmentRepository.class
 com\qhomebaseapp\repository\news\NewsRepository.class
 com\qhomebaseapp\dto\news\WebSocketNewsMessage$WebSocketNewsMessageBuilder.class
-com\qhomebaseapp\controller\DemoNewsController.class
 com\qhomebaseapp\dto\bill\BillStatisticsDto.class
 com\qhomebaseapp\service\news\NewsWebSocketListener$2.class
 com\qhomebaseapp\exception\GlobalExceptionHandler.class
@@ -29,6 +28,7 @@ com\qhomebaseapp\mapper\RegisterServiceRequestMapper.class
 com\qhomebaseapp\repository\bill\BillRepositoryImpl.class
 com\qhomebaseapp\service\post\PostServiceImpl.class
 com\qhomebaseapp\mapper\RegisterServiceRequestMapperImpl.class
+com\qhomebaseapp\model\NewsImage.class
 com\qhomebaseapp\dto\news\NewsNotificationDto.class
 com\qhomebaseapp\config\RedisConfig.class
 com\qhomebaseapp\dto\bill\BillStatisticsDto$BillStatisticsDtoBuilder.class
@@ -125,7 +125,6 @@ com\qhomebaseapp\dto\news\NewsAttachmentDto.class
 com\qhomebaseapp\repository\news\NewsCategoryRepository.class
 com\qhomebaseapp\model\PostShare$PostShareBuilder.class
 com\qhomebaseapp\model\NewsAttachment.class
-com\qhomebaseapp\controller\NewsWebSocketController.class
 com\qhomebaseapp\dto\post\LikeDto$LikeDtoBuilder.class
 com\qhomebaseapp\dto\post\CreatePostRequest.class
 com\qhomebaseapp\dto\registrationservice\UpdateNewsRequest$UpdateNewsRequestBuilder.class

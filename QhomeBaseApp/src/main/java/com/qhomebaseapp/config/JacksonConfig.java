@@ -13,10 +13,8 @@ public class JacksonConfig {
     public ObjectMapper objectMapper() {
         ObjectMapper mapper = new ObjectMapper();
 
-        // ✅ Bắt buộc: đăng ký module hỗ trợ Java 8 Date/Time (Instant, LocalDateTime, etc.)
         mapper.registerModule(new JavaTimeModule());
 
-        // ✅ Tùy chọn: định dạng ISO thay vì timestamp (đẹp & chuẩn)
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
         return mapper;
