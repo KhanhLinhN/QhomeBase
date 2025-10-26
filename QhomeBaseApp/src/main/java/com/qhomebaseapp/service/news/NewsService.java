@@ -12,7 +12,6 @@ public interface NewsService {
     NewsDto getNewsByUuid(String uuid, Long userId);
     void markAsReadByUuid(String uuid, Long userId);
     Page<NewsDto> listNews(String categoryCode, Long userId, int page, int size);
-    void markAsRead(Long newsId, Long userId);
     long unreadCount(Long userId);
     List<NewsDto> listUnread(Long userId);
 }

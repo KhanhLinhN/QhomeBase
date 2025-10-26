@@ -44,25 +44,6 @@ public class NewsServiceImpl implements NewsService {
     }
 
     @Override
-    @Transactional
-    public void markAsRead(Long newsId, Long userId) {
-        boolean exists = newsReadRepository.existsByUserIdAndNewsId(userId, newsId);
-        if (!exists) {
-            NewsRead read = NewsRead.builder()
-                    .userId(userId)
-                    .newsId(newsId)
-                    .readAt(Instant.now())
-                    .build();
-            newsReadRepository.save(read);
-
-            messagingTemplate.convertAndSend(
-                    "/topic/notifications/" + userId,
-                    Map.of("newsId", newsId, "isRead", true)
-            );
-        }
-    }
-
-    @Override
     public long unreadCount(Long userId) {
         return newsReadRepository.countUnreadByUserId(userId);
     }
@@ -99,26 +80,46 @@ public class NewsServiceImpl implements NewsService {
 
     @Override
     @Transactional
-    public void markAsReadByUuid(String uuid, Long userId) {
+    public void markAsReadByUuid(String uuidOrId, Long userId) {
         News news;
-        try {
-            news = newsRepository.findByNewsUuid(uuid)
-                    .orElseThrow(() -> new EntityNotFoundException("News not found by UUID"));
-        } catch (EntityNotFoundException e) {
-            // fallback thử tìm bằng id nếu uuid là số
+
+        // Thử lấy theo UUID
+        news = newsRepository.findByNewsUuid(uuidOrId).orElse(null);
+
+        if (news == null) {
+            // Nếu không tìm thấy, thử parse numeric ID
             try {
-                Long id = Long.parseLong(uuid);
+                Long id = Long.parseLong(uuidOrId);
                 news = newsRepository.findById(id)
                         .orElseThrow(() -> new EntityNotFoundException("News not found by id"));
             } catch (NumberFormatException ex) {
-                throw e; // uuid không phải số → ném lại lỗi gốc
+                // Nếu không phải số và không tìm thấy UUID → ném lỗi
+                throw new EntityNotFoundException("News not found by UUID: " + uuidOrId);
             }
         }
 
-        news.setIsRead(true);
-        newsRepository.save(news);
-    }
+        // Kiểm tra xem user đã đọc chưa
+        boolean exists = newsReadRepository.existsByUserIdAndNewsId(userId, news.getId());
+        if (!exists) {
+            // Tạo bản ghi đánh dấu đã đọc
+            NewsRead read = NewsRead.builder()
+                    .userId(userId)
+                    .newsId(news.getId())
+                    .readAt(Instant.now())
+                    .build();
+            newsReadRepository.save(read);
 
+            // Gửi real-time notification đến front-end
+            messagingTemplate.convertAndSend(
+                    "/topic/notifications/" + userId,
+                    Map.of(
+                            "newsId", news.getId(),
+                            "newsUuid", news.getNewsUuid(),
+                            "isRead", true
+                    )
+            );
+        }
+    }
 
     private NewsDto toDto(News news, Long userId) {
         NewsDto dto = new NewsDto();

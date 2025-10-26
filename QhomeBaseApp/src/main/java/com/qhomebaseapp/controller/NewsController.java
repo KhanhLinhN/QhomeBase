@@ -79,7 +79,7 @@ public class NewsController {
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             log.error("Error marking news {} as read for user {}: {}", uuid, userId, e.getMessage(), e);
-            return ResponseEntity.status(404).build(); // 404 thay vì 500
+            return ResponseEntity.status(404).build();
         }
     }
 
