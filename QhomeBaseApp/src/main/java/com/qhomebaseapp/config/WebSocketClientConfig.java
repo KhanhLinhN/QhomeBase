@@ -19,27 +19,18 @@ import java.util.List;
 
 @Configuration
 public class WebSocketClientConfig {
-
     @Bean
     public WebSocketStompClient webSocketStompClient(ObjectMapper objectMapper) {
-        // ✅ Đảm bảo Jackson hiểu Instant
         objectMapper.registerModule(new JavaTimeModule());
         objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-
-        // ✅ Dùng SockJSClient thay vì StandardWebSocketClient
         List<Transport> transports = new ArrayList<>();
         transports.add(new WebSocketTransport(new StandardWebSocketClient()));
-        transports.add(new RestTemplateXhrTransport()); // fallback nếu WS lỗi
-
+        transports.add(new RestTemplateXhrTransport());
         WebSocketClient sockJsClient = new SockJsClient(transports);
-
         WebSocketStompClient stompClient = new WebSocketStompClient(sockJsClient);
-
-        // ✅ Gắn Jackson converter vào STOMP
         MappingJackson2MessageConverter converter = new MappingJackson2MessageConverter();
         converter.setObjectMapper(objectMapper);
         stompClient.setMessageConverter(converter);
-
         return stompClient;
     }
 }

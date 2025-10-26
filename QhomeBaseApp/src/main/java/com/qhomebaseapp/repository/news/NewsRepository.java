@@ -12,10 +12,11 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface NewsRepository extends JpaRepository<News, Long> {
-
+    Optional<News> findByNewsUuid(String newsUuid);
     Page<News> findAllByOrderByPublishAtDesc(Pageable pageable);
 
     @Query("""
@@ -30,19 +31,6 @@ public interface NewsRepository extends JpaRepository<News, Long> {
                 ORDER BY n.publishAt DESC
             """)
     Page<News> findUnreadNewsByUserId(@Param("userId") Long userId, Pageable pageable);
-
-    @Query("""
-                SELECT n FROM News n
-                WHERE n.status = 'PUBLISHED'
-                  AND n.publishAt <= CURRENT_TIMESTAMP
-                  AND (n.expireAt IS NULL OR n.expireAt > CURRENT_TIMESTAMP)
-                  AND EXISTS (
-                      SELECT 1 FROM NewsRead r
-                      WHERE r.newsId = n.id AND r.userId = :userId
-                  )
-                ORDER BY n.publishAt DESC
-            """)
-    Page<News> findReadNewsByUserId(@Param("userId") Long userId, Pageable pageable);
 
     @Modifying
     @Transactional

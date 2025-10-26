@@ -35,7 +35,7 @@ public class NewsMapper {
 
     public News fromCreateRequest(CreateNewsRequest req) {
         return News.builder()
-                .newsUuid(req.getNewsUuid())
+                .newsUuid(req.getNewsUuid().toString())
                 .title(req.getTitle())
                 .summary(req.getSummary())
                 .bodyHtml(req.getBodyHtml())

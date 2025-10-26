@@ -48,31 +48,39 @@ public class NewsController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/{uuid}")
     public ResponseEntity<NewsDto> get(
-            @PathVariable Long id,
+            @PathVariable String uuid,
             Authentication authentication
     ) {
         Long userId = getAuthenticatedUserId(authentication);
-        NewsDto dto = newsService.getNews(id, userId);
-
-        log.info("User {} fetched news {}", userId, id);
-
-        return ResponseEntity.ok(dto);
+        try {
+            log.info("Fetching news {} for user {}", uuid, userId);
+            NewsDto dto = newsService.getNewsByUuid(uuid, userId);
+            log.info("Fetched news: {}", dto);
+            return ResponseEntity.ok(dto);
+        } catch (Exception e) {
+            log.error("Error fetching news {} for user {}: {}", uuid, userId, e.getMessage(), e);
+            return ResponseEntity.status(404).body(null); // 404 thay vì 500
+        }
     }
 
-    @PostMapping("/{id}/read")
+    @PostMapping("/{uuid}/read")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> markRead(
-            @PathVariable Long id,
+            @PathVariable String uuid,
             Authentication authentication
     ) {
         Long userId = getAuthenticatedUserId(authentication);
-        newsService.markAsRead(id, userId);
-
-        log.info("User {} marked news {} as read", userId, id);
-
-        return ResponseEntity.ok().build();
+        try {
+            log.info("Marking news {} as read for user {}", uuid, userId);
+            newsService.markAsReadByUuid(uuid, userId);
+            log.info("Marked news {} as read successfully", uuid);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            log.error("Error marking news {} as read for user {}: {}", uuid, userId, e.getMessage(), e);
+            return ResponseEntity.status(404).build(); // 404 thay vì 500
+        }
     }
 
     @GetMapping("/unread-count")
@@ -96,6 +104,4 @@ public class NewsController {
         List<NewsDto> unreadNews = newsService.listUnread(userId);
         return ResponseEntity.ok(unreadNews);
     }
-
-
 }

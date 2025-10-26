@@ -8,6 +8,7 @@ import com.qhomebaseapp.model.User;
 import com.qhomebaseapp.repository.UserRepository;
 import com.qhomebaseapp.repository.news.NewsReadRepository;
 import com.qhomebaseapp.repository.news.NewsRepository;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -18,6 +19,7 @@ import java.security.Principal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -43,24 +45,6 @@ public class NewsServiceImpl implements NewsService {
 
     @Override
     @Transactional
-    public NewsDto getNews(Long id, Long userId) {
-        News news = newsRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("News not found"));
-
-        boolean isRead = userId != null && newsReadRepository.existsByUserIdAndNewsId(userId, news.getId());
-
-        if (userId != null && !isRead) {
-            markAsRead(news.getId(), userId);
-            news.setIsRead(true);
-        } else {
-            news.setIsRead(isRead);
-        }
-
-        return newsMapper.toDto(news);
-    }
-
-    @Override
-    @Transactional
     public void markAsRead(Long newsId, Long userId) {
         boolean exists = newsReadRepository.existsByUserIdAndNewsId(userId, newsId);
         if (!exists) {
@@ -82,54 +66,6 @@ public class NewsServiceImpl implements NewsService {
     public long unreadCount(Long userId) {
         return newsReadRepository.countUnreadByUserId(userId);
     }
-
-    @Override
-    public Long getUserIdFromPrincipal(Principal principal) {
-        if (principal == null) return null;
-        String email = principal.getName();
-
-        return userRepository.findByEmail(email)
-                .map(User::getId)
-                .orElseThrow(() -> new RuntimeException("Authenticated user not found in database."));
-    }
-
-    @Transactional
-    public NewsDto createNews(News news) {
-        news.setReceivedAt(news.getReceivedAt() != null ? news.getReceivedAt() : Instant.now());
-        news.setCreatedAt(Instant.now());
-        news.setUpdatedAt(Instant.now());
-        news.setIsRead(false);
-
-        News saved = newsRepository.save(news);
-
-        messagingTemplate.convertAndSend("/topic/news", newsMapper.toDto(saved));
-
-        return newsMapper.toDto(saved);
-    }
-
-    @Transactional
-    public NewsDto updateNews(Long id, News updatedNews) {
-        News news = newsRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("News not found"));
-
-        news.setTitle(updatedNews.getTitle());
-        news.setSummary(updatedNews.getSummary());
-        news.setBodyHtml(updatedNews.getBodyHtml());
-        news.setCoverImageUrl(updatedNews.getCoverImageUrl());
-        news.setDeepLink(updatedNews.getDeepLink());
-        news.setStatus(updatedNews.getStatus());
-        news.setPublishAt(updatedNews.getPublishAt());
-        news.setExpireAt(updatedNews.getExpireAt());
-        news.setRawPayload(updatedNews.getRawPayload());
-        news.setUpdatedAt(Instant.now());
-
-        News saved = newsRepository.save(news);
-
-        messagingTemplate.convertAndSend("/topic/news", newsMapper.toDto(saved));
-
-        return newsMapper.toDto(saved);
-    }
-
     @Override
     @Transactional(readOnly = true)
     public List<NewsDto> listUnread(Long userId) {
@@ -140,5 +76,66 @@ public class NewsServiceImpl implements NewsService {
                 .peek(n -> n.setIsRead(false))
                 .map(newsMapper::toDto)
                 .toList();
+    }
+
+    @Override
+    public NewsDto getNewsByUuid(String uuid, Long userId) {
+        News news;
+        try {
+            news = newsRepository.findByNewsUuid(uuid)
+                    .orElseThrow(() -> new EntityNotFoundException("News not found by UUID"));
+        } catch (EntityNotFoundException e) {
+            // fallback thử tìm bằng id nếu uuid là số
+            try {
+                Long id = Long.parseLong(uuid);
+                news = newsRepository.findById(id)
+                        .orElseThrow(() -> new EntityNotFoundException("News not found by id"));
+            } catch (NumberFormatException ex) {
+                throw e;
+            }
+        }
+        return toDto(news, userId);
+    }
+
+    @Override
+    @Transactional
+    public void markAsReadByUuid(String uuid, Long userId) {
+        News news;
+        try {
+            news = newsRepository.findByNewsUuid(uuid)
+                    .orElseThrow(() -> new EntityNotFoundException("News not found by UUID"));
+        } catch (EntityNotFoundException e) {
+            // fallback thử tìm bằng id nếu uuid là số
+            try {
+                Long id = Long.parseLong(uuid);
+                news = newsRepository.findById(id)
+                        .orElseThrow(() -> new EntityNotFoundException("News not found by id"));
+            } catch (NumberFormatException ex) {
+                throw e; // uuid không phải số → ném lại lỗi gốc
+            }
+        }
+
+        news.setIsRead(true);
+        newsRepository.save(news);
+    }
+
+
+    private NewsDto toDto(News news, Long userId) {
+        NewsDto dto = new NewsDto();
+        dto.setId(news.getId());
+        dto.setNewsUuid(news.getNewsUuid());
+        dto.setTitle(news.getTitle());
+        dto.setSummary(news.getSummary());
+        dto.setBodyHtml(news.getBodyHtml());
+        dto.setCoverImageUrl(news.getCoverImageUrl());
+        dto.setDeepLink(news.getDeepLink());
+        dto.setStatus(news.getStatus());
+        dto.setPublishAt(news.getPublishAt());
+        dto.setExpireAt(news.getExpireAt());
+        dto.setReceivedAt(news.getReceivedAt());
+        dto.setRead(Boolean.TRUE.equals(news.getIsRead()));
+        dto.setCreatedAt(news.getCreatedAt());
+        dto.setUpdatedAt(news.getUpdatedAt());
+        return dto;
     }
 }

@@ -15,7 +15,6 @@ com\qhomebaseapp\model\NewsAttachment$NewsAttachmentBuilder.class
 com\qhomebaseapp\dto\token\JwtResponse.class
 com\qhomebaseapp\model\NewsRead$Id.class
 com\qhomebaseapp\model\NewsTest.class
-com\qhomebaseapp\repository\news\NewsAttachmentRepository.class
 com\qhomebaseapp\repository\news\NewsRepository.class
 com\qhomebaseapp\dto\news\WebSocketNewsMessage$WebSocketNewsMessageBuilder.class
 com\qhomebaseapp\dto\bill\BillStatisticsDto.class
@@ -29,7 +28,6 @@ com\qhomebaseapp\repository\bill\BillRepositoryImpl.class
 com\qhomebaseapp\service\post\PostServiceImpl.class
 com\qhomebaseapp\mapper\RegisterServiceRequestMapperImpl.class
 com\qhomebaseapp\model\NewsImage.class
-com\qhomebaseapp\dto\news\NewsNotificationDto.class
 com\qhomebaseapp\config\RedisConfig.class
 com\qhomebaseapp\dto\bill\BillStatisticsDto$BillStatisticsDtoBuilder.class
 com\qhomebaseapp\model\RegisterServiceRequest$RegisterServiceRequestBuilder.class
@@ -60,10 +58,8 @@ com\qhomebaseapp\repository\post\PostCommentRepository.class
 com\qhomebaseapp\exception\TokenRefreshException.class
 com\qhomebaseapp\model\User$UserBuilder.class
 com\qhomebaseapp\config\WebSocketConfig.class
-com\qhomebaseapp\dto\news\NewsNotificationDto$NewsNotificationDtoBuilder.class
 com\qhomebaseapp\model\NewsCategory.class
 com\qhomebaseapp\repository\post\PostImageRepository.class
-com\qhomebaseapp\dto\news\NewsCategoryDto$NewsCategoryDtoBuilder.class
 com\qhomebaseapp\model\RefreshToken.class
 com\qhomebaseapp\dto\news\NewsDto$NewsDtoBuilder.class
 com\qhomebaseapp\dto\post\PostLikeDto.class
@@ -76,7 +72,6 @@ com\qhomebaseapp\dto\post\LikeDto.class
 com\qhomebaseapp\dto\registrationservice\RegisterServiceRequestResponseDto$RegisterServiceRequestResponseDtoBuilder.class
 com\qhomebaseapp\mapper\RegisterServiceRequestResponseMapper.class
 com\qhomebaseapp\model\PostComment$PostCommentBuilder.class
-com\qhomebaseapp\dto\news\NewsCategoryDto.class
 com\qhomebaseapp\service\post\PostService.class
 com\qhomebaseapp\model\PostShare.class
 com\qhomebaseapp\service\user\UserDetailsServiceImpl.class
@@ -98,7 +93,6 @@ com\qhomebaseapp\service\user\EmailService.class
 com\qhomebaseapp\dto\news\WebSocketNewsMessage.class
 com\qhomebaseapp\repository\bill\BillRepository.class
 com\qhomebaseapp\mapper\PostMapper.class
-com\qhomebaseapp\repository\news\NewsTestRepository.class
 com\qhomebaseapp\repository\post\PostRepository.class
 com\qhomebaseapp\model\Post$PostBuilder.class
 com\qhomebaseapp\model\PostComment.class
@@ -122,7 +116,6 @@ com\qhomebaseapp\dto\registrationservice\UpdateNewsRequest.class
 com\qhomebaseapp\controller\AuthController.class
 com\qhomebaseapp\repository\token\RefreshTokenRepository.class
 com\qhomebaseapp\dto\news\NewsAttachmentDto.class
-com\qhomebaseapp\repository\news\NewsCategoryRepository.class
 com\qhomebaseapp\model\PostShare$PostShareBuilder.class
 com\qhomebaseapp\model\NewsAttachment.class
 com\qhomebaseapp\dto\post\LikeDto$LikeDtoBuilder.class

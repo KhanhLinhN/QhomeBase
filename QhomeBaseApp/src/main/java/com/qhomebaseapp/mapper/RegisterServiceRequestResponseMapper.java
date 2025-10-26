@@ -11,12 +11,10 @@ import java.util.stream.Collectors;
 
 @Mapper(componentModel = "spring")
 public interface RegisterServiceRequestResponseMapper {
-
     @Mapping(target = "userId", source = "user.id")
     @Mapping(target = "userEmail", source = "user.email")
     @Mapping(target = "imageUrls", expression = "java(mapImages(entity))")
     RegisterServiceRequestResponseDto toDto(RegisterServiceRequest entity);
-
     default List<String> mapImages(RegisterServiceRequest entity) {
         if (entity == null || entity.getImages() == null) return java.util.Collections.emptyList();
         return entity.getImages().stream()

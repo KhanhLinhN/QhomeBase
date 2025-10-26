@@ -8,6 +8,5 @@ import org.mapstruct.factory.Mappers;
 @Mapper(componentModel = "spring")
 public interface RegisterServiceRequestMapper {
     RegisterServiceRequestMapper INSTANCE = Mappers.getMapper(RegisterServiceRequestMapper.class);
-
     RegisterServiceRequest toEntity(RegisterServiceRequestDto dto);
 }

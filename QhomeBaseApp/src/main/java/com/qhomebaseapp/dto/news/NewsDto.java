@@ -4,10 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.List;
 import java.time.Instant;
-import java.util.UUID;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -15,9 +12,7 @@ import java.util.UUID;
 
 public class NewsDto {
     private Long id;
-    private UUID newsUuid;
-    private String categoryCode;
-    private String categoryName;
+    private String newsUuid;
     private String title;
     private String summary;
     private String bodyHtml;
@@ -31,5 +26,4 @@ public class NewsDto {
     private String rawPayload;
     private Instant createdAt;
     private Instant updatedAt;
-    private List<NewsAttachmentDto> attachments;
 }

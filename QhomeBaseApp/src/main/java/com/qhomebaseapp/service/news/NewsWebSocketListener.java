@@ -2,18 +2,16 @@ package com.qhomebaseapp.service.news;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qhomebaseapp.dto.news.WebSocketNewsMessage;
-import com.qhomebaseapp.model.NewsTest;
 import com.qhomebaseapp.repository.news.NewsRepository;
-import com.qhomebaseapp.repository.news.NewsTestRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.stomp.*;
 import org.springframework.stereotype.Component;
-import org.springframework.stereotype.Service;
 import org.springframework.util.concurrent.ListenableFuture;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
 
@@ -27,21 +25,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class NewsWebSocketListener {
 
     private static final Logger log = LoggerFactory.getLogger(NewsWebSocketListener.class);
-
+    @Autowired
+    private SimpMessagingTemplate messagingTemplate;
     private final WebSocketStompClient stompClient;
     private final NewsRepository newsRepository;
     private final ObjectMapper objectMapper;
-
     @Value("${app.websocket.url}")
     private String websocketUrl;
-
     @Value("${app.websocket.tenant-id}")
     private String tenantId;
-
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final AtomicBoolean connected = new AtomicBoolean(false);
     private StompSession stompSession;
-
     private static final Duration RECONNECT_DELAY = Duration.ofSeconds(10);
     private static final int CONNECT_TIMEOUT_SECONDS = 10;
 
@@ -126,7 +121,17 @@ public class NewsWebSocketListener {
                     now,
                     now
             );
+            WebSocketNewsMessage broadcastMsg = new WebSocketNewsMessage();
+            broadcastMsg.setType("NEW_NEWS");
+            broadcastMsg.setNewsId(msg.getNewsId());
+            broadcastMsg.setTitle(msg.getTitle());
+            broadcastMsg.setSummary(msg.getSummary());
+            broadcastMsg.setCoverImageUrl(msg.getCoverImageUrl());
+            broadcastMsg.setTimestamp(Instant.now());
+            broadcastMsg.setDeepLink(msg.getDeepLink());
 
+            messagingTemplate.convertAndSend("/topic/news", broadcastMsg);
+            log.info("📢 Broadcast new news to /topic/news");
             log.info("💾 Saved or updated news {} in qhomebaseapp.news", msg.getNewsId());
         } catch (Exception ex) {
             log.error("💥 Failed to save news to DB", ex);
