@@ -38,7 +38,7 @@ public class RegisterServiceRequest {
     private OffsetDateTime updatedAt;
 
     @Column(name = "vehicle_type")
-    private String vehicleType; // "Xe máy" hoặc "Ô tô"
+    private String vehicleType;
 
     @Column(name = "license_plate")
     private String licensePlate;

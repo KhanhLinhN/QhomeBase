@@ -70,7 +70,6 @@ public class SecurityConfig {
                                 .maxAgeInSeconds(31536000)
                                 .includeSubDomains(true))
                         .contentSecurityPolicy(csp -> csp
-                                // ✅ Cho phép connect đến IP LAN 192.168.x.x
                                 .policyDirectives("default-src 'self'; img-src 'self' data:; connect-src *"))
                 );
 

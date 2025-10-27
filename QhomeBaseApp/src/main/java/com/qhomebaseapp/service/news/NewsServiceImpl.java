@@ -47,6 +47,7 @@ public class NewsServiceImpl implements NewsService {
     public long unreadCount(Long userId) {
         return newsReadRepository.countUnreadByUserId(userId);
     }
+
     @Override
     @Transactional(readOnly = true)
     public List<NewsDto> listUnread(Long userId) {
@@ -98,10 +99,8 @@ public class NewsServiceImpl implements NewsService {
             }
         }
 
-        // Kiểm tra xem user đã đọc chưa
         boolean exists = newsReadRepository.existsByUserIdAndNewsId(userId, news.getId());
         if (!exists) {
-            // Tạo bản ghi đánh dấu đã đọc
             NewsRead read = NewsRead.builder()
                     .userId(userId)
                     .newsId(news.getId())
@@ -109,7 +108,6 @@ public class NewsServiceImpl implements NewsService {
                     .build();
             newsReadRepository.save(read);
 
-            // Gửi real-time notification đến front-end
             messagingTemplate.convertAndSend(
                     "/topic/notifications/" + userId,
                     Map.of(

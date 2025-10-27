@@ -109,6 +109,7 @@ public class NewsWebSocketListener {
         try {
             String json = objectMapper.writeValueAsString(msg);
             Instant now = Instant.now();
+            Instant publishAt = msg.getTimestamp() != null ? msg.getTimestamp() : now;
 
             newsRepository.upsertWithJsonb(
                     msg.getNewsId(),
@@ -116,18 +117,20 @@ public class NewsWebSocketListener {
                     msg.getSummary(),
                     msg.getCoverImageUrl(),
                     msg.getDeepLink(),
-                    msg.getTimestamp() != null ? msg.getTimestamp() : now,
+                    publishAt,
                     json,
                     now,
-                    now
+                    now,
+                    publishAt
             );
+
             WebSocketNewsMessage broadcastMsg = new WebSocketNewsMessage();
             broadcastMsg.setType("NEW_NEWS");
             broadcastMsg.setNewsId(msg.getNewsId());
             broadcastMsg.setTitle(msg.getTitle());
             broadcastMsg.setSummary(msg.getSummary());
             broadcastMsg.setCoverImageUrl(msg.getCoverImageUrl());
-            broadcastMsg.setTimestamp(Instant.now());
+            broadcastMsg.setTimestamp(publishAt);
             broadcastMsg.setDeepLink(msg.getDeepLink());
 
             messagingTemplate.convertAndSend("/topic/news", broadcastMsg);
