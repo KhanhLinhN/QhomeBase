@@ -110,6 +110,9 @@ public class NewsWebSocketListener {
             String json = objectMapper.writeValueAsString(msg);
             Instant now = Instant.now();
             Instant publishAt = msg.getTimestamp() != null ? msg.getTimestamp() : now;
+            String status = (msg.getStatus() != null && !msg.getStatus().isEmpty())
+                    ? msg.getStatus()
+                    : "NORMAL";
 
             newsRepository.upsertWithJsonb(
                     msg.getNewsId(),
@@ -117,11 +120,12 @@ public class NewsWebSocketListener {
                     msg.getSummary(),
                     msg.getCoverImageUrl(),
                     msg.getDeepLink(),
+                    now,
+                    now,
+                    now,
+                    status,
                     publishAt,
-                    json,
-                    now,
-                    now,
-                    publishAt
+                    json
             );
 
             WebSocketNewsMessage broadcastMsg = new WebSocketNewsMessage();
@@ -132,14 +136,16 @@ public class NewsWebSocketListener {
             broadcastMsg.setCoverImageUrl(msg.getCoverImageUrl());
             broadcastMsg.setTimestamp(publishAt);
             broadcastMsg.setDeepLink(msg.getDeepLink());
+            broadcastMsg.setStatus(status);
 
             messagingTemplate.convertAndSend("/topic/news", broadcastMsg);
-            log.info("📢 Broadcast new news to /topic/news");
-            log.info("💾 Saved or updated news {} in qhomebaseapp.news", msg.getNewsId());
+            log.info("📢 Broadcast news {} with status={}", msg.getNewsId(), status);
+            log.info("💾 Upserted news {} in qhomebaseapp.news", msg.getNewsId());
         } catch (Exception ex) {
             log.error("💥 Failed to save news to DB", ex);
         }
     }
+
 
     private void scheduleReconnect() {
         if (!connected.get()) {

@@ -13,7 +13,7 @@ public class LoginAttemptService {
     private final RedisTemplate<String, Integer> redisTemplateInt;
 
     private static final int MAX_ATTEMPTS = 5;
-    private static final Duration LOCK_TIME = Duration.ofMinutes(15);
+    private static final Duration LOCK_TIME = Duration.ofMinutes(150);
 
     public void loginFailed(String email) {
         Integer attempts = redisTemplateInt.opsForValue().get(email);

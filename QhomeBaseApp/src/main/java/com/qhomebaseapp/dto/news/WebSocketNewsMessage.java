@@ -16,5 +16,6 @@ public class WebSocketNewsMessage {
     private String summary;
     private String coverImageUrl;
     private Instant timestamp;
+    private String status;
     private String deepLink;
 }

@@ -1,6 +1,7 @@
 package com.qhomebaseapp.repository.news;
 
 
+import com.qhomebaseapp.dto.news.NewsDto;
 import com.qhomebaseapp.model.News;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
@@ -21,33 +22,58 @@ public interface NewsRepository extends JpaRepository<News, Long> {
     Page<News> findAllByOrderByPublishAtDesc(Pageable pageable);
 
     @Query("""
+        SELECT new com.qhomebaseapp.dto.news.NewsDto(
+            n.id,
+            n.newsUuid,
+            n.title,
+            n.summary,
+            n.coverImageUrl,
+            n.deepLink,
+            n.status,
+            n.publishAt,
+            n.receivedAt,
+            n.createdAt,
+            n.updatedAt,
+            CASE WHEN nr.isRead = true THEN true ELSE false END
+        )
+        FROM News n
+        LEFT JOIN NewsRead nr
+          ON nr.newsId = n.id
+         AND nr.userId = :userId
+        ORDER BY n.publishAt DESC
+    """)
+    Page<NewsDto> findAllWithUserReadStatus(@Param("userId") Long userId, Pageable pageable);
+
+    @Query("""
                 SELECT n FROM News n
-                WHERE n.status = 'PUBLISHED'
-                  AND n.publishAt <= CURRENT_TIMESTAMP
-                  AND (n.expireAt IS NULL OR n.expireAt > CURRENT_TIMESTAMP)
+                WHERE n.publishAt <= CURRENT_TIMESTAMP
                   AND NOT EXISTS (
                       SELECT 1 FROM NewsRead r
                       WHERE r.newsId = n.id AND r.userId = :userId
                   )
                 ORDER BY n.publishAt DESC
             """)
-    Page<News> findUnreadNewsByUserId(@Param("userId") Long userId, Pageable pageable);
+    Page<News> findUnreadNewsByUserId(
+            @Param("userId") Long userId,
+            Pageable pageable
+    );
+
 
     @Modifying
     @Transactional
     @Query(value = """
-                INSERT INTO qhomebaseapp.news
-                (news_uuid, title, summary, cover_image_url, deep_link, received_at, raw_payload, created_at, updated_at, status, publish_at)
-                VALUES (:newsUuid, :title, :summary, :coverImageUrl, :deepLink, :receivedAt, CAST(:rawPayload AS jsonb), :createdAt, :updatedAt, 'PUBLISHED', :publishAt)
-                ON CONFLICT (news_uuid) DO UPDATE
-                SET title = EXCLUDED.title,
-                    summary = EXCLUDED.summary,
-                    cover_image_url = EXCLUDED.cover_image_url,
-                    deep_link = EXCLUDED.deep_link,
-                    raw_payload = EXCLUDED.raw_payload,
-                    updated_at = EXCLUDED.updated_at,
-                    status = 'PUBLISHED',
-                    publish_at = EXCLUDED.publish_at
+            INSERT INTO qhomebaseapp.news
+            (news_uuid, title, summary, cover_image_url, deep_link, received_at, raw_payload, created_at, updated_at, status, publish_at)
+            VALUES (:newsUuid, :title, :summary, :coverImageUrl, :deepLink, :receivedAt, CAST(:rawPayload AS jsonb), :createdAt, :updatedAt, :status, :publishAt)
+            ON CONFLICT (news_uuid) DO UPDATE
+            SET title = EXCLUDED.title,
+                summary = EXCLUDED.summary,
+                cover_image_url = EXCLUDED.cover_image_url,
+                deep_link = EXCLUDED.deep_link,
+                raw_payload = EXCLUDED.raw_payload,
+                updated_at = EXCLUDED.updated_at,
+                status = EXCLUDED.status,
+                publish_at = EXCLUDED.publish_at
             """, nativeQuery = true)
     void upsertWithJsonb(
             @Param("newsUuid") UUID newsUuid,
@@ -56,9 +82,10 @@ public interface NewsRepository extends JpaRepository<News, Long> {
             @Param("coverImageUrl") String coverImageUrl,
             @Param("deepLink") String deepLink,
             @Param("receivedAt") Instant receivedAt,
-            @Param("rawPayload") String rawPayload,
             @Param("createdAt") Instant createdAt,
             @Param("updatedAt") Instant updatedAt,
-            @Param("publishAt") Instant publishAt
+            @Param("status") String status,
+            @Param("publishAt") Instant publishAt,
+            @Param("rawPayload") String rawPayload
     );
 }

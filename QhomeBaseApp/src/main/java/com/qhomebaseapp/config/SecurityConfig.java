@@ -59,7 +59,7 @@ public class SecurityConfig {
                                 "/api/auth/confirm-reset",
                                 "/api/auth/refresh-token",
                                 "/uploads/**",
-                                "/ws/**" // ✅ mở quyền WebSocket
+                                "/ws/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

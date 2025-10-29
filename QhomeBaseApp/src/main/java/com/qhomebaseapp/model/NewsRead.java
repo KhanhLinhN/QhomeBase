@@ -25,6 +25,13 @@ public class NewsRead {
     @Column(name = "read_at")
     private Instant readAt;
 
+    @Column(name = "is_read", nullable = false)
+    private boolean isRead;
+
+    public void setIsRead(boolean read) {
+        isRead = read;
+    }
+
     public static class Id implements Serializable {
         private Long userId;
         private Long newsId;

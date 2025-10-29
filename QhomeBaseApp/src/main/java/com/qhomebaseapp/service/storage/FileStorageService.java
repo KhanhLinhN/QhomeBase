@@ -31,7 +31,6 @@ public class FileStorageService {
             String fileType = Files.probeContentType(filePath);
             log.info("Uploaded file: {} (type={})", fileName, fileType);
 
-            // Tạo URL public để client load trực tiếp
             urls.add("/" + uploadDir + fileName);
         }
         return urls;

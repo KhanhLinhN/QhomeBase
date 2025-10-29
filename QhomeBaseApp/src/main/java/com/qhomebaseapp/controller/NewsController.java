@@ -6,6 +6,9 @@ import com.qhomebaseapp.service.news.NewsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -33,20 +36,18 @@ public class NewsController {
     }
 
     @GetMapping
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Page<NewsDto>> list(
-            @RequestParam(value = "category", required = false) String categoryCode,
-            @RequestParam(value = "page", defaultValue = "0") int page,
-            @RequestParam(value = "size", defaultValue = "20") int size,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
             Authentication authentication
     ) {
         Long userId = getAuthenticatedUserId(authentication);
-        Page<NewsDto> result = newsService.listNews(categoryCode, userId, page, size);
-
-        log.info("User {} listed news, category={}, page={}, size={}, count={}",
-                userId, categoryCode, page, size, result.getTotalElements());
-
+        Pageable pageable = PageRequest.of(page, size, Sort.by("publishAt").descending());
+        Page<NewsDto> result = newsService.listNewsWithReadStatus(userId, pageable);
         return ResponseEntity.ok(result);
     }
+
 
     @GetMapping("/{uuid}")
     public ResponseEntity<NewsDto> get(
@@ -61,7 +62,7 @@ public class NewsController {
             return ResponseEntity.ok(dto);
         } catch (Exception e) {
             log.error("Error fetching news {} for user {}: {}", uuid, userId, e.getMessage(), e);
-            return ResponseEntity.status(404).body(null); // 404 thay vì 500
+            return ResponseEntity.status(404).body(null);
         }
     }
 
