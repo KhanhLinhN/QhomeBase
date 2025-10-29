@@ -59,7 +59,8 @@ public class SecurityConfig {
                                 "/api/auth/confirm-reset",
                                 "/api/auth/refresh-token",
                                 "/uploads/**",
-                                "/ws/**"
+                                "/ws/**",
+                                "/files/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
