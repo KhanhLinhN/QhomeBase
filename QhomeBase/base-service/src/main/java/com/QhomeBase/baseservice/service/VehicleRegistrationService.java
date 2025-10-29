@@ -38,12 +38,12 @@ public class VehicleRegistrationService {
     public VehicleRegistrationDto createRegistrationRequest(VehicleRegistrationCreateDto dto, Authentication authentication) {
         var u = (UserPrincipal) authentication.getPrincipal();
         UUID requestById = u.uid();
-        if (vehicleRegistrationRepository.existsByTenantIdAndVehicleId(dto.tenantId(), dto.vehicleId())) {
+        
+        if (vehicleRegistrationRepository.existsByVehicleId(dto.vehicleId())) {
             throw new IllegalStateException("Registration request for this vehicle already exists");
         }
 
         var request = VehicleRegistrationRequest.builder()
-                .tenantId(dto.tenantId())
                 .vehicle(vehicleRepository.findById(dto.vehicleId())
                         .orElseThrow())
                 .reason(dto.reason())
@@ -128,12 +128,12 @@ public class VehicleRegistrationService {
 
         boolean isRequester = request.getRequestedBy().equals(userId);
         boolean hasManagerRole = u.roles() != null && 
-            (u.roles().contains("tenant_manager") || 
-             u.roles().contains("tenant_owner") || 
+            (u.roles().contains("manager") || 
+             u.roles().contains("owner") || 
              u.roles().contains("admin"));
         
         if (!isRequester && !hasManagerRole) {
-            throw new IllegalStateException("Only the requester or tenant manager can cancel the request");
+            throw new IllegalStateException("Only the requester or manager can cancel the request");
         }
 
         request.setStatus(VehicleRegistrationStatus.CANCELED);
@@ -151,8 +151,8 @@ public class VehicleRegistrationService {
         return toDto(request);
     }
 
-    public List<VehicleRegistrationDto> getRequestsByTenantId(UUID tenantId) {
-        var requests = vehicleRegistrationRepository.findAllByTenantId(tenantId);
+    public List<VehicleRegistrationDto> getAllRequests() {
+        var requests = vehicleRegistrationRepository.findAllWithVehicle();
         return requests.stream()
                 .map(this::toDto)
                 .toList();
@@ -177,37 +177,22 @@ public class VehicleRegistrationService {
     }
 
     /**
-     * Get pending requests by tenant (all buildings)
+     * Get pending requests by building
      */
-    public List<VehicleRegistrationDto> getPendingRequestsByTenant(UUID tenantId) {
-        var requests = vehicleRegistrationRepository.findAllByTenantIdAndStatus(
-            tenantId, VehicleRegistrationStatus.PENDING
-        );
+    public List<VehicleRegistrationDto> getPendingRequestsByBuilding(UUID buildingId) {
+        var requests = vehicleRegistrationRepository.findPendingByBuilding(buildingId);
         return requests.stream()
                 .map(this::toDto)
                 .toList();
     }
 
     /**
-     * Get pending requests by tenant and building
+     * Get requests by building and status
      */
-    public List<VehicleRegistrationDto> getPendingRequestsByTenantAndBuilding(
-            UUID tenantId, UUID buildingId) {
-        var requests = vehicleRegistrationRepository.findPendingByTenantAndBuilding(
-            tenantId, buildingId
-        );
-        return requests.stream()
-                .map(this::toDto)
-                .toList();
-    }
-
-    /**
-     * Get requests by tenant, building, and status
-     */
-    public List<VehicleRegistrationDto> getRequestsByTenantAndBuildingAndStatus(
-            UUID tenantId, UUID buildingId, VehicleRegistrationStatus status) {
-        var requests = vehicleRegistrationRepository.findByTenantAndBuildingAndStatus(
-            tenantId, buildingId, status
+    public List<VehicleRegistrationDto> getRequestsByBuildingAndStatus(
+            UUID buildingId, VehicleRegistrationStatus status) {
+        var requests = vehicleRegistrationRepository.findByBuildingAndStatus(
+            buildingId, status
         );
         return requests.stream()
                 .map(this::toDto)
@@ -224,20 +209,17 @@ public class VehicleRegistrationService {
 
         UUID unitId = vehicle.getUnit() != null ? vehicle.getUnit().getId() : null;
         
-
         UUID payerResidentId = null;
         if (unitId != null) {
             payerResidentId = householdService.getPayerForUnit(unitId);
         }
         
-
         if (payerResidentId == null) {
             payerResidentId = vehicle.getResidentId();
         }
 
         var event = VehicleActivatedEvent.builder()
                 .vehicleId(vehicle.getId())
-                .tenantId(request.getTenantId())
                 .unitId(unitId)
                 .residentId(payerResidentId)
                 .plateNo(vehicle.getPlateNo())
@@ -279,7 +261,6 @@ public class VehicleRegistrationService {
 
         return new VehicleRegistrationDto(
                 request.getId(),
-                request.getTenantId(),
                 vehicleId,
                 vehiclePlateNo,
                 vehicleKind,

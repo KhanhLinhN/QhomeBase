@@ -25,9 +25,6 @@ public class NewsView {
     @JoinColumn(name = "news_id", nullable = false)
     private News news;
 
-    @Column(name = "tenant_id", nullable = false)
-    private UUID tenantId;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "viewer_type", nullable = false, columnDefinition = "content.viewer_type")
     @Builder.Default
@@ -65,20 +62,18 @@ public class NewsView {
     }
 
 
-    public static NewsView forResident(News news, UUID tenantId, UUID residentId) {
+    public static NewsView forResident(News news, UUID residentId) {
         return NewsView.builder()
                 .news(news)
-                .tenantId(tenantId)
                 .viewerType(ViewerType.RESIDENT)
                 .residentId(residentId)
                 .build();
     }
 
 
-    public static NewsView forUser(News news, UUID tenantId, UUID userId) {
+    public static NewsView forUser(News news, UUID userId) {
         return NewsView.builder()
                 .news(news)
-                .tenantId(tenantId)
                 .viewerType(ViewerType.USER)
                 .userId(userId)
                 .build();

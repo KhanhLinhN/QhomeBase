@@ -23,7 +23,7 @@ public class VehicleRegistrationController {
     private final VehicleRegistrationService vehicleRegistrationService;
 
     @PostMapping
-    @PreAuthorize("@authz.canCreateVehicleRegistration(#dto.tenantId())")
+    @PreAuthorize("@authz.canCreateVehicleRegistration()")
     public ResponseEntity<VehicleRegistrationDto> createRegistrationRequest(
             @Valid @RequestBody VehicleRegistrationCreateDto dto, 
             Authentication auth) {
@@ -67,10 +67,10 @@ public class VehicleRegistrationController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/tenant/{tenantId}")
-    @PreAuthorize("@authz.canViewVehicleRegistrationsByTenant(#tenantId)")
-    public ResponseEntity<List<VehicleRegistrationDto>> getRequestsByTenantId(@PathVariable UUID tenantId) {
-        List<VehicleRegistrationDto> result = vehicleRegistrationService.getRequestsByTenantId(tenantId);
+    @GetMapping
+    @PreAuthorize("@authz.canViewVehicleRegistrations()")
+    public ResponseEntity<List<VehicleRegistrationDto>> getAllRequests() {
+        List<VehicleRegistrationDto> result = vehicleRegistrationService.getAllRequests();
         return ResponseEntity.ok(result);
     }
 
@@ -101,44 +101,29 @@ public class VehicleRegistrationController {
     }
 
     /**
-     * Get pending requests by tenant (all buildings)
-     * API: GET /api/vehicle-registrations/tenant/{tenantId}/pending
+     * Get pending requests by building
+     * API: GET /api/vehicle-registrations/building/{buildingId}/pending
      */
-    @GetMapping("/tenant/{tenantId}/pending")
-    @PreAuthorize("@authz.canViewVehicleRegistrationsByTenant(#tenantId)")
-    public ResponseEntity<List<VehicleRegistrationDto>> getPendingRequestsByTenant(
-            @PathVariable UUID tenantId) {
-        List<VehicleRegistrationDto> result = vehicleRegistrationService
-                .getPendingRequestsByTenant(tenantId);
-        return ResponseEntity.ok(result);
-    }
-
-    /**
-     * Get pending requests by tenant and building
-     * API: GET /api/vehicle-registrations/tenant/{tenantId}/building/{buildingId}/pending
-     */
-    @GetMapping("/tenant/{tenantId}/building/{buildingId}/pending")
-    @PreAuthorize("@authz.canViewVehicleRegistrationsByTenant(#tenantId)")
+    @GetMapping("/building/{buildingId}/pending")
+    @PreAuthorize("@authz.canViewVehicleRegistrations()")
     public ResponseEntity<List<VehicleRegistrationDto>> getPendingRequestsByBuilding(
-            @PathVariable UUID tenantId,
             @PathVariable UUID buildingId) {
         List<VehicleRegistrationDto> result = vehicleRegistrationService
-                .getPendingRequestsByTenantAndBuilding(tenantId, buildingId);
+                .getPendingRequestsByBuilding(buildingId);
         return ResponseEntity.ok(result);
     }
 
     /**
-     * Get requests by tenant, building, and status
-     * API: GET /api/vehicle-registrations/tenant/{tenantId}/building/{buildingId}/status/{status}
+     * Get requests by building and status
+     * API: GET /api/vehicle-registrations/building/{buildingId}/status/{status}
      */
-    @GetMapping("/tenant/{tenantId}/building/{buildingId}/status/{status}")
-    @PreAuthorize("@authz.canViewVehicleRegistrationsByTenant(#tenantId)")
+    @GetMapping("/building/{buildingId}/status/{status}")
+    @PreAuthorize("@authz.canViewVehicleRegistrations()")
     public ResponseEntity<List<VehicleRegistrationDto>> getRequestsByBuildingAndStatus(
-            @PathVariable UUID tenantId,
             @PathVariable UUID buildingId,
             @PathVariable VehicleRegistrationStatus status) {
         List<VehicleRegistrationDto> result = vehicleRegistrationService
-                .getRequestsByTenantAndBuildingAndStatus(tenantId, buildingId, status);
+                .getRequestsByBuildingAndStatus(buildingId, status);
         return ResponseEntity.ok(result);
     }
 }

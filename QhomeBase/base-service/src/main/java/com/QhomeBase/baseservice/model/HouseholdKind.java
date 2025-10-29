@@ -11,3 +11,6 @@ public enum HouseholdKind {
     SERVICE
 }
 
+
+
+

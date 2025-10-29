@@ -27,9 +27,6 @@ public class NewsTarget {
     @JoinColumn(name = "news_id", nullable = false)
     private News news;
 
-    @Column(name = "tenant_id", nullable = false)
-    private UUID tenantId;
-
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "target_type", nullable = false, columnDefinition = "target_type")

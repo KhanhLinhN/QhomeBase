@@ -15,3 +15,6 @@ public interface PaymentAllocationRepository extends JpaRepository<PaymentAlloca
     List<PaymentAllocation> findByInvoiceId(UUID invoiceId);
 }
 
+
+
+

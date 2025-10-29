@@ -9,18 +9,6 @@ import java.util.List;
 import java.util.UUID;
 
 public interface NewsRepository extends JpaRepository<News, UUID> {
-    @Query(value = """
-    SELECT * FROM content.news n
-    WHERE n.tenant_id = :tenantId AND n.id = :id
-""", nativeQuery = true)
-    public News findByTenantIdAndId(@Param("tenantId") UUID tenantId, @Param("id") UUID id);
-
-
-    @Query(value = """
-    SELECT * FROM content.news n
-    WHERE n.tenant_id = :tenantId
-""", nativeQuery = true)
-    public List<News> findAll(@Param("tenantId") UUID tenantId);
 
 
 

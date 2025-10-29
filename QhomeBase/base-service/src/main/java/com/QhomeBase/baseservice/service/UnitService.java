@@ -8,7 +8,6 @@ import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.model.UnitStatus;
 import com.QhomeBase.baseservice.repository.UnitRepository;
 import com.QhomeBase.baseservice.repository.BuildingRepository;
-import com.QhomeBase.baseservice.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +23,6 @@ import java.util.UUID;
 public class UnitService {
     private final UnitRepository unitRepository;
     private final BuildingRepository buildingRepository;
-    private final TenantRepository tenantRepository;
     
     private OffsetDateTime nowUTC() {
         return OffsetDateTime.now(ZoneOffset.UTC);
@@ -34,13 +32,8 @@ public class UnitService {
     public UnitDto createUnit(UnitCreateDto unitCreateDto) {
         validateUnitCreateDto(unitCreateDto);
         
-        if (!tenantRepository.existsById(unitCreateDto.tenantId())) {
-            throw new IllegalArgumentException("Tenant with ID " + unitCreateDto.tenantId() + " does not exist");
-        }
-        
         String generatedCode = generateNextCode(unitCreateDto.buildingId(), unitCreateDto.floor());
         var unit = Unit.builder()
-                .tenantId(unitCreateDto.tenantId())
                 .building(buildingRepository.findById(unitCreateDto.buildingId()).orElseThrow())
                 .code(generatedCode)
                 .floor(unitCreateDto.floor())
@@ -98,12 +91,6 @@ public class UnitService {
                 .toList();
     }
     
-    public java.util.List<UnitDto> getUnitsByTenantId(UUID tenantId) {
-        var units = unitRepository.findAllByTenantId(tenantId);
-        return units.stream()
-                .map(this::toDto)
-                .toList();
-    }
     
     public java.util.List<UnitDto> getUnitsByFloor(UUID buildingId, Integer floor) {
         var units = unitRepository.findByBuildingIdAndFloorNumber(buildingId, floor);
@@ -123,8 +110,8 @@ public class UnitService {
         unitRepository.save(unit);
     }
     
-    public String getPrefix(UUID tenantId, UUID buildingId) {
-        var buildings = buildingRepository.findAllByTenantIdOrderByCodeAsc(tenantId);
+    public String getPrefix(UUID buildingId) {
+        var buildings = buildingRepository.findAllByOrderByCodeAsc();
         int index = 0;
         for (int i = 0; i < buildings.size(); i++) {
             if (buildings.get(i).getId().equals(buildingId)) {
@@ -135,8 +122,7 @@ public class UnitService {
     }
 
     public String nextSequence(UUID buildingId, int floorNumber) {
-        UUID tenantId = buildingRepository.findTenantIdByBuilding(buildingId);
-        String expectedPrefix = getPrefix(tenantId, buildingId);
+        String expectedPrefix = getPrefix(buildingId);
         String expectedStart  = expectedPrefix + floorNumber;
 
         var units = unitRepository.findByBuildingIdAndFloorNumber(buildingId, floorNumber);
@@ -181,9 +167,7 @@ public class UnitService {
     }
 
     public String generateNextCode(UUID buildingId, int floorNumber) {
-        var building = buildingRepository.findById(buildingId).orElseThrow();
-        UUID tenantid = building.getTenantId();
-        String prefix = getPrefix(tenantid, buildingId);
+        String prefix = getPrefix(buildingId);
         String sequence = nextSequence(buildingId, floorNumber);
         return prefix + floorNumber + "---"+ sequence;
     }
@@ -203,7 +187,6 @@ public class UnitService {
         
         return new UnitDto(
                 unit.getId(),
-                unit.getTenantId(),
                 buildingId != null ? UUID.fromString(buildingId) : null,
                 buildingCode,
                 buildingName,
@@ -219,9 +202,6 @@ public class UnitService {
     }
 
     private void validateUnitCreateDto(UnitCreateDto dto) {
-        if (dto.tenantId() == null) {
-            throw new NullPointerException("Tenant ID cannot be null");
-        }
         if (dto.buildingId() == null) {
             throw new NullPointerException("Building ID cannot be null");
         }

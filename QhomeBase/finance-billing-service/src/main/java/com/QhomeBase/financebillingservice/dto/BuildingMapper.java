@@ -10,3 +10,6 @@ public interface BuildingMapper {
     BuildingDto buildingToDto(Building building);
 }
 
+
+
+

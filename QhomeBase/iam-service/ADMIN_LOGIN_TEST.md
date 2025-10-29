@@ -295,3 +295,6 @@ curl http://localhost:8080/api/base/tenants \
 - [x] Regular users still work as before
 - [x] Fixed authorization bug in `canRequestDeleteTenant`
 
+
+
+

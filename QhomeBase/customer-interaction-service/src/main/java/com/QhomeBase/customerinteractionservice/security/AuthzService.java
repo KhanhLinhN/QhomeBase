@@ -25,32 +25,6 @@ public class AuthzService {
         return false;
     }
 
-    private boolean sameTenant(UUID tenantId) {
-        var p = principal();
-        return p.tenant() != null && p.tenant().equals(tenantId);
-    }
-
-    public boolean canManageTenant(UUID tenantId) {
-        var p = (UserPrincipal) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        boolean sameTenant = p.tenant() != null && p.tenant().equals(tenantId);
-        boolean okRole = p.roles() != null && (p.roles().contains("tenant_manager") || p.roles().contains("tenant_owner") || p.roles().contains("admin"));
-        boolean okPerm = p.perms() != null && p.perms().stream().anyMatch(s -> s.equals("base.tenant.delete.request"));
-        return (sameTenant && okRole) || okPerm || hasAnyRole(Set.of("admin"));
-    }
-
-    public boolean canRequestDeleteTenant(UUID tenantId) {
-        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "admin"));
-        boolean okPerm = hasPerm("base.tenant.delete.request");
-        return okRole || okPerm;
-    }
-
-    public boolean canApproveTicket(UUID ticketTenantId) {
-        var p = (UserPrincipal) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        boolean sameTenant = p.tenant() != null && p.tenant().equals(ticketTenantId);
-        boolean okRole = p.roles() != null && (p.roles().contains("tenant_manager") || p.roles().contains("tenant_owner") || p.roles().contains("admin"));
-        boolean okPerm = p.perms() != null && p.perms().stream().anyMatch(s -> s.equals("base.tenant.delete.approve"));
-        return (sameTenant && okRole) || okPerm || hasAnyRole(Set.of("admin"));
-    }
     public boolean canCreateBuilding() {
         boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "admin"));
         boolean okPerm = hasPerm("base.building.create");
@@ -62,18 +36,16 @@ public class AuthzService {
         boolean okPerm = hasPerm("base.building.update");
         return okRole || okPerm;
     }
-    public boolean canRequestDeleteBuilding(UUID tenantId) {
-        boolean st = sameTenant(tenantId);
+    public boolean canRequestDeleteBuilding() {
         boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "admin"));
         boolean okPerm = hasPerm("base.building.delete.request");
-        return (st && okRole) || okPerm || hasAnyRole(Set.of("admin"));
+        return okRole || okPerm;
     }
 
-    public boolean canApproveDeleteBuilding(UUID tenantId) {
-        boolean st = sameTenant(tenantId);
+    public boolean canApproveDeleteBuilding() {
         boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "admin"));
         boolean okPerm = hasPerm("base.building.delete.approve");
-        return (st && okRole) || okPerm || hasAnyRole(Set.of("admin"));
+        return okRole || okPerm;
     }
 
     public boolean canDeleteBuilding() {
@@ -88,11 +60,10 @@ public class AuthzService {
         return okRole || okPerm;
     }
 
-    public boolean canRejectDeleteBuilding(UUID tenantId) {
-        boolean st = sameTenant(tenantId);
+    public boolean canRejectDeleteBuilding() {
         boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "admin"));
         boolean okPerm = hasPerm("base.building.delete.approve");
-        return (st && okRole) || okPerm || hasAnyRole(Set.of("admin"));
+        return okRole || okPerm;
     }
 
     public boolean canViewDeleteBuilding(UUID id) {
@@ -106,11 +77,10 @@ public class AuthzService {
         boolean okPerm = hasPerm("base.building.delete.approve");
         return okRole || okPerm;
     }
-    public boolean canCreateUnit(UUID tenantId) {
-        boolean st = sameTenant(tenantId);
+    public boolean canCreateUnit() {
         boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "admin"));
         boolean okPerm = hasPerm("base.unit.create");
-        return (st && okRole) || okPerm || hasAnyRole(Set.of("admin"));
+        return okRole || okPerm;
     }
 
     public boolean canUpdateUnit(UUID unitId) {
@@ -143,12 +113,6 @@ public class AuthzService {
         return okRole || okPerm;
     }
 
-    public boolean canViewUnitsByTenant(UUID tenantId) {
-        boolean st = sameTenant(tenantId);
-        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "admin"));
-        boolean okPerm = hasPerm("base.unit.view");
-        return (st && okRole) || okPerm || hasAnyRole(Set.of("admin"));
-    }
 
     public boolean canViewUnitsByBuilding(UUID buildingId) {
         boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "admin"));
@@ -157,10 +121,9 @@ public class AuthzService {
     }
 
 
-    public boolean canCreateVehicle(UUID tenantId) {
-        boolean st = sameTenant(tenantId);
+    public boolean canCreateVehicle() {
         boolean okRole = hasAnyRole(Set.of("admin"));
-        return st || okRole;
+        return okRole;
     }
 
     public boolean canUpdateVehicle(UUID vehicleId) {
@@ -193,12 +156,6 @@ public class AuthzService {
         return okRole || okPerm;
     }
 
-    public boolean canViewVehiclesByTenant(UUID tenantId) {
-        boolean st = sameTenant(tenantId);
-        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "admin"));
-        boolean okPerm = hasPerm("base.vehicle.view");
-        return (st && okRole) || okPerm || hasAnyRole(Set.of("admin"));
-    }
 
     public boolean canViewVehiclesByResident(UUID residentId) {
         boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "unit_owner", "resident", "admin"));
@@ -212,10 +169,9 @@ public class AuthzService {
         return okRole || okPerm;
     }
 
-    public boolean canCreateVehicleRegistration(UUID tenantId) {
-        boolean st = sameTenant(tenantId);
+    public boolean canCreateVehicleRegistration() {
         boolean okRole = hasAnyRole(Set.of("admin"));
-        return st || okRole;
+        return okRole;
     }
 
     public boolean canApproveVehicleRegistration(UUID requestId) {
@@ -236,12 +192,6 @@ public class AuthzService {
         return okRole || okPerm;
     }
 
-    public boolean canViewVehicleRegistrationsByTenant(UUID tenantId) {
-        boolean st = sameTenant(tenantId);
-        boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "admin"));
-        boolean okPerm = hasPerm("base.vehicle.registration.view");
-        return (st && okRole) || okPerm || hasAnyRole(Set.of("admin"));
-    }
 
     public boolean canViewVehicleRegistrationsByResident(UUID residentId) {
         boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "unit_owner", "resident", "admin"));
@@ -267,17 +217,6 @@ public class AuthzService {
         return okRole || okPerm;
     }
 
-    public boolean canViewAllTenantDeletionRequests() {
-        boolean okRole = hasAnyRole(Set.of("admin", "tenant_owner"));
-        boolean okPerm = hasPerm("base.tenant.delete.approve");
-        return okRole || okPerm;
-    }
-
-    public boolean canViewTenantDeletionRequest(UUID requestId) {
-        boolean okRole = hasAnyRole(Set.of("admin", "tenant_owner"));
-        boolean okPerm = hasPerm("base.tenant.delete.approve");
-        return okRole || okPerm;
-    }
 
     public boolean canCreateNews() {
         boolean okRole = hasAnyRole(Set.of("tenant_manager", "tenant_owner", "admin"));
@@ -315,10 +254,9 @@ public class AuthzService {
         return okRole || okPerm;
     }
 
-    public boolean canReadNews(UUID tenantId) {
-        boolean st = sameTenant(tenantId);
+    public boolean canReadNews() {
         boolean okRole = hasAnyRole(Set.of("resident", "unit_owner"));
-        return st && okRole;
+        return okRole;
     }
 
     public boolean canUploadNewsImage() {

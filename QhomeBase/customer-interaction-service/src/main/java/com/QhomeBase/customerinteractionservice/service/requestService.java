@@ -45,7 +45,6 @@ public class requestService {
         return new RequestDTO(
             entity.getId(),
             entity.getRequestCode(),
-            entity.getTenantId(),
             entity.getResidentId(),
             entity.getResidentName(),
             entity.getImagePath(),
@@ -143,7 +142,6 @@ public class requestService {
         Request entity = new Request();
         entity.setId(dto.getId());
         entity.setRequestCode(dto.getRequestCode() != null ? dto.getRequestCode() : generateRequestCode());
-        entity.setTenantId(dto.getTenantId());
         entity.setResidentId(dto.getResidentId());
         entity.setResidentName(dto.getResidentName());
         entity.setImagePath(dto.getImagePath());

@@ -23,9 +23,6 @@ public class BuildingDeletionRequest {
     @UuidGenerator
     private UUID id;
 
-    @Column(name = "tenant_id", nullable = false)
-    private UUID tenantId;
-
     @Column(name = "building_id", nullable = false)
     private UUID buildingId;
 

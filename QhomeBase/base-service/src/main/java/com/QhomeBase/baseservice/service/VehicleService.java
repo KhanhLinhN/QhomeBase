@@ -6,7 +6,6 @@ import com.QhomeBase.baseservice.dto.VehicleUpdateDto;
 import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.model.Vehicle;
 import com.QhomeBase.baseservice.model.VehicleKind;
-import com.QhomeBase.baseservice.repository.TenantRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
 import com.QhomeBase.baseservice.repository.VehicleRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +23,6 @@ import java.util.UUID;
 public class VehicleService {
     private final VehicleRepository vehicleRepository;
     private final UnitRepository unitRepository;
-    private final TenantRepository tenantRepository;
 
     private OffsetDateTime nowUTC() {
         return OffsetDateTime.now(ZoneOffset.UTC);
@@ -34,14 +32,9 @@ public class VehicleService {
     public VehicleDto createVehicle(VehicleCreateDto dto) {
         validateVehicleCreateDto(dto);
         
-        if (!tenantRepository.existsById(dto.tenantId())) {
-            throw new IllegalArgumentException("Tenant with ID " + dto.tenantId() + " does not exist");
-        }
-        
-        if (vehicleRepository.existsByTenantIdAndPlateNo(dto.tenantId(), dto.plateNo())) {
+        if (vehicleRepository.existsByPlateNo(dto.plateNo())) {
             throw new IllegalStateException("Vehicle with this plate number already exists");
         }
-
 
         Unit unit = null;
         if (dto.unitId() != null) {
@@ -50,7 +43,6 @@ public class VehicleService {
         }
 
         var vehicle = Vehicle.builder()
-                .tenantId(dto.tenantId())
                 .residentId(dto.residentId())
                 .unit(unit)
                 .plateNo(dto.plateNo())
@@ -81,7 +73,7 @@ public class VehicleService {
             vehicle.setUnit(unit);
         }
         if (dto.plateNo() != null) {
-            if (vehicleRepository.existsByTenantIdAndPlateNoAndIdNot(vehicle.getTenantId(), dto.plateNo(), id)) {
+            if (vehicleRepository.existsByPlateNoAndIdNot(dto.plateNo(), id)) {
                 throw new IllegalStateException("Vehicle with this plate number already exists");
             }
             vehicle.setPlateNo(dto.plateNo());
@@ -118,8 +110,8 @@ public class VehicleService {
         return toDto(vehicle);
     }
 
-    public List<VehicleDto> getVehiclesByTenantId(UUID tenantId) {
-        var vehicles = vehicleRepository.findAllByTenantId(tenantId);
+    public List<VehicleDto> getAllVehicles() {
+        var vehicles = vehicleRepository.findAll();
         return vehicles.stream()
                 .map(this::toDto)
                 .toList();
@@ -139,8 +131,8 @@ public class VehicleService {
                 .toList();
     }
 
-    public List<VehicleDto> getActiveVehiclesByTenantId(UUID tenantId) {
-        var vehicles = vehicleRepository.findAllByTenantIdAndActiveTrue(tenantId);
+    public List<VehicleDto> getActiveVehicles() {
+        var vehicles = vehicleRepository.findAllByActiveTrue();
         return vehicles.stream()
                 .map(this::toDto)
                 .toList();
@@ -171,7 +163,6 @@ public class VehicleService {
         
         return new VehicleDto(
                 vehicle.getId(),
-                vehicle.getTenantId(),
                 vehicle.getResidentId(),
                 null, // residentName - should be fetched from IAM service if needed
                 unitId,
@@ -189,9 +180,6 @@ public class VehicleService {
     }
 
     private void validateVehicleCreateDto(VehicleCreateDto dto) {
-        if (dto.tenantId() == null) {
-            throw new NullPointerException("Tenant ID cannot be null");
-        }
         if (dto.plateNo() == null) {
             throw new NullPointerException("Plate number cannot be null");
         }

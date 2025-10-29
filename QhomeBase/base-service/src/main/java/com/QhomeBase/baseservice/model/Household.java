@@ -20,9 +20,6 @@ public class Household {
     @GeneratedValue
     private UUID id;
     
-    @Column(name = "tenant_id", nullable = false)
-    private UUID tenantId;
-    
     @Column(name = "unit_id", nullable = false)
     private UUID unitId;
     

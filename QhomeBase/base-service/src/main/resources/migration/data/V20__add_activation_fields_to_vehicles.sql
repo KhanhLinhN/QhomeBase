@@ -42,3 +42,6 @@ BEGIN
     RAISE NOTICE '✅ Migration completed. % vehicles have activation data.', updated_count;
 END $$;
 
+
+
+

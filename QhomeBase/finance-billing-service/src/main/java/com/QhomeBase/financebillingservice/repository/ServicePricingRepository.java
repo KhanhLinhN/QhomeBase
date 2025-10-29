@@ -34,3 +34,6 @@ public interface ServicePricingRepository extends JpaRepository<ServicePricing, 
     List<ServicePricing> findByTenantIdAndServiceCode(UUID tenantId, String serviceCode);
 }
 
+
+
+
