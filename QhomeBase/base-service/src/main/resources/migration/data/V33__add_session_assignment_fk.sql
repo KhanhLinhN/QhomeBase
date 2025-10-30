@@ -10,4 +10,3 @@ CREATE INDEX IF NOT EXISTS idx_sessions_active
     WHERE completed_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_sessions_completed
-    ON data.meter_reading_sessions(assignment_id, completed_at);
