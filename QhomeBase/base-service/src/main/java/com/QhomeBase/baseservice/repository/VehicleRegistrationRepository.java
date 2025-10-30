@@ -11,7 +11,9 @@ import java.util.UUID;
 
 public interface VehicleRegistrationRepository extends JpaRepository<VehicleRegistrationRequest, UUID> {
     
-    List<VehicleRegistrationRequest> findAllByStatus(VehicleRegistrationStatus status);
+    List<VehicleRegistrationRequest> findAllByTenantId(UUID tenantId);
+    
+    List<VehicleRegistrationRequest> findAllByTenantIdAndStatus(UUID tenantId, VehicleRegistrationStatus status);
     
     List<VehicleRegistrationRequest> findAllByRequestedBy(UUID requestedBy);
     
@@ -19,51 +21,22 @@ public interface VehicleRegistrationRepository extends JpaRepository<VehicleRegi
     
     List<VehicleRegistrationRequest> findAllByVehicleId(UUID vehicleId);
     
-    @Query("SELECT v FROM VehicleRegistrationRequest v WHERE " +
+    @Query("SELECT v FROM VehicleRegistrationRequest v WHERE v.tenantId = :tenantId AND " +
            "(LOWER(v.reason) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
            "LOWER(v.note) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
-    List<VehicleRegistrationRequest> searchByTerm(@Param("searchTerm") String searchTerm);
+    List<VehicleRegistrationRequest> searchByTenantIdAndTerm(@Param("tenantId") UUID tenantId, @Param("searchTerm") String searchTerm);
     
-    @Query("SELECT v FROM VehicleRegistrationRequest v JOIN FETCH v.vehicle")
-    List<VehicleRegistrationRequest> findAllWithVehicle();
+    @Query("SELECT v FROM VehicleRegistrationRequest v JOIN FETCH v.vehicle WHERE v.tenantId = :tenantId")
+    List<VehicleRegistrationRequest> findAllByTenantIdWithVehicle(@Param("tenantId") UUID tenantId);
     
     @Query("SELECT v FROM VehicleRegistrationRequest v JOIN FETCH v.vehicle WHERE v.id = :id")
     VehicleRegistrationRequest findByIdWithVehicle(@Param("id") UUID id);
     
-    boolean existsByVehicleId(UUID vehicleId);
+    List<VehicleRegistrationRequest> findAllByStatus(VehicleRegistrationStatus status);
     
-    boolean existsByVehicleIdAndIdNot(UUID vehicleId, UUID id);
+    boolean existsByTenantIdAndVehicleId(UUID tenantId, UUID vehicleId);
     
-    /**
-     * Find vehicle registration requests by building and status
-     * Useful for filtering pending requests by building
-     */
-    @Query("""
-        SELECT vrr FROM VehicleRegistrationRequest vrr
-        JOIN FETCH vrr.vehicle v
-        LEFT JOIN FETCH v.unit u
-        LEFT JOIN FETCH u.building b
-        WHERE b.id = :buildingId
-          AND vrr.status = :status
-        ORDER BY vrr.requestedAt DESC
-        """)
-    List<VehicleRegistrationRequest> findByBuildingAndStatus(
-        @Param("buildingId") UUID buildingId,
-        @Param("status") VehicleRegistrationStatus status
-    );
-    
-    /**
-     * Find all pending requests by building
-     */
-    @Query("""
-        SELECT vrr FROM VehicleRegistrationRequest vrr
-        JOIN FETCH vrr.vehicle v
-        LEFT JOIN FETCH v.unit u
-        LEFT JOIN FETCH u.building b
-        WHERE b.id = :buildingId
-          AND vrr.status = 'PENDING'
-        ORDER BY vrr.requestedAt DESC
-        """)
-    List<VehicleRegistrationRequest> findPendingByBuilding(@Param("buildingId") UUID buildingId);
+    boolean existsByTenantIdAndVehicleIdAndIdNot(UUID tenantId, UUID vehicleId, UUID id);
 }
+
 

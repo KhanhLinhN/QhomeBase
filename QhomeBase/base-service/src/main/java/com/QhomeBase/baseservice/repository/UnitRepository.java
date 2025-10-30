@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.UUID;
 
 public interface UnitRepository extends JpaRepository<Unit, UUID> {
+    public List<Unit> findAllByTenantId(UUID tenantId);
+
+
     @Query("SELECT u FROM Unit u JOIN FETCH u.building WHERE u.building.id = :buildingId")
     List<Unit> findAllByBuildingId(@Param("buildingId") UUID buildingId);
 

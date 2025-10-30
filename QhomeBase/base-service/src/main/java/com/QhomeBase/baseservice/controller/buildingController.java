@@ -4,9 +4,6 @@ import com.QhomeBase.baseservice.dto.BuildingCreateReq;
 import com.QhomeBase.baseservice.dto.BuildingDto;
 import com.QhomeBase.baseservice.dto.BuildingUpdateReq;
 import com.QhomeBase.baseservice.dto.BuildingDeletionRequestDto;
-import com.QhomeBase.baseservice.dto.BuildingDeletionCreateReq;
-import com.QhomeBase.baseservice.dto.BuildingDeletionApproveReq;
-import com.QhomeBase.baseservice.dto.BuildingDeletionRejectReq;
 import com.QhomeBase.baseservice.model.Building;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import com.QhomeBase.baseservice.security.AuthzService;
@@ -34,28 +31,23 @@ public class buildingController {
 
 
     @GetMapping
-    public ResponseEntity<List<Building>> findAll() {
-        List<Building> buildings = buildingService.findAllOrderByCodeAsc();
-        return ResponseEntity.ok(buildings);
-    }
-
-    @GetMapping("/{buildingId}")
-    public ResponseEntity<BuildingDto> getBuildingById(@PathVariable UUID buildingId) {
-        try {
-            BuildingDto building = buildingService.getBuildingById(buildingId);
-            return ResponseEntity.ok(building);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
+    public ResponseEntity<List<Building>> findAll(@RequestParam(required = false) UUID tenantId) {
+        if (tenantId == null) {
+            return ResponseEntity.badRequest().build();
         }
+
+        List<Building> buildings = buildingService.findAllByTenantIdOrderByCodeAsc(tenantId);
+        return ResponseEntity.ok(buildings);
     }
 
     @PostMapping
     @PreAuthorize("@authz.canCreateBuilding()")
     public ResponseEntity<BuildingDto> createBuilding(
             @Valid @RequestBody BuildingCreateReq req, 
+            @RequestParam UUID tenantId,
             Authentication auth) {
         var user = (UserPrincipal) auth.getPrincipal();
-        BuildingDto createdBuilding = buildingService.createBuilding(req, user.username());
+        BuildingDto createdBuilding = buildingService.createBuilding(req, tenantId, user.username());
         return ResponseEntity.ok(createdBuilding);
     }
 
@@ -74,70 +66,6 @@ public class buildingController {
         }
     }
 
-
-    
-    @PostMapping("/{buildingId}/deletion-request")
-    @PreAuthorize("@authz.canRequestDeleteBuilding(#buildingId)")
-    public ResponseEntity<BuildingDeletionRequestDto> createBuildingDeletionRequest(
-            @PathVariable UUID buildingId,
-            @Valid @RequestBody BuildingDeletionCreateReq req,
-            Authentication auth) {
-        try {
-            BuildingDeletionRequestDto request = buildingDeletionService.createBuildingDeletionRequest(
-                    buildingId, req.reason(), auth);
-            return ResponseEntity.ok(request);
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    @PostMapping("/deletion-requests/{requestId}/approve")
-    @PreAuthorize("@authz.canApproveBuildingDeletion()")
-    public ResponseEntity<BuildingDeletionRequestDto> approveBuildingDeletionRequest(
-            @PathVariable UUID requestId,
-            @Valid @RequestBody BuildingDeletionApproveReq req,
-            Authentication auth) {
-        try {
-            BuildingDeletionRequestDto request = buildingDeletionService.approveBuildingDeletionRequest(
-                    requestId, req.note(), auth);
-            return ResponseEntity.ok(request);
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    @PostMapping("/deletion-requests/{requestId}/reject")
-    @PreAuthorize("@authz.canApproveBuildingDeletion()")
-    public ResponseEntity<BuildingDeletionRequestDto> rejectBuildingDeletionRequest(
-            @PathVariable UUID requestId,
-            @Valid @RequestBody BuildingDeletionRejectReq req,
-            Authentication auth) {
-        try {
-            BuildingDeletionRequestDto request = buildingDeletionService.rejectBuildingDeletionRequest(
-                    requestId, req.note(), auth);
-            return ResponseEntity.ok(request);
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    @GetMapping("/deletion-requests/pending")
-    @PreAuthorize("@authz.canViewAllDeleteBuildings()")
-    public ResponseEntity<List<BuildingDeletionRequestDto>> getPendingBuildingDeletionRequests() {
-        return ResponseEntity.ok(buildingDeletionService.getPendingRequests());
-    }
-
-    @GetMapping("/deletion-requests/{requestId}")
-    public ResponseEntity<BuildingDeletionRequestDto> getBuildingDeletionRequest(
-            @PathVariable UUID requestId,
-            Authentication auth) {
-        try {
-            BuildingDeletionRequestDto request = buildingDeletionService.getById(requestId);
-            return ResponseEntity.ok(request);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
-    }
 
     @PostMapping("/{buildingId}/do")
     @PreAuthorize("@authz.canRequestDeleteBuilding(#buildingId)")
@@ -163,18 +91,24 @@ public class buildingController {
     }
 
     @GetMapping("/my-deleting-buildings")
-    public List<BuildingDeletionRequestDto> getMyDeletingBuildings(Authentication auth) {
-        return buildingDeletionService.getDeletingBuildings();
+    public List<BuildingDeletionRequestDto> getMyDeletingBuildings(
+            @RequestParam UUID tenantId,
+            Authentication auth) {
+        return buildingDeletionService.getDeletingBuildingsByTenantId(tenantId);
     }
 
     @GetMapping("/my-all")
-    public List<BuildingDeletionRequestDto> getMyAllBuildingDeletionRequests(Authentication auth) {
-        return buildingDeletionService.getAllBuildingDeletionRequests();
+    public List<BuildingDeletionRequestDto> getMyAllBuildingDeletionRequests(
+            @RequestParam UUID tenantId,
+            Authentication auth) {
+        return buildingDeletionService.getAllBuildingDeletionRequestsByTenantId(tenantId);
     }
 
     @GetMapping("/my-deleting-buildings-raw")
-    public ResponseEntity<List<Building>> getMyDeletingBuildingsRaw(Authentication auth) {
-        var deletingBuildings = buildingDeletionService.getDeletingBuildingsRaw();
+    public ResponseEntity<List<Building>> getMyDeletingBuildingsRaw(
+            @RequestParam UUID tenantId,
+            Authentication auth) {
+        var deletingBuildings = buildingDeletionService.getDeletingBuildingsRawByTenantId(tenantId);
         return ResponseEntity.ok(deletingBuildings);
     }
     

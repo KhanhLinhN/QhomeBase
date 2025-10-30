@@ -8,7 +8,6 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.List;
 @Component
 public class JwtVerifier {
     private final SecretKey key;
@@ -35,54 +34,13 @@ public class JwtVerifier {
                 .parseClaimsJws(token)
                 .getBody();
         
-        // Validate audience - handle both String and List<String>
-        if (!isAudienceValid(claims)) {
+        String aud = claims.getAudience();
+        if (aud != null && !aud.contains("base-service")) {
             throw new io.jsonwebtoken.security.SecurityException(
-                "JWT audience does not include " + expectedAudience
+                "JWT audience does not include base-service"
             );
         }
         
         return claims;
-    }
-    
-    private boolean isAudienceValid(Claims claims) {
-        Object audClaim = claims.get("aud");
-        
-        // No audience claim - skip validation for now (lenient mode)
-        if (audClaim == null) {
-            return true;
-        }
-        
-        // Handle String audience
-        if (audClaim instanceof String) {
-            String audString = (String) audClaim;
-            
-            // Check exact match first
-            if (expectedAudience.equals(audString)) {
-                return true;
-            }
-            
-            // Handle comma-separated audiences: "base-service,finance-service,..."
-            if (audString.contains(",")) {
-                String[] audiences = audString.split(",");
-                for (String aud : audiences) {
-                    if (expectedAudience.equals(aud.trim())) {
-                        return true;
-                    }
-                }
-            }
-            
-            return false;
-        }
-        
-        // Handle List<String> audience
-        if (audClaim instanceof List) {
-            @SuppressWarnings("unchecked")
-            List<String> audiences = (List<String>) audClaim;
-            return audiences.contains(expectedAudience);
-        }
-        
-        // Unknown audience type
-        return false;
     }
 }

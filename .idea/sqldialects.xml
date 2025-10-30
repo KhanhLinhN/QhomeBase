@@ -14,4 +14,7 @@
     <file url="file://$PROJECT_DIR$/QhomeBase/iam-service/src/main/resources/migration/iam/V1__iam_schema_types_tables.sql" dialect="GenericSQL" />
     <file url="PROJECT" dialect="PostgreSQL" />
   </component>
+  <component name="SqlResolveMappings">
+    <file url="file://$PROJECT_DIR$/QhomeBase/base-service/src/main/java/com/QhomeBase/baseservice/repository/TenantDeletionRequestRepository.java" scope="{&quot;node&quot;:{  &quot;@negative&quot;:&quot;1&quot;,  &quot;group&quot;:{   &quot;@kind&quot;:&quot;root&quot;,   &quot;node&quot;:{    &quot;@negative&quot;:&quot;1&quot;   }  } }}" />
+  </component>
 </project>

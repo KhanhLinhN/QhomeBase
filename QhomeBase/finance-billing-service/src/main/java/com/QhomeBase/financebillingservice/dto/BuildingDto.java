@@ -5,22 +5,22 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.mapstruct.Mapper;
 
 import java.time.Instant;
 import java.util.UUID;
-
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class BuildingDto {
-    private UUID id;
-    private UUID tenantId;
+    UUID id;
+    UUID tenantId;
     @JsonProperty("codeName")
-    private String code;
-    private String name;
-    private String address;
-    private Instant createdAt;
-    private Instant updatedAt;
+    String code;
+    String name;
+    String address;
+    Instant createdAt;
+    Instant updatedAt;
 }
 

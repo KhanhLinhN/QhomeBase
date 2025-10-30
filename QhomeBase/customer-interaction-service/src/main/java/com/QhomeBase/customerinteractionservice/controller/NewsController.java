@@ -27,9 +27,10 @@ public class NewsController {
     @PreAuthorize("@authz.canCreateNews()")
     public ResponseEntity<NewsManagementResponse> createNews(
             @Valid @RequestBody CreateNewsRequest request,
+            @RequestParam UUID tenantId,
             Authentication authentication) {
         
-        NewsManagementResponse response = newsService.createNews(request, authentication);
+        NewsManagementResponse response = newsService.createNews(request, tenantId, authentication);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -41,7 +42,7 @@ public class NewsController {
             Authentication authentication) {
         
         var principal = (UserPrincipal) authentication.getPrincipal();
-        NewsManagementResponse response = newsService.updateNews(newsId, request, authentication);
+        NewsManagementResponse response = newsService.updateNews(newsId, principal.tenant(), request, authentication);
         return ResponseEntity.ok(response);
     }
 
@@ -52,58 +53,64 @@ public class NewsController {
             Authentication authentication) {
         
         var principal = (UserPrincipal) authentication.getPrincipal();
-        NewsManagementResponse response = newsService.deleteNews(newsId, principal.uid());
+        NewsManagementResponse response = newsService.deleteNews(newsId, principal.tenant(), principal.uid());
         return ResponseEntity.ok(response);
     }
 
     @GetMapping
     @PreAuthorize("@authz.canViewNews()")
-    public ResponseEntity<List<NewsManagementResponse>> getAllNews() {
+    public ResponseEntity<List<NewsManagementResponse>> getAllNews(
+            @RequestParam UUID tenantId) {
         
-        List<NewsManagementResponse> news = newsService.getAllNews();
+        List<NewsManagementResponse> news = newsService.getNewsInTenant(tenantId);
         return ResponseEntity.ok(news);
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("@authz.canViewNews()")
     public ResponseEntity<NewsManagementResponse> getNewsDetail(
-            @PathVariable("id") UUID newsId) {
+            @PathVariable("id") UUID newsId,
+            @RequestParam UUID tenantId) {
         
-        NewsManagementResponse response = newsService.getNewsDetail(newsId);
+        NewsManagementResponse response = newsService.getNewsDetail(newsId, tenantId);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/resident")
     public ResponseEntity<List<NewsDetailResponse>> getNewsForResident(
+            @RequestParam UUID tenantId,
             @RequestParam UUID residentId) {
         
-        List<NewsDetailResponse> news = newsService.getNewsForResident(residentId);
+        List<NewsDetailResponse> news = newsService.getNewsForResident(tenantId, residentId);
         return ResponseEntity.ok(news);
     }
 
     @GetMapping("/{id}/resident")
     public ResponseEntity<NewsDetailResponse> getNewsDetailForResident(
             @PathVariable("id") UUID newsId,
+            @RequestParam UUID tenantId,
             @RequestParam UUID residentId) {
         
-        NewsDetailResponse response = newsService.getNewsForResident(newsId, residentId);
+        NewsDetailResponse response = newsService.getNewsForResident(newsId, tenantId, residentId);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{id}/read")
     public ResponseEntity<MarkAsReadResponse> markAsRead(
             @PathVariable("id") UUID newsId,
+            @RequestParam UUID tenantId,
             @RequestParam UUID residentId) {
         
-        MarkAsReadResponse response = newsService.markAsRead(newsId, residentId);
+        MarkAsReadResponse response = newsService.markAsRead(newsId, tenantId, residentId);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/unread/count")
     public ResponseEntity<UnreadCountResponse> countUnreadNews(
+            @RequestParam UUID tenantId,
             @RequestParam UUID residentId) {
         
-        UnreadCountResponse response = newsService.countUnreadNews(residentId);
+        UnreadCountResponse response = newsService.countUnreadNews(tenantId, residentId);
         return ResponseEntity.ok(response);
     }
 

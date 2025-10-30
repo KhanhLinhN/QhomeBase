@@ -59,7 +59,6 @@ public class processingLogService {
                 .orElseThrow(() -> new RuntimeException("Request not found with id: " + id));
         String newStatus = dto.getRequestStatus();
         request.setStatus(newStatus);
-        request.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
         requestRepository.save(request);
         ProcessingLog entity = new ProcessingLog();
         entity.setRecordType(dto.getRecordType());

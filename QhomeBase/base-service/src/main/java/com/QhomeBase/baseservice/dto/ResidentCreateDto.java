@@ -11,6 +11,9 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 public record ResidentCreateDto(
+        @NotNull(message = "Tenant ID is required")
+        UUID tenantId,
+
         @NotBlank(message = "Full name is required")
         @Size(max = 100, message = "Full name must not exceed 100 characters")
         String fullName,

@@ -13,8 +13,3 @@ public class FileStorageProperties {
     private String baseUrl;
 }
 
-
-
-
-
-

@@ -23,12 +23,18 @@ public class VehicleRegistrationController {
     private final VehicleRegistrationService vehicleRegistrationService;
 
     @PostMapping
-    @PreAuthorize("@authz.canCreateVehicleRegistration()")
+    @PreAuthorize("@authz.canCreateVehicleRegistration(#dto.tenantId())")
     public ResponseEntity<VehicleRegistrationDto> createRegistrationRequest(
             @Valid @RequestBody VehicleRegistrationCreateDto dto, 
             Authentication auth) {
-        VehicleRegistrationDto result = vehicleRegistrationService.createRegistrationRequest(dto, auth);
-        return ResponseEntity.ok(result);
+        try {
+            VehicleRegistrationDto result = vehicleRegistrationService.createRegistrationRequest(dto, auth);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @PostMapping("/{id}/approve")
@@ -37,8 +43,14 @@ public class VehicleRegistrationController {
             @PathVariable UUID id, 
             @Valid @RequestBody VehicleRegistrationApproveDto dto, 
             Authentication auth) {
-        VehicleRegistrationDto result = vehicleRegistrationService.approveRequest(id, dto, auth);
-        return ResponseEntity.ok(result);
+        try {
+            VehicleRegistrationDto result = vehicleRegistrationService.approveRequest(id, dto, auth);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @PostMapping("/{id}/reject")
@@ -47,8 +59,14 @@ public class VehicleRegistrationController {
             @PathVariable UUID id, 
             @Valid @RequestBody VehicleRegistrationRejectDto dto, 
             Authentication auth) {
-        VehicleRegistrationDto result = vehicleRegistrationService.rejectRequest(id, dto, auth);
-        return ResponseEntity.ok(result);
+        try {
+            VehicleRegistrationDto result = vehicleRegistrationService.rejectRequest(id, dto, auth);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @PostMapping("/{id}/cancel")
@@ -56,21 +74,31 @@ public class VehicleRegistrationController {
     public ResponseEntity<VehicleRegistrationDto> cancelRequest(
             @PathVariable UUID id, 
             Authentication auth) {
-        VehicleRegistrationDto result = vehicleRegistrationService.cancelRequest(id, auth);
-        return ResponseEntity.ok(result);
+        try {
+            VehicleRegistrationDto result = vehicleRegistrationService.cancelRequest(id, auth);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("@authz.canViewVehicleRegistration(#id)")
     public ResponseEntity<VehicleRegistrationDto> getRequestById(@PathVariable UUID id) {
-        VehicleRegistrationDto result = vehicleRegistrationService.getRequestById(id);
-        return ResponseEntity.ok(result);
+        try {
+            VehicleRegistrationDto result = vehicleRegistrationService.getRequestById(id);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
-    @GetMapping
-    @PreAuthorize("@authz.canViewVehicleRegistrations()")
-    public ResponseEntity<List<VehicleRegistrationDto>> getAllRequests() {
-        List<VehicleRegistrationDto> result = vehicleRegistrationService.getAllRequests();
+    @GetMapping("/tenant/{tenantId}")
+    @PreAuthorize("@authz.canViewVehicleRegistrationsByTenant(#tenantId)")
+    public ResponseEntity<List<VehicleRegistrationDto>> getRequestsByTenantId(@PathVariable UUID tenantId) {
+        List<VehicleRegistrationDto> result = vehicleRegistrationService.getRequestsByTenantId(tenantId);
         return ResponseEntity.ok(result);
     }
 
@@ -98,32 +126,5 @@ public class VehicleRegistrationController {
     @GetMapping("/statuses")
     public ResponseEntity<VehicleRegistrationStatus[]> getRegistrationStatuses() {
         return ResponseEntity.ok(VehicleRegistrationStatus.values());
-    }
-
-    /**
-     * Get pending requests by building
-     * API: GET /api/vehicle-registrations/building/{buildingId}/pending
-     */
-    @GetMapping("/building/{buildingId}/pending")
-    @PreAuthorize("@authz.canViewVehicleRegistrations()")
-    public ResponseEntity<List<VehicleRegistrationDto>> getPendingRequestsByBuilding(
-            @PathVariable UUID buildingId) {
-        List<VehicleRegistrationDto> result = vehicleRegistrationService
-                .getPendingRequestsByBuilding(buildingId);
-        return ResponseEntity.ok(result);
-    }
-
-    /**
-     * Get requests by building and status
-     * API: GET /api/vehicle-registrations/building/{buildingId}/status/{status}
-     */
-    @GetMapping("/building/{buildingId}/status/{status}")
-    @PreAuthorize("@authz.canViewVehicleRegistrations()")
-    public ResponseEntity<List<VehicleRegistrationDto>> getRequestsByBuildingAndStatus(
-            @PathVariable UUID buildingId,
-            @PathVariable VehicleRegistrationStatus status) {
-        List<VehicleRegistrationDto> result = vehicleRegistrationService
-                .getRequestsByBuildingAndStatus(buildingId, status);
-        return ResponseEntity.ok(result);
     }
 }

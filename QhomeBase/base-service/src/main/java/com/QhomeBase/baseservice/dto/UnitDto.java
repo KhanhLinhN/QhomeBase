@@ -8,6 +8,7 @@ import java.util.UUID;
 
 public record UnitDto(
         UUID id,
+        UUID tenantId,
         UUID buildingId,
         String buildingCode,
         String buildingName,
@@ -16,7 +17,6 @@ public record UnitDto(
         BigDecimal areaM2,
         Integer bedrooms,
         UnitStatus status,
-        UUID primaryResidentId,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {}

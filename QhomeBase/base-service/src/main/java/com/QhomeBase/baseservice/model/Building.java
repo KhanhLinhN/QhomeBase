@@ -12,15 +12,18 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "buildings", schema = "data", uniqueConstraints = @UniqueConstraint(name = "uq_buildings_code", columnNames = {"code"}))
+@Table(name = "buildings", schema = "data", uniqueConstraints = @UniqueConstraint(name = "uq_buildings_tenant_code", columnNames = {"tenant_id, code"}),
+indexes = @Index(name="idx_buildings_tenant",columnList = "tenant_id"))
 @Data
 @NoArgsConstructor @AllArgsConstructor @Builder
 public class Building {
     @GeneratedValue
     @Id
     private UUID id;
+    @Column(name = "tenant_id", nullable = false)
+    private UUID tenantId;
 
-    @Column(name = "code", nullable = false, unique = true)
+    @Column(name = "code", nullable = false)
     private String code;
 
     @Column(name = "name", nullable = false)

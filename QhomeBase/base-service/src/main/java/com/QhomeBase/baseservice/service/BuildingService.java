@@ -5,6 +5,7 @@ import com.QhomeBase.baseservice.dto.BuildingDto;
 import com.QhomeBase.baseservice.dto.BuildingUpdateReq;
 import com.QhomeBase.baseservice.model.Building;
 import com.QhomeBase.baseservice.repository.BuildingRepository;
+import com.QhomeBase.baseservice.repository.TenantRepository;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import jakarta.transaction.Transactional;
 import org.springframework.security.core.Authentication;
@@ -20,34 +21,42 @@ import java.util.stream.Collectors;
 public class BuildingService {
 
     private final BuildingRepository respo;
+    private final TenantRepository tenantRepository;
 
-    public BuildingService(BuildingRepository respo) {
+    public BuildingService(BuildingRepository respo, TenantRepository tenantRepository) {
         this.respo = respo;
+        this.tenantRepository = tenantRepository;
     }
 
-    public List<Building> findAllOrderByCodeAsc() {
-        return respo.findAllByOrderByCodeAsc().stream()
+    public List<Building> findAllByTenantIdOrderByCodeAsc(UUID tenantId) {
+        return respo.findAllByTenantIdOrderByCodeAsc(tenantId).stream()
                 .sorted(Comparator.comparing(Building::getId))
                 .collect(Collectors.toList());
     }
 
-    public BuildingDto getBuildingById(UUID buildingId) {
-        Building building = respo.findById(buildingId)
-                .orElseThrow(() -> new IllegalArgumentException("Building not found with id: " + buildingId));
-        return toDto(building);
+    private String generateNextCode(UUID tenantId) {
+        List<Building> Buildings = respo.findAllByTenantIdOrderByCodeAsc(tenantId);
+        String tenantCode = getTenantCode(tenantId);
+
+        int nextIndex = Buildings.size() + 1;
+        return tenantCode + String.format("%02d", nextIndex);
     }
 
-    private String generateNextCode() {
-        List<Building> Buildings = respo.findAllByOrderByCodeAsc();
-        
-        // Generate code: B01, B02, B03, etc.
-        int nextIndex = Buildings.size() + 1;
-        return "B" + String.format("%02d", nextIndex);
+    private String getTenantCode(UUID tenantId) {
+        try {
+            String tenantCode = String.valueOf(respo.findTenantCodeByTenantId(tenantId));
+            if (tenantCode != null && !tenantCode.trim().isEmpty()) {
+                return tenantCode.trim();
+            }
+        } catch (Exception e) {
+        }
+        return "Tenant";
     }
 
     public BuildingDto toDto(Building building) {
         return new BuildingDto(
                 building.getId(),
+                building.getTenantId(),
                 building.getCode(),
                 building.getName(),
                 building.getAddress(),
@@ -56,11 +65,15 @@ public class BuildingService {
                 0
         );
     }
-    
-    public BuildingDto createBuilding(BuildingCreateReq req, String createdBy) {
-        String newCode = generateNextCode();
+    public BuildingDto createBuilding(BuildingCreateReq req, UUID tenantId, String createdBy) {
+        if (!tenantRepository.existsById(tenantId)) {
+            throw new IllegalArgumentException("Tenant with ID " + tenantId + " does not exist");
+        }
+        
+        String newCode = generateNextCode(tenantId);
 
         var b = Building.builder()
+                .tenantId(tenantId)
                 .code(newCode)
                 .name(req.name())
                 .address(req.address())
@@ -70,12 +83,23 @@ public class BuildingService {
 
         return toDto(saved);
     }
-    
     public BuildingDto updateBuilding(UUID buildingId, BuildingUpdateReq req, Authentication auth) {
         var u = (UserPrincipal) auth.getPrincipal();
         
+        if (u.tenant() == null) {
+            throw new IllegalArgumentException("User has no tenant assigned");
+        }
+        
+        if (!tenantRepository.existsById(u.tenant())) {
+            throw new IllegalArgumentException("Tenant with ID " + u.tenant() + " does not exist");
+        }
+        
         var existing = respo.findById(buildingId)
                 .orElseThrow(() -> new IllegalArgumentException("Building not found"));
+
+        if (!existing.getTenantId().equals(u.tenant())) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied");
+        }
 
         existing.setName(req.name());
         existing.setAddress(req.address());

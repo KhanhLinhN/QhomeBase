@@ -25,9 +25,3 @@ public class RolePermissionDto {
 
 
 
-
-
-
-
-
-

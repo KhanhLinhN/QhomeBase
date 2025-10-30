@@ -8,6 +8,7 @@ import java.util.UUID;
 
 public record ResidentDto(
         UUID id,
+        UUID tenantId,
         String fullName,
         String phone,
         String email,

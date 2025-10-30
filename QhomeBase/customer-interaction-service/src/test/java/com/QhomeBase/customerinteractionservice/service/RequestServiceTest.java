@@ -58,11 +58,12 @@ class RequestServiceTest {
         mockRequest.setResidentName("Nguyen Khanh Linh");
         mockRequest.setStatus("New");
         mockRequest.setPriority("High");
+        mockRequest.setTenantId(UUID.randomUUID());
         mockRequest.setCreatedAt(now);
         mockRequest.setUpdatedAt(now);
 
         mockRequestDTO = new RequestDTO(
-                requestId, "RE00001", UUID.randomUUID(),
+                requestId, "RE00001", mockRequest.getTenantId(), UUID.randomUUID(),
                 "John Doe", null, "Fix leaking pipe", "Water is leaking in the kitchen.",
                 "New", "High", now.toString().replace("T", " "), now.toString().replace("T", " ")
         );

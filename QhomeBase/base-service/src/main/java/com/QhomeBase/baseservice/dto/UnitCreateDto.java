@@ -8,6 +8,9 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 public record UnitCreateDto(
+        @NotNull(message = "Tenant ID is required")
+        UUID tenantId,
+
         @NotNull(message = "Building ID is required")
         UUID buildingId,
 

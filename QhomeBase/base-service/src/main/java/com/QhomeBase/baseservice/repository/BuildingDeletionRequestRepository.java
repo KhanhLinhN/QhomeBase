@@ -9,7 +9,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface BuildingDeletionRequestRepository extends JpaRepository<BuildingDeletionRequest, UUID> {
-    List<BuildingDeletionRequest> findByBuildingId(UUID buildingId);
-    
-    List<BuildingDeletionRequest> findByStatus(BuildingDeletionStatus status);
+    List<BuildingDeletionRequest> findByTenantIdAndBuildingId(UUID tenantId, UUID buildingId);
+
+
 }

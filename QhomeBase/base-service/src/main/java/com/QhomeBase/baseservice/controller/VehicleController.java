@@ -21,37 +21,55 @@ public class VehicleController {
     private final VehicleService vehicleService;
 
     @PostMapping
-    @PreAuthorize("@authz.canCreateVehicle()")
+    @PreAuthorize("@authz.canCreateVehicle(#dto.tenantId())")
     public ResponseEntity<VehicleDto> createVehicle(@Valid @RequestBody VehicleCreateDto dto) {
-        VehicleDto result = vehicleService.createVehicle(dto);
-        return ResponseEntity.ok(result);
+        try {
+            VehicleDto result = vehicleService.createVehicle(dto);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("@authz.canUpdateVehicle(#id)")
     public ResponseEntity<VehicleDto> updateVehicle(@PathVariable UUID id, @Valid @RequestBody VehicleUpdateDto dto) {
-        VehicleDto result = vehicleService.updateVehicle(dto, id);
-        return ResponseEntity.ok(result);
+        try {
+            VehicleDto result = vehicleService.updateVehicle(dto, id);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("@authz.canDeleteVehicle(#id)")
     public ResponseEntity<Void> deleteVehicle(@PathVariable UUID id) {
-        vehicleService.deleteVehicle(id);
-        return ResponseEntity.ok().build();
+        try {
+            vehicleService.deleteVehicle(id);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("@authz.canViewVehicle(#id)")
     public ResponseEntity<VehicleDto> getVehicleById(@PathVariable UUID id) {
-        VehicleDto result = vehicleService.getVehicleById(id);
-        return ResponseEntity.ok(result);
+        try {
+            VehicleDto result = vehicleService.getVehicleById(id);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
-    @GetMapping
-    @PreAuthorize("@authz.canViewVehicles()")
-    public ResponseEntity<List<VehicleDto>> getAllVehicles() {
-        List<VehicleDto> result = vehicleService.getAllVehicles();
+    @GetMapping("/tenant/{tenantId}")
+    @PreAuthorize("@authz.canViewVehiclesByTenant(#tenantId)")
+    public ResponseEntity<List<VehicleDto>> getVehiclesByTenantId(@PathVariable UUID tenantId) {
+        List<VehicleDto> result = vehicleService.getVehiclesByTenantId(tenantId);
         return ResponseEntity.ok(result);
     }
 
@@ -69,18 +87,22 @@ public class VehicleController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/active")
-    @PreAuthorize("@authz.canViewVehicles()")
-    public ResponseEntity<List<VehicleDto>> getActiveVehicles() {
-        List<VehicleDto> result = vehicleService.getActiveVehicles();
+    @GetMapping("/tenant/{tenantId}/active")
+    @PreAuthorize("@authz.canViewVehiclesByTenant(#tenantId)")
+    public ResponseEntity<List<VehicleDto>> getActiveVehiclesByTenantId(@PathVariable UUID tenantId) {
+        List<VehicleDto> result = vehicleService.getActiveVehiclesByTenantId(tenantId);
         return ResponseEntity.ok(result);
     }
 
     @PatchMapping("/{id}/status")
     @PreAuthorize("@authz.canManageVehicleStatus(#id)")
     public ResponseEntity<Void> changeVehicleStatus(@PathVariable UUID id, @RequestParam Boolean active) {
-        vehicleService.changeVehicleStatus(id, active);
-        return ResponseEntity.ok().build();
+        try {
+            vehicleService.changeVehicleStatus(id, active);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
     @GetMapping("/kinds")

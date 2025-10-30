@@ -39,6 +39,7 @@ class RequestControllerTest {
         sampleRequestDTO = RequestDTO.builder()
                 .id(sampleId)
                 .requestCode("RE00001")
+                .tenantId(UUID.randomUUID())
                 .residentId(UUID.randomUUID())
                 .residentName("Nguyen Khanh Linh")
                 .title("Test Request")
