@@ -44,15 +44,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 System.out.println("IssuedAt: " + claims.getIssuedAt());
                 System.out.println("Expiration: " + claims.getExpiration());
                 System.out.println("UID: " + claims.get("uid"));
-                System.out.println("Tenant: " + claims.get("tenant"));
                 System.out.println("Roles: " + claims.get("roles"));
                 System.out.println("Perms: " + claims.get("perms"));
                 System.out.println("=========================");
 
                 UUID uid = UUID.fromString(claims.get("uid", String.class));
                 String username = claims.getSubject();
-                String tenantStr = claims.get("tenant", String.class);
-                UUID tenant = tenantStr != null ? UUID.fromString(tenantStr) : null;
                 List<String> roles = claims.get("roles", List.class);
                 List<String> perms = claims.get("perms", List.class);
 
@@ -64,7 +61,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     authorities.add(new SimpleGrantedAuthority("PERM_" + perm));
                 }
 
-                var principal = new UserPrincipal(uid, username, tenant, roles, perms, token);
+                var principal = new UserPrincipal(uid, username, roles, perms, token);
                 var authn = new UsernamePasswordAuthenticationToken(principal, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(authn);
             }

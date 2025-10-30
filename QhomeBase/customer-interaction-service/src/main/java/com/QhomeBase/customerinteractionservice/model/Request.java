@@ -19,8 +19,6 @@ public class Request {
     private UUID id;
     @Column(name = "request_code", nullable = false)
     private String requestCode;
-    @Column(name = "tenant_id", nullable = false)
-    private UUID tenantId;
     @Column(name = "resident_id", nullable = false)
     private UUID residentId;
     @Column(name = "resident_name", nullable = false)

@@ -34,6 +34,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/news/*/resident").permitAll()
                         .requestMatchers("/api/news/*/read").permitAll()
                         .requestMatchers("/api/news/unread/count").permitAll()
+                        .requestMatchers("/api/customer-interaction/**").permitAll()  // TODO: Remove in production
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

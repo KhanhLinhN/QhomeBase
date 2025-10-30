@@ -3,16 +3,14 @@ package com.QhomeBase.baseservice.service;
 import com.QhomeBase.baseservice.dto.VehicleCreateDto;
 import com.QhomeBase.baseservice.dto.VehicleDto;
 import com.QhomeBase.baseservice.dto.VehicleUpdateDto;
-import com.QhomeBase.baseservice.model.Resident;
 import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.model.Vehicle;
 import com.QhomeBase.baseservice.model.VehicleKind;
-import com.QhomeBase.baseservice.repository.ResidentRepository;
-import com.QhomeBase.baseservice.repository.TenantRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
 import com.QhomeBase.baseservice.repository.VehicleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -21,31 +19,21 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class VehicleService {
     private final VehicleRepository vehicleRepository;
-    private final ResidentRepository residentRepository;
     private final UnitRepository unitRepository;
-    private final TenantRepository tenantRepository;
 
     private OffsetDateTime nowUTC() {
         return OffsetDateTime.now(ZoneOffset.UTC);
     }
 
+    @Transactional
     public VehicleDto createVehicle(VehicleCreateDto dto) {
         validateVehicleCreateDto(dto);
         
-        if (!tenantRepository.existsById(dto.tenantId())) {
-            throw new IllegalArgumentException("Tenant with ID " + dto.tenantId() + " does not exist");
-        }
-        
-        if (vehicleRepository.existsByTenantIdAndPlateNo(dto.tenantId(), dto.plateNo())) {
+        if (vehicleRepository.existsByPlateNo(dto.plateNo())) {
             throw new IllegalStateException("Vehicle with this plate number already exists");
-        }
-
-        Resident resident = null;
-        if (dto.residentId() != null) {
-            resident = residentRepository.findById(dto.residentId())
-                    .orElseThrow(() -> new IllegalArgumentException("Resident not found"));
         }
 
         Unit unit = null;
@@ -55,8 +43,7 @@ public class VehicleService {
         }
 
         var vehicle = Vehicle.builder()
-                .tenantId(dto.tenantId())
-                .resident(resident)
+                .residentId(dto.residentId())
                 .unit(unit)
                 .plateNo(dto.plateNo())
                 .kind(dto.kind() != null ? dto.kind() : VehicleKind.OTHER)
@@ -70,6 +57,7 @@ public class VehicleService {
         return toDto(savedVehicle);
     }
 
+    @Transactional
     public VehicleDto updateVehicle(VehicleUpdateDto dto, UUID id) {
         validateVehicleUpdateDto(dto);
         
@@ -77,9 +65,7 @@ public class VehicleService {
                 .orElseThrow(() -> new IllegalArgumentException("Vehicle not found"));
 
         if (dto.residentId() != null) {
-            Resident resident = residentRepository.findById(dto.residentId())
-                    .orElseThrow(() -> new IllegalArgumentException("Resident not found"));
-            vehicle.setResident(resident);
+            vehicle.setResidentId(dto.residentId());
         }
         if (dto.unitId() != null) {
             Unit unit = unitRepository.findById(dto.unitId())
@@ -87,7 +73,7 @@ public class VehicleService {
             vehicle.setUnit(unit);
         }
         if (dto.plateNo() != null) {
-            if (vehicleRepository.existsByTenantIdAndPlateNoAndIdNot(vehicle.getTenantId(), dto.plateNo(), id)) {
+            if (vehicleRepository.existsByPlateNoAndIdNot(dto.plateNo(), id)) {
                 throw new IllegalStateException("Vehicle with this plate number already exists");
             }
             vehicle.setPlateNo(dto.plateNo());
@@ -108,9 +94,10 @@ public class VehicleService {
         return toDto(savedVehicle);
     }
 
+    @Transactional
     public void deleteVehicle(UUID id) {
         var vehicle = vehicleRepository.findById(id)
-                .orElseThrow();
+                .orElseThrow(() -> new IllegalArgumentException("Vehicle not found"));
 
         vehicle.setActive(false);
         vehicle.setUpdatedAt(nowUTC());
@@ -123,8 +110,8 @@ public class VehicleService {
         return toDto(vehicle);
     }
 
-    public List<VehicleDto> getVehiclesByTenantId(UUID tenantId) {
-        var vehicles = vehicleRepository.findAllByTenantId(tenantId);
+    public List<VehicleDto> getAllVehicles() {
+        var vehicles = vehicleRepository.findAll();
         return vehicles.stream()
                 .map(this::toDto)
                 .toList();
@@ -144,13 +131,14 @@ public class VehicleService {
                 .toList();
     }
 
-    public List<VehicleDto> getActiveVehiclesByTenantId(UUID tenantId) {
-        var vehicles = vehicleRepository.findAllByTenantIdAndActiveTrue(tenantId);
+    public List<VehicleDto> getActiveVehicles() {
+        var vehicles = vehicleRepository.findAllByActiveTrue();
         return vehicles.stream()
                 .map(this::toDto)
                 .toList();
     }
 
+    @Transactional
     public void changeVehicleStatus(UUID id, Boolean active) {
         var vehicle = vehicleRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Vehicle not found"));
@@ -161,43 +149,37 @@ public class VehicleService {
     }
 
     public VehicleDto toDto(Vehicle vehicle) {
-        UUID residentId = null;
-        String residentName = null;
         UUID unitId = null;
         String unitCode = null;
         
         try {
-            if (vehicle.getResident() != null) {
-                residentId = vehicle.getResident().getId();
-                residentName = vehicle.getResident().getFullName();
-            }
             if (vehicle.getUnit() != null) {
                 unitId = vehicle.getUnit().getId();
                 unitCode = vehicle.getUnit().getCode();
             }
         } catch (Exception e) {
+            // Lazy loading might fail, that's ok
         }
         
         return new VehicleDto(
                 vehicle.getId(),
-                vehicle.getTenantId(),
-                residentId,
-                residentName,
+                vehicle.getResidentId(),
+                null, // residentName - should be fetched from IAM service if needed
                 unitId,
                 unitCode,
                 vehicle.getPlateNo(),
                 vehicle.getKind(),
                 vehicle.getColor(),
                 vehicle.getActive(),
+                vehicle.getActivatedAt(),
+                vehicle.getRegistrationApprovedAt(),
+                vehicle.getApprovedBy(),
                 vehicle.getCreatedAt(),
                 vehicle.getUpdatedAt()
         );
     }
 
     private void validateVehicleCreateDto(VehicleCreateDto dto) {
-        if (dto.tenantId() == null) {
-            throw new NullPointerException("Tenant ID cannot be null");
-        }
         if (dto.plateNo() == null) {
             throw new NullPointerException("Plate number cannot be null");
         }

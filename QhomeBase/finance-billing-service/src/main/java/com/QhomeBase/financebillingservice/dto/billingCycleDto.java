@@ -7,15 +7,16 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.util.UUID;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class billingCycleDto {
-    UUID id;
-    UUID tenantId;
-    String name;
-    LocalDate periodFrom;
-    LocalDate periodTo;
-    String status;
+public class BillingCycleDto {
+    private UUID id;
+    private UUID tenantId;
+    private String name;
+    private LocalDate periodFrom;
+    private LocalDate periodTo;
+    private String status;
 }

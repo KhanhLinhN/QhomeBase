@@ -10,30 +10,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface BuildingRepository extends JpaRepository<Building,UUID> {
-    List<Building> findAllByTenantIdOrderByCodeAsc(UUID tenantId);
+    // All buildings are now under a single project
+    List<Building> findAllByOrderByCodeAsc();
 
-    @Query(value = """
-    SELECT t.code
-    FROM data.Buildings b
-    JOIN data.tenants t ON t.id = b.tenant_id
-    WHERE b.id = :buildingId
-    LIMIT 1
-""", nativeQuery = true)
-    String findTenantCodeByBuilding(@Param("buildingId") UUID buildingId);
-
-
-    @Query(value = "select t.code from data.tenants t where t.id = :tenantId", nativeQuery = true)
-    Optional<String> findTenantCodeByTenantId(@Param("tenantId") UUID tenantId);
-
-
-    @Query(value = """
-    SELECT t.id
-    FROM data.Buildings b
-    JOIN data.tenants t ON t.id = b.tenant_id
-    WHERE b.id = :buildingId
-    LIMIT 1
-""", nativeQuery = true)
-    UUID findTenantIdByBuilding(@Param("buildingId") UUID buildingId);
-
+    Building getBuildingById(UUID id);
 }
 

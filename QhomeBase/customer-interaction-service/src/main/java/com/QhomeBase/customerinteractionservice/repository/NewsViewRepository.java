@@ -20,38 +20,41 @@ public interface NewsViewRepository extends JpaRepository<NewsView, UUID> {
     Optional<NewsView> findByNewsIdAndUserId(@Param("newsId") UUID newsId, @Param("userId") UUID userId);
 
 
-    @Query("SELECT nv FROM NewsView nv WHERE nv.residentId = :residentId AND nv.tenantId = :tenantId")
-    List<NewsView> findByResidentId(@Param("residentId") UUID residentId, @Param("tenantId") UUID tenantId);
+    @Query("SELECT nv FROM NewsView nv WHERE nv.residentId = :residentId")
+    List<NewsView> findByResidentId(@Param("residentId") UUID residentId);
 
 
-    @Query("SELECT nv FROM NewsView nv WHERE nv.userId = :userId AND nv.tenantId = :tenantId")
-    List<NewsView> findByUserId(@Param("userId") UUID userId, @Param("tenantId") UUID tenantId);
+    @Query("SELECT nv FROM NewsView nv WHERE nv.userId = :userId")
+    List<NewsView> findByUserId(@Param("userId") UUID userId);
 
 
     @Query("""
         SELECT COUNT(n) FROM News n
-        WHERE n.tenantId = :tenantId
-        AND n.status = 'PUBLISHED'
+        WHERE n.status = 'PUBLISHED'
         AND NOT EXISTS (
             SELECT 1 FROM NewsView nv
             WHERE nv.news.id = n.id
             AND nv.residentId = :residentId
         )
     """)
-    Long countUnreadByResident(@Param("tenantId") UUID tenantId, @Param("residentId") UUID residentId);
+    Long countUnreadByResident(@Param("residentId") UUID residentId);
 
 
     @Query("""
         SELECT COUNT(n) FROM News n
-        WHERE n.tenantId = :tenantId
-        AND n.status = 'PUBLISHED'
+        WHERE n.status = 'PUBLISHED'
         AND NOT EXISTS (
             SELECT 1 FROM NewsView nv
             WHERE nv.news.id = n.id
             AND nv.userId = :userId
         )
     """)
-    Long countUnreadByUser(@Param("tenantId") UUID tenantId, @Param("userId") UUID userId);
+    Long countUnreadByUser(@Param("userId") UUID userId);
 }
+
+
+
+
+
 
 

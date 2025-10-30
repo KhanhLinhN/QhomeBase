@@ -22,7 +22,7 @@ public class UnitController {
     private final UnitService unitService;
 
     @PostMapping
-    @PreAuthorize("@authz.canCreateUnit(#dto.tenantId())")
+    @PreAuthorize("@authz.canCreateUnit(#dto.buildingId())")
     public ResponseEntity<UnitDto> createUnit(@Valid @RequestBody UnitCreateDto dto, Authentication auth) {
         try {
             UnitDto result = unitService.createUnit(dto);
@@ -71,13 +71,6 @@ public class UnitController {
     @PreAuthorize("@authz.canViewUnitsByBuilding(#buildingId)")
     public ResponseEntity<List<UnitDto>> getUnitsByBuildingId(@PathVariable UUID buildingId) {
         List<UnitDto> result = unitService.getUnitsByBuildingId(buildingId);
-        return ResponseEntity.ok(result);
-    }
-
-    @GetMapping("/tenant/{tenantId}")
-    @PreAuthorize("@authz.canViewUnitsByTenant(#tenantId)")
-    public ResponseEntity<List<UnitDto>> getUnitsByTenantId(@PathVariable UUID tenantId) {
-        List<UnitDto> result = unitService.getUnitsByTenantId(tenantId);
         return ResponseEntity.ok(result);
     }
 

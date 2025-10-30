@@ -7,7 +7,6 @@ import java.util.UUID;
 
 public record BuildingDeletionRequestDto(
         UUID id,
-        UUID tenantId,
         UUID buildingId,
         UUID requestedBy,
         String reason,

@@ -45,7 +45,6 @@ public class requestService {
         return new RequestDTO(
             entity.getId(),
             entity.getRequestCode(),
-            entity.getTenantId(),
             entity.getResidentId(),
             entity.getResidentName(),
             entity.getImagePath(),
@@ -54,7 +53,7 @@ public class requestService {
             entity.getStatus(),
             entity.getPriority(),
             entity.getCreatedAt().toString().replace("T", " "),
-            entity.getUpdatedAt().toString().replace("T", " ")
+            entity.getUpdatedAt() != null ? entity.getUpdatedAt().toString().replace("T", " ") : null
         );
     }
 
@@ -131,12 +130,18 @@ public class requestService {
     }
 
 
+    private String generateRequestCode() {
+        String prefix = "REQ";
+        String year = String.valueOf(LocalDateTime.now().getYear());
+        long count = requestRepository.count() + 1;
+        return String.format("%s-%s-%05d", prefix, year, count);
+    }
+
     // Create a new request
     public RequestDTO createNewRequest(RequestDTO dto) {
         Request entity = new Request();
         entity.setId(dto.getId());
-        entity.setRequestCode(dto.getRequestCode());
-        entity.setTenantId(dto.getTenantId());
+        entity.setRequestCode(dto.getRequestCode() != null ? dto.getRequestCode() : generateRequestCode());
         entity.setResidentId(dto.getResidentId());
         entity.setResidentName(dto.getResidentName());
         entity.setImagePath(dto.getImagePath());
@@ -144,7 +149,9 @@ public class requestService {
         entity.setContent(dto.getContent());
         entity.setStatus(dto.getStatus());
         entity.setPriority(dto.getPriority());
-        entity.setCreatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
+        entity.setCreatedAt(now);
+        entity.setUpdatedAt(now);
         Request savedRequest = requestRepository.save(entity);
 
         // create processinglog

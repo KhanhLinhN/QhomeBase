@@ -30,7 +30,7 @@ public class NewsService {
     private final NewsNotificationService notificationService;
     private final AppConfig appConfig; // injected
 
-    public NewsManagementResponse createNews(CreateNewsRequest request, UUID tenantId, Authentication authentication) {
+    public NewsManagementResponse createNews(CreateNewsRequest request, Authentication authentication) {
         var principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
 
@@ -38,7 +38,6 @@ public class NewsService {
             throw new IllegalArgumentException("Tenant ID is required");
         }
         News news = News.builder()
-                .tenantId(tenantId)
                 .title(request.getTitle())
                 .summary(request.getSummary())
                 .bodyHtml(request.getBodyHtml())
@@ -67,14 +66,12 @@ public class NewsService {
 
         if (request.getTargetType() == TargetType.ALL) {
             NewsTarget target = NewsTarget.builder()
-                    .tenantId(tenantId)
                     .targetType(TargetType.ALL)
                     .build();
             news.addTarget(target);
         } else if (request.getBuildingIds() != null && !request.getBuildingIds().isEmpty()) {
             for (UUID buildingId : request.getBuildingIds()) {
                 NewsTarget target = NewsTarget.builder()
-                        .tenantId(tenantId)
                         .targetType(TargetType.BUILDING)
                         .buildingId(buildingId)
                         .build();
@@ -91,7 +88,7 @@ public class NewsService {
                 normalizeFileUrl(savedNews.getCoverImageUrl()),
                 savedNews.getStatus().name()
         );
-        notificationService.notifyNewsCreated(tenantId, wsMessage);
+        notificationService.notifyNewsCreated(wsMessage);
 
         return toManagementResponse(savedNews);
     }
@@ -201,31 +198,17 @@ public class NewsService {
     public NewsManagementResponse deleteNews(UUID newsId, UUID tenantId, UUID userId) {
         News news = newsRepository.findByTenantIdAndId(tenantId, newsId);
 
-        if (news == null) {
             throw new IllegalArgumentException("News not found with ID: " + newsId);
         }
 
         if (!news.getTenantId().equals(tenantId)) {
             throw new org.springframework.security.access.AccessDeniedException("Access denied");
         }
-
-        news.setStatus(NewsStatus.ARCHIVED);
-        news.setUpdatedBy(userId);
-
-        News deleted = newsRepository.save(news);
-
-        WebSocketNewsMessage wsMessage = WebSocketNewsMessage.deleted(deleted.getId());
-        notificationService.notifyNewsDeleted(tenantId, wsMessage);
-
         return toManagementResponse(deleted);
     }
 
-    public List<NewsManagementResponse> getNewsInTenant(UUID tenantId) {
-        if (tenantId == null) {
-            throw new IllegalArgumentException("Tenant ID is required");
-        }
-
-        return newsRepository.findAll(tenantId)
+    public List<NewsManagementResponse> getAllNews() {
+        return newsRepository.findAll()
                 .stream()
                 .map(this::toManagementResponse)
                 .collect(Collectors.toList());
@@ -255,10 +238,10 @@ public class NewsService {
         return toDetailResponse(news, isRead, readAt);
     }
 
-    public List<NewsDetailResponse> getNewsForResident(UUID tenantId, UUID residentId) {
-        List<News> newsList = newsRepository.findAll(tenantId);
+    public List<NewsDetailResponse> getNewsForResident(UUID residentId) {
+        List<News> newsList = newsRepository.findAll();
 
-        Map<UUID, NewsView> viewMap = newsViewRepository.findByResidentId(residentId, tenantId)
+        Map<UUID, NewsView> viewMap = newsViewRepository.findByResidentId(residentId)
                 .stream()
                 .collect(Collectors.toMap(v -> v.getNews().getId(), v -> v));
 
@@ -285,7 +268,7 @@ public class NewsService {
             return MarkAsReadResponse.alreadyRead(existingView.get().getViewedAt());
         }
 
-        NewsView newsView = NewsView.forResident(news, tenantId, residentId);
+        NewsView newsView = NewsView.forResident(news, residentId);
         newsViewRepository.save(newsView);
 
         news.incrementViewCount();
@@ -294,8 +277,8 @@ public class NewsService {
         return MarkAsReadResponse.success(newsView.getViewedAt());
     }
 
-    public UnreadCountResponse countUnreadNews(UUID tenantId, UUID residentId) {
-        Long count = newsViewRepository.countUnreadByResident(tenantId, residentId);
+    public UnreadCountResponse countUnreadNews(UUID residentId) {
+        Long count = newsViewRepository.countUnreadByResident(residentId);
         return UnreadCountResponse.of(count);
     }
 

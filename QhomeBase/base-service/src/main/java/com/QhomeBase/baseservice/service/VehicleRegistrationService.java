@@ -1,5 +1,7 @@
 package com.QhomeBase.baseservice.service;
 
+import com.QhomeBase.baseservice.client.FinanceBillingClient;
+import com.QhomeBase.baseservice.dto.VehicleActivatedEvent;
 import com.QhomeBase.baseservice.dto.VehicleRegistrationApproveDto;
 import com.QhomeBase.baseservice.dto.VehicleRegistrationCreateDto;
 import com.QhomeBase.baseservice.dto.VehicleRegistrationDto;
@@ -12,6 +14,7 @@ import com.QhomeBase.baseservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -20,25 +23,27 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class VehicleRegistrationService {
     private final VehicleRegistrationRepository vehicleRegistrationRepository;
     private final VehicleRepository vehicleRepository;
+    private final FinanceBillingClient financeBillingClient;
+    private final HouseholdService householdService;
 
     private OffsetDateTime nowUTC() {
         return OffsetDateTime.now(ZoneOffset.UTC);
     }
 
+    @Transactional
     public VehicleRegistrationDto createRegistrationRequest(VehicleRegistrationCreateDto dto, Authentication authentication) {
-        validateVehicleRegistrationCreateDto(dto);
-        
         var u = (UserPrincipal) authentication.getPrincipal();
         UUID requestById = u.uid();
-        if (vehicleRegistrationRepository.existsByTenantIdAndVehicleId(dto.tenantId(), dto.vehicleId())) {
+        
+        if (vehicleRegistrationRepository.existsByVehicleId(dto.vehicleId())) {
             throw new IllegalStateException("Registration request for this vehicle already exists");
         }
 
         var request = VehicleRegistrationRequest.builder()
-                .tenantId(dto.tenantId())
                 .vehicle(vehicleRepository.findById(dto.vehicleId())
                         .orElseThrow())
                 .reason(dto.reason())
@@ -53,41 +58,53 @@ public class VehicleRegistrationService {
         return toDto(savedRequest);
     }
 
+    @Transactional
     public VehicleRegistrationDto approveRequest(UUID requestId, VehicleRegistrationApproveDto dto, Authentication authentication) {
-        validateVehicleRegistrationApproveDto(dto);
-        
         var u = (UserPrincipal) authentication.getPrincipal();
-        UUID requestById = u.uid();
-        var request = vehicleRegistrationRepository.findById(requestId)
-                .orElseThrow();
-
-        if (request.getStatus() != VehicleRegistrationStatus.PENDING) {
-            throw new IllegalStateException("Request is not PENDING");
-        }
-
-        request.setApprovedBy(requestById);
-        request.setNote(dto.note());
-        request.setApprovedAt(nowUTC());
-        request.setStatus(VehicleRegistrationStatus.APPROVED);
-        request.setUpdatedAt(nowUTC());
-
-        var savedRequest = vehicleRegistrationRepository.save(request);
-        return toDto(savedRequest);
-    }
-
-    public VehicleRegistrationDto rejectRequest(UUID requestId, VehicleRegistrationRejectDto dto, Authentication authentication) {
-        validateVehicleRegistrationRejectDto(dto);
+        UUID approvedBy = u.uid();
+        OffsetDateTime now = nowUTC();
         
-        var u = (UserPrincipal) authentication.getPrincipal();
-        UUID requestById = u.uid();
         var request = vehicleRegistrationRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Registration request not found"));
 
-        if (request.getStatus() != VehicleRegistrationStatus.PENDING) {
-            throw new IllegalStateException("Request is not PENDING");
+        if (!VehicleRegistrationStatus.PENDING.equals(request.getStatus())) {
+            throw new IllegalStateException("Request is not PENDING. Current status: " + request.getStatus());
         }
 
-        request.setApprovedBy(requestById);
+        request.setApprovedBy(approvedBy);
+        request.setNote(dto.note());
+        request.setApprovedAt(now);
+        request.setStatus(VehicleRegistrationStatus.APPROVED);
+        request.setUpdatedAt(now);
+
+        var savedRequest = vehicleRegistrationRepository.save(request);
+
+        var vehicle = request.getVehicle();
+        if (vehicle != null) {
+            vehicle.setActivatedAt(now);
+            vehicle.setRegistrationApprovedAt(now);
+            vehicle.setApprovedBy(approvedBy);
+            vehicle.setUpdatedAt(now);
+            vehicleRepository.save(vehicle);
+        }
+        
+        notifyVehicleActivated(savedRequest);
+
+        return toDto(savedRequest);
+    }
+
+    @Transactional
+    public VehicleRegistrationDto rejectRequest(UUID requestId, VehicleRegistrationRejectDto dto, Authentication authentication) {
+        var u = (UserPrincipal) authentication.getPrincipal();
+        UUID rejectedBy = u.uid();
+        var request = vehicleRegistrationRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Registration request not found"));
+
+        if (!VehicleRegistrationStatus.PENDING.equals(request.getStatus())) {
+            throw new IllegalStateException("Request is not PENDING. Current status: " + request.getStatus());
+        }
+
+        request.setApprovedBy(rejectedBy);
         request.setNote(dto.reason());
         request.setApprovedAt(nowUTC());
         request.setStatus(VehicleRegistrationStatus.REJECTED);
@@ -97,19 +114,26 @@ public class VehicleRegistrationService {
         return toDto(savedRequest);
     }
 
+    @Transactional
     public VehicleRegistrationDto cancelRequest(UUID requestId, Authentication authentication) {
         var u = (UserPrincipal) authentication.getPrincipal();
         UUID userId = u.uid();
         
         var request = vehicleRegistrationRepository.findById(requestId)
-                .orElseThrow();
+                .orElseThrow(() -> new IllegalArgumentException("Registration request not found"));
 
         if (request.getStatus() != VehicleRegistrationStatus.PENDING) {
             throw new IllegalStateException("Request is not PENDING");
         }
 
-        if (!request.getRequestedBy().equals(userId)) {
-            throw new IllegalStateException("Only the requester can cancel the request");
+        boolean isRequester = request.getRequestedBy().equals(userId);
+        boolean hasManagerRole = u.roles() != null && 
+            (u.roles().contains("manager") || 
+             u.roles().contains("owner") || 
+             u.roles().contains("admin"));
+        
+        if (!isRequester && !hasManagerRole) {
+            throw new IllegalStateException("Only the requester or manager can cancel the request");
         }
 
         request.setStatus(VehicleRegistrationStatus.CANCELED);
@@ -127,8 +151,8 @@ public class VehicleRegistrationService {
         return toDto(request);
     }
 
-    public List<VehicleRegistrationDto> getRequestsByTenantId(UUID tenantId) {
-        var requests = vehicleRegistrationRepository.findAllByTenantId(tenantId);
+    public List<VehicleRegistrationDto> getAllRequests() {
+        var requests = vehicleRegistrationRepository.findAllWithVehicle();
         return requests.stream()
                 .map(this::toDto)
                 .toList();
@@ -152,13 +176,66 @@ public class VehicleRegistrationService {
                 .toList();
     }
 
+    /**
+     * Get pending requests by building
+     */
+    public List<VehicleRegistrationDto> getPendingRequestsByBuilding(UUID buildingId) {
+        var requests = vehicleRegistrationRepository.findPendingByBuilding(buildingId);
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    /**
+     * Get requests by building and status
+     */
+    public List<VehicleRegistrationDto> getRequestsByBuildingAndStatus(
+            UUID buildingId, VehicleRegistrationStatus status) {
+        var requests = vehicleRegistrationRepository.findByBuildingAndStatus(
+            buildingId, status
+        );
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    private void notifyVehicleActivated(VehicleRegistrationRequest request) {
+        OffsetDateTime now = nowUTC();
+
+        var vehicle = request.getVehicle();
+        if (vehicle == null) {
+            return;
+        }
+
+        UUID unitId = vehicle.getUnit() != null ? vehicle.getUnit().getId() : null;
+        
+        UUID payerResidentId = null;
+        if (unitId != null) {
+            payerResidentId = householdService.getPayerForUnit(unitId);
+        }
+        
+        if (payerResidentId == null) {
+            payerResidentId = vehicle.getResidentId();
+        }
+
+        var event = VehicleActivatedEvent.builder()
+                .vehicleId(vehicle.getId())
+                .unitId(unitId)
+                .residentId(payerResidentId)
+                .plateNo(vehicle.getPlateNo())
+                .vehicleKind(vehicle.getKind() != null ? vehicle.getKind().name() : null)
+                .activatedAt(now)
+                .approvedBy(request.getApprovedBy())
+                .build();
+
+        financeBillingClient.notifyVehicleActivatedSync(event);
+    }
+
     public VehicleRegistrationDto toDto(VehicleRegistrationRequest request) {
-        UUID vehicleId = null;
-        String vehiclePlateNo = null;
-        String vehicleKind = null;
-        String vehicleColor = null;
-        String requestedByName = null;
-        String approvedByName = null;
+        UUID vehicleId;
+        String vehiclePlateNo;
+        String vehicleKind;
+        String vehicleColor;
 
         try {
             if (request.getVehicle() != null) {
@@ -166,6 +243,11 @@ public class VehicleRegistrationService {
                 vehiclePlateNo = request.getVehicle().getPlateNo();
                 vehicleKind = request.getVehicle().getKind() != null ? request.getVehicle().getKind().name() : null;
                 vehicleColor = request.getVehicle().getColor();
+            } else {
+                vehicleId = null;
+                vehiclePlateNo = null;
+                vehicleKind = null;
+                vehicleColor = null;
             }
         } catch (Exception e) {
             vehicleId = null;
@@ -174,12 +256,11 @@ public class VehicleRegistrationService {
             vehicleColor = "Unknown";
         }
 
-        requestedByName = "Unknown";
-        approvedByName = request.getApprovedBy() != null ? "Unknown" : null;
+        String requestedByName = "Unknown";
+        String approvedByName = request.getApprovedBy() != null ? "Unknown" : null;
 
         return new VehicleRegistrationDto(
                 request.getId(),
-                request.getTenantId(),
                 vehicleId,
                 vehiclePlateNo,
                 vehicleKind,
@@ -196,41 +277,5 @@ public class VehicleRegistrationService {
                 request.getCreatedAt(),
                 request.getUpdatedAt()
         );
-    }
-
-    private void validateVehicleRegistrationCreateDto(VehicleRegistrationCreateDto dto) {
-        if (dto.tenantId() == null) {
-            throw new NullPointerException("Tenant ID cannot be null");
-        }
-        if (dto.vehicleId() == null) {
-            throw new NullPointerException("Vehicle ID cannot be null");
-        }
-        if (dto.reason() != null && dto.reason().length() > 500) {
-            throw new IllegalArgumentException("Reason cannot exceed 500 characters");
-        }
-    }
-
-    private void validateVehicleRegistrationApproveDto(VehicleRegistrationApproveDto dto) {
-        if (dto.approvedBy() == null) {
-            throw new NullPointerException("Approved by cannot be null");
-        }
-        if (dto.note() != null && dto.note().length() > 500) {
-            throw new IllegalArgumentException("Note cannot exceed 500 characters");
-        }
-    }
-
-    private void validateVehicleRegistrationRejectDto(VehicleRegistrationRejectDto dto) {
-        if (dto.rejectedBy() == null) {
-            throw new NullPointerException("Rejected by cannot be null");
-        }
-        if (dto.reason() == null) {
-            throw new NullPointerException("Reason cannot be null");
-        }
-        if (dto.reason().trim().isEmpty()) {
-            throw new IllegalArgumentException("Reason cannot be empty");
-        }
-        if (dto.reason().length() > 500) {
-            throw new IllegalArgumentException("Reason cannot exceed 500 characters");
-        }
     }
 }

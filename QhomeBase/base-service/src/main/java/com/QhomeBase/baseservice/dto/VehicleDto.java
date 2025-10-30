@@ -7,7 +7,6 @@ import java.util.UUID;
 
 public record VehicleDto(
         UUID id,
-        UUID tenantId,
         UUID residentId,
         String residentName,
         UUID unitId,
@@ -16,6 +15,9 @@ public record VehicleDto(
         VehicleKind kind,
         String color,
         Boolean active,
+        OffsetDateTime activatedAt,
+        OffsetDateTime registrationApprovedAt,
+        UUID approvedBy,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {}

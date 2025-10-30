@@ -32,11 +32,8 @@ public class NewsImageUploadService {
         validateImageDto(newsImageDto);
 
         UUID newsId = newsImageDto.getNewsId();
-        News news = newsRepository.findById(newsId);
-
-        if (news == null) {
-            throw new IllegalArgumentException("News not found with ID: " + newsId);
-        }
+        News news = newsRepository.findById(newsId)
+                .orElseThrow(() -> new IllegalArgumentException("News not found with ID: " + newsId));
 
         NewsImage newsImage = NewsImage.builder()
                 .news(news)
@@ -59,11 +56,8 @@ public class NewsImageUploadService {
         }
 
         UUID newsId = imageDtos.get(0).getNewsId();
-        News news = newsRepository.findById(newsId);
-
-        if (news == null) {
-            throw new IllegalArgumentException("News not found with ID: " + newsId);
-        }
+        News news = newsRepository.findById(newsId)
+                .orElseThrow(() -> new IllegalArgumentException("News not found with ID: " + newsId));
 
         List<NewsImage> newsImages = new ArrayList<>();
         for (NewsImageDto dto : imageDtos) {
@@ -115,11 +109,8 @@ public class NewsImageUploadService {
     public List<UploadImageResponse> getImagesByNewsId(UUID newsId) {
         log.info("Getting images for news: {}", newsId);
 
-        News news = newsRepository.findById(newsId);
-
-        if (news == null) {
-            throw new IllegalArgumentException("News not found with ID: " + newsId);
-        }
+        News news = newsRepository.findById(newsId)
+                .orElseThrow(() -> new IllegalArgumentException("News not found with ID: " + newsId));
 
         List<NewsImage> images = news.getImages();
 

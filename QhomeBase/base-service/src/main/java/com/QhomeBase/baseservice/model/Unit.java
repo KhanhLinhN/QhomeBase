@@ -11,8 +11,8 @@ import java.util.UUID;
 
 @Entity
 @Table(schema = "data", name = "units",
-        uniqueConstraints = @UniqueConstraint(name = "uq_units_tenant_building_code",
-                columnNames = {"tenant_id", "building_id", "code"}))
+        uniqueConstraints = @UniqueConstraint(name = "uq_units_building_code",
+                columnNames = {"building_id", "code"}))
 @Getter
 @Setter
 @Builder
@@ -23,9 +23,6 @@ public class Unit {
     @Id
     @GeneratedValue
     private UUID id;
-
-    @Column(name = "tenant_id", nullable = false)
-    private UUID tenantId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "building_id", nullable = false,

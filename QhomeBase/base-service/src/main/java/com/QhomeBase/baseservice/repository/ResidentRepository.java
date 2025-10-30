@@ -12,33 +12,30 @@ import java.util.UUID;
 
 public interface ResidentRepository extends JpaRepository<Resident, UUID> {
     
-    List<Resident> findAllByTenantId(UUID tenantId);
+    List<Resident> findAllByStatus(ResidentStatus status);
     
-    List<Resident> findAllByTenantIdAndStatus(UUID tenantId, ResidentStatus status);
-    
-    @Query("SELECT r FROM Resident r WHERE r.tenantId = :tenantId AND " +
+    @Query("SELECT r FROM Resident r WHERE " +
            "(LOWER(r.fullName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
            "LOWER(r.phone) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
            "LOWER(r.email) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
-    List<Resident> searchByTenantIdAndTerm(@Param("tenantId") UUID tenantId, @Param("searchTerm") String searchTerm);
+    List<Resident> searchByTerm(@Param("searchTerm") String searchTerm);
     
-    Optional<Resident> findByTenantIdAndPhone(UUID tenantId, String phone);
+    Optional<Resident> findByPhone(String phone);
     
-    Optional<Resident> findByTenantIdAndEmail(UUID tenantId, String email);
+    Optional<Resident> findByEmail(String email);
     
-    Optional<Resident> findByTenantIdAndNationalId(UUID tenantId, String nationalId);
+    Optional<Resident> findByNationalId(String nationalId);
     
-    boolean existsByTenantIdAndPhone(UUID tenantId, String phone);
+    boolean existsByPhone(String phone);
     
-    boolean existsByTenantIdAndEmail(UUID tenantId, String email);
+    boolean existsByEmail(String email);
     
-    boolean existsByTenantIdAndNationalId(UUID tenantId, String nationalId);
+    boolean existsByNationalId(String nationalId);
     
-    boolean existsByTenantIdAndPhoneAndIdNot(UUID tenantId, String phone, UUID id);
+    boolean existsByPhoneAndIdNot(String phone, UUID id);
     
-    boolean existsByTenantIdAndEmailAndIdNot(UUID tenantId, String email, UUID id);
+    boolean existsByEmailAndIdNot(String email, UUID id);
     
-    boolean existsByTenantIdAndNationalIdAndIdNot(UUID tenantId, String nationalId, UUID id);
+    boolean existsByNationalIdAndIdNot(String nationalId, UUID id);
 }
-
 
