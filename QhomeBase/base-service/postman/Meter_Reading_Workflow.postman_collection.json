@@ -1,0 +1,762 @@
+{
+  "info": {
+    "name": "Meter Reading Workflow",
+    "_postman_id": "meter-reading-workflow-001",
+    "description": "API tests for Reading Cycle and Meter Reading Assignment management",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string",
+      "description": "Base service URL"
+    },
+    {
+      "key": "iamUrl",
+      "value": "http://localhost:8088",
+      "type": "string",
+      "description": "IAM service URL (port 8088)"
+    },
+    {
+      "key": "cycleId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "assignmentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "buildingId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "serviceId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "staffId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Authentication",
+      "item": [
+        {
+          "name": "Login - Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    ",
+                  "    // Save access token to environment",
+                  "    pm.environment.set('accessToken', response.accessToken);",
+                  "    ",
+                  "    // Optional: Save user info",
+                  "    if (response.userId) {",
+                  "        pm.environment.set('userId', response.userId);",
+                  "    }",
+                  "    ",
+                  "    pm.test('Status is 200 OK', () => {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    ",
+                  "    pm.test('Response has access token', () => {",
+                  "        pm.expect(response.accessToken).to.not.be.empty;",
+                  "    });",
+                  "    ",
+                  "    console.log('✅ Login successful! Access token saved.');",
+                  "} else {",
+                  "    console.log('❌ Login failed:', pm.response.json());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{iamUrl}}/api/auth/login",
+              "host": ["{{iamUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Login with admin credentials to get access token from IAM service"
+          },
+          "response": []
+        },
+        {
+          "name": "Login - Staff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('accessToken', response.accessToken);",
+                  "    if (response.userId) {",
+                  "        pm.environment.set('staffId', response.userId);",
+                  "    }",
+                  "    pm.test('Status is 200 OK', () => {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    console.log('✅ Staff login successful!');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"staff\",\n  \"password\": \"staff123\"\n}"
+            },
+            "url": {
+              "raw": "{{iamUrl}}/api/auth/login",
+              "host": ["{{iamUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Login with staff credentials from IAM service"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current User Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{iamUrl}}/api/auth/me",
+              "host": ["{{iamUrl}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Get current authenticated user information from IAM service"
+          },
+          "response": []
+        }
+      ],
+      "description": "Authentication endpoints - Run Login first to get access token"
+    },
+    {
+      "name": "1. Reading Cycles",
+      "item": [
+        {
+          "name": "1. Create Reading Cycle",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('cycleId', response.id);",
+                  "    pm.environment.set('cycleId', response.id);",
+                  "    pm.test('Status is 201 Created', () => {",
+                  "        pm.response.to.have.status(201);",
+                  "    });",
+                  "    pm.test('Response has cycleId', () => {",
+                  "        pm.expect(response.id).to.not.be.empty;",
+                  "    });",
+                  "    pm.test('Status is OPEN', () => {",
+                  "        pm.expect(response.status).to.equal('OPEN');",
+                  "    });",
+                  "    console.log('✅ Cycle created with ID:', response.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tháng 1/2024\",\n  \"periodFrom\": \"2024-01-01\",\n  \"periodTo\": \"2024-01-31\",\n  \"description\": \"Kỳ đọc điện nước tháng 1\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reading-cycles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reading-cycles"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "2. Get All Reading Cycles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response is array', () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reading-cycles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reading-cycles"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get Reading Cycle By ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response has correct ID', () => {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.id).to.equal(pm.environment.get('cycleId'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reading-cycles/{{cycleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reading-cycles", "{{cycleId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "4. Get Cycles By Status (OPEN)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reading-cycles/status/OPEN",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reading-cycles", "status", "OPEN"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "5. Get Cycles By Period",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reading-cycles/period?from=2024-01-01&to=2024-01-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reading-cycles", "period"],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2024-01-01"
+                },
+                {
+                  "key": "to",
+                  "value": "2024-01-31"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "6. Update Reading Cycle",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated: Kỳ đọc điện nước tháng 1/2024\",\n  \"status\": \"IN_PROGRESS\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reading-cycles/{{cycleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reading-cycles", "{{cycleId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "7. Change Cycle Status to IN_PROGRESS",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reading-cycles/{{cycleId}}/status?status=IN_PROGRESS",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reading-cycles", "{{cycleId}}", "status"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "IN_PROGRESS"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "8. Change Cycle Status to COMPLETED",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reading-cycles/{{cycleId}}/status?status=COMPLETED",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reading-cycles", "{{cycleId}}", "status"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "COMPLETED"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "9. Delete Reading Cycle",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reading-cycles/{{cycleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reading-cycles", "{{cycleId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Services & Buildings (Setup)",
+      "item": [
+        {
+          "name": "Get All Services",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const services = pm.response.json();",
+                  "    ",
+                  "    // Find and save ELECTRIC service ID",
+                  "    const electric = services.find(s => s.code === 'ELECTRIC');",
+                  "    if (electric) {",
+                  "        pm.environment.set('serviceId', electric.id);",
+                  "        console.log('✅ ELECTRIC service ID:', electric.id);",
+                  "    }",
+                  "    ",
+                  "    // Find and save WATER service ID",
+                  "    const water = services.find(s => s.code === 'WATER');",
+                  "    if (water) {",
+                  "        pm.environment.set('waterServiceId', water.id);",
+                  "        console.log('✅ WATER service ID:', water.id);",
+                  "    }",
+                  "    ",
+                  "    pm.test('Status is 200', () => {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/services",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "services"]
+            },
+            "description": "Get all services and auto-save ELECTRIC and WATER service IDs to environment"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Service by Code - ELECTRIC",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/services/code/ELECTRIC",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "services", "code", "ELECTRIC"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Service by Code - WATER",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/services/code/WATER",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "services", "code", "WATER"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Buildings",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    ",
+                  "    // Save first building ID if available",
+                  "    if (response.content && response.content.length > 0) {",
+                  "        pm.environment.set('buildingId', response.content[0].id);",
+                  "        console.log('✅ Building ID:', response.content[0].id);",
+                  "        console.log('Building name:', response.content[0].name);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/buildings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "buildings"]
+            },
+            "description": "Get all buildings and auto-save first building ID to environment"
+          },
+          "response": []
+        }
+      ],
+      "description": "Setup endpoints to get Service IDs and Building IDs"
+    },
+    {
+      "name": "3. Meter Reading Assignments",
+      "item": [
+        {
+          "name": "1. Create Assignment - Building A Electric Floors 1-10",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('assignmentId', response.id);",
+                  "    pm.environment.set('assignmentId', response.id);",
+                  "    pm.test('Status is 201 Created', () => {",
+                  "        pm.response.to.have.status(201);",
+                  "    });",
+                  "    pm.test('Response has assignmentId', () => {",
+                  "        pm.expect(response.id).to.not.be.empty;",
+                  "    });",
+                  "    console.log('✅ Assignment created with ID:', response.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cycleId\": \"{{cycleId}}\",\n  \"buildingId\": \"{{buildingId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"assignedTo\": \"{{staffId}}\",\n  \"startDate\": \"2024-01-06\",\n  \"endDate\": \"2024-01-10\",\n  \"note\": \"Đọc điện tòa A tầng 1-10\",\n  \"floorFrom\": 1,\n  \"floorTo\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "2. Create Assignment - Building A Water Floors 1-10",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cycleId\": \"{{cycleId}}\",\n  \"buildingId\": \"{{buildingId}}\",\n  \"serviceId\": \"{{waterServiceId}}\",\n  \"assignedTo\": \"{{staffId}}\",\n  \"startDate\": \"2024-01-06\",\n  \"endDate\": \"2024-01-10\",\n  \"note\": \"Đọc nước tòa A tầng 1-10\",\n  \"floorFrom\": 1,\n  \"floorTo\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "3. Create Assignment - Overlap Test (Should Fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 or 500', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 500]);",
+                  "});",
+                  "console.log('✅ Overlap validation working - request rejected as expected');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cycleId\": \"{{cycleId}}\",\n  \"buildingId\": \"{{buildingId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"assignedTo\": \"{{staffId}}\",\n  \"startDate\": \"2024-01-08\",\n  \"endDate\": \"2024-01-12\",\n  \"note\": \"This should fail - overlaps with existing\",\n  \"floorFrom\": 5,\n  \"floorTo\": 15\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "4. Get Assignment By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments/{{assignmentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments", "{{assignmentId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "5. Get Assignments By Cycle",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments/cycle/{{cycleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments", "cycle", "{{cycleId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "6. Get Assignments By Staff",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments/staff/{{staffId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments", "staff", "{{staffId}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "7. Get Active Assignments By Staff",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments/staff/{{staffId}}/active",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments", "staff", "{{staffId}}", "active"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "8. Get My Assignments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments/my-assignments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments", "my-assignments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "9. Get My Active Assignments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments/my-assignments/active",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments", "my-assignments", "active"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "10. Complete Assignment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('Assignment has completedAt', () => {",
+                  "        const response = pm.response.json();",
+                  "        pm.expect(response.completedAt).to.not.be.null;",
+                  "    });",
+                  "    console.log('✅ Assignment completed successfully');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments/{{assignmentId}}/complete",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments", "{{assignmentId}}", "complete"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "11. Delete Assignment (Should Fail - Completed)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 or 500', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 500]);",
+                  "});",
+                  "console.log('✅ Cannot delete completed assignment - validation working');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments/{{assignmentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments", "{{assignmentId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

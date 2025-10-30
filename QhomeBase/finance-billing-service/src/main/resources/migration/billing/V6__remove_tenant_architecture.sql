@@ -1,4 +1,4 @@
--- V4: Remove tenant architecture from billing schema
+-- V6: Remove tenant architecture from billing schema
 -- Remove tenant_id from all billing schema tables
 
 -- Drop tenant_id columns if they exist

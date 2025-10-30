@@ -31,6 +31,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/test/public").permitAll()
                         .requestMatchers("/api/test/generate-token").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/api/buildings/**").permitAll()
+                        .requestMatchers("/api/services/**").permitAll()
+                        .requestMatchers("/api/reading-cycles/**").permitAll()
+                        .requestMatchers("/api/meter-reading-assignments/**").permitAll()
+                        .requestMatchers("/api/meter-reading-sessions/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

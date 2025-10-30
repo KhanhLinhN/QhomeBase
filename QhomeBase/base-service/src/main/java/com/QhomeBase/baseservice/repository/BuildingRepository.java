@@ -12,5 +12,7 @@ import java.util.UUID;
 public interface BuildingRepository extends JpaRepository<Building,UUID> {
     // All buildings are now under a single project
     List<Building> findAllByOrderByCodeAsc();
+
+    Building getBuildingById(UUID id);
 }
 
