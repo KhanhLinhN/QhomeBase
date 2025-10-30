@@ -21,8 +21,15 @@ public class WebSocketNewsMessage {
     private String coverImageUrl;
     private Instant timestamp;
     private String deepLink;
+    private String status;
 
-    public static WebSocketNewsMessage created(UUID newsId, String title, String summary, String coverImageUrl) {
+    public static WebSocketNewsMessage created(
+            UUID newsId,
+            String title,
+            String summary,
+            String coverImageUrl,
+            String status
+    ) {
         return WebSocketNewsMessage.builder()
                 .type("NEWS_CREATED")
                 .newsId(newsId)
@@ -31,6 +38,7 @@ public class WebSocketNewsMessage {
                 .coverImageUrl(coverImageUrl)
                 .timestamp(Instant.now())
                 .deepLink("qhome://news/" + newsId)
+                .status(status)
                 .build();
     }
 

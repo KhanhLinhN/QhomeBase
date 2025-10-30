@@ -1,5 +1,6 @@
 package com.QhomeBase.customerinteractionservice.service;
 
+import com.QhomeBase.customerinteractionservice.config.AppConfig;
 import com.QhomeBase.customerinteractionservice.dto.news.*;
 import com.QhomeBase.customerinteractionservice.model.*;
 import com.QhomeBase.customerinteractionservice.repository.NewsRepository;
@@ -10,6 +11,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -25,16 +28,18 @@ public class NewsService {
     private final NewsRepository newsRepository;
     private final NewsViewRepository newsViewRepository;
     private final NewsNotificationService notificationService;
+    private final AppConfig appConfig;
 
     public NewsManagementResponse createNews(CreateNewsRequest request, Authentication authentication) {
         var principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
-        
+
         News news = News.builder()
                 .title(request.getTitle())
                 .summary(request.getSummary())
                 .bodyHtml(request.getBodyHtml())
-                .coverImageUrl(request.getCoverImageUrl())
+                // normalize coverImageUrl BEFORE saving
+                .coverImageUrl(normalizeFileUrl(request.getCoverImageUrl()))
                 .status(request.getStatus())
                 .publishAt(request.getPublishAt())
                 .expireAt(request.getExpireAt())
@@ -46,7 +51,7 @@ public class NewsService {
         if (request.getImages() != null && !request.getImages().isEmpty()) {
             for (NewsImageDto imgDto : request.getImages()) {
                 NewsImage image = NewsImage.builder()
-                        .url(imgDto.getUrl())
+                        .url(normalizeFileUrl(imgDto.getUrl()))
                         .caption(imgDto.getCaption())
                         .sortOrder(imgDto.getSortOrder())
                         .fileSize(imgDto.getFileSize())
@@ -74,14 +79,54 @@ public class NewsService {
         News savedNews = newsRepository.save(news);
 
         WebSocketNewsMessage wsMessage = WebSocketNewsMessage.created(
-            savedNews.getId(),
-            savedNews.getTitle(),
-            savedNews.getSummary(),
-            savedNews.getCoverImageUrl()
+                savedNews.getId(),
+                savedNews.getTitle(),
+                savedNews.getSummary(),
+                normalizeFileUrl(savedNews.getCoverImageUrl()),
+                savedNews.getStatus().name()
         );
         notificationService.notifyNewsCreated(wsMessage);
 
         return toManagementResponse(savedNews);
+    }
+
+    private String normalizeFileUrl(String url) {
+        if (url == null || url.isBlank()) return null;
+        String base = appConfig.getFileBaseUrl();
+
+        try {
+            if (!url.startsWith("http")) {
+                if (url.startsWith("/")) {
+                    return base.endsWith("/") ? base.substring(0, base.length()-1) + url : base + url;
+                } else {
+                    return base.endsWith("/") ? base + url : base + "/" + url;
+                }
+            }
+
+            URI uri = new URI(url);
+            String host = uri.getHost();
+            if (host == null) return url;
+
+            if ("localhost".equalsIgnoreCase(host) || "192.168.100.33".equals(host)) {
+                URI baseUri = new URI(base);
+                String scheme = baseUri.getScheme() != null ? baseUri.getScheme() : uri.getScheme();
+                String newHost = baseUri.getHost();
+                int newPort = baseUri.getPort();
+                String path = uri.getRawPath();
+                String query = uri.getRawQuery();
+                String fragment = uri.getRawFragment();
+                URI replaced = new URI(scheme, null, newHost, newPort, path, query, fragment);
+                return replaced.toString();
+            }
+
+            return url;
+        } catch (URISyntaxException e) {
+            if (url.contains("localhost")) {
+                String candidate = url.replace("localhost", base.replace("http://", "").replace("https://", ""));
+                return candidate;
+            }
+            return url;
+        }
     }
 
     private NewsDetailResponse toDetailResponse(News news, Boolean isRead, java.time.Instant readAt) {
