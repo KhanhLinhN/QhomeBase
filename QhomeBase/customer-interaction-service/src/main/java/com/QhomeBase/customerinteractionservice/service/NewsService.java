@@ -34,11 +34,11 @@ public class NewsService {
         var principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
 
+        // Tạo entity news
         News news = News.builder()
                 .title(request.getTitle())
                 .summary(request.getSummary())
                 .bodyHtml(request.getBodyHtml())
-                // normalize coverImageUrl BEFORE saving
                 .coverImageUrl(normalizeFileUrl(request.getCoverImageUrl()))
                 .status(request.getStatus())
                 .publishAt(request.getPublishAt())
@@ -48,7 +48,8 @@ public class NewsService {
                 .updatedBy(userId)
                 .build();
 
-        if (request.getImages() != null && !request.getImages().isEmpty()) {
+        // Thêm ảnh
+        if (request.getImages() != null) {
             for (NewsImageDto imgDto : request.getImages()) {
                 NewsImage image = NewsImage.builder()
                         .url(normalizeFileUrl(imgDto.getUrl()))
@@ -61,30 +62,34 @@ public class NewsService {
             }
         }
 
+        // Thêm target
         if (request.getTargetType() == TargetType.ALL) {
-            NewsTarget target = NewsTarget.builder()
-                    .targetType(TargetType.ALL)
-                    .build();
-            news.addTarget(target);
-        } else if (request.getBuildingIds() != null && !request.getBuildingIds().isEmpty()) {
+            news.addTarget(NewsTarget.builder().targetType(TargetType.ALL).build());
+        } else if (request.getBuildingIds() != null) {
             for (UUID buildingId : request.getBuildingIds()) {
-                NewsTarget target = NewsTarget.builder()
+                news.addTarget(NewsTarget.builder()
                         .targetType(TargetType.BUILDING)
                         .buildingId(buildingId)
-                        .build();
-                news.addTarget(target);
+                        .build());
             }
         }
 
+        // Lưu news
         News savedNews = newsRepository.save(news);
 
-        WebSocketNewsMessage wsMessage = WebSocketNewsMessage.created(
-                savedNews.getId(),
-                savedNews.getTitle(),
-                savedNews.getSummary(),
-                normalizeFileUrl(savedNews.getCoverImageUrl()),
-                savedNews.getStatus().name()
-        );
+        // Tạo WebSocket message
+        WebSocketNewsMessage wsMessage = WebSocketNewsMessage.builder()
+                .type("NEWS_CREATED")
+                .newsId(savedNews.getId())
+                .title(savedNews.getTitle())
+                .summary(savedNews.getSummary())
+                .coverImageUrl(normalizeFileUrl(savedNews.getCoverImageUrl())) // public URL
+                .timestamp(Instant.now())
+                .deepLink("qhome://news/" + savedNews.getId())
+                .status(savedNews.getStatus().name())
+                .build();
+
+        // Gửi WebSocket tới app cư dân (tất cả đều nhận)
         notificationService.notifyNewsCreated(wsMessage);
 
         return toManagementResponse(savedNews);
@@ -92,9 +97,11 @@ public class NewsService {
 
     private String normalizeFileUrl(String url) {
         if (url == null || url.isBlank()) return null;
-        String base = appConfig.getFileBaseUrl();
+        String base = appConfig.getFileBaseUrl(); // public URL
 
         try {
+            URI uri = new URI(url);
+
             if (!url.startsWith("http")) {
                 if (url.startsWith("/")) {
                     return base.endsWith("/") ? base.substring(0, base.length()-1) + url : base + url;
@@ -103,27 +110,18 @@ public class NewsService {
                 }
             }
 
-            URI uri = new URI(url);
             String host = uri.getHost();
             if (host == null) return url;
 
-            if ("localhost".equalsIgnoreCase(host) || "192.168.100.33".equals(host)) {
+            if ("localhost".equalsIgnoreCase(host) || host.startsWith("192.168.")) {
                 URI baseUri = new URI(base);
-                String scheme = baseUri.getScheme() != null ? baseUri.getScheme() : uri.getScheme();
-                String newHost = baseUri.getHost();
-                int newPort = baseUri.getPort();
-                String path = uri.getRawPath();
-                String query = uri.getRawQuery();
-                String fragment = uri.getRawFragment();
-                URI replaced = new URI(scheme, null, newHost, newPort, path, query, fragment);
-                return replaced.toString();
+                return new URI(baseUri.getScheme(), null, baseUri.getHost(), baseUri.getPort(), uri.getRawPath(), uri.getRawQuery(), uri.getRawFragment()).toString();
             }
 
             return url;
-        } catch (URISyntaxException e) {
+        } catch (Exception e) {
             if (url.contains("localhost")) {
-                String candidate = url.replace("localhost", base.replace("http://", "").replace("https://", ""));
-                return candidate;
+                return url.replace("localhost", base.replaceAll("https?://", ""));
             }
             return url;
         }
