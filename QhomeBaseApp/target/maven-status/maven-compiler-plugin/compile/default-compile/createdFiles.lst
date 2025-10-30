@@ -33,6 +33,7 @@ com\qhomebaseapp\dto\bill\BillStatisticsDto$BillStatisticsDtoBuilder.class
 com\qhomebaseapp\model\RegisterServiceRequest$RegisterServiceRequestBuilder.class
 com\qhomebaseapp\model\News$NewsBuilder.class
 com\qhomebaseapp\dto\news\NewsDto.class
+com\qhomebaseapp\model\VnpayProps.class
 com\qhomebaseapp\repository\registerregistration\RegisterServiceImageRepository.class
 com\qhomebaseapp\service\news\NewsWebSocketListener$1.class
 com\qhomebaseapp\controller\NewsController.class
@@ -109,6 +110,7 @@ com\qhomebaseapp\model\Bill$BillBuilder.class
 com\qhomebaseapp\dto\token\TokenRefreshRequest.class
 com\qhomebaseapp\util\JwtUtil.class
 com\qhomebaseapp\service\news\NewsService.class
+com\qhomebaseapp\config\VnpayProperties.class
 com\qhomebaseapp\model\PostLike$PostLikeBuilder.class
 com\qhomebaseapp\dto\bill\BillDto$BillDtoBuilder.class
 com\qhomebaseapp\service\storage\FileStorageService.class
@@ -128,3 +130,4 @@ com\qhomebaseapp\service\bill\BillService.class
 com\qhomebaseapp\model\User.class
 com\qhomebaseapp\dto\registrationservice\RegisterServiceRequestResponseDto.class
 com\qhomebaseapp\model\News.class
+com\qhomebaseapp\service\vnpay\VnpayService.class

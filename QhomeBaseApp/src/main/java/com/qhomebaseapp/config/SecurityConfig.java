@@ -60,7 +60,9 @@ public class SecurityConfig {
                                 "/api/auth/refresh-token",
                                 "/uploads/**",
                                 "/ws/**",
-                                "/files/**"
+                                "/files/**",
+                                "/api/bills/vnpay/return",
+                                "/api/bills/*/vnpay-url"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

@@ -33,12 +33,27 @@ public class Bill {
     private LocalDate billingMonth;
 
     @Column(nullable = false)
-    private String status; // UNPAID, PAID
+    private String status;
 
     private String description;
 
     @Column(name = "payment_date")
     private LocalDateTime paymentDate;
+
+    @Column(name = "vnp_transaction_no", length = 50)
+    private String vnpTransactionNo;
+
+    @Column(name = "vnp_bank_code", length = 50)
+    private String vnpBankCode;
+
+    @Column(name = "vnp_card_type", length = 50)
+    private String vnpCardType;
+
+    @Column(name = "vnp_pay_date")
+    private LocalDateTime vnpPayDate;
+
+    @Column(name = "payment_gateway", length = 30)
+    private String paymentGateway;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
