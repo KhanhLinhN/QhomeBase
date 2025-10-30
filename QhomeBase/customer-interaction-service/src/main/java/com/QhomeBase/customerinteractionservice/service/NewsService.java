@@ -1,5 +1,6 @@
 package com.QhomeBase.customerinteractionservice.service;
 
+import com.QhomeBase.customerinteractionservice.config.AppConfig;
 import com.QhomeBase.customerinteractionservice.dto.news.*;
 import com.QhomeBase.customerinteractionservice.model.*;
 import com.QhomeBase.customerinteractionservice.repository.NewsRepository;
@@ -10,6 +11,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -25,11 +28,12 @@ public class NewsService {
     private final NewsRepository newsRepository;
     private final NewsViewRepository newsViewRepository;
     private final NewsNotificationService notificationService;
+    private final AppConfig appConfig; // injected
 
     public NewsManagementResponse createNews(CreateNewsRequest request, UUID tenantId, Authentication authentication) {
         var principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
-        
+
         if (tenantId == null) {
             throw new IllegalArgumentException("Tenant ID is required");
         }
@@ -38,7 +42,8 @@ public class NewsService {
                 .title(request.getTitle())
                 .summary(request.getSummary())
                 .bodyHtml(request.getBodyHtml())
-                .coverImageUrl(request.getCoverImageUrl())
+                // normalize coverImageUrl BEFORE saving
+                .coverImageUrl(normalizeFileUrl(request.getCoverImageUrl()))
                 .status(request.getStatus())
                 .publishAt(request.getPublishAt())
                 .expireAt(request.getExpireAt())
@@ -50,7 +55,7 @@ public class NewsService {
         if (request.getImages() != null && !request.getImages().isEmpty()) {
             for (NewsImageDto imgDto : request.getImages()) {
                 NewsImage image = NewsImage.builder()
-                        .url(imgDto.getUrl())
+                        .url(normalizeFileUrl(imgDto.getUrl()))
                         .caption(imgDto.getCaption())
                         .sortOrder(imgDto.getSortOrder())
                         .fileSize(imgDto.getFileSize())
@@ -80,10 +85,11 @@ public class NewsService {
         News savedNews = newsRepository.save(news);
 
         WebSocketNewsMessage wsMessage = WebSocketNewsMessage.created(
-            savedNews.getId(),
-            savedNews.getTitle(),
-            savedNews.getSummary(),
-            savedNews.getCoverImageUrl()
+                savedNews.getId(),
+                savedNews.getTitle(),
+                savedNews.getSummary(),
+                normalizeFileUrl(savedNews.getCoverImageUrl()),
+                savedNews.getStatus().name()
         );
         notificationService.notifyNewsCreated(tenantId, wsMessage);
 
@@ -96,7 +102,7 @@ public class NewsService {
                 .title(news.getTitle())
                 .summary(news.getSummary())
                 .bodyHtml(news.getBodyHtml())
-                .coverImageUrl(news.getCoverImageUrl())
+                .coverImageUrl(normalizeFileUrl(news.getCoverImageUrl()))
                 .status(news.getStatus())
                 .publishAt(news.getPublishAt())
                 .expireAt(news.getExpireAt())
@@ -119,7 +125,7 @@ public class NewsService {
                 .map(img -> NewsImageDto.builder()
                         .id(img.getId())
                         .newsId(img.getNews().getId())
-                        .url(img.getUrl())
+                        .url(normalizeFileUrl(img.getUrl()))
                         .caption(img.getCaption())
                         .sortOrder(img.getSortOrder())
                         .fileSize(img.getFileSize())
@@ -138,17 +144,17 @@ public class NewsService {
                         .build())
                 .collect(Collectors.toList());
     }
+
     public NewsManagementResponse updateNews(UUID newsId, UUID tenantId, UpdateNewsRequest request, Authentication auth) {
         var principal = (UserPrincipal) auth.getPrincipal();
         UUID userId = principal.uid();
-        
+
         News news = newsRepository.findByTenantIdAndId(tenantId, newsId);
-        
+
         if (news == null) {
             throw new IllegalArgumentException("News not found with ID: " + newsId);
         }
 
-        // Verify tenant ownership
         if (!news.getTenantId().equals(tenantId)) {
             throw new org.springframework.security.access.AccessDeniedException("Access denied");
         }
@@ -162,7 +168,8 @@ public class NewsService {
             news.setBodyHtml(request.getBodyHtml());
         }
         if (request.getCoverImageUrl() != null) {
-            news.setCoverImageUrl(request.getCoverImageUrl());
+            // normalize before saving
+            news.setCoverImageUrl(normalizeFileUrl(request.getCoverImageUrl()));
         }
         if (request.getStatus() != null) {
             news.setStatus(request.getStatus());
@@ -179,21 +186,21 @@ public class NewsService {
         news.setUpdatedBy(userId);
 
         News updated = newsRepository.save(news);
-        
+
         WebSocketNewsMessage wsMessage = WebSocketNewsMessage.updated(
-            updated.getId(),
-            updated.getTitle(),
-            updated.getSummary(),
-            updated.getCoverImageUrl()
+                updated.getId(),
+                updated.getTitle(),
+                updated.getSummary(),
+                normalizeFileUrl(updated.getCoverImageUrl())
         );
         notificationService.notifyNewsUpdated(tenantId, wsMessage);
-        
+
         return toManagementResponse(updated);
     }
-    
+
     public NewsManagementResponse deleteNews(UUID newsId, UUID tenantId, UUID userId) {
         News news = newsRepository.findByTenantIdAndId(tenantId, newsId);
-        
+
         if (news == null) {
             throw new IllegalArgumentException("News not found with ID: " + newsId);
         }
@@ -204,12 +211,12 @@ public class NewsService {
 
         news.setStatus(NewsStatus.ARCHIVED);
         news.setUpdatedBy(userId);
-        
+
         News deleted = newsRepository.save(news);
-        
+
         WebSocketNewsMessage wsMessage = WebSocketNewsMessage.deleted(deleted.getId());
         notificationService.notifyNewsDeleted(tenantId, wsMessage);
-        
+
         return toManagementResponse(deleted);
     }
 
@@ -226,7 +233,7 @@ public class NewsService {
 
     public NewsManagementResponse getNewsDetail(UUID newsId, UUID tenantId) {
         News news = newsRepository.findByTenantIdAndId(tenantId, newsId);
-        
+
         if (news == null) {
             throw new IllegalArgumentException("News not found with ID: " + newsId);
         }
@@ -236,7 +243,7 @@ public class NewsService {
 
     public NewsDetailResponse getNewsForResident(UUID newsId, UUID tenantId, UUID residentId) {
         News news = newsRepository.findByTenantIdAndId(tenantId, newsId);
-        
+
         if (news == null) {
             throw new IllegalArgumentException("News not found with ID: " + newsId);
         }
@@ -267,13 +274,13 @@ public class NewsService {
 
     public MarkAsReadResponse markAsRead(UUID newsId, UUID tenantId, UUID residentId) {
         News news = newsRepository.findByTenantIdAndId(tenantId, newsId);
-        
+
         if (news == null) {
             throw new IllegalArgumentException("News not found with ID: " + newsId);
         }
 
         Optional<NewsView> existingView = newsViewRepository.findByNewsIdAndResidentId(newsId, residentId);
-        
+
         if (existingView.isPresent()) {
             return MarkAsReadResponse.alreadyRead(existingView.get().getViewedAt());
         }
@@ -298,7 +305,7 @@ public class NewsService {
                 .title(news.getTitle())
                 .summary(news.getSummary())
                 .bodyHtml(news.getBodyHtml())
-                .coverImageUrl(news.getCoverImageUrl())
+                .coverImageUrl(normalizeFileUrl(news.getCoverImageUrl()))
                 .status(news.getStatus())
                 .publishAt(news.getPublishAt())
                 .expireAt(news.getExpireAt())
@@ -311,5 +318,44 @@ public class NewsService {
                 .updatedBy(news.getUpdatedBy())
                 .updatedAt(news.getUpdatedAt())
                 .build();
+    }
+
+    private String normalizeFileUrl(String url) {
+        if (url == null || url.isBlank()) return null;
+        String base = appConfig.getFileBaseUrl();
+
+        try {
+            if (!url.startsWith("http")) {
+                if (url.startsWith("/")) {
+                    return base.endsWith("/") ? base.substring(0, base.length()-1) + url : base + url;
+                } else {
+                    return base.endsWith("/") ? base + url : base + "/" + url;
+                }
+            }
+
+            URI uri = new URI(url);
+            String host = uri.getHost();
+            if (host == null) return url;
+
+            if ("localhost".equalsIgnoreCase(host) || "192.168.100.33".equals(host)) {
+                URI baseUri = new URI(base);
+                String scheme = baseUri.getScheme() != null ? baseUri.getScheme() : uri.getScheme();
+                String newHost = baseUri.getHost();
+                int newPort = baseUri.getPort();
+                String path = uri.getRawPath();
+                String query = uri.getRawQuery();
+                String fragment = uri.getRawFragment();
+                URI replaced = new URI(scheme, null, newHost, newPort, path, query, fragment);
+                return replaced.toString();
+            }
+
+            return url;
+        } catch (URISyntaxException e) {
+            if (url.contains("localhost")) {
+                String candidate = url.replace("localhost", base.replace("http://", "").replace("https://", ""));
+                return candidate;
+            }
+            return url;
+        }
     }
 }
