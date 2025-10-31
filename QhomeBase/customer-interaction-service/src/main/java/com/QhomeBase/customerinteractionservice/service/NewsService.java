@@ -83,13 +83,12 @@ public class NewsService {
                 .newsId(savedNews.getId())
                 .title(savedNews.getTitle())
                 .summary(savedNews.getSummary())
-                .coverImageUrl(normalizeFileUrl(savedNews.getCoverImageUrl())) // public URL
+                .coverImageUrl(normalizeFileUrl(savedNews.getCoverImageUrl()))
                 .timestamp(Instant.now())
                 .deepLink("qhome://news/" + savedNews.getId())
                 .status(savedNews.getStatus().name())
                 .build();
 
-        // Gửi WebSocket tới app cư dân (tất cả đều nhận)
         notificationService.notifyNewsCreated(wsMessage);
 
         return toManagementResponse(savedNews);
@@ -97,7 +96,7 @@ public class NewsService {
 
     private String normalizeFileUrl(String url) {
         if (url == null || url.isBlank()) return null;
-        String base = appConfig.getFileBaseUrl(); // public URL
+        String base = appConfig.getFileBaseUrl();
 
         try {
             URI uri = new URI(url);

@@ -233,9 +233,9 @@ public class MeterReadingAssignmentService {
         int floorFrom   = assignment.getFloorFrom();
         int floorTo     = assignment.getFloorTo();
 
-        // Tổng meter cần đọc
+
         int total = meterReadingAssignmentRepository.findByBuildingServiceAndFloorRange(buildingId, serviceId, floorFrom, floorTo).size();
-        // Đã đọc (phiếu hợp lệ, gắn đúng assignment)
+
         int done = meterReadingAssignmentRepository.findByAssignment(assignmentId).size();
         int remain = Math.max(0, total-done);
         double percent = total > 0 ? Math.round((done * 10000.0 / total))/100.0 : 0;
