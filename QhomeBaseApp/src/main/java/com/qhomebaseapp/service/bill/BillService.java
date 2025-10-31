@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
@@ -142,46 +143,44 @@ public class BillService {
         return savedBill;
     }
 
-    public String createVnpayPaymentUrl(Long billId, Long userId, HttpServletRequest request) {
-
-        Bill bill = billRepository.findById(billId)
+    public Bill getBill(Long billId) {
+        return billRepository.findById(billId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy hóa đơn"));
+    }
+
+    public String createVnpayPaymentUrl(Long billId, Long userId, HttpServletRequest request) {
+        Bill bill = getBill(billId);
 
         if (!bill.getUser().getId().equals(userId)) {
             throw new RuntimeException("Bạn không có quyền thanh toán hóa đơn này");
         }
 
-        if (!"UNPAID".equalsIgnoreCase(bill.getStatus())) {
-            throw new RuntimeException("Hóa đơn đã được thanh toán hoặc không hợp lệ");
+        if ("PAID".equalsIgnoreCase(bill.getStatus())) {
+            throw new RuntimeException("Hóa đơn đã được thanh toán trước đó");
+        }
+
+        if (!"PENDING".equalsIgnoreCase(bill.getVnpayStatus())) {
+            bill.setVnpayStatus("PENDING");
+            billRepository.save(bill);
         }
 
         BigDecimal amount = bill.getAmount();
         String clientIp = request.getHeader("X-Forwarded-For");
-        if (clientIp == null || clientIp.isEmpty()) {
-            clientIp = request.getRemoteAddr();
-        }
+        if (clientIp == null || clientIp.isEmpty()) clientIp = request.getRemoteAddr();
 
         String orderInfo = "Thanh toán hóa đơn #" + bill.getId();
 
-        String paymentUrl = vnpayService.createPaymentUrl(
-                bill.getId(),
-                orderInfo,
-                amount,
-                clientIp
-        );
-
-        log.info("✅ [BILL PAYMENT] Tạo URL VNPAY cho billId={}, userId={}, url={}", billId, userId, paymentUrl);
-        return paymentUrl;
+        return vnpayService.createPaymentUrl(bill.getId(), orderInfo, amount, clientIp);
     }
 
     public void markAsPaid(Long billId, Map<String, String> vnpParams) {
-        Bill bill = billRepository.findById(billId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy hóa đơn"));
+        Bill bill = getBill(billId);
 
         if (!"PAID".equalsIgnoreCase(bill.getStatus())) {
             bill.setStatus("PAID");
-            bill.setPaymentDate(LocalDateTime.now());
+            bill.setVnpayStatus("SUCCESS");
             bill.setPaymentGateway("VNPAY");
+            bill.setPaymentDate(LocalDateTime.now());
 
             if (vnpParams != null) {
                 bill.setVnpTransactionNo(vnpParams.get("vnp_TransactionNo"));
@@ -194,25 +193,11 @@ public class BillService {
                         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
                         bill.setVnpPayDate(LocalDateTime.parse(payDate, formatter));
                     } catch (Exception e) {
-                        log.warn("⚠️ [markAsPaid] Không parse được vnp_PayDate: {}", payDate);
                         bill.setVnpPayDate(LocalDateTime.now());
                     }
                 }
-
             }
             billRepository.save(bill);
-            messagingTemplate.convertAndSend(
-                    "/topic/bills/" + bill.getUser().getId(),
-                    Map.of(
-                            "billId", bill.getId(),
-                            "status", bill.getStatus(),
-                            "paymentGateway", bill.getPaymentGateway()
-                    )
-            );
-            log.info("✅ [markAsPaid] Bill {} đã cập nhật trạng thái PAID qua VNPAY", billId);
-        } else {
-            log.info("ℹ️ [markAsPaid] Bill {} đã thanh toán trước đó, bỏ qua", billId);
         }
     }
-
 }

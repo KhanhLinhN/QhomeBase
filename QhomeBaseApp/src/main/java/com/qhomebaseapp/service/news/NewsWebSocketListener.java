@@ -32,8 +32,6 @@ public class NewsWebSocketListener {
     private final ObjectMapper objectMapper;
     @Value("${app.websocket.url}")
     private String websocketUrl;
-    @Value("${app.websocket.tenant-id}")
-    private String tenantId;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final AtomicBoolean connected = new AtomicBoolean(false);
     private StompSession stompSession;
@@ -48,7 +46,6 @@ public class NewsWebSocketListener {
 
     @PostConstruct
     public void start() {
-        log.info("🚀 Starting WebSocket listener for tenantId={}", tenantId);
         connectWithRetry(0);
     }
 
@@ -83,7 +80,9 @@ public class NewsWebSocketListener {
     }
 
     private void subscribeTopic(StompSession session) {
-        String destination = "/topic/news/" + tenantId;
+        if (session == null || !session.isConnected()) return;
+
+        String destination = "/topic/news"; // bỏ dấu /
         log.info("📡 Subscribing to destination: {}", destination);
 
         session.subscribe(destination, new StompFrameHandler() {
