@@ -57,7 +57,9 @@ public class UserController {
         if (request.getApartmentName() != null) user.setApartmentName(request.getApartmentName());
         if (request.getBuildingBlock() != null) user.setBuildingBlock(request.getBuildingBlock());
         if (request.getFloorNumber() != null) user.setFloorNumber(request.getFloorNumber());
-        if (request.getUnitNumber() != null) user.setUnitNumber(request.getUnitNumber());
+        if (request.getUnitId() != null && !request.getUnitId().isBlank()) {
+            user.setUnitId(request.getUnitId());
+        }
         if (request.getAddress() != null) user.setAddress(request.getAddress());
         if (request.getCitizenId() != null) user.setCitizenId(request.getCitizenId());
 

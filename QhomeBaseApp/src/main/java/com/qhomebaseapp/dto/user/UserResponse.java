@@ -23,9 +23,10 @@ public class UserResponse {
     private String apartmentName;
     private String buildingBlock;
     private Integer floorNumber;
-    private String unitNumber;
+    private String unitId; // UUID của căn hộ từ admin system
     private String citizenId;
     private LocalDate dateOfBirth;
+    
     public static UserResponse fromEntity(User user) {
         UserResponse dto = new UserResponse();
         dto.setId(user.getId());
@@ -39,7 +40,7 @@ public class UserResponse {
         dto.setApartmentName(user.getApartmentName());
         dto.setBuildingBlock(user.getBuildingBlock());
         dto.setFloorNumber(user.getFloorNumber());
-        dto.setUnitNumber(user.getUnitNumber());
+        dto.setUnitId(user.getUnitId());
         dto.setCitizenId(user.getCitizenId());
         return dto;
     }

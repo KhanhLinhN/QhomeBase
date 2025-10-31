@@ -69,9 +69,17 @@ public class InvoiceService {
             
             // Log chi tiết để debug
             for (InvoiceDto invoice : invoices) {
-                log.debug("📋 Invoice: id={}, code={}, status={}, lines={}", 
-                        invoice.getId(), invoice.getCode(), invoice.getStatus(),
+                log.info("📋 Invoice: id={}, code={}, status={}, payerUnitId={}, lines={}", 
+                        invoice.getId(), invoice.getCode(), invoice.getStatus(), 
+                        invoice.getPayerUnitId(),
                         invoice.getLines() != null ? invoice.getLines().size() : 0);
+                
+                if (invoice.getLines() != null && !invoice.getLines().isEmpty()) {
+                    for (InvoiceLineDto line : invoice.getLines()) {
+                        log.info("  └─ Line: description={}, serviceDate={}, lineTotal={}", 
+                                line.getDescription(), line.getServiceDate(), line.getLineTotal());
+                    }
+                }
             }
 
             return invoices;
@@ -159,13 +167,21 @@ public class InvoiceService {
      */
     public List<InvoiceLineResponseDto> getInvoiceLinesForFlutter(String unitId) {
         try {
+            log.info("🔄 [InvoiceService] Bắt đầu getInvoiceLinesForFlutter với unitId: {}", unitId);
+            
             // Lấy tất cả invoices từ admin API
             List<InvoiceDto> invoices = getInvoicesByUnitId(unitId);
+            
+            log.info("📊 [InvoiceService] Số lượng invoices nhận được từ admin API: {}", invoices.size());
             
             // Transform: flatten invoice lines thành danh sách items
             List<InvoiceLineResponseDto> result = new ArrayList<>();
             
             for (InvoiceDto invoice : invoices) {
+                log.info("🔍 [InvoiceService] Xử lý invoice: id={}, code={}, payerUnitId={}, lines={}", 
+                        invoice.getId(), invoice.getCode(), invoice.getPayerUnitId(),
+                        invoice.getLines() != null ? invoice.getLines().size() : 0);
+                
                 if (invoice.getLines() != null && !invoice.getLines().isEmpty()) {
                     for (InvoiceLineDto line : invoice.getLines()) {
                         InvoiceLineResponseDto responseDto = InvoiceLineResponseDto.builder()
@@ -183,7 +199,11 @@ public class InvoiceService {
                                 .build();
                         
                         result.add(responseDto);
+                        log.debug("  ✅ Đã thêm line: description={}, lineTotal={}", 
+                                line.getDescription(), line.getLineTotal());
                     }
+                } else {
+                    log.warn("  ⚠️ Invoice {} không có lines hoặc lines rỗng", invoice.getId());
                 }
             }
             

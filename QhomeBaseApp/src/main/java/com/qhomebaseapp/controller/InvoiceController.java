@@ -1,6 +1,8 @@
 package com.qhomebaseapp.controller;
 
 import com.qhomebaseapp.dto.invoice.InvoiceLineResponseDto;
+import com.qhomebaseapp.model.User;
+import com.qhomebaseapp.repository.UserRepository;
 import com.qhomebaseapp.security.CustomUserDetails;
 import com.qhomebaseapp.service.invoice.InvoiceService;
 import com.qhomebaseapp.service.vnpay.VnpayService;
@@ -26,6 +28,7 @@ public class InvoiceController {
 
     private final InvoiceService invoiceService;
     private final VnpayService vnpayService;
+    private final UserRepository userRepository;
 
     private Long getAuthenticatedUserId(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) return null;
@@ -35,26 +38,89 @@ public class InvoiceController {
         return null;
     }
 
+    private User getAuthenticatedUser(Authentication authentication) {
+        Long userId = getAuthenticatedUserId(authentication);
+        if (userId == null) return null;
+        return userRepository.findById(userId).orElse(null);
+    }
+
     /**
-     * Lấy danh sách invoice lines theo format Flutter cần
-     * GET /api/invoices/unit/{unitId}
+     * Lấy danh sách invoice lines của user đang đăng nhập
+     * GET /api/invoices/me
+     * Lấy unitId từ user đang đăng nhập trong database
      * Response: danh sách InvoiceLineResponseDto với các field cần thiết
      */
-    @GetMapping("/unit/{unitId}")
-    public ResponseEntity<?> getInvoiceLinesByUnitId(
-            @PathVariable String unitId,
-            Authentication authentication
-    ) {
-        Long userId = getAuthenticatedUserId(authentication);
-        if (userId == null) {
+    @GetMapping("/me")
+    public ResponseEntity<?> getMyInvoices(Authentication authentication) {
+        User user = getAuthenticatedUser(authentication);
+        if (user == null) {
             return ResponseEntity.status(401).body(Map.of(
                     "success", false,
                     "message", "Unauthorized"
             ));
         }
 
+        String unitId = user.getUnitId();
+        log.info("🔍 [InvoiceController] User {} có unitId: {}", user.getId(), unitId);
+        
+        if (unitId == null || unitId.isBlank()) {
+            log.warn("⚠️ [InvoiceController] User {} không có unitId", user.getId());
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Bạn chưa được gán vào căn hộ nào",
+                    "data", List.of()
+            ));
+        }
+
         try {
-            log.info("📋 [InvoiceController] Lấy danh sách invoice lines cho unitId: {}, userId: {}", unitId, userId);
+            log.info("📋 [InvoiceController] Lấy danh sách invoice lines cho userId: {}, unitId: {}", user.getId(), unitId);
+            
+            List<InvoiceLineResponseDto> invoiceLines = invoiceService.getInvoiceLinesForFlutter(unitId);
+            
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Lấy danh sách hóa đơn thành công",
+                    "data", invoiceLines
+            ));
+        } catch (Exception e) {
+            log.error("❌ [InvoiceController] Lỗi khi lấy danh sách invoice lines cho userId: {}, unitId: {}", user.getId(), unitId, e);
+            return ResponseEntity.status(500).body(Map.of(
+                    "success", false,
+                    "message", "Lỗi khi lấy danh sách hóa đơn: " + e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Lấy danh sách invoice lines theo unitId (giữ lại để backward compatibility)
+     * GET /api/invoices/unit/{unitId}
+     * DEPRECATED: Nên dùng GET /api/invoices/me thay thế
+     */
+    @GetMapping("/unit/{unitId}")
+    public ResponseEntity<?> getInvoiceLinesByUnitId(
+            @PathVariable String unitId,
+            Authentication authentication
+    ) {
+        User user = getAuthenticatedUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(401).body(Map.of(
+                    "success", false,
+                    "message", "Unauthorized"
+            ));
+        }
+
+        // Kiểm tra user có unitId matching không
+        String userUnitId = user.getUnitId();
+        if (userUnitId == null || !userUnitId.equals(unitId)) {
+            log.warn("⚠️ [InvoiceController] User {} không có quyền xem invoices của unitId: {}", user.getId(), unitId);
+            return ResponseEntity.status(403).body(Map.of(
+                    "success", false,
+                    "message", "Bạn không có quyền xem hóa đơn của căn hộ này"
+            ));
+        }
+
+        try {
+            log.info("📋 [InvoiceController] Lấy danh sách invoice lines cho unitId: {}, userId: {}", unitId, user.getId());
             
             List<InvoiceLineResponseDto> invoiceLines = invoiceService.getInvoiceLinesForFlutter(unitId);
             

@@ -24,7 +24,7 @@ public class UpdateProfileRequest {
     private String apartmentName;
     private String buildingBlock;
     private Integer floorNumber;
-    private String unitNumber;
+    private String unitId; // UUID của căn hộ từ admin system
     private String address;
     private String citizenId;
 }

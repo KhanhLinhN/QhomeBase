@@ -66,8 +66,8 @@ public class User implements UserDetails {
     @Column(name = "floor_number")
     private Integer floorNumber;
 
-    @Column(name = "unit_number")
-    private String unitNumber;
+    @Column(name = "unit_id")
+    private String unitId; // UUID của căn hộ từ admin system (ví dụ: 550e8400-e29b-41d4-a716-446655440011)
 
     @Column(name = "address")
     private String address;
