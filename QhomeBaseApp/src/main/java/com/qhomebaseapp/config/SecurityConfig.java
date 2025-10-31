@@ -64,7 +64,10 @@ public class SecurityConfig {
                                 "/files/**",
                                 "/api/bills/vnpay/return",
                                 "/api/bills/vnpay/redirect",
-                                "/api/bills/*/vnpay-url"
+                                "/api/bills/*/vnpay-url",
+                                "/api/invoices/vnpay/return",
+                                "/api/invoices/vnpay/redirect",
+                                "/api/invoices/*/vnpay-url"
                         ).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
@@ -76,7 +79,7 @@ public class SecurityConfig {
                                 .maxAgeInSeconds(31536000)
                                 .includeSubDomains(true))
                         .contentSecurityPolicy(csp -> csp
-                                .policyDirectives("default-src 'self'; img-src 'self' data:; connect-src *"))
+                                .policyDirectives("default-src 'self' https://*.ngrok.com https://*.ngrok-free.app https://cdn.ngrok.com https://assets.ngrok.com 'unsafe-eval' 'unsafe-inline'; img-src 'self' data: https:; connect-src *; font-src 'self' https://*.ngrok.com https://*.ngrok-free.app https://assets.ngrok.com data:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:;"))
                 );
 
         return http.build();

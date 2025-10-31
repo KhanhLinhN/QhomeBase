@@ -7,8 +7,8 @@ import org.springframework.stereotype.Component;
 
 @Generated(
     value = "org.mapstruct.ap.MappingProcessor",
-    date = "2025-10-31T11:44:49+0700",
-    comments = "version: 1.5.5.Final, compiler: javac, environment: Java 17.0.11 (Oracle Corporation)"
+    date = "2025-10-31T21:19:50+0700",
+    comments = "version: 1.5.5.Final, compiler: Eclipse JDT (IDE) 3.44.0.v20251023-0518, environment: Java 21.0.8 (Eclipse Adoptium)"
 )
 @Component
 public class RegisterServiceRequestMapperImpl implements RegisterServiceRequestMapper {
@@ -21,12 +21,12 @@ public class RegisterServiceRequestMapperImpl implements RegisterServiceRequestM
 
         RegisterServiceRequest.RegisterServiceRequestBuilder registerServiceRequest = RegisterServiceRequest.builder();
 
-        registerServiceRequest.serviceType( dto.getServiceType() );
-        registerServiceRequest.note( dto.getNote() );
-        registerServiceRequest.vehicleType( dto.getVehicleType() );
         registerServiceRequest.licensePlate( dto.getLicensePlate() );
+        registerServiceRequest.note( dto.getNote() );
+        registerServiceRequest.serviceType( dto.getServiceType() );
         registerServiceRequest.vehicleBrand( dto.getVehicleBrand() );
         registerServiceRequest.vehicleColor( dto.getVehicleColor() );
+        registerServiceRequest.vehicleType( dto.getVehicleType() );
 
         return registerServiceRequest.build();
     }

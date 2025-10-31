@@ -64,7 +64,6 @@ public class Bill {
     @Column(name = "vnpay_status", length = 20)
     private String vnpayStatus;
 
-
     @PrePersist
     public void onCreate() {
         this.createdAt = LocalDateTime.now();

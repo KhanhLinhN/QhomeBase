@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.qhomebaseapp.controller.AuthControllerTest
--------------------------------------------------------------------------------
-Tests run: 24, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.104 s -- in com.qhomebaseapp.controller.AuthControllerTest
