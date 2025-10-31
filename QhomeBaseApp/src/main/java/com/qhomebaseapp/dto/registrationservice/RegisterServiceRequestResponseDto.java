@@ -16,9 +16,13 @@ public class RegisterServiceRequestResponseDto {
     private Long id;
     private String serviceType;
     private String note;
-    private String status;
+    private String status; // PENDING, DRAFT - trạng thái xử lý của admin
+    private String paymentStatus; // PAID, UNPAID - trạng thái thanh toán
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
+    private OffsetDateTime paymentDate;
+    private String paymentGateway;
+    private String vnpayTransactionRef;
     private Long userId;
     private String userEmail;
     private String vehicleType;

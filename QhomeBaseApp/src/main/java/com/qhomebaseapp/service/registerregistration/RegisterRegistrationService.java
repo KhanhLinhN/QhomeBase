@@ -24,4 +24,16 @@ public interface RegisterRegistrationService {
     String createVnpayPaymentUrl(Long registrationId, Long userId, HttpServletRequest request);
 
     void handleVnpayCallback(Long registrationId, Map<String, String> vnpParams);
+
+    /**
+     * Tạo VNPAY payment URL với data, tạo temporary registration với status DRAFT
+     * Chỉ chuyển sang PENDING khi thanh toán thành công
+     * Trả về Map chứa registrationId và paymentUrl
+     */
+    Map<String, Object> createVnpayPaymentUrlWithData(RegisterServiceRequestDto dto, Long userId, HttpServletRequest request);
+
+    /**
+     * Xóa temporary registration nếu thanh toán bị hủy
+     */
+    void cancelRegistration(Long registrationId, Long userId);
 }

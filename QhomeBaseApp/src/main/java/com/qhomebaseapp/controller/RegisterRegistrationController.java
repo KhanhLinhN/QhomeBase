@@ -111,7 +111,43 @@ public class RegisterRegistrationController {
     }
 
     /**
-     * Tạo VNPAY payment URL cho đăng ký xe
+     * Tạo VNPAY payment URL với data (tạo temporary registration)
+     * POST /api/register-service/vnpay-url
+     * Tạo temporary registration với status DRAFT, chỉ lưu vào DB khi thanh toán thành công
+     */
+    @PostMapping("/vnpay-url")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> createVnpayUrlWithData(
+            @RequestBody RegisterServiceRequestDto dto,
+            Authentication authentication,
+            HttpServletRequest request
+    ) {
+        Long userId = getUserIdFromAuthentication(authentication);
+        
+        try {
+            log.info("💳 [RegisterController] Tạo VNPAY URL với data cho userId: {}", userId);
+            
+            Map<String, Object> result = service.createVnpayPaymentUrlWithData(dto, userId, request);
+            Long registrationId = ((Number) result.get("registrationId")).longValue();
+            String paymentUrl = (String) result.get("paymentUrl");
+            
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Tạo URL thanh toán thành công",
+                    "registrationId", registrationId,
+                    "paymentUrl", paymentUrl
+            ));
+        } catch (Exception ex) {
+            log.error("❌ [RegisterController] Lỗi tạo VNPAY URL với data: {}", ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "message", "Lỗi hệ thống: " + ex.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Tạo VNPAY payment URL cho đăng ký xe (existing registration)
      * POST /api/register-service/{id}/vnpay-url
      */
     @PostMapping("/{id}/vnpay-url")
@@ -155,15 +191,15 @@ public class RegisterRegistrationController {
     @GetMapping("/vnpay/return")
     public ResponseEntity<?> handleVnpayReturn(HttpServletRequest request) {
         Map<String, String> params = vnpayService.getVnpayParams(request);
-        log.info("[VNPAY RETURN] Callback nhận được cho registration: {}", params);
+        log.info("[VNPAY RETURN] ✅ Callback nhận được cho registration: {}", params);
 
         try {
             boolean valid = vnpayService.validateReturn(new java.util.HashMap<>(params));
-            log.info("[VNPAY RETURN] Chữ ký hợp lệ: {}", valid);
+            log.info("[VNPAY RETURN] ✅ Chữ ký hợp lệ: {}", valid);
 
             String txnRef = params.get("vnp_TxnRef");
             if (txnRef == null || !txnRef.contains("_")) {
-                log.warn("[VNPAY RETURN] Thiếu hoặc sai định dạng vnp_TxnRef: {}", txnRef);
+                log.warn("[VNPAY RETURN] ❌ Thiếu hoặc sai định dạng vnp_TxnRef: {}", txnRef);
                 return ResponseEntity.badRequest().body(Map.of(
                         "success", false,
                         "message", "Thiếu hoặc sai định dạng mã giao dịch (vnp_TxnRef)"
@@ -172,15 +208,16 @@ public class RegisterRegistrationController {
 
             // Lấy registrationId từ txnRef (format: registrationId_timestamp)
             Long registrationId = Long.parseLong(txnRef.split("_")[0]);
-            log.info("[VNPAY RETURN] Registration ID trích xuất được: {}", registrationId);
+            log.info("[VNPAY RETURN] 🔍 Registration ID trích xuất được: {}", registrationId);
 
             String responseCode = params.get("vnp_ResponseCode");
             String transactionStatus = params.get("vnp_TransactionStatus");
-            log.info("[VNPAY RETURN] ResponseCode={}, TransactionStatus={}", responseCode, transactionStatus);
+            log.info("[VNPAY RETURN] ↩️ ResponseCode={}, TransactionStatus={}", responseCode, transactionStatus);
 
             if (valid && "00".equals(responseCode) && "00".equals(transactionStatus)) {
+                // Thanh toán thành công
                 service.handleVnpayCallback(registrationId, params);
-                log.info("[VNPAY RETURN] Registration {} đã được cập nhật sang PAID", registrationId);
+                log.info("[VNPAY RETURN] ✅ Registration {} đã được cập nhật sang PAID", registrationId);
 
                 return ResponseEntity.ok(Map.of(
                         "success", true,
@@ -188,7 +225,16 @@ public class RegisterRegistrationController {
                         "registrationId", registrationId
                 ));
             } else {
-                log.warn("[VNPAY RETURN] Thanh toán thất bại - ResponseCode={}, Valid={}", responseCode, valid);
+                // Thanh toán thất bại
+                log.warn("[VNPAY RETURN] ❌ Thanh toán thất bại - ResponseCode={}, Valid={}", responseCode, valid);
+                
+                // Cập nhật payment_status thành UNPAID khi thanh toán thất bại
+                try {
+                    service.handleVnpayCallback(registrationId, params);
+                } catch (Exception e) {
+                    log.error("[VNPAY RETURN] Lỗi khi cập nhật registration thất bại: {}", e.getMessage(), e);
+                }
+                
                 return ResponseEntity.badRequest().body(Map.of(
                         "success", false,
                         "message", "Thanh toán thất bại hoặc chữ ký không hợp lệ",
@@ -197,6 +243,7 @@ public class RegisterRegistrationController {
                         "valid", valid
                 ));
             }
+
         } catch (Exception ex) {
             log.error("[VNPAY RETURN ERROR]", ex);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
@@ -211,9 +258,12 @@ public class RegisterRegistrationController {
      * GET /api/register-service/vnpay/redirect
      */
     @GetMapping("/vnpay/redirect")
-    public void redirectAfterPayment(HttpServletRequest request, HttpServletResponse response) throws java.io.IOException {
+    public ResponseEntity<?> redirectAfterPayment(HttpServletRequest request, HttpServletResponse response) throws java.io.IOException {
         Map<String, String> params = vnpayService.getVnpayParams(request);
-        log.info("[VNPAY REDIRECT] Người dùng được redirect về với params: {}", params);
+        log.info("[VNPAY REDIRECT] 🔁 Người dùng được redirect về với params: {}", params);
+
+        // Xử lý callback trước (giống InvoiceController)
+        ResponseEntity<?> result = handleVnpayReturn(request);
 
         String txnRef = params.getOrDefault("vnp_TxnRef", "");
         Long registrationId = 0L;
@@ -225,14 +275,48 @@ public class RegisterRegistrationController {
             log.warn("[VNPAY REDIRECT] Không thể lấy registrationId: {}", e.getMessage());
         }
 
-        // Xử lý callback
-        handleVnpayReturn(request);
-
-        String responseCode = params.get("vnp_ResponseCode");
+        String responseCode = params.getOrDefault("vnp_ResponseCode", "99");
         String redirectUrl = "qhomeapp://vnpay-registration-result?registrationId=" + registrationId + "&responseCode=" + responseCode;
-        log.info("[VNPAY REDIRECT] Điều hướng người dùng về app URL: {}", redirectUrl);
+        log.info("[VNPAY REDIRECT] 🔁 Điều hướng người dùng về app URL: {}", redirectUrl);
 
         response.sendRedirect(redirectUrl);
+        return result;
+    }
+
+    /**
+     * Hủy đăng ký (xóa temporary registration nếu thanh toán bị hủy)
+     * DELETE /api/register-service/{id}/cancel
+     */
+    @DeleteMapping("/{id}/cancel")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> cancelRegistration(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+        Long userId = getUserIdFromAuthentication(authentication);
+        
+        try {
+            log.info("🗑️ [RegisterController] Hủy registration: {}, userId: {}", id, userId);
+            
+            service.cancelRegistration(id, userId);
+            
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Đã hủy đăng ký thành công"
+            ));
+        } catch (ResponseStatusException ex) {
+            log.error("❌ [RegisterController] Lỗi hủy registration: {}", id, ex);
+            return ResponseEntity.status(ex.getStatusCode()).body(Map.of(
+                    "success", false,
+                    "message", ex.getReason()
+            ));
+        } catch (Exception ex) {
+            log.error("❌ [RegisterController] Lỗi hệ thống khi hủy registration: {}", ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "message", "Lỗi hệ thống"
+            ));
+        }
     }
 
 }

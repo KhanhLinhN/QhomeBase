@@ -49,7 +49,7 @@ public class RegisterRegistrationServiceImpl implements RegisterRegistrationServ
 
         RegisterServiceRequest entity = registerServiceRequestMapper.toEntity(dto);
         entity.setUser(user);
-        entity.setStatus("DRAFT"); // DRAFT - chưa thanh toán, sẽ thành PENDING sau khi thanh toán
+        entity.setStatus("PENDING"); // PENDING - mặc định (admin chưa xử lý)
         entity.setPaymentStatus("UNPAID");
         entity.setPaymentAmount(REGISTRATION_FEE); // 30,000 VNĐ
         entity.setCreatedAt(OffsetDateTime.now());
@@ -68,6 +68,92 @@ public class RegisterRegistrationServiceImpl implements RegisterRegistrationServ
 
         RegisterServiceRequest saved = repository.save(entity);
         return registerServiceRequestResponseMapper.toDto(saved);
+    }
+
+    /**
+     * Tạo VNPAY payment URL với data, tạo temporary registration với status DRAFT
+     * Chỉ chuyển sang PENDING khi thanh toán thành công
+     * Trả về Map chứa registrationId và paymentUrl
+     */
+    @Override
+    public Map<String, Object> createVnpayPaymentUrlWithData(RegisterServiceRequestDto dto, Long userId, HttpServletRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
+
+        // Tạo registration với status PENDING (mặc định), payment_status UNPAID
+        // Sẽ được lưu vào DB ngay cả khi hủy hoặc crash
+        RegisterServiceRequest entity = registerServiceRequestMapper.toEntity(dto);
+        entity.setUser(user);
+        entity.setStatus("PENDING"); // PENDING - mặc định (admin chưa xử lý)
+        entity.setPaymentStatus("UNPAID"); // UNPAID - chưa thanh toán
+        entity.setPaymentAmount(REGISTRATION_FEE); // 30,000 VNĐ
+        entity.setCreatedAt(OffsetDateTime.now());
+        entity.setUpdatedAt(OffsetDateTime.now());
+
+        if (dto.getImageUrls() != null && !dto.getImageUrls().isEmpty()) {
+            dto.getImageUrls().forEach(url -> {
+                RegisterServiceImage image = RegisterServiceImage.builder()
+                        .registerServiceRequest(entity)
+                        .imageUrl(url)
+                        .createdAt(OffsetDateTime.now())
+                        .build();
+                entity.getImages().add(image);
+            });
+        }
+
+        // Lưu registration vào DB (sẽ giữ lại ngay cả khi hủy hoặc crash)
+        RegisterServiceRequest saved = repository.save(entity);
+        Long registrationId = saved.getId();
+
+        log.info("💳 [RegisterService] Tạo registration {} để thanh toán VNPAY", registrationId);
+
+        // Tạo VNPAY payment URL
+        String clientIp = request.getHeader("X-Forwarded-For");
+        if (clientIp == null || clientIp.isEmpty()) {
+            clientIp = request.getRemoteAddr();
+        }
+
+        String orderInfo = "Thanh toán phí đăng ký thẻ xe #" + registrationId;
+        String baseUrl = vnpayProperties.getReturnUrl().replace("/api/invoices/vnpay/redirect", "");
+        String registerReturnUrl = baseUrl + "/api/register-service/vnpay/redirect";
+        
+        String paymentUrl = vnpayService.createPaymentUrl(registrationId, orderInfo, REGISTRATION_FEE, clientIp, registerReturnUrl);
+        
+        log.info("💳 [RegisterService] Tạo VNPAY URL cho registration: {}, userId: {}", registrationId, userId);
+        
+        // Trả về Map chứa registrationId và paymentUrl
+        Map<String, Object> result = new HashMap<>();
+        result.put("registrationId", Long.valueOf(registrationId));
+        result.put("paymentUrl", paymentUrl);
+        
+        return result;
+    }
+
+    /**
+     * Xóa temporary registration nếu thanh toán bị hủy
+     */
+    @Override
+    public void cancelRegistration(Long registrationId, Long userId) {
+        RegisterServiceRequest registration = repository.findById(registrationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Registration not found"));
+
+        if (!registration.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot cancel others' registration");
+        }
+
+        // Trường hợp 2: Hủy thanh toán - update payment_status thành UNPAID, giữ lại registration
+        if ("PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
+            log.warn("⚠️ [RegisterService] Không thể hủy registration {} - đã thanh toán thành công", registrationId);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể hủy đăng ký đã thanh toán thành công");
+        }
+        
+        // Update payment_status thành UNPAID để có thể thanh toán sau
+        registration.setPaymentStatus("UNPAID");
+        registration.setStatus("PENDING"); // Giữ status PENDING
+        registration.setUpdatedAt(OffsetDateTime.now());
+        repository.save(registration);
+        
+        log.info("🔄 [RegisterService] Đã update registration {} thành payment_status UNPAID (hủy thanh toán)", registrationId);
     }
 
 
@@ -200,21 +286,50 @@ public class RegisterRegistrationServiceImpl implements RegisterRegistrationServ
         String transactionStatus = vnpParams.get("vnp_TransactionStatus");
         String txnRef = vnpParams.get("vnp_TxnRef");
 
-        log.info("💳 [RegisterService] VNPAY callback cho registration: {}, valid: {}, responseCode: {}", 
-                registrationId, valid, responseCode);
+        log.info("💳 [RegisterService] VNPAY callback cho registration: {}", registrationId);
+        log.info("💳 [RegisterService] Valid: {}, ResponseCode: {}, TransactionStatus: {}", valid, responseCode, transactionStatus);
+        log.info("💳 [RegisterService] Current registration - Status: {}, PaymentStatus: {}, PaymentDate: {}, Gateway: {}", 
+                registration.getStatus(), registration.getPaymentStatus(), registration.getPaymentDate(), registration.getPaymentGateway());
 
         if (valid && "00".equals(responseCode) && "00".equals(transactionStatus)) {
+            // Trường hợp 1: Thanh toán thành công → update payment_status PAID, giữ status PENDING
+            log.info("✅ [RegisterService] Bắt đầu cập nhật registration {} - Thanh toán thành công!", registrationId);
+            log.info("✅ [RegisterService] Before update - PaymentStatus: {}, PaymentDate: {}, Gateway: {}, TxnRef: {}", 
+                    registration.getPaymentStatus(), registration.getPaymentDate(), registration.getPaymentGateway(), registration.getVnpayTransactionRef());
+            
+            OffsetDateTime paymentDateNow = OffsetDateTime.now();
             registration.setPaymentStatus("PAID");
-            registration.setStatus("PENDING"); // Chuyển từ DRAFT sang PENDING sau khi thanh toán
-            registration.setPaymentDate(OffsetDateTime.now());
+            registration.setStatus("PENDING"); // Giữ status PENDING
+            registration.setPaymentDate(paymentDateNow);
             registration.setPaymentGateway("VNPAY");
             registration.setVnpayTransactionRef(txnRef);
             registration.setUpdatedAt(OffsetDateTime.now());
             
+            log.info("✅ [RegisterService] Set values - PaymentStatus: PAID, PaymentDate: {}, Gateway: VNPAY, TxnRef: {}", 
+                    paymentDateNow, txnRef);
+            
+            RegisterServiceRequest saved = repository.saveAndFlush(registration); // Use saveAndFlush để đảm bảo persist ngay lập tức
+            
+            log.info("✅ [RegisterService] Saved registration - ID: {}, PaymentStatus: {}, PaymentDate: {}, Gateway: {}, TxnRef: {}", 
+                    saved.getId(), saved.getPaymentStatus(), saved.getPaymentDate(), saved.getPaymentGateway(), saved.getVnpayTransactionRef());
+            
+            // Verify sau khi save
+            RegisterServiceRequest verified = repository.findById(registrationId)
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy registration sau khi save"));
+            
+            log.info("✅ [RegisterService] Đã cập nhật registration {} với payment_status PAID (thanh toán thành công)", registrationId);
+            log.info("✅ [RegisterService] Verified Payment details - Status: {}, PaymentStatus: {}, Date: {}, Gateway: {}, TxnRef: {}", 
+                    verified.getStatus(), verified.getPaymentStatus(), verified.getPaymentDate(), 
+                    verified.getPaymentGateway(), verified.getVnpayTransactionRef());
+        } else {
+            // Trường hợp 2: Thanh toán thất bại - giữ lại registration với payment_status UNPAID
+            registration.setPaymentStatus("UNPAID");
+            registration.setStatus("PENDING"); // Giữ status PENDING
+            registration.setUpdatedAt(OffsetDateTime.now());
+            
             repository.save(registration);
             
-            log.info("✅ [RegisterService] Đã cập nhật registration {} sang PAID sau khi thanh toán VNPAY", registrationId);
-        } else {
+            log.warn("❌ [RegisterService] Thanh toán thất bại cho registration {} - giữ lại với payment_status UNPAID để thanh toán sau", registrationId);
             throw new RuntimeException("Thanh toán thất bại hoặc chữ ký không hợp lệ");
         }
     }
