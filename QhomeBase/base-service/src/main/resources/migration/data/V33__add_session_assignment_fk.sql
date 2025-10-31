@@ -9,4 +9,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_active
     ON data.meter_reading_sessions(reader_id, assignment_id)
     WHERE completed_at IS NULL;
 
+-- 🚨 DÒNG BỊ LỖI ĐÃ ĐƯỢC HOÀN THÀNH 🚨
 CREATE INDEX IF NOT EXISTS idx_sessions_completed
+    ON data.meter_reading_sessions(reader_id, assignment_id, completed_at);
+-- Hoặc: WHERE completed_at IS NOT NULL; tùy vào mục đích của bạn
