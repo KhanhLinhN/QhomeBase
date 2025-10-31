@@ -1,6 +1,7 @@
 package com.QhomeBase.baseservice.client;
 
 import com.QhomeBase.baseservice.dto.BillingImportedReadingDto;
+import com.QhomeBase.baseservice.dto.MeterReadingImportResponse;
 import com.QhomeBase.baseservice.dto.VehicleActivatedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,22 +46,25 @@ public class FinanceBillingClient {
         }
     }
 
-    public Mono<Void> importMeterReadings(List<BillingImportedReadingDto> readings) {
+    public Mono<MeterReadingImportResponse> importMeterReadings(List<BillingImportedReadingDto> readings) {
         return financeWebClient
                 .post()
                 .uri("/api/meter-readings/import")
                 .bodyValue(readings)
                 .retrieve()
-                .toBodilessEntity()
-                .then();
+                .bodyToMono(MeterReadingImportResponse.class);
     }
 
-    public void importMeterReadingsSync(List<BillingImportedReadingDto> readings) {
+    public MeterReadingImportResponse importMeterReadingsSync(List<BillingImportedReadingDto> readings) {
         try {
-            importMeterReadings(readings).block();
-            log.info("✅ Imported {} readings to finance-billing", readings != null ? readings.size() : 0);
+            MeterReadingImportResponse response = importMeterReadings(readings).block();
+            log.info("✅ Imported {} readings to finance-billing. Invoices created: {}", 
+                    readings != null ? readings.size() : 0,
+                    response != null ? response.getInvoicesCreated() : 0);
+            return response;
         } catch (Exception e) {
             log.error("❌ FAILED to import meter readings to finance-billing", e);
+            throw new RuntimeException("Failed to import meter readings to finance-billing: " + e.getMessage(), e);
         }
     }
 }

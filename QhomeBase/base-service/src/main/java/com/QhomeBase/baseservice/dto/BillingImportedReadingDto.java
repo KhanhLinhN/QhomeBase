@@ -14,7 +14,6 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class BillingImportedReadingDto {
-    private UUID tenantId;
     private UUID unitId;
     private UUID residentId;
     private UUID cycleId;
