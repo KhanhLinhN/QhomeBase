@@ -49,6 +49,20 @@ public class RegisterServiceRequest {
     @Column(name = "vehicle_color")
     private String vehicleColor;
 
+    @Column(name = "payment_status")
+    private String paymentStatus = "UNPAID"; // UNPAID, PAID, PENDING
+
+    @Column(name = "payment_amount")
+    private java.math.BigDecimal paymentAmount;
+
+    @Column(name = "payment_date")
+    private OffsetDateTime paymentDate;
+
+    @Column(name = "payment_gateway")
+    private String paymentGateway; // VNPAY
+
+    @Column(name = "vnpay_transaction_ref")
+    private String vnpayTransactionRef;
 
     @OneToMany(mappedBy = "registerServiceRequest", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default

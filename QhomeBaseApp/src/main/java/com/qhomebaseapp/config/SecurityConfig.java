@@ -62,12 +62,15 @@ public class SecurityConfig {
                                 "/uploads/**",
                                 "/ws/**",
                                 "/files/**",
-                                "/api/bills/vnpay/return",
-                                "/api/bills/vnpay/redirect",
-                                "/api/bills/*/vnpay-url",
-                                "/api/invoices/vnpay/return",
-                                "/api/invoices/vnpay/redirect",
-                                "/api/invoices/*/vnpay-url"
+                                    "/api/bills/vnpay/return",
+                                    "/api/bills/vnpay/redirect",
+                                    "/api/bills/*/vnpay-url",
+                                    "/api/invoices/vnpay/return",
+                                    "/api/invoices/vnpay/redirect",
+                                    "/api/invoices/*/vnpay-url",
+                                    "/api/register-service/vnpay/return",
+                                    "/api/register-service/vnpay/redirect",
+                                    "/api/register-service/*/vnpay-url"
                         ).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()

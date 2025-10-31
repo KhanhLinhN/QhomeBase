@@ -4,6 +4,9 @@ import com.qhomebaseapp.dto.registrationservice.RegisterServiceRequestDto;
 import com.qhomebaseapp.dto.registrationservice.RegisterServiceRequestResponseDto;
 import com.qhomebaseapp.security.CustomUserDetails;
 import com.qhomebaseapp.service.registerregistration.RegisterRegistrationService;
+import com.qhomebaseapp.service.vnpay.VnpayService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -26,6 +29,7 @@ import java.util.Map;
 public class RegisterRegistrationController {
 
     private final RegisterRegistrationService service;
+    private final VnpayService vnpayService;
 
     @PostMapping
     @PreAuthorize("isAuthenticated()")
@@ -92,8 +96,6 @@ public class RegisterRegistrationController {
             @RequestParam(defaultValue = "10") int size
     ) {
         Long userId = getUserIdFromAuthentication(authentication);
-
-        // Spring Pageable index bắt đầu từ 0
         int pageIndex = page > 0 ? page - 1 : 0;
 
         Page<RegisterServiceRequestResponseDto> result = service.getByUserIdPaginated(userId, pageIndex, size);
@@ -106,6 +108,131 @@ public class RegisterRegistrationController {
                 "totalElements", result.getTotalElements(),
                 "currentPage", page
         ));
+    }
+
+    /**
+     * Tạo VNPAY payment URL cho đăng ký xe
+     * POST /api/register-service/{id}/vnpay-url
+     */
+    @PostMapping("/{id}/vnpay-url")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> createVnpayUrl(
+            @PathVariable Long id,
+            Authentication authentication,
+            HttpServletRequest request
+    ) {
+        Long userId = getUserIdFromAuthentication(authentication);
+        
+        try {
+            log.info("💳 [RegisterController] Tạo VNPAY URL cho registration: {}, userId: {}", id, userId);
+            
+            String paymentUrl = service.createVnpayPaymentUrl(id, userId, request);
+            
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Tạo URL thanh toán thành công",
+                    "paymentUrl", paymentUrl
+            ));
+        } catch (ResponseStatusException ex) {
+            log.error("❌ [RegisterController] Lỗi tạo VNPAY URL cho registration: {}", id, ex);
+            return ResponseEntity.status(ex.getStatusCode()).body(Map.of(
+                    "success", false,
+                    "message", ex.getReason()
+            ));
+        } catch (Exception ex) {
+            log.error("❌ [RegisterController] Lỗi hệ thống khi tạo VNPAY URL: {}", ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "message", "Lỗi hệ thống"
+            ));
+        }
+    }
+
+    /**
+     * Xử lý VNPAY callback
+     * GET /api/register-service/vnpay/return
+     */
+    @GetMapping("/vnpay/return")
+    public ResponseEntity<?> handleVnpayReturn(HttpServletRequest request) {
+        Map<String, String> params = vnpayService.getVnpayParams(request);
+        log.info("[VNPAY RETURN] Callback nhận được cho registration: {}", params);
+
+        try {
+            boolean valid = vnpayService.validateReturn(new java.util.HashMap<>(params));
+            log.info("[VNPAY RETURN] Chữ ký hợp lệ: {}", valid);
+
+            String txnRef = params.get("vnp_TxnRef");
+            if (txnRef == null || !txnRef.contains("_")) {
+                log.warn("[VNPAY RETURN] Thiếu hoặc sai định dạng vnp_TxnRef: {}", txnRef);
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Thiếu hoặc sai định dạng mã giao dịch (vnp_TxnRef)"
+                ));
+            }
+
+            // Lấy registrationId từ txnRef (format: registrationId_timestamp)
+            Long registrationId = Long.parseLong(txnRef.split("_")[0]);
+            log.info("[VNPAY RETURN] Registration ID trích xuất được: {}", registrationId);
+
+            String responseCode = params.get("vnp_ResponseCode");
+            String transactionStatus = params.get("vnp_TransactionStatus");
+            log.info("[VNPAY RETURN] ResponseCode={}, TransactionStatus={}", responseCode, transactionStatus);
+
+            if (valid && "00".equals(responseCode) && "00".equals(transactionStatus)) {
+                service.handleVnpayCallback(registrationId, params);
+                log.info("[VNPAY RETURN] Registration {} đã được cập nhật sang PAID", registrationId);
+
+                return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "message", "Thanh toán thành công!",
+                        "registrationId", registrationId
+                ));
+            } else {
+                log.warn("[VNPAY RETURN] Thanh toán thất bại - ResponseCode={}, Valid={}", responseCode, valid);
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Thanh toán thất bại hoặc chữ ký không hợp lệ",
+                        "registrationId", registrationId,
+                        "responseCode", responseCode,
+                        "valid", valid
+                ));
+            }
+        } catch (Exception ex) {
+            log.error("[VNPAY RETURN ERROR]", ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "message", "Lỗi hệ thống khi xử lý kết quả thanh toán"
+            ));
+        }
+    }
+
+    /**
+     * Redirect sau khi thanh toán VNPAY
+     * GET /api/register-service/vnpay/redirect
+     */
+    @GetMapping("/vnpay/redirect")
+    public void redirectAfterPayment(HttpServletRequest request, HttpServletResponse response) throws java.io.IOException {
+        Map<String, String> params = vnpayService.getVnpayParams(request);
+        log.info("[VNPAY REDIRECT] Người dùng được redirect về với params: {}", params);
+
+        String txnRef = params.getOrDefault("vnp_TxnRef", "");
+        Long registrationId = 0L;
+        try {
+            if (txnRef.contains("_")) {
+                registrationId = Long.parseLong(txnRef.split("_")[0]);
+            }
+        } catch (Exception e) {
+            log.warn("[VNPAY REDIRECT] Không thể lấy registrationId: {}", e.getMessage());
+        }
+
+        // Xử lý callback
+        handleVnpayReturn(request);
+
+        String responseCode = params.get("vnp_ResponseCode");
+        String redirectUrl = "qhomeapp://vnpay-registration-result?registrationId=" + registrationId + "&responseCode=" + responseCode;
+        log.info("[VNPAY REDIRECT] Điều hướng người dùng về app URL: {}", redirectUrl);
+
+        response.sendRedirect(redirectUrl);
     }
 
 }

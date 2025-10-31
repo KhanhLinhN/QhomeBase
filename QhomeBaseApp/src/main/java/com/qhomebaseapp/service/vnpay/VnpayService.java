@@ -24,6 +24,10 @@ public class VnpayService {
     private final VnpayProperties props;
 
     public String createPaymentUrl(Long orderId, String orderInfo, BigDecimal amountVnd, String ipAddress) {
+        return createPaymentUrl(orderId, orderInfo, amountVnd, ipAddress, props.getReturnUrl());
+    }
+
+    public String createPaymentUrl(Long orderId, String orderInfo, BigDecimal amountVnd, String ipAddress, String returnUrl) {
         try {
             long amount = amountVnd.multiply(BigDecimal.valueOf(100)).longValue();
 
@@ -41,7 +45,7 @@ public class VnpayService {
             params.put("vnp_OrderInfo", orderInfo);
             params.put("vnp_OrderType", "billpayment");
             params.put("vnp_Locale", "vn");
-            params.put("vnp_ReturnUrl", props.getReturnUrl());
+            params.put("vnp_ReturnUrl", returnUrl);
             params.put("vnp_IpAddr", ipAddress);
             params.put("vnp_CreateDate", new SimpleDateFormat("yyyyMMddHHmmss").format(new Date()));
 

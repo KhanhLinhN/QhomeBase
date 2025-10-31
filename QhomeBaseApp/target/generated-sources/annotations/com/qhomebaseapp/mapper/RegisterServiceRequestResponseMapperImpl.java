@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
 
 @Generated(
     value = "org.mapstruct.ap.MappingProcessor",
-    date = "2025-10-31T21:19:50+0700",
-    comments = "version: 1.5.5.Final, compiler: Eclipse JDT (IDE) 3.44.0.v20251023-0518, environment: Java 21.0.8 (Eclipse Adoptium)"
+    date = "2025-10-31T22:51:42+0700",
+    comments = "version: 1.5.5.Final, compiler: javac, environment: Java 17.0.11 (Oracle Corporation)"
 )
 @Component
 public class RegisterServiceRequestResponseMapperImpl implements RegisterServiceRequestResponseMapper {
@@ -24,16 +24,16 @@ public class RegisterServiceRequestResponseMapperImpl implements RegisterService
 
         registerServiceRequestResponseDto.userId( entityUserId( entity ) );
         registerServiceRequestResponseDto.userEmail( entityUserEmail( entity ) );
-        registerServiceRequestResponseDto.createdAt( entity.getCreatedAt() );
         registerServiceRequestResponseDto.id( entity.getId() );
-        registerServiceRequestResponseDto.licensePlate( entity.getLicensePlate() );
-        registerServiceRequestResponseDto.note( entity.getNote() );
         registerServiceRequestResponseDto.serviceType( entity.getServiceType() );
+        registerServiceRequestResponseDto.note( entity.getNote() );
         registerServiceRequestResponseDto.status( entity.getStatus() );
+        registerServiceRequestResponseDto.createdAt( entity.getCreatedAt() );
         registerServiceRequestResponseDto.updatedAt( entity.getUpdatedAt() );
+        registerServiceRequestResponseDto.vehicleType( entity.getVehicleType() );
+        registerServiceRequestResponseDto.licensePlate( entity.getLicensePlate() );
         registerServiceRequestResponseDto.vehicleBrand( entity.getVehicleBrand() );
         registerServiceRequestResponseDto.vehicleColor( entity.getVehicleColor() );
-        registerServiceRequestResponseDto.vehicleType( entity.getVehicleType() );
 
         registerServiceRequestResponseDto.imageUrls( mapImages(entity) );
 
