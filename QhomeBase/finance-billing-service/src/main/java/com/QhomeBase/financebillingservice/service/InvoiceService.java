@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -25,13 +26,6 @@ public class InvoiceService {
     
     private final InvoiceRepository invoiceRepository;
     private final InvoiceLineRepository invoiceLineRepository;
-    
-    public List<InvoiceDto> getInvoicesByTenant(UUID tenantId) {
-        List<Invoice> invoices = invoiceRepository.findByTenantId(tenantId);
-        return invoices.stream()
-                .map(this::toDto)
-                .collect(Collectors.toList());
-    }
     
     public List<InvoiceDto> getInvoicesByResident(UUID residentId) {
         List<Invoice> invoices = invoiceRepository.findByPayerResidentId(residentId);
@@ -60,14 +54,38 @@ public class InvoiceService {
                 .collect(Collectors.toList());
     }
     
+    public List<InvoiceDto> getInvoicesByServiceCode(String serviceCode) {
+        List<InvoiceLine> lines = invoiceLineRepository.findByServiceCode(serviceCode);
+        List<UUID> invoiceIds = lines.stream()
+                .map(InvoiceLine::getInvoiceId)
+                .distinct()
+                .collect(Collectors.toList());
+        
+        List<Invoice> invoices = invoiceRepository.findAllById(invoiceIds);
+        return invoices.stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+    
+    public List<InvoiceDto> getInvoicesByResidentAndServiceCode(UUID residentId, String serviceCode) {
+        List<Invoice> allInvoices = invoiceRepository.findByPayerResidentId(residentId);
+        return allInvoices.stream()
+                .filter(invoice -> {
+                    List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceIdAndServiceCode(
+                            invoice.getId(), serviceCode);
+                    return !lines.isEmpty();
+                })
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+    
     @Transactional
     public InvoiceDto createInvoice(CreateInvoiceRequest request) {
-        log.info("Creating invoice for tenant: {}, unit: {}", request.getTenantId(), request.getPayerUnitId());
-        
-        String invoiceCode = generateInvoiceCode(request.getTenantId());
-        
+        log.info("Creating invoice for unit: {}", request.getPayerUnitId());
+
+        String invoiceCode = generateInvoiceCode();
+
         Invoice invoice = Invoice.builder()
-                .tenantId(request.getTenantId())
                 .code(invoiceCode)
                 .issuedAt(OffsetDateTime.now())
                 .dueDate(request.getDueDate())
@@ -93,7 +111,6 @@ public class InvoiceService {
                 );
                 
                 InvoiceLine line = InvoiceLine.builder()
-                        .tenantId(request.getTenantId())
                         .invoiceId(savedInvoice.getId())
                         .serviceDate(lineRequest.getServiceDate())
                         .description(lineRequest.getDescription())
@@ -148,10 +165,9 @@ public class InvoiceService {
         log.info("Invoice {} voided successfully", invoiceId);
     }
     
-    private String generateInvoiceCode(UUID tenantId) {
+    private String generateInvoiceCode() {
         String timestamp = OffsetDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-        String tenantShort = tenantId.toString().substring(0, 8);
-        return String.format("INV-%s-%s", tenantShort, timestamp);
+        return String.format("INV-%s", timestamp);
     }
     
     private BigDecimal calculateTaxAmount(BigDecimal quantity, BigDecimal unitPrice, BigDecimal taxRate) {
@@ -159,7 +175,7 @@ public class InvoiceService {
             return BigDecimal.ZERO;
         }
         BigDecimal subtotal = quantity.multiply(unitPrice);
-        return subtotal.multiply(taxRate).divide(BigDecimal.valueOf(100), 4, BigDecimal.ROUND_HALF_UP);
+        return subtotal.multiply(taxRate).divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
     }
     
     private InvoiceDto toDto(Invoice invoice) {
@@ -171,7 +187,6 @@ public class InvoiceService {
         
         return InvoiceDto.builder()
                 .id(invoice.getId())
-                .tenantId(invoice.getTenantId())
                 .code(invoice.getCode())
                 .issuedAt(invoice.getIssuedAt())
                 .dueDate(invoice.getDueDate())

@@ -30,14 +30,13 @@ public class PaymentService {
     
     @Transactional
     public PaymentDto createPayment(CreatePaymentRequest request) {
-        log.info("Creating payment for tenant: {}, amount: {}", request.getTenantId(), request.getAmountTotal());
+        log.info("Creating payment amount: {}", request.getAmountTotal());
         
         validatePaymentRequest(request);
         
-        String receiptNo = generateReceiptNo(request.getTenantId(), request.getMethod());
+        String receiptNo = generateReceiptNo(request.getMethod());
         
         Payment payment = Payment.builder()
-                .tenantId(request.getTenantId())
                 .receiptNo(receiptNo)
                 .method(request.getMethod())
                 .cashAccountId(request.getCashAccountId())
@@ -55,7 +54,6 @@ public class PaymentService {
         if (request.getAllocations() != null && !request.getAllocations().isEmpty()) {
             for (PaymentAllocationDto allocationDto : request.getAllocations()) {
                 PaymentAllocation allocation = PaymentAllocation.builder()
-                        .tenantId(request.getTenantId())
                         .paymentId(savedPayment.getId())
                         .allocationType(allocationDto.getAllocationType())
                         .invoiceId(allocationDto.getInvoiceId())
@@ -110,21 +108,17 @@ public class PaymentService {
         }
     }
     
-    private String generateReceiptNo(UUID tenantId, PaymentMethod method) {
+    private String generateReceiptNo(PaymentMethod method) {
         String timestamp = OffsetDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-        String tenantShort = tenantId.toString().substring(0, 8);
         String methodCode = switch (method) {
             case CASH -> "CASH";
             case BANK_TRANSFER -> "BANK";
             case MOMO -> "MOMO";
         };
-        return String.format("PAY-%s-%s-%s", methodCode, tenantShort, timestamp);
+        return String.format("PAY-%s-%s", methodCode, timestamp);
     }
     
     private void validatePaymentRequest(CreatePaymentRequest request) {
-        if (request.getTenantId() == null) {
-            throw new IllegalArgumentException("Tenant ID is required");
-        }
         if (request.getMethod() == null) {
             throw new IllegalArgumentException("Payment method is required");
         }
@@ -148,7 +142,6 @@ public class PaymentService {
         
         return PaymentDto.builder()
                 .id(payment.getId())
-                .tenantId(payment.getTenantId())
                 .receiptNo(payment.getReceiptNo())
                 .method(payment.getMethod())
                 .cashAccountId(payment.getCashAccountId())

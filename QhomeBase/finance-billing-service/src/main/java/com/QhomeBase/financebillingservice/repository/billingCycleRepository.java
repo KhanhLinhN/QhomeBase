@@ -13,25 +13,20 @@ import java.util.UUID;
 @Repository
 public interface BillingCycleRepository extends JpaRepository<BillingCycle, UUID> {
 
-    List<BillingCycle> findByTenantId(UUID tenantId);
-
     @Query("""
         select b 
         from BillingCycle b 
-        where b.tenantId = :tenantId 
-          and year(b.periodTo) = :year 
+        where year(b.periodTo) = :year 
         order by b.periodTo desc
         """)
-    List<BillingCycle> loadPeriod(@Param("tenantId") UUID tenantId, @Param("year") int year);
+    List<BillingCycle> loadPeriod(@Param("year") int year);
 
     @Query("""
         select b 
         from BillingCycle b
-        where b.tenantId = :tenantId
-          and b.periodFrom = :periodFrom
+        where b.periodFrom = :periodFrom
           and b.periodTo = :periodTo
         """)
-    List<BillingCycle> findListByTime(@Param("tenantId") UUID tenantId,
-                                      @Param("periodFrom") LocalDate periodFrom,
+    List<BillingCycle> findListByTime(@Param("periodFrom") LocalDate periodFrom,
                                       @Param("periodTo") LocalDate periodTo);
 }

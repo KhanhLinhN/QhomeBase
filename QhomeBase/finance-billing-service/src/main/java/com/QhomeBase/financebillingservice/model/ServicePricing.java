@@ -23,9 +23,6 @@ public class ServicePricing {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
     
-    @Column(name = "tenant_id", nullable = false)
-    private UUID tenantId;
-    
     @Column(name = "service_code", nullable = false)
     private String serviceCode;
     

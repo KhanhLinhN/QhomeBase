@@ -21,8 +21,6 @@ public class BillingCycle {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
-    @Column(name = "tenant_id", nullable = false)
-    private UUID tenantId;
 
     @Column(name = "name", nullable = false)
     private String name;

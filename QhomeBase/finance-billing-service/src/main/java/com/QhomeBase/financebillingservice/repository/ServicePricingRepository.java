@@ -16,22 +16,16 @@ public interface ServicePricingRepository extends JpaRepository<ServicePricing, 
     
     @Query("""
         SELECT sp FROM ServicePricing sp
-        WHERE sp.tenantId = :tenantId
-          AND sp.serviceCode = :serviceCode
+        WHERE sp.serviceCode = :serviceCode
           AND sp.active = true
           AND :effectiveDate BETWEEN sp.effectiveFrom 
               AND COALESCE(sp.effectiveUntil, '9999-12-31')
         ORDER BY sp.effectiveFrom DESC
         """)
-    Optional<ServicePricing> findActivePrice(
-            @Param("tenantId") UUID tenantId,
+    Optional<ServicePricing> findActivePriceGlobal(
             @Param("serviceCode") String serviceCode,
             @Param("effectiveDate") LocalDate effectiveDate
     );
-    
-    List<ServicePricing> findByTenantIdAndActive(UUID tenantId, Boolean active);
-    
-    List<ServicePricing> findByTenantIdAndServiceCode(UUID tenantId, String serviceCode);
 }
 
 

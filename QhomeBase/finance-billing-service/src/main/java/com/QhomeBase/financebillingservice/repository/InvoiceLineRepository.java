@@ -13,7 +13,13 @@ public interface InvoiceLineRepository extends JpaRepository<InvoiceLine, UUID> 
     List<InvoiceLine> findByInvoiceId(UUID invoiceId);
     
     List<InvoiceLine> findByExternalRefId(UUID externalRefId);
+    
+    List<InvoiceLine> findByServiceCode(String serviceCode);
+    
+    List<InvoiceLine> findByInvoiceIdAndServiceCode(UUID invoiceId, String serviceCode);
 }
+
+
 
 
 

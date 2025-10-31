@@ -21,26 +21,25 @@ public class BillingCycleService {
     private final BillingCycleRepository billingCycleRepository;
 
     private BillingCycleDto mapDto(BillingCycle b) {
-        return new BillingCycleDto(
-                b.getId(),
-                b.getTenantId(),
-                b.getName(),
-                b.getPeriodFrom(),
-                b.getPeriodTo(),
-                b.getStatus()
-        );
+        return BillingCycleDto.builder()
+                .id(b.getId())
+                .name(b.getName())
+                .periodFrom(b.getPeriodFrom())
+                .periodTo(b.getPeriodTo())
+                .status(b.getStatus())
+                .build();
     }
 
-    public List<BillingCycleDto> loadPeriod(UUID tenantId, Integer year) {
+    public List<BillingCycleDto> loadPeriod(Integer year) {
         int y = (year != null) ? year : LocalDate.now().getYear();
-        return billingCycleRepository.loadPeriod(tenantId, y)
+        return billingCycleRepository.loadPeriod(y)
                 .stream()
                 .map(this::mapDto)
                 .toList();
     }
 
-    public List<BillingCycleDto> getListByTime(UUID tenantId, LocalDate periodFrom, LocalDate periodTo) {
-        return billingCycleRepository.findListByTime(tenantId, periodFrom, periodTo)
+    public List<BillingCycleDto> getListByTime(LocalDate periodFrom, LocalDate periodTo) {
+        return billingCycleRepository.findListByTime(periodFrom, periodTo)
                 .stream()
                 .map(this::mapDto)
                 .toList();
@@ -48,15 +47,14 @@ public class BillingCycleService {
 
     @Transactional
     public BillingCycleDto createBillingCycle(CreateBillingCycleRequest request) {
-        log.info("Creating billing cycle for tenant: {}, period: {} to {}",
-                request.getTenantId(), request.getPeriodFrom(), request.getPeriodTo());
+        log.info("Creating billing cycle period: {} to {}",
+                request.getPeriodFrom(), request.getPeriodTo());
 
         if (request.getPeriodFrom().isAfter(request.getPeriodTo())) {
             throw new IllegalArgumentException("Period From must be before Period To");
         }
 
         BillingCycle billingCycle = BillingCycle.builder()
-                .tenantId(request.getTenantId())
                 .name(request.getName())
                 .periodFrom(request.getPeriodFrom())
                 .periodTo(request.getPeriodTo())
@@ -85,3 +83,4 @@ public class BillingCycleService {
         return mapDto(updated);
     }
 }
+

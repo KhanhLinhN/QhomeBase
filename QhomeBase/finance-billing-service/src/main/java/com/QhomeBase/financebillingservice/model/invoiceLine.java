@@ -22,8 +22,6 @@ public class InvoiceLine {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
-    @Column(name = "tenant_id", nullable = false)
-    private UUID tenantId;
 
     @Column(name = "invoice_id", nullable = false)
     private UUID invoiceId;
