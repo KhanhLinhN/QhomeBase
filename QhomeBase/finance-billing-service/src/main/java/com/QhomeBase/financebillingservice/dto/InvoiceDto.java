@@ -18,7 +18,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class InvoiceDto {
     private UUID id;
-    private UUID tenantId;
     private String code;
     private OffsetDateTime issuedAt;
     private LocalDate dueDate;
@@ -33,6 +32,7 @@ public class InvoiceDto {
     private BigDecimal totalAmount;
     private List<InvoiceLineDto> lines;
 }
+
 
 
 

@@ -14,7 +14,6 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CreateInvoiceRequest {
-    private UUID tenantId;
     private LocalDate dueDate;
     private String currency;
     private String billToName;

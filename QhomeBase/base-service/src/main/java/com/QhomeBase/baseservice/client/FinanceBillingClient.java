@@ -1,5 +1,6 @@
 package com.QhomeBase.baseservice.client;
 
+import com.QhomeBase.baseservice.dto.BillingImportedReadingDto;
 import com.QhomeBase.baseservice.dto.VehicleActivatedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -7,6 +8,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -39,8 +42,25 @@ public class FinanceBillingClient {
                     event.getPlateNo(), event.getVehicleId(), e);
             log.error("   Error details: {}", e.getMessage());
             log.error("   Finance service may be down. Please create invoice manually or retry.");
-            // Don't throw - allow approval to succeed even if invoice creation fails
-            // Invoice can be created manually later
+        }
+    }
+
+    public Mono<Void> importMeterReadings(List<BillingImportedReadingDto> readings) {
+        return financeWebClient
+                .post()
+                .uri("/api/meter-readings/import")
+                .bodyValue(readings)
+                .retrieve()
+                .toBodilessEntity()
+                .then();
+    }
+
+    public void importMeterReadingsSync(List<BillingImportedReadingDto> readings) {
+        try {
+            importMeterReadings(readings).block();
+            log.info("✅ Imported {} readings to finance-billing", readings != null ? readings.size() : 0);
+        } catch (Exception e) {
+            log.error("❌ FAILED to import meter readings to finance-billing", e);
         }
     }
 }

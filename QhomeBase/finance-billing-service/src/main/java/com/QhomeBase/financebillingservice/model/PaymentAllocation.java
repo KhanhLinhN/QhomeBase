@@ -21,7 +21,7 @@ public class PaymentAllocation {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
     
-    @Column(name = "tenant_id", nullable = false)
+    @Column(name = "tenant_id")
     private UUID tenantId;
     
     @Column(name = "payment_id", nullable = false)

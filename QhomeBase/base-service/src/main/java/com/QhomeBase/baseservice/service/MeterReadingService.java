@@ -12,35 +12,60 @@ import com.QhomeBase.baseservice.repository.MeterReadingSessionRepository;
 import com.QhomeBase.baseservice.repository.MeterRepository;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.core.Authentication;
 
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
 @RequiredArgsConstructor
+@Service
 public class MeterReadingService {
     private final MeterReadingRepository readingRepo;
     private final MeterRepository meterRepo;
     private final MeterReadingAssignmentRepository assignmentRepo;
     private final MeterReadingSessionRepository sessionRepo;
 
+    @Transactional
     public MeterReadingDto create(MeterReadingCreateReq meterReadingCreateReq, Authentication auth){
         var p = (UserPrincipal) auth.getPrincipal();
-        UUID readerId = p.uid();
-        MeterReadingSession meterReadingSession = sessionRepo.findById(meterReadingCreateReq.sessionId()).orElse(null);
-        MeterReadingAssignment meterReadingAssignment = assignmentRepo.findById(meterReadingSession.getAssignment().getId()).orElse(null);
-        if (meterReadingAssignment == null){
-            throw new IllegalArgumentException("Assignment not found");
+        UUID readerId = meterReadingCreateReq.readerId() != null 
+                ? meterReadingCreateReq.readerId() 
+                : p.uid();
+        
+        MeterReadingSession meterReadingSession = null;
+        MeterReadingAssignment meterReadingAssignment = null;
+        
+        if (meterReadingCreateReq.sessionId() != null) {
+            meterReadingSession = sessionRepo.findById(meterReadingCreateReq.sessionId())
+                    .orElseThrow(() -> new IllegalArgumentException("Session not found"));
+            meterReadingAssignment = meterReadingSession.getAssignment();
         }
+        
+        if (meterReadingAssignment == null && meterReadingCreateReq.assignmentId() != null) {
+            meterReadingAssignment = assignmentRepo.findById(meterReadingCreateReq.assignmentId())
+                    .orElseThrow(() -> new IllegalArgumentException("Assignment not found"));
+        }
+        
         Meter meter = meterRepo.findById(meterReadingCreateReq.meterId())
                 .orElseThrow(() -> new IllegalArgumentException("Meter not found"));
-        validateMeterInScope(meterReadingAssignment, meter);
-        BigDecimal previousIndex = getPreviousIndex(meter.getId());
+        
+        if (meterReadingAssignment != null) {
+            validateMeterInScope(meterReadingAssignment, meter);
+        }
+        
+        BigDecimal previousIndex = meterReadingCreateReq.prevIndex() != null
+                ? meterReadingCreateReq.prevIndex()
+                : getPreviousIndex(meter.getId());
+        
+        if (previousIndex == null) {
+            previousIndex = BigDecimal.ZERO;
+        }
+        
         MeterReading meterReading = MeterReading.builder()
                 .meter(meter)
                 .assignment(meterReadingAssignment)
@@ -52,9 +77,19 @@ public class MeterReadingService {
                 .readerId(readerId)
                 .photoFileId(meterReadingCreateReq.photoFileId())
                 .build();
-        meterRepo.save(meter);
-        return toDto(meterReading);
-
+        
+        MeterReading saved = readingRepo.save(meterReading);
+        
+        if (saved.getMeter() != null && saved.getMeter().getUnit() != null) {
+            saved.getMeter().getUnit().getId();
+            saved.getMeter().getUnit().getCode();
+            saved.getMeter().getUnit().getFloor();
+            if (saved.getMeter().getUnit().getBuilding() != null) {
+                saved.getMeter().getUnit().getBuilding().getId();
+            }
+        }
+        
+        return toDto(saved);
     }
     public BigDecimal getPreviousIndex (UUID meterId){
         List<MeterReading> meterReadingList = readingRepo.findByMeterId(meterId);
@@ -66,16 +101,25 @@ public class MeterReadingService {
                 )
                 .findFirst()
                 .orElse(null);
-        return latest != null ? latest.getCurrIndex() : null;
+        return latest != null && latest.getCurrIndex() != null ? latest.getCurrIndex() : BigDecimal.ZERO;
     }
     public void validateMeterInScope(MeterReadingAssignment a, Meter m) {
+        if (m.getUnit() == null) {
+            throw new IllegalArgumentException("Meter must have a unit");
+        }
+        if (m.getUnit().getBuilding() == null) {
+            throw new IllegalArgumentException("Unit must have a building");
+        }
+        
         UUID assBuilding = a.getBuilding().getId();
         UUID mBuilding = m.getUnit().getBuilding().getId();
-        if ( assBuilding != mBuilding) {
+        if (!assBuilding.equals(mBuilding)) {
             throw new IllegalArgumentException("Not same building");
         }
-        if (m.getUnit().getFloor() <= a.getFloorFrom() || m.getUnit().getFloor() >= a.getFloorTo()) {
-            throw new IllegalArgumentException("Not same floor");
+        
+        Integer unitFloor = m.getUnit().getFloor();
+        if (unitFloor == null || unitFloor < a.getFloorFrom() || unitFloor > a.getFloorTo()) {
+            throw new IllegalArgumentException("Not same floor range");
         }
     }
 

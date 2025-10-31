@@ -9,12 +9,13 @@ import java.util.UUID;
 
 public record MeterReadingCreateReq(
         @NotNull UUID meterId,
+        UUID assignmentId,
         UUID sessionId,
         @NotNull LocalDate readingDate,
-        @NotNull @PositiveOrZero BigDecimal prevIndex,
+        @PositiveOrZero BigDecimal prevIndex,
         @NotNull @PositiveOrZero BigDecimal currIndex,
         UUID photoFileId,
         String note,
-        @NotNull UUID readerId
+        UUID readerId
 ) {}
 

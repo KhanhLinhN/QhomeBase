@@ -25,6 +25,8 @@ public class MeterReadingAssignmentService {
     private final ReadingCycleRepository readingCycleRepository;
     private final BuildingRepository buildingRepository;
     private final ServiceRepository serviceRepository;
+    private final MeterRepository meterRepository;
+    private final MeterReadingRepository meterReadingRepository;
 
     @Transactional
     public MeterReadingAssignmentDto create(MeterReadingAssignmentCreateReq req, UserPrincipal principal) {
@@ -230,13 +232,13 @@ public class MeterReadingAssignmentService {
 
         UUID buildingId = assignment.getBuilding().getId();
         UUID serviceId  = assignment.getService().getId();
-        int floorFrom   = assignment.getFloorFrom();
-        int floorTo     = assignment.getFloorTo();
+        Integer floorFrom   = assignment.getFloorFrom();
+        Integer floorTo     = assignment.getFloorTo();
 
-
-        int total = meterReadingAssignmentRepository.findByBuildingServiceAndFloorRange(buildingId, serviceId, floorFrom, floorTo).size();
-
-        int done = meterReadingAssignmentRepository.findByAssignment(assignmentId).size();
+        // Tổng meter cần đọc
+        int total = meterRepository.findByBuildingServiceAndFloorRange(buildingId, serviceId, floorFrom, floorTo).size();
+        // Đã đọc (phiếu hợp lệ, gắn đúng assignment)
+        int done = meterReadingRepository.findByAssignmentId(assignmentId).size();
         int remain = Math.max(0, total-done);
         double percent = total > 0 ? Math.round((done * 10000.0 / total))/100.0 : 0;
         boolean completed = assignment.getCompletedAt() != null || (total > 0 && done >= total);

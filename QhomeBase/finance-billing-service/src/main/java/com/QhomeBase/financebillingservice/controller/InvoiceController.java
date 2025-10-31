@@ -20,12 +20,6 @@ public class InvoiceController {
     
     private final InvoiceService invoiceService;
     
-    @GetMapping("/tenant/{tenantId}")
-    public ResponseEntity<List<InvoiceDto>> getInvoicesByTenant(@PathVariable UUID tenantId) {
-        List<InvoiceDto> invoices = invoiceService.getInvoicesByTenant(tenantId);
-        return ResponseEntity.ok(invoices);
-    }
-    
     @GetMapping("/resident/{residentId}")
     public ResponseEntity<List<InvoiceDto>> getInvoicesByResident(@PathVariable UUID residentId) {
         List<InvoiceDto> invoices = invoiceService.getInvoicesByResident(residentId);
@@ -47,6 +41,20 @@ public class InvoiceController {
     @GetMapping("/unit/{unitId}")
     public ResponseEntity<List<InvoiceDto>> getInvoicesByUnit(@PathVariable UUID unitId) {
         List<InvoiceDto> invoices = invoiceService.getInvoicesByUnit(unitId);
+        return ResponseEntity.ok(invoices);
+    }
+    
+    @GetMapping("/service/{serviceCode}")
+    public ResponseEntity<List<InvoiceDto>> getInvoicesByServiceCode(@PathVariable String serviceCode) {
+        List<InvoiceDto> invoices = invoiceService.getInvoicesByServiceCode(serviceCode);
+        return ResponseEntity.ok(invoices);
+    }
+    
+    @GetMapping("/resident/{residentId}/service/{serviceCode}")
+    public ResponseEntity<List<InvoiceDto>> getInvoicesByResidentAndServiceCode(
+            @PathVariable UUID residentId,
+            @PathVariable String serviceCode) {
+        List<InvoiceDto> invoices = invoiceService.getInvoicesByResidentAndServiceCode(residentId, serviceCode);
         return ResponseEntity.ok(invoices);
     }
     

@@ -22,9 +22,6 @@ public class Invoice {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
-    @Column(name = "tenant_id", nullable = false)
-    private UUID tenantId;
-
     @Column(name = "code", nullable = false)
     private String code;
 
@@ -36,6 +33,7 @@ public class Invoice {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, columnDefinition = "billing.inv_status")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NAMED_ENUM)
     private InvoiceStatus status;
 
     @Column(name = "currency", nullable = false)

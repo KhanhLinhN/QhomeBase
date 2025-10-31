@@ -20,15 +20,15 @@ public class BillingCycleController {
     private final BillingCycleService billingCycleService;
 
     @GetMapping("/loadPeriod")
-    public List<BillingCycleDto> findByTenantIdAndYear(@RequestParam UUID tenantId, @RequestParam Integer year) {
-        return billingCycleService.loadPeriod(tenantId, year);
+    public List<BillingCycleDto> findByTenantIdAndYear(@RequestParam Integer year) {
+        return billingCycleService.loadPeriod(year);
     }
 
     @GetMapping
-    public List<BillingCycleDto> getBillingCycle(@RequestParam UUID tenantId,
+    public List<BillingCycleDto> getBillingCycle(
                                                  @RequestParam LocalDate startDate,
                                                  @RequestParam LocalDate endDate) {
-        return billingCycleService.getListByTime(tenantId, startDate, endDate);
+        return billingCycleService.getListByTime(startDate, endDate);
     }
 
     @PostMapping
