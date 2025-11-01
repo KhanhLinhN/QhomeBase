@@ -171,6 +171,18 @@ public class RegisterRegistrationServiceImpl implements RegisterRegistrationServ
     }
 
     @Override
+    public RegisterServiceRequestResponseDto getById(Long id, Long userId) {
+        RegisterServiceRequest entity = repository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Registration not found"));
+
+        if (!entity.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot access others' registration");
+        }
+
+        return registerServiceRequestResponseMapper.toDto(entity);
+    }
+
+    @Override
     public RegisterServiceRequestResponseDto updateRegistration(Long id, RegisterServiceRequestDto dto, Long userId) {
         RegisterServiceRequest entity = repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Registration not found"));

@@ -53,6 +53,17 @@ public class RegisterRegistrationController {
         return ResponseEntity.ok(list);
     }
 
+    @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<RegisterServiceRequestResponseDto> getById(
+            @PathVariable Long id,
+            Authentication authentication) {
+        Long userId = getUserIdFromAuthentication(authentication);
+        RegisterServiceRequestResponseDto result = service.getById(id, userId);
+        log.info("User {} fetched registration {}", userId, id);
+        return ResponseEntity.ok(result);
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<RegisterServiceRequestResponseDto> updateRegistration(

@@ -15,6 +15,8 @@ public interface RegisterRegistrationService {
 
     List<RegisterServiceRequestResponseDto> getByUserId(Long userId);
 
+    RegisterServiceRequestResponseDto getById(Long id, Long userId);
+
     RegisterServiceRequestResponseDto updateRegistration(Long id, RegisterServiceRequestDto dto, Long userId);
 
     List<String> uploadVehicleImages(List<MultipartFile> files, Long userId);
