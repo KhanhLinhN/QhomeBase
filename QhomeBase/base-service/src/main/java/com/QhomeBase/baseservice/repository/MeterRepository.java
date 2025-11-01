@@ -50,5 +50,16 @@ public interface MeterRepository extends JpaRepository<Meter, UUID> {
         @Param("buildingId") UUID buildingId,
         @Param("serviceId") UUID serviceId
     );
+
+    @Query("""
+        SELECT m FROM Meter m
+        JOIN m.unit u
+        WHERE u.building.id = :buildingId
+        ORDER BY u.floor, u.code, m.meterCode
+    """)
+    List<Meter> findByBuildingId(@Param("buildingId") UUID buildingId);
+
+    @Query("SELECT m FROM Meter m WHERE m.active = :active ORDER BY m.meterCode")
+    List<Meter> findByActive(@Param("active") Boolean active);
 }
 
