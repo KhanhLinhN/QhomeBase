@@ -21,4 +21,10 @@ public interface MeterReadingRepository extends JpaRepository<MeterReading, UUID
            "WHERE mr.session.cycle.id = :cycleId " +
            "AND mr.session.completedAt IS NOT NULL")
     List<MeterReading> findByCycleIdWhereSessionCompleted(@Param("cycleId") UUID cycleId);
+    
+    @Query("SELECT DISTINCT mr FROM MeterReading mr " +
+           "LEFT JOIN FETCH mr.session s " +
+           "LEFT JOIN FETCH mr.assignment a " +
+           "WHERE (s.cycle.id = :cycleId OR a.cycle.id = :cycleId)")
+    List<MeterReading> findByCycleId(@Param("cycleId") UUID cycleId);
 }

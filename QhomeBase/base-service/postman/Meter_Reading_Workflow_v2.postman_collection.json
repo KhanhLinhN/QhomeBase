@@ -762,67 +762,6 @@
       "name": "5. Export Readings to Finance-Billing",
       "item": [
         {
-          "name": "Export Readings by Session",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "    const response = pm.response.json();",
-                  "    pm.test('Status is 200 OK', () => {",
-                  "        pm.response.to.have.status(200);",
-                  "    });",
-                  "    pm.test('Response has invoice data', () => {",
-                  "        pm.expect(response).to.have.property('totalReadings');",
-                  "        pm.expect(response).to.have.property('invoicesCreated');",
-                  "        pm.expect(response).to.have.property('invoiceIds');",
-                  "    });",
-                  "    pm.environment.set('totalReadings', response.totalReadings);",
-                  "    pm.environment.set('invoicesCreated', response.invoicesCreated);",
-                  "    pm.environment.set('invoiceIds', JSON.stringify(response.invoiceIds));",
-                  "    if (response.invoiceIds && response.invoiceIds.length > 0) {",
-                  "        pm.environment.set('invoiceId', response.invoiceIds[0]);",
-                  "        console.log('✅ Invoice created with ID:', response.invoiceIds[0]);",
-                  "    }",
-                  "    if (response.totalReadings === 0) {",
-                  "        console.warn('⚠️ WARNING: No readings found in session!');",
-                  "        console.warn('⚠️ Possible reasons:');",
-                  "        console.warn('  1. Readings were created BEFORE session was created');",
-                  "        console.warn('  2. Readings were created with sessionId = null');",
-                  "        console.warn('  3. Session ID is incorrect');",
-                  "        console.warn('⚠️ SOLUTION: Create readings AFTER creating session and use sessionId!');",
-                  "    } else {",
-                  "        console.log('✅ Exported ' + response.totalReadings + ' readings');",
-                  "        console.log('✅ Created ' + response.invoicesCreated + ' invoices');",
-                  "        console.log('Invoice IDs:', response.invoiceIds);",
-                  "    }",
-                  "} else {",
-                  "    console.log('❌ Failed to export readings:', pm.response.json());",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/meter-readings/export/session/{{sessionId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "meter-readings", "export", "session", "{{sessionId}}"]
-            },
-            "description": "Export all meter readings from a session to finance-billing-service and create invoices automatically. ⚠️ IMPORTANT: Make sure readings were created AFTER session was created and include sessionId in the meter reading request!"
-          },
-          "response": []
-        },
-        {
           "name": "Export Readings by Cycle",
           "event": [
             {
@@ -1035,6 +974,475 @@
         }
       ],
       "description": "Query invoices created from exported meter readings"
+    },
+    {
+      "name": "7. Pricing Tiers Management",
+      "item": [
+        {
+          "name": "Create Pricing Tier - ELECTRIC Tier 1 (0-50 kWh)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('pricingTierId', response.id);",
+                  "    pm.test('Status is 201 Created', () => {",
+                  "        pm.response.to.have.status(201);",
+                  "    });",
+                  "    pm.test('Response has pricing tier ID', () => {",
+                  "        pm.expect(response.id).to.not.be.empty;",
+                  "    });",
+                  "    console.log('✅ Pricing tier created with ID:', response.id);",
+                  "    console.log('  Service Code:', response.serviceCode);",
+                  "    console.log('  Tier Order:', response.tierOrder);",
+                  "    console.log('  Range:', response.minQuantity, '-', response.maxQuantity || '∞', 'kWh');",
+                  "    console.log('  Unit Price:', response.unitPrice, 'VND/kWh');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceCode\": \"ELECTRIC\",\n  \"tierOrder\": 1,\n  \"minQuantity\": 0,\n  \"maxQuantity\": 50,\n  \"unitPrice\": 1800.00,\n  \"effectiveFrom\": \"2024-01-01\",\n  \"effectiveUntil\": null,\n  \"active\": true,\n  \"description\": \"Bậc 1: 0-50 kWh\"\n}"
+            },
+            "url": {
+              "raw": "{{financeBillingUrl}}/api/pricing-tiers?createdBy={{userId}}",
+              "host": ["{{financeBillingUrl}}"],
+              "path": ["api", "pricing-tiers"],
+              "query": [
+                {
+                  "key": "createdBy",
+                  "value": "{{userId}}"
+                }
+              ]
+            },
+            "description": "Create first tier for ELECTRIC service: 0-50 kWh at 1800 VND/kWh"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Pricing Tier - ELECTRIC Tier 2 (51-100 kWh)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (!pm.environment.get('pricingTierId')) {",
+                  "        pm.environment.set('pricingTierId', response.id);",
+                  "    }",
+                  "    console.log('✅ Tier 2 created:', response.id);",
+                  "    console.log('  Range:', response.minQuantity, '-', response.maxQuantity || '∞');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceCode\": \"ELECTRIC\",\n  \"tierOrder\": 2,\n  \"minQuantity\": 51,\n  \"maxQuantity\": 100,\n  \"unitPrice\": 2100.00,\n  \"effectiveFrom\": \"2024-01-01\",\n  \"effectiveUntil\": null,\n  \"active\": true,\n  \"description\": \"Bậc 2: 51-100 kWh\"\n}"
+            },
+            "url": {
+              "raw": "{{financeBillingUrl}}/api/pricing-tiers?createdBy={{userId}}",
+              "host": ["{{financeBillingUrl}}"],
+              "path": ["api", "pricing-tiers"],
+              "query": [
+                {
+                  "key": "createdBy",
+                  "value": "{{userId}}"
+                }
+              ]
+            },
+            "description": "Create second tier: 51-100 kWh at 2100 VND/kWh"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Pricing Tier - ELECTRIC Tier 3 (101-200 kWh)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    console.log('✅ Tier 3 created:', response.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceCode\": \"ELECTRIC\",\n  \"tierOrder\": 3,\n  \"minQuantity\": 101,\n  \"maxQuantity\": 200,\n  \"unitPrice\": 2500.00,\n  \"effectiveFrom\": \"2024-01-01\",\n  \"effectiveUntil\": null,\n  \"active\": true,\n  \"description\": \"Bậc 3: 101-200 kWh\"\n}"
+            },
+            "url": {
+              "raw": "{{financeBillingUrl}}/api/pricing-tiers?createdBy={{userId}}",
+              "host": ["{{financeBillingUrl}}"],
+              "path": ["api", "pricing-tiers"],
+              "query": [
+                {
+                  "key": "createdBy",
+                  "value": "{{userId}}"
+                }
+              ]
+            },
+            "description": "Create third tier: 101-200 kWh at 2500 VND/kWh"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Pricing Tier - ELECTRIC Tier 4 (201+ kWh)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    console.log('✅ Tier 4 created:', response.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceCode\": \"ELECTRIC\",\n  \"tierOrder\": 4,\n  \"minQuantity\": 201,\n  \"maxQuantity\": null,\n  \"unitPrice\": 3000.00,\n  \"effectiveFrom\": \"2024-01-01\",\n  \"effectiveUntil\": null,\n  \"active\": true,\n  \"description\": \"Bậc 4: Trên 200 kWh\"\n}"
+            },
+            "url": {
+              "raw": "{{financeBillingUrl}}/api/pricing-tiers?createdBy={{userId}}",
+              "host": ["{{financeBillingUrl}}"],
+              "path": ["api", "pricing-tiers"],
+              "query": [
+                {
+                  "key": "createdBy",
+                  "value": "{{userId}}"
+                }
+              ]
+            },
+            "description": "Create fourth tier: 201+ kWh (no max limit) at 3000 VND/kWh"
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Pricing Tiers by Service Code (ELECTRIC)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const tiers = pm.response.json();",
+                  "    console.log('✅ Found ' + tiers.length + ' pricing tiers for ELECTRIC');",
+                  "    tiers.forEach((tier, index) => {",
+                  "        console.log(`Tier ${index + 1}: Order ${tier.tierOrder}, Range ${tier.minQuantity}-${tier.maxQuantity || '∞'}, Price ${tier.unitPrice} VND/kWh`);",
+                  "        if (index === 0) {",
+                  "            pm.environment.set('pricingTierId', tier.id);",
+                  "        }",
+                  "    });",
+                  "    pm.test('Status is 200 OK', () => {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{financeBillingUrl}}/api/pricing-tiers/service/ELECTRIC",
+              "host": ["{{financeBillingUrl}}"],
+              "path": ["api", "pricing-tiers", "service", "ELECTRIC"]
+            },
+            "description": "Get all pricing tiers for ELECTRIC service"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Pricing Tier By ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const tier = pm.response.json();",
+                  "    pm.test('Status is 200 OK', () => {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('Response has tier data', () => {",
+                  "        pm.expect(tier).to.have.property('id');",
+                  "        pm.expect(tier).to.have.property('serviceCode');",
+                  "        pm.expect(tier).to.have.property('tierOrder');",
+                  "    });",
+                  "    console.log('✅ Pricing Tier Details:');",
+                  "    console.log('  ID:', tier.id);",
+                  "    console.log('  Service Code:', tier.serviceCode);",
+                  "    console.log('  Tier Order:', tier.tierOrder);",
+                  "    console.log('  Range:', tier.minQuantity, '-', tier.maxQuantity || '∞', 'kWh');",
+                  "    console.log('  Unit Price:', tier.unitPrice, 'VND/kWh');",
+                  "    console.log('  Active:', tier.active);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{financeBillingUrl}}/api/pricing-tiers/{{pricingTierId}}",
+              "host": ["{{financeBillingUrl}}"],
+              "path": ["api", "pricing-tiers", "{{pricingTierId}}"]
+            },
+            "description": "Get pricing tier details by ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Active Tiers By Service And Date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const tiers = pm.response.json();",
+                  "    console.log('✅ Found ' + tiers.length + ' active tiers for date');",
+                  "    tiers.forEach((tier, index) => {",
+                  "        console.log(`Tier ${index + 1}: Order ${tier.tierOrder}, Range ${tier.minQuantity}-${tier.maxQuantity || '∞'}`);",
+                  "    });",
+                  "    pm.test('Status is 200 OK', () => {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{financeBillingUrl}}/api/pricing-tiers/service/ELECTRIC/active?date=2024-01-15",
+              "host": ["{{financeBillingUrl}}"],
+              "path": ["api", "pricing-tiers", "service", "ELECTRIC", "active"],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2024-01-15"
+                }
+              ]
+            },
+            "description": "Get active pricing tiers for ELECTRIC service on a specific date"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Last Order for Service",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const lastOrder = pm.response.json();",
+                  "    console.log('✅ Last tier order for ELECTRIC:', lastOrder);",
+                  "    pm.test('Status is 200 OK', () => {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('Response is a number', () => {",
+                  "        pm.expect(lastOrder).to.be.a('number');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{financeBillingUrl}}/api/pricing-tiers/service/ELECTRIC/last-order",
+              "host": ["{{financeBillingUrl}}"],
+              "path": ["api", "pricing-tiers", "service", "ELECTRIC", "last-order"]
+            },
+            "description": "Get the last tier order number for a service (useful for creating next tier)"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Pricing Tier",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const tier = pm.response.json();",
+                  "    pm.test('Status is 200 OK', () => {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    console.log('✅ Pricing tier updated successfully');",
+                  "    console.log('  New unit price:', tier.unitPrice, 'VND/kWh');",
+                  "    console.log('  Active:', tier.active);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"unitPrice\": 1900.00,\n  \"description\": \"Bậc 1: 0-50 kWh (Updated)\"\n}"
+            },
+            "url": {
+              "raw": "{{financeBillingUrl}}/api/pricing-tiers/{{pricingTierId}}?updatedBy={{userId}}",
+              "host": ["{{financeBillingUrl}}"],
+              "path": ["api", "pricing-tiers", "{{pricingTierId}}"],
+              "query": [
+                {
+                  "key": "updatedBy",
+                  "value": "{{userId}}"
+                }
+              ]
+            },
+            "description": "Update pricing tier (partial update - only specified fields)"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Pricing Tier",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 204) {",
+                  "    pm.test('Status is 204 No Content', () => {",
+                  "        pm.response.to.have.status(204);",
+                  "    });",
+                  "    console.log('✅ Pricing tier deleted successfully');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{financeBillingUrl}}/api/pricing-tiers/{{pricingTierId}}",
+              "host": ["{{financeBillingUrl}}"],
+              "path": ["api", "pricing-tiers", "{{pricingTierId}}"]
+            },
+            "description": "Delete a pricing tier by ID"
+          },
+          "response": []
+        }
+      ],
+      "description": "Manage pricing tiers for services. Create tiered pricing structure (e.g., 0-50 kWh, 51-100 kWh, etc.)"
     }
   ]
 }

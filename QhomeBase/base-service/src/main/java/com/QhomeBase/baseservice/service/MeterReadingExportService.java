@@ -26,36 +26,34 @@ public class MeterReadingExportService {
     private final FinanceBillingClient financeBillingClient;
 
     @Transactional(readOnly = true)
-    public MeterReadingImportResponse exportReadingsBySession(UUID sessionId) {
-        List<MeterReading> readings = meterReadingRepository.findBySessionId(sessionId);
-        if (readings.isEmpty()) {
-            log.warn("No readings found for session: {}", sessionId);
-            return MeterReadingImportResponse.builder()
-                    .totalReadings(0)
-                    .invoicesCreated(0)
-                    .message("No readings found for session: " + sessionId)
-                    .build();
-        }
-
-        List<BillingImportedReadingDto> billingReadings = convertToBillingReadings(readings);
-        MeterReadingImportResponse response = financeBillingClient.importMeterReadingsSync(billingReadings);
-        
-        log.info("Exported {} readings from session {} to finance-billing. Invoices created: {}", 
-                readings.size(), sessionId, response != null ? response.getInvoicesCreated() : 0);
-        return response;
-    }
-
-    @Transactional(readOnly = true)
     public MeterReadingImportResponse exportReadingsByCycle(UUID cycleId) {
-        List<MeterReading> readings = meterReadingRepository.findByCycleIdWhereSessionCompleted(cycleId);
+        log.info("Exporting readings for cycle: {}", cycleId);
+        List<MeterReading> readings = meterReadingRepository.findByCycleId(cycleId);
+        
         if (readings.isEmpty()) {
-            log.warn("No completed readings found for cycle: {}", cycleId);
+            log.warn("No readings found for cycle: {}. Checking all readings...", cycleId);
+            
+            List<MeterReading> allReadings = meterReadingRepository.findAll();
+            log.debug("Total readings in database: {}", allReadings.size());
+            
+            for (MeterReading r : allReadings) {
+                if (r.getSession() != null && r.getSession().getCycle() != null) {
+                    log.debug("Reading {} has session.cycle.id = {}", r.getId(), r.getSession().getCycle().getId());
+                } else if (r.getAssignment() != null && r.getAssignment().getCycle() != null) {
+                    log.debug("Reading {} has assignment.cycle.id = {}", r.getId(), r.getAssignment().getCycle().getId());
+                } else {
+                    log.debug("Reading {} has no session/cycle or assignment/cycle", r.getId());
+                }
+            }
+            
             return MeterReadingImportResponse.builder()
                     .totalReadings(0)
                     .invoicesCreated(0)
-                    .message("No completed readings found for cycle: " + cycleId)
+                    .message("No readings found for cycle: " + cycleId)
                     .build();
         }
+        
+        log.info("Found {} readings for cycle: {}", readings.size(), cycleId);
 
         List<BillingImportedReadingDto> billingReadings = convertToBillingReadings(readings);
         MeterReadingImportResponse response = financeBillingClient.importMeterReadingsSync(billingReadings);
@@ -81,12 +79,15 @@ public class MeterReadingExportService {
                 log.warn("No active resident found for unit {}, but proceeding with null residentId for reading {}", unitId, reading.getId());
             }
 
-            if (reading.getSession() == null || reading.getSession().getCycle() == null) {
-                log.warn("Skipping reading {} - missing session or cycle", reading.getId());
+            UUID cycleId = null;
+            if (reading.getSession() != null && reading.getSession().getCycle() != null) {
+                cycleId = reading.getSession().getCycle().getId();
+            } else if (reading.getAssignment() != null && reading.getAssignment().getCycle() != null) {
+                cycleId = reading.getAssignment().getCycle().getId();
+            } else {
+                log.warn("Skipping reading {} - missing session/cycle or assignment/cycle", reading.getId());
                 continue;
             }
-
-            UUID cycleId = reading.getSession().getCycle().getId();
             String serviceCode = reading.getMeter().getService() != null 
                     ? reading.getMeter().getService().getCode() 
                     : null;

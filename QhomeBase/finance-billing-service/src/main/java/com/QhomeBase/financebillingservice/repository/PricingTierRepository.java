@@ -12,7 +12,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface PricingTierRepository extends JpaRepository<PricingTier, UUID> {
+public interface   PricingTierRepository extends JpaRepository<PricingTier, UUID> {
     
     @Query("""
         SELECT pt FROM PricingTier pt
@@ -26,6 +26,16 @@ public interface PricingTierRepository extends JpaRepository<PricingTier, UUID> 
             @Param("serviceCode") String serviceCode,
             @Param("effectiveDate") LocalDate effectiveDate
     );
+    @Query("""
+        SELECT pt FROM PricingTier pt
+        WHERE pt.serviceCode = :serviceCode
+          AND pt.active = true
+        ORDER BY pt.tierOrder ASC
+        """)
+    List<PricingTier> findActiveTiersByService(
+            @Param("serviceCode") String serviceCode
+    );
+
     
     @Query("""
         SELECT pt FROM PricingTier pt

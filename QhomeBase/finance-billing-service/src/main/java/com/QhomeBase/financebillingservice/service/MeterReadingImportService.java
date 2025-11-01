@@ -7,8 +7,10 @@ import com.QhomeBase.financebillingservice.dto.ImportedReadingDto;
 import com.QhomeBase.financebillingservice.dto.InvoiceDto;
 import com.QhomeBase.financebillingservice.dto.MeterReadingImportResponse;
 import com.QhomeBase.financebillingservice.model.BillingCycle;
+import com.QhomeBase.financebillingservice.model.Invoice;
 import com.QhomeBase.financebillingservice.model.PricingTier;
 import com.QhomeBase.financebillingservice.repository.BillingCycleRepository;
+import com.QhomeBase.financebillingservice.repository.InvoiceRepository;
 import com.QhomeBase.financebillingservice.repository.PricingTierRepository;
 import com.QhomeBase.financebillingservice.repository.ServicePricingRepository;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,7 @@ public class MeterReadingImportService {
     private final PricingTierRepository pricingTierRepository;
     private final InvoiceService invoiceService;
     private final BillingCycleRepository billingCycleRepository;
+    private final InvoiceRepository invoiceRepository;
 
     public int importReadings(List<ImportedReadingDto> readings) {
         MeterReadingImportResponse response = importReadingsWithResponse(readings);
@@ -85,6 +88,15 @@ public class MeterReadingImportService {
                     .orElse(getDefaultDescription(serviceCode));
 
             UUID billingCycleId = findOrCreateBillingCycle(readingCycleId, serviceDate);
+
+            List<Invoice> existingInvoices = invoiceRepository.findByPayerUnitIdAndCycleId(unitId, billingCycleId);
+            if (!existingInvoices.isEmpty()) {
+                Invoice existingInvoice = existingInvoices.get(0);
+                log.warn("Invoice already exists for unit={}, cycle={}. Invoice ID: {}. Skipping creation.", 
+                        unitId, billingCycleId, existingInvoice.getId());
+                invoiceIds.add(existingInvoice.getId());
+                continue;
+            }
 
             List<CreateInvoiceLineRequest> invoiceLines = calculateInvoiceLines(
                     serviceCode, totalUsage, serviceDate, description);
