@@ -39,7 +39,17 @@ public class FileStorageService {
             "image/gif"
     );
     
+    private static final List<String> ALLOWED_CONTRACT_TYPES = Arrays.asList(
+            "application/pdf",
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/heic",
+            "image/heif"
+    );
+    
     private static final long MAX_FILE_SIZE = 10 * 1024 * 1024;
+    private static final long MAX_CONTRACT_FILE_SIZE = 20 * 1024 * 1024;
 
     @Autowired
     public FileStorageService(FileStorageProperties fileStorageProperties) {
@@ -60,7 +70,7 @@ public class FileStorageService {
 
     public FileUploadResponse uploadImage(
             MultipartFile file, 
-            UUID tenantId, 
+            UUID ownerId, 
             UUID uploadedBy,
             String category) {
         
@@ -74,7 +84,7 @@ public class FileStorageService {
         String datePath = LocalDate.now().format(DateTimeFormatter.ISO_DATE);
         Path targetLocation = this.fileStorageLocation
                 .resolve(category)
-                .resolve(tenantId.toString())
+                .resolve(ownerId.toString())
                 .resolve(datePath)
                 .resolve(fileName);
         
@@ -86,7 +96,7 @@ public class FileStorageService {
             String fileUrl = String.format("%s/%s/%s/%s/%s",
                     fileStorageProperties.getBaseUrl(),
                     category,
-                    tenantId,
+                    ownerId,
                     datePath,
                     fileName);
             
@@ -107,11 +117,11 @@ public class FileStorageService {
         }
     }
 
-    public Resource loadFileAsResource(String category, String tenantId, String date, String fileName) {
+    public Resource loadFileAsResource(String category, String ownerId, String date, String fileName) {
         try {
             Path filePath = this.fileStorageLocation
                     .resolve(category)
-                    .resolve(tenantId)
+                    .resolve(ownerId)
                     .resolve(date)
                     .resolve(fileName)
                     .normalize();
@@ -127,11 +137,11 @@ public class FileStorageService {
         }
     }
 
-    public void deleteFile(String category, String tenantId, String date, String fileName) {
+    public void deleteFile(String category, String ownerId, String date, String fileName) {
         try {
             Path filePath = this.fileStorageLocation
                     .resolve(category)
-                    .resolve(tenantId)
+                    .resolve(ownerId)
                     .resolve(date)
                     .resolve(fileName)
                     .normalize();
@@ -170,6 +180,115 @@ public class FileStorageService {
         }
         int dotIndex = fileName.lastIndexOf('.');
         return (dotIndex == -1) ? "" : fileName.substring(dotIndex + 1);
+    }
+
+    public FileUploadResponse uploadContractFile(
+            MultipartFile file,
+            UUID contractId,
+            UUID uploadedBy) {
+        
+        validateContractFile(file);
+        
+        String originalFileName = StringUtils.cleanPath(file.getOriginalFilename());
+        String fileExtension = getFileExtension(originalFileName);
+        
+        String fileName = UUID.randomUUID().toString() + "." + fileExtension;
+        
+        Path targetLocation = this.fileStorageLocation
+                .resolve("contracts")
+                .resolve(contractId.toString())
+                .resolve(fileName);
+        
+        try {
+            Files.createDirectories(targetLocation.getParent());
+            
+            Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+            
+            String fileUrl = String.format("%s/contracts/%s/%s",
+                    fileStorageProperties.getBaseUrl(),
+                    contractId,
+                    fileName);
+            
+            log.info("Contract file uploaded successfully: {} for contract: {} by user: {}", 
+                    fileName, contractId, uploadedBy);
+            
+            return FileUploadResponse.success(
+                    UUID.randomUUID(),
+                    fileName,
+                    originalFileName,
+                    fileUrl,
+                    file.getContentType(),
+                    file.getSize(),
+                    uploadedBy
+            );
+            
+        } catch (IOException ex) {
+            throw new FileStorageException("Could not store file " + fileName + ". Please try again!", ex);
+        }
+    }
+
+    public Resource loadContractFileAsResource(UUID contractId, String fileName) {
+        try {
+            Path filePath = this.fileStorageLocation
+                    .resolve("contracts")
+                    .resolve(contractId.toString())
+                    .resolve(fileName)
+                    .normalize();
+            
+            if (!filePath.startsWith(this.fileStorageLocation.resolve("contracts").normalize())) {
+                throw new FileStorageException("Invalid file path: " + fileName);
+            }
+            
+            Resource resource = new UrlResource(filePath.toUri());
+            if (resource.exists()) {
+                return resource;
+            } else {
+                throw new com.QhomeBase.datadocsservice.exception.FileNotFoundException("File not found: " + fileName);
+            }
+        } catch (MalformedURLException ex) {
+            throw new com.QhomeBase.datadocsservice.exception.FileNotFoundException("File not found: " + fileName, ex);
+        }
+    }
+
+    public void deleteContractFile(UUID contractId, String fileName) {
+        try {
+            Path filePath = this.fileStorageLocation
+                    .resolve("contracts")
+                    .resolve(contractId.toString())
+                    .resolve(fileName)
+                    .normalize();
+            
+            if (!filePath.startsWith(this.fileStorageLocation.resolve("contracts").normalize())) {
+                throw new FileStorageException("Invalid file path: " + fileName);
+            }
+            
+            Files.deleteIfExists(filePath);
+            log.info("Contract file deleted successfully: {} for contract: {}", fileName, contractId);
+        } catch (IOException ex) {
+            log.error("Could not delete contract file: {}", fileName, ex);
+            throw new FileStorageException("Could not delete file: " + fileName, ex);
+        }
+    }
+
+    private void validateContractFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new FileStorageException("File is empty or not provided. Please select a valid file (PDF, JPEG, PNG, HEIC) to upload.");
+        }
+        
+        if (file.getSize() > MAX_CONTRACT_FILE_SIZE) {
+            throw new FileStorageException("File size exceeds maximum limit of 20MB");
+        }
+        
+        String contentType = file.getContentType();
+        if (contentType == null || !ALLOWED_CONTRACT_TYPES.contains(contentType.toLowerCase())) {
+            throw new FileStorageException(
+                    "Invalid file type. Only PDF, JPEG, PNG, HEIC files are allowed.");
+        }
+        
+        String fileName = file.getOriginalFilename();
+        if (fileName != null && fileName.contains("..")) {
+            throw new FileStorageException("Sorry! Filename contains invalid path sequence: " + fileName);
+        }
     }
 }
 
