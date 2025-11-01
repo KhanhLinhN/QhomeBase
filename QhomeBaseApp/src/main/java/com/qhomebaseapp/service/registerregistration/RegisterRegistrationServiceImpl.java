@@ -11,6 +11,7 @@ import com.qhomebaseapp.repository.UserRepository;
 import com.qhomebaseapp.repository.registerregistration.RegisterRegistrationRepository;
 import com.qhomebaseapp.config.VnpayProperties;
 import com.qhomebaseapp.service.vnpay.VnpayService;
+import com.qhomebaseapp.service.user.EmailService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,8 +26,11 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.text.NumberFormat;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 @Service
@@ -40,6 +44,7 @@ public class RegisterRegistrationServiceImpl implements RegisterRegistrationServ
     private final RegisterServiceRequestResponseMapper registerServiceRequestResponseMapper;
     private final VnpayService vnpayService;
     private final VnpayProperties vnpayProperties;
+    private final EmailService emailService;
     private static final java.math.BigDecimal REGISTRATION_FEE = new java.math.BigDecimal("30000"); // 30,000 VNĐ
 
     @Override
@@ -321,6 +326,40 @@ public class RegisterRegistrationServiceImpl implements RegisterRegistrationServ
             log.info("✅ [RegisterService] Verified Payment details - Status: {}, PaymentStatus: {}, Date: {}, Gateway: {}, TxnRef: {}", 
                     verified.getStatus(), verified.getPaymentStatus(), verified.getPaymentDate(), 
                     verified.getPaymentGateway(), verified.getVnpayTransactionRef());
+            
+            // Gửi email thông báo thanh toán thành công
+            try {
+                User user = registration.getUser();
+                if (user != null && user.getEmail() != null) {
+                    String emailSubject = "Thanh toán thành công - Đăng ký thẻ xe";
+                    String paymentDateStr = paymentDateNow.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
+                    NumberFormat currencyFormat = NumberFormat.getNumberInstance(new Locale("vi", "VN"));
+                    String amountStr = currencyFormat.format(REGISTRATION_FEE) + " VNĐ";
+                    
+                    String emailBody = String.format(
+                        "Xin chào %s,\n\n" +
+                        "Thanh toán đăng ký thẻ xe của bạn đã được xử lý thành công!\n\n" +
+                        "Thông tin thanh toán:\n" +
+                        "- Tổng số tiền: %s\n" +
+                        "- Ngày giờ thanh toán: %s\n" +
+                        "- Phương thức thanh toán: VNPAY\n" +
+                        "- Mã giao dịch: %s\n\n" +
+                        "Cảm ơn bạn đã sử dụng dịch vụ của chúng tôi!\n\n" +
+                        "Trân trọng,\n" +
+                        "Hệ thống QHomeBase",
+                        user.getEmail().split("@")[0], // Tên user từ email
+                        amountStr,
+                        paymentDateStr,
+                        txnRef != null ? txnRef : "N/A"
+                    );
+                    
+                    emailService.sendEmail(user.getEmail(), emailSubject, emailBody);
+                    log.info("✅ [RegisterService] Đã gửi email thông báo thanh toán thành công cho user: {}", user.getEmail());
+                }
+            } catch (Exception e) {
+                log.error("❌ [RegisterService] Lỗi khi gửi email thông báo thanh toán: {}", e.getMessage(), e);
+                // Không throw exception để không ảnh hưởng đến flow thanh toán
+            }
         } else {
             // Trường hợp 2: Thanh toán thất bại - giữ lại registration với payment_status UNPAID
             registration.setPaymentStatus("UNPAID");

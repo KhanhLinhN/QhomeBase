@@ -12,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
@@ -212,7 +214,18 @@ public class InvoiceController {
             log.info("[VNPAY RETURN] ↩️ ResponseCode={}, TransactionStatus={}", responseCode, transactionStatus);
 
             if (valid && "00".equals(responseCode) && "00".equals(transactionStatus)) {
-                invoiceService.handleVnpayCallback(invoiceId, params);
+                // Lấy user email từ authentication (nếu có)
+                String userEmail = null;
+                try {
+                    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                    if (auth != null && auth.getPrincipal() instanceof UserDetails userDetails) {
+                        userEmail = userDetails.getUsername(); // Email là username
+                    }
+                } catch (Exception e) {
+                    log.warn("[VNPAY RETURN] Không thể lấy user email từ authentication: {}", e.getMessage());
+                }
+                
+                invoiceService.handleVnpayCallback(invoiceId, params, userEmail);
                 log.info("[VNPAY RETURN] ✅ Invoice {} đã được cập nhật sang PAID", invoiceId);
 
                 return ResponseEntity.ok(Map.of(

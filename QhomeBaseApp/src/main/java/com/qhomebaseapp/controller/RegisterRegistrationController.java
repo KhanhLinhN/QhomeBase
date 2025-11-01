@@ -263,7 +263,7 @@ public class RegisterRegistrationController {
         log.info("[VNPAY REDIRECT] 🔁 Người dùng được redirect về với params: {}", params);
 
         // Xử lý callback trước (giống InvoiceController)
-        ResponseEntity<?> result = handleVnpayReturn(request);
+        handleVnpayReturn(request);
 
         String txnRef = params.getOrDefault("vnp_TxnRef", "");
         Long registrationId = 0L;
@@ -276,11 +276,42 @@ public class RegisterRegistrationController {
         }
 
         String responseCode = params.getOrDefault("vnp_ResponseCode", "99");
-        String redirectUrl = "qhomeapp://vnpay-registration-result?registrationId=" + registrationId + "&responseCode=" + responseCode;
-        log.info("[VNPAY REDIRECT] 🔁 Điều hướng người dùng về app URL: {}", redirectUrl);
+        String deepLinkUrl = "qhomeapp://vnpay-registration-result?registrationId=" + registrationId + "&responseCode=" + responseCode;
+        log.info("[VNPAY REDIRECT] 🔁 Tạo deep link để mở app: {}", deepLinkUrl);
 
-        response.sendRedirect(redirectUrl);
-        return result;
+        // Tạo HTML page với auto-redirect để bypass ngrok warning và tự động mở app
+        String html = "<!DOCTYPE html>\n" +
+                "<html>\n" +
+                "<head>\n" +
+                "    <meta charset=\"UTF-8\">\n" +
+                "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
+                "    <title>Đang chuyển hướng...</title>\n" +
+                "    <meta http-equiv=\"refresh\" content=\"0;url=" + deepLinkUrl + "\">\n" +
+                "    <script>\n" +
+                "        // Auto redirect ngay lập tức\n" +
+                "        window.location.href = \"" + deepLinkUrl + "\";\n" +
+                "        // Fallback nếu app không mở được, hiển thị thông báo\n" +
+                "        setTimeout(function() {\n" +
+                "            document.body.innerHTML = '<div style=\"text-align:center;padding:50px;font-family:Arial;\"><h2>Thanh toán thành công!</h2><p>Đang chuyển hướng về ứng dụng...</p><p>Nếu ứng dụng không tự động mở, vui lòng quay lại ứng dụng thủ công.</p></div>';\n" +
+                "        }, 3000);\n" +
+                "    </script>\n" +
+                "</head>\n" +
+                "<body style=\"margin:0;padding:0;background:#f5f5f5;\">\n" +
+                "    <div style=\"text-align:center;padding:50px;font-family:Arial;\">\n" +
+                "        <h2>Thanh toán thành công!</h2>\n" +
+                "        <p>Đang chuyển hướng về ứng dụng...</p>\n" +
+                "    </div>\n" +
+                "</body>\n" +
+                "</html>";
+
+        // Set headers để bypass ngrok warning
+        response.setHeader("ngrok-skip-browser-warning", "true");
+        response.setContentType("text/html;charset=UTF-8");
+        response.getWriter().write(html);
+        response.getWriter().flush();
+        
+        log.info("[VNPAY REDIRECT] ✅ Đã trả về HTML page với auto-redirect");
+        return null; // Không cần return ResponseEntity nữa vì đã write HTML trực tiếp
     }
 
     /**

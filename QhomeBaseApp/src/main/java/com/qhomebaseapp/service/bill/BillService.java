@@ -6,6 +6,7 @@ import com.qhomebaseapp.model.User;
 import com.qhomebaseapp.repository.bill.BillRepository;
 import com.qhomebaseapp.repository.UserRepository;
 import com.qhomebaseapp.service.vnpay.VnpayService;
+import com.qhomebaseapp.service.user.EmailService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.xml.bind.DatatypeConverter;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +20,9 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.text.NumberFormat;
 import java.util.*;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -31,6 +34,7 @@ public class BillService {
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final VnpayService vnpayService;
+    private final EmailService emailService;
 
     public List<Bill> getUnpaidBillsByUserId(Long userId) {
         User user = userRepository.findById(userId)
@@ -198,6 +202,47 @@ public class BillService {
                 }
             }
             billRepository.save(bill);
+            
+            // Gửi email thông báo thanh toán thành công
+            try {
+                User user = bill.getUser();
+                if (user != null && user.getEmail() != null) {
+                    String emailSubject = "Thanh toán thành công - Hóa đơn #" + bill.getId();
+                    LocalDateTime paymentDateTime = bill.getPaymentDate() != null ? bill.getPaymentDate() : LocalDateTime.now();
+                    String paymentDateStr = paymentDateTime.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
+                    NumberFormat currencyFormat = NumberFormat.getNumberInstance(new Locale("vi", "VN"));
+                    String amountStr = currencyFormat.format(bill.getAmount()) + " VNĐ";
+                    String paymentMethod = bill.getPaymentGateway() != null ? bill.getPaymentGateway() : "VNPAY";
+                    
+                    String emailBody = String.format(
+                        "Xin chào %s,\n\n" +
+                        "Thanh toán hóa đơn của bạn đã được xử lý thành công!\n\n" +
+                        "Thông tin thanh toán:\n" +
+                        "- Mã hóa đơn: #%s\n" +
+                        "- Loại hóa đơn: %s\n" +
+                        "- Tổng số tiền: %s\n" +
+                        "- Ngày giờ thanh toán: %s\n" +
+                        "- Phương thức thanh toán: %s\n" +
+                        "%s\n\n" +
+                        "Cảm ơn bạn đã sử dụng dịch vụ của chúng tôi!\n\n" +
+                        "Trân trọng,\n" +
+                        "Hệ thống QHomeBase",
+                        user.getEmail().split("@")[0], // Tên user từ email
+                        bill.getId(),
+                        bill.getBillType() != null ? bill.getBillType() : "N/A",
+                        amountStr,
+                        paymentDateStr,
+                        paymentMethod,
+                        bill.getVnpTransactionNo() != null ? "- Mã giao dịch: " + bill.getVnpTransactionNo() : ""
+                    );
+                    
+                    emailService.sendEmail(user.getEmail(), emailSubject, emailBody);
+                    log.info("✅ [BillService] Đã gửi email thông báo thanh toán thành công cho user: {}", user.getEmail());
+                }
+            } catch (Exception e) {
+                log.error("❌ [BillService] Lỗi khi gửi email thông báo thanh toán: {}", e.getMessage(), e);
+                // Không throw exception để không ảnh hưởng đến flow thanh toán
+            }
         }
     }
 }

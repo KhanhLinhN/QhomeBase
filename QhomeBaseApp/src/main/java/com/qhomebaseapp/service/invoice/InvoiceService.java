@@ -5,6 +5,7 @@ import com.qhomebaseapp.dto.invoice.InvoiceLineDto;
 import com.qhomebaseapp.dto.invoice.InvoiceLineResponseDto;
 import com.qhomebaseapp.dto.invoice.UpdateInvoiceStatusRequest;
 import com.qhomebaseapp.service.vnpay.VnpayService;
+import com.qhomebaseapp.service.user.EmailService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,9 +19,13 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
+import java.text.NumberFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -31,6 +36,7 @@ public class InvoiceService {
 
     private final RestTemplate restTemplate;
     private final VnpayService vnpayService;
+    private final EmailService emailService;
 
     @Value("${admin.api.base-url}")
     private String adminApiBaseUrl;
@@ -261,7 +267,7 @@ public class InvoiceService {
     /**
      * Xử lý VNPAY callback và cập nhật invoice status thành PAID
      */
-    public void handleVnpayCallback(String invoiceId, Map<String, String> vnpParams) {
+    public void handleVnpayCallback(String invoiceId, Map<String, String> vnpParams, String userEmail) {
         try {
             // Validate VNPAY response
             boolean valid = vnpayService.validateReturn(new HashMap<>(vnpParams));
@@ -276,6 +282,56 @@ public class InvoiceService {
                 // Cập nhật status thành PAID
                 updateInvoiceStatus(invoiceId, "PAID");
                 log.info("✅ [InvoiceService] Đã cập nhật invoice {} sang PAID sau khi thanh toán VNPAY", invoiceId);
+                
+                // Gửi email thông báo thanh toán thành công
+                try {
+                    if (userEmail != null && !userEmail.isBlank()) {
+                        // Lấy thông tin invoice để tính tổng tiền
+                        InvoiceDto invoice = getInvoiceById(invoiceId);
+                        BigDecimal totalAmount = BigDecimal.ZERO;
+                        if (invoice.getLines() != null) {
+                            for (InvoiceLineDto line : invoice.getLines()) {
+                                if (line.getLineTotal() != null) {
+                                    totalAmount = totalAmount.add(line.getLineTotal());
+                                }
+                            }
+                        }
+                        
+                        String emailSubject = "Thanh toán thành công - Hóa đơn #" + invoice.getCode();
+                        LocalDateTime paymentDateTime = LocalDateTime.now();
+                        String paymentDateStr = paymentDateTime.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
+                        NumberFormat currencyFormat = NumberFormat.getNumberInstance(new Locale("vi", "VN"));
+                        String amountStr = currencyFormat.format(totalAmount) + " VNĐ";
+                        String paymentMethod = "VNPAY";
+                        String txnRef = vnpParams.get("vnp_TxnRef");
+                        
+                        String emailBody = String.format(
+                            "Xin chào %s,\n\n" +
+                            "Thanh toán hóa đơn của bạn đã được xử lý thành công!\n\n" +
+                            "Thông tin thanh toán:\n" +
+                            "- Mã hóa đơn: %s\n" +
+                            "- Tổng số tiền: %s\n" +
+                            "- Ngày giờ thanh toán: %s\n" +
+                            "- Phương thức thanh toán: %s\n" +
+                            "%s\n\n" +
+                            "Cảm ơn bạn đã sử dụng dịch vụ của chúng tôi!\n\n" +
+                            "Trân trọng,\n" +
+                            "Hệ thống QHomeBase",
+                            userEmail.split("@")[0], // Tên user từ email
+                            invoice.getCode() != null ? invoice.getCode() : invoiceId,
+                            amountStr,
+                            paymentDateStr,
+                            paymentMethod,
+                            txnRef != null ? "- Mã giao dịch: " + txnRef : ""
+                        );
+                        
+                        emailService.sendEmail(userEmail, emailSubject, emailBody);
+                        log.info("✅ [InvoiceService] Đã gửi email thông báo thanh toán thành công cho user: {}", userEmail);
+                    }
+                } catch (Exception e) {
+                    log.error("❌ [InvoiceService] Lỗi khi gửi email thông báo thanh toán: {}", e.getMessage(), e);
+                    // Không throw exception để không ảnh hưởng đến flow thanh toán
+                }
             } else {
                 throw new RuntimeException("Thanh toán thất bại hoặc chữ ký không hợp lệ");
             }
