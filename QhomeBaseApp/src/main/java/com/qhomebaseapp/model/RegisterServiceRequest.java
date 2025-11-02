@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "register_service_request", schema = "qhomebaseapp")
+@Table(name = "register_vehicle", schema = "qhomebaseapp")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

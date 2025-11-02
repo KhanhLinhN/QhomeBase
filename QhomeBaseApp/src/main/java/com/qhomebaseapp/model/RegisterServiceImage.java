@@ -6,7 +6,7 @@ import lombok.*;
 import java.time.OffsetDateTime;
 
 @Entity
-@Table(name = "register_service_image", schema = "qhomebaseapp")
+@Table(name = "register_vehicle_image", schema = "qhomebaseapp")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -18,7 +18,7 @@ public class RegisterServiceImage {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "register_request_id", nullable = false)
+    @JoinColumn(name = "register_vehicle_id", nullable = false)
     private RegisterServiceRequest registerServiceRequest;
 
     @Column(name = "image_url", nullable = false)

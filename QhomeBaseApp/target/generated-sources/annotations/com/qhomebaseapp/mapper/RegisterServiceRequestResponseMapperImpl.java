@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
 
 @Generated(
     value = "org.mapstruct.ap.MappingProcessor",
-    date = "2025-11-02T10:38:38+0700",
-    comments = "version: 1.5.5.Final, compiler: Eclipse JDT (IDE) 3.44.0.v20251023-0518, environment: Java 21.0.8 (Eclipse Adoptium)"
+    date = "2025-11-02T16:46:46+0700",
+    comments = "version: 1.5.5.Final, compiler: javac, environment: Java 17.0.11 (Oracle Corporation)"
 )
 @Component
 public class RegisterServiceRequestResponseMapperImpl implements RegisterServiceRequestResponseMapper {
@@ -24,20 +24,20 @@ public class RegisterServiceRequestResponseMapperImpl implements RegisterService
 
         registerServiceRequestResponseDto.userId( entityUserId( entity ) );
         registerServiceRequestResponseDto.userEmail( entityUserEmail( entity ) );
-        registerServiceRequestResponseDto.createdAt( entity.getCreatedAt() );
         registerServiceRequestResponseDto.id( entity.getId() );
-        registerServiceRequestResponseDto.licensePlate( entity.getLicensePlate() );
+        registerServiceRequestResponseDto.serviceType( entity.getServiceType() );
         registerServiceRequestResponseDto.note( entity.getNote() );
+        registerServiceRequestResponseDto.status( entity.getStatus() );
+        registerServiceRequestResponseDto.paymentStatus( entity.getPaymentStatus() );
+        registerServiceRequestResponseDto.createdAt( entity.getCreatedAt() );
+        registerServiceRequestResponseDto.updatedAt( entity.getUpdatedAt() );
         registerServiceRequestResponseDto.paymentDate( entity.getPaymentDate() );
         registerServiceRequestResponseDto.paymentGateway( entity.getPaymentGateway() );
-        registerServiceRequestResponseDto.paymentStatus( entity.getPaymentStatus() );
-        registerServiceRequestResponseDto.serviceType( entity.getServiceType() );
-        registerServiceRequestResponseDto.status( entity.getStatus() );
-        registerServiceRequestResponseDto.updatedAt( entity.getUpdatedAt() );
+        registerServiceRequestResponseDto.vnpayTransactionRef( entity.getVnpayTransactionRef() );
+        registerServiceRequestResponseDto.vehicleType( entity.getVehicleType() );
+        registerServiceRequestResponseDto.licensePlate( entity.getLicensePlate() );
         registerServiceRequestResponseDto.vehicleBrand( entity.getVehicleBrand() );
         registerServiceRequestResponseDto.vehicleColor( entity.getVehicleColor() );
-        registerServiceRequestResponseDto.vehicleType( entity.getVehicleType() );
-        registerServiceRequestResponseDto.vnpayTransactionRef( entity.getVnpayTransactionRef() );
 
         registerServiceRequestResponseDto.imageUrls( mapImages(entity) );
 

@@ -70,7 +70,8 @@ public class SecurityConfig {
                                     "/api/invoices/*/vnpay-url",
                                     "/api/register-service/vnpay/return",
                                     "/api/register-service/vnpay/redirect",
-                                    "/api/register-service/*/vnpay-url"
+                                    "/api/register-service/*/vnpay-url",
+                                    "/api/service-booking/vnpay/redirect"
                         ).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
