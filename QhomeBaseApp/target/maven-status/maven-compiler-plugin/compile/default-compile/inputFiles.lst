@@ -3,11 +3,14 @@ D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\config\VnpayProp
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\mapper\PostMapper.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\bill\BillRepositoryCustom.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\controller\PostController.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\model\RegisterVehicleRequest.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\config\JacksonConfig.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\mapper\NewsMapper.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\mapper\RegisterVehicleMapper.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\registerregistration\RegisterRegistrationService.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\token\RefreshTokenService.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\news\NewsAttachmentDto.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\registervehicle\RegisterVehicleRepoImpl.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\model\PostComment.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\model\VnpayProps.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\model\NewsCategory.java
@@ -21,6 +24,7 @@ D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\invoice\Invo
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\user\EmailService.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\config\SecurityConfig.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\post\PostLikeRepository.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\registervehicle\RegisterVehicleResponseDto.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\invoice\InvoiceLineResponseDto.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\token\RefreshTokenServiceImpl.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\invoice\InvoiceDto.java
@@ -29,6 +33,7 @@ D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\bill\
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\event\BillEvent.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\post\CommentDto.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\post\PostService.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\mapper\RegisterVehicleResponseMapper.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\controller\UserController.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\QhomeApplication.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\news\NewsReadRepository.java
@@ -42,8 +47,11 @@ D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\token\JwtRes
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\registerregistration\RegisterRegistrationRepository.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\controller\NewsController.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\post\PostCommentRepository.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\registervehicle\RegisterVehicleImageRepository.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\invoice\UpdateInvoiceStatusRequest.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\registervehicle\RegisterVehicleRequestDto.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\security\CustomUserDetails.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\registervehicle\RegisterVehicleRepository.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\user\ResetPasswordRequest.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\config\WebConfig.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\bill\BillDto.java
@@ -75,6 +83,7 @@ D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\util\JwtKeyServi
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\mapper\RegisterServiceRequestMapper.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\user\UpdateProfileRequest.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\model\User.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\model\RegisterVehicleImage.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\config\WebSocketClientConfig.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\news\WebSocketNewsMessage.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\controller\AuthController.java
