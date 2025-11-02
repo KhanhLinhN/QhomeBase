@@ -63,3 +63,5 @@ COMMENT ON COLUMN content.notifications.type IS 'Loại thông báo: NEWS, REQUE
 COMMENT ON COLUMN content.notifications.scope IS 'Phạm vi: INTERNAL (nội bộ - staff), EXTERNAL (bên ngoài - residents)';
 COMMENT ON COLUMN content.notifications.target_role IS 'Role nhận thông báo (INTERNAL only): ALL, admin, technician, supporter, accountant';
 COMMENT ON COLUMN content.notifications.target_building_id IS 'Building ID nhận thông báo (EXTERNAL only): NULL = ALL buildings, UUID = building cụ thể';
+
+

@@ -37,3 +37,7 @@ DROP INDEX IF EXISTS iam.ix_role_assignment_audit_tenant;
 COMMENT ON TABLE iam.user_roles IS 'User base roles - no longer uses tenant-based roles';
 COMMENT ON TABLE iam.role_permissions IS 'Base role permissions - applies globally, not per tenant';
 
+
+
+
+

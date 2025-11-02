@@ -46,12 +46,3 @@ public enum UserRole {
         return this.name().toLowerCase();
     }
 }
-    
-    public boolean isUnitOwner() {
-        return this == UNIT_OWNER;
-    }
-    
-    public String getRoleName() {
-        return this.name().toLowerCase();
-    }
-}

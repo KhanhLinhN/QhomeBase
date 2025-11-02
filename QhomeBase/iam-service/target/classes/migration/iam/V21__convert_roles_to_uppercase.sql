@@ -193,3 +193,7 @@ WHERE role NOT IN ('ADMIN', 'ACCOUNTANT', 'TECHNICIAN', 'SUPPORTER', 'RESIDENT',
 COMMENT ON COLUMN iam.user_roles.role IS 'Base role name (must match UserRole enum name exactly: ADMIN, ACCOUNTANT, TECHNICIAN, SUPPORTER, RESIDENT, UNIT_OWNER)';
 COMMENT ON COLUMN iam.role_permissions.role IS 'Base role name (must match UserRole enum name exactly: ADMIN, ACCOUNTANT, TECHNICIAN, SUPPORTER, RESIDENT, UNIT_OWNER)';
 
+
+
+
+

@@ -20,3 +20,7 @@ DROP INDEX IF EXISTS content.uq_news_views_resident;
 DROP TABLE IF EXISTS content.news_views CASCADE;
 
 
+
+
+
+

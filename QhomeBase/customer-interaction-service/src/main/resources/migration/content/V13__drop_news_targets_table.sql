@@ -28,3 +28,5 @@ BEGIN
 END$$;
 
 COMMENT ON TABLE content.news IS 'Table uses scope/targetRole/targetBuildingId instead of news_targets table';
+
+
