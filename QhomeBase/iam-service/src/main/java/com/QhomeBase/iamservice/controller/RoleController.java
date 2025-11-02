@@ -2,7 +2,6 @@ package com.QhomeBase.iamservice.controller;
 
 import com.QhomeBase.iamservice.model.UserRole;
 import com.QhomeBase.iamservice.model.Permission;
-import com.QhomeBase.iamservice.repository.UserTenantRoleRepository;
 import com.QhomeBase.iamservice.service.PermissionService;
 import com.QhomeBase.iamservice.service.RoleService;
 import com.QhomeBase.iamservice.service.RolePermissionService;
@@ -13,14 +12,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/roles")
 @RequiredArgsConstructor
 public class RoleController {
 
-    private final UserTenantRoleRepository userTenantRoleRepository;
     private final PermissionService permissionService;
     private final RoleService roleService;
     private final RolePermissionService rolePermissionService;
@@ -28,8 +25,6 @@ public class RoleController {
     @GetMapping("/all")
     @PreAuthorize("@authz.canViewAllRoles()")
     public ResponseEntity<List<UserRole>> getAllRoles() {
-
-        System.out.println("hi");
         return ResponseEntity.ok(roleService.getAllRoles());
     }
 
@@ -37,51 +32,6 @@ public class RoleController {
     @PreAuthorize("@authz.canViewAllPermissions()")
     public ResponseEntity<List<Permission>> getAllPermissions() {
         return ResponseEntity.ok(permissionService.getAllPermissions());
-    }
-
-    @GetMapping("/tenant/{tenantId}/users")
-    @PreAuthorize("@authz.canViewTenantRoles(#tenantId)")
-    public ResponseEntity<List<UUID>> getUsersInTenant(@PathVariable UUID tenantId) {
-        List<UUID> userIds = userTenantRoleRepository.findUserIdsByTenantId(tenantId);
-        return ResponseEntity.ok(userIds);
-    }
-
-    @GetMapping("/tenant/{tenantId}/role/{role}/users")
-    @PreAuthorize("@authz.canViewTenantRoles(#tenantId)")
-    public ResponseEntity<List<UUID>> getUsersByRoleInTenant(
-            @PathVariable UUID tenantId,
-            @PathVariable String role) {
-        try {
-            UserRole userRole = UserRole.valueOf(role.toUpperCase());
-            List<UUID> userIds = userTenantRoleRepository.findUserIdsByTenantIdAndRole(tenantId, userRole.name().toLowerCase());
-            return ResponseEntity.ok(userIds);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
-    @GetMapping("/user/{userId}/tenant/{tenantId}")
-    public ResponseEntity<List<String>> getUserRolesInTenant(
-            @PathVariable UUID userId,
-            @PathVariable UUID tenantId) {
-        List<String> roles = userTenantRoleRepository.findRolesInTenant(userId, tenantId);
-        return ResponseEntity.ok(roles);
-    }
-
-    @PostMapping("/user/{userId}/tenant/{tenantId}/assign")
-    public ResponseEntity<Void> assignRoleToUser(
-            @PathVariable UUID userId,
-            @PathVariable UUID tenantId,
-            @RequestParam String role) {
-        return ResponseEntity.status(501).build();
-    }
-
-    @DeleteMapping("/user/{userId}/tenant/{tenantId}/remove")
-    public ResponseEntity<Void> removeRoleFromUser(
-            @PathVariable UUID userId,
-            @PathVariable UUID tenantId,
-            @RequestParam String role) {
-        return ResponseEntity.status(501).build();
     }
 
     @GetMapping("/permissions/base-service")
@@ -120,10 +70,10 @@ public class RoleController {
         }
     }
 
-    @GetMapping("/permissions/account")
-    @PreAuthorize("@authz.canViewRolePermissions('account')")
-    public ResponseEntity<List<Permission>> getAccountPermissions() {
-        return ResponseEntity.ok(roleService.getAccountPermissions());
+    @GetMapping("/permissions/accountant")
+    @PreAuthorize("@authz.canViewRolePermissions('accountant')")
+    public ResponseEntity<List<Permission>> getAccountantPermissions() {
+        return ResponseEntity.ok(roleService.getAccountantPermissions());
     }
 
     @GetMapping("/permissions/admin")
@@ -132,10 +82,10 @@ public class RoleController {
         return ResponseEntity.ok(roleService.getAdminPermissions());
     }
 
-    @GetMapping("/permissions/tenant-owner")
-    @PreAuthorize("@authz.canViewRolePermissions('tenant_owner')")
-    public ResponseEntity<List<Permission>> getTenantOwnerPermissions() {
-        return ResponseEntity.ok(roleService.getTenantOwnerPermissions());
+    @GetMapping("/permissions/unit-owner")
+    @PreAuthorize("@authz.canViewRolePermissions('unit_owner')")
+    public ResponseEntity<List<Permission>> getUnitOwnerPermissions() {
+        return ResponseEntity.ok(roleService.getPermissionsByRole(UserRole.UNIT_OWNER));
     }
 
     @GetMapping("/permissions/technician")

@@ -3,15 +3,12 @@ package com.QhomeBase.iamservice.service;
 import com.QhomeBase.iamservice.dto.EmployeeDto;
 import com.QhomeBase.iamservice.dto.EmployeePermissionStatus;
 import com.QhomeBase.iamservice.model.User;
+import com.QhomeBase.iamservice.model.UserRole;
+import com.QhomeBase.iamservice.repository.RolePermissionRepository;
 import com.QhomeBase.iamservice.repository.UserRepository;
-import com.QhomeBase.iamservice.repository.UserTenantRoleRepository;
-import com.QhomeBase.iamservice.repository.UserTenantGrantRepository;
-import com.QhomeBase.iamservice.repository.UserTenantDenyRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -21,87 +18,59 @@ import java.util.stream.Collectors;
 public class EmployeeManagementService {
 
     private final UserRepository userRepository;
-    private final UserTenantRoleRepository userTenantRoleRepository;
-    private final UserTenantGrantRepository userTenantGrantRepository;
-    private final UserTenantDenyRepository userTenantDenyRepository;
+    private final RolePermissionRepository rolePermissionRepository;
 
-    public List<EmployeeDto> getEmployeesInTenant(UUID tenantId) {
-        List<UUID> userIds = userTenantRoleRepository.findUserIdsByTenantId(tenantId);
-        return userRepository.findAllById(userIds)
-                .stream()
-                .map(user -> mapToEmployeeDto(user, tenantId))
-                .collect(Collectors.toList());
-    }
-
-    public EmployeeDto getEmployeeDetails(UUID userId, UUID tenantId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
-        
-        List<UUID> userTenants = userTenantRoleRepository.findTenantIdsByUserId(userId);
-        if (!userTenants.contains(tenantId)) {
-            throw new IllegalArgumentException("User does not belong to this tenant");
-        }
-        
-        return mapToEmployeeDto(user, tenantId);
-    }
-
-    @Transactional
-    public EmployeeDto assignEmployeeToTenant(UUID userId, UUID tenantId, String assignedBy) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
-        
-        List<UUID> userTenants = userTenantRoleRepository.findTenantIdsByUserId(userId);
-        if (userTenants.contains(tenantId)) {
-            throw new IllegalArgumentException("User is already assigned to this tenant");
-        }
-        
-        userTenantRoleRepository.assignUserToTenant(userId, tenantId, java.time.Instant.now(), assignedBy != null ? assignedBy : "System");
-        return mapToEmployeeDto(user, tenantId);
-    }
-
-    @Transactional
-    public void removeEmployeeFromTenant(UUID userId, UUID tenantId) {
-        userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
-        
-        List<UUID> userTenants = userTenantRoleRepository.findTenantIdsByUserId(userId);
-        if (!userTenants.contains(tenantId)) {
-            throw new IllegalArgumentException("User does not belong to this tenant");
-        }
-        
-        userTenantRoleRepository.removeUserFromTenant(userId, tenantId);
-    }
-
-    public List<EmployeeDto> getAvailableEmployees() {
-        List<UUID> assignedUserIds = userTenantRoleRepository.findAllAssignedUserIds();
+    public List<EmployeeDto> getAllEmployees() {
         return userRepository.findAll()
                 .stream()
-                .filter(user -> !assignedUserIds.contains(user.getId()))
-                .map(user -> mapToEmployeeDto(user, null))
+                .map(this::mapToEmployeeDto)
                 .collect(Collectors.toList());
     }
 
-    public long countEmployeesInTenant(UUID tenantId) {
-        return userTenantRoleRepository.countUsersInTenant(tenantId);
+    public EmployeeDto getEmployeeDetails(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        
+        return mapToEmployeeDto(user);
     }
 
-    private EmployeeDto mapToEmployeeDto(User user, UUID tenantId) {
-        List<String> globalRoles = userTenantRoleRepository.findGlobalRolesByUserId(user.getId());
-        String roleInfo = globalRoles.isEmpty() ? "No roles" : String.join(", ", globalRoles);
+    public List<EmployeeDto> getEmployeesByRole(String roleName) {
+        try {
+            UserRole role = UserRole.valueOf(roleName.toUpperCase());
+            return userRepository.findAll()
+                    .stream()
+                    .filter(user -> user.hasRole(role))
+                    .map(this::mapToEmployeeDto)
+                    .collect(Collectors.toList());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid role: " + roleName);
+        }
+    }
+
+    public List<EmployeeDto> getActiveEmployees() {
+        return userRepository.findAll()
+                .stream()
+                .filter(User::isActive)
+                .map(this::mapToEmployeeDto)
+                .collect(Collectors.toList());
+    }
+
+    public long countEmployees() {
+        return userRepository.count();
+    }
+
+    private EmployeeDto mapToEmployeeDto(User user) {
+        List<UserRole> userRoles = user.getRoles();
+        String roleInfo = userRoles != null && !userRoles.isEmpty() 
+                ? userRoles.stream()
+                    .map(UserRole::getRoleName)
+                    .collect(Collectors.joining(", "))
+                : "No roles";
         
         EmployeePermissionStatus permissionStatus = EmployeePermissionStatus.STANDARD;
         int grantedOverrides = 0;
         int deniedOverrides = 0;
         boolean hasTemporaryPermissions = false;
-        Instant lastPermissionChange = null;
-        
-        if (tenantId != null) {
-            grantedOverrides = userTenantGrantRepository.countActiveGrantsByUserAndTenant(user.getId(), tenantId);
-            deniedOverrides = userTenantDenyRepository.countActiveDeniesByUserAndTenant(user.getId(), tenantId);
-            hasTemporaryPermissions = userTenantGrantRepository.countTemporaryGrantsByUserAndTenant(user.getId(), tenantId) > 0;
-            
-            permissionStatus = EmployeePermissionStatus.determineStatus(grantedOverrides, deniedOverrides, hasTemporaryPermissions);
-        }
         
         return EmployeeDto.builder()
                 .userId(user.getId())
@@ -111,17 +80,17 @@ public class EmployeeManagementService {
                 .phoneNumber(null)
                 .department(null)
                 .position(roleInfo)
-                .tenantId(tenantId)
-                .tenantName(tenantId != null ? "Building " + tenantId : null)
+                .tenantId(null)
+                .tenantName(null)
                 .isActive(user.isActive())
                 .createdAt(user.getCreatedAt() != null ? user.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant() : null)
                 .updatedAt(user.getUpdatedAt() != null ? user.getUpdatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant() : null)
                 .permissionStatus(permissionStatus)
                 .grantedOverrides(grantedOverrides)
                 .deniedOverrides(deniedOverrides)
-                .totalOverrides(grantedOverrides + deniedOverrides)
+                .totalOverrides(0)
                 .hasTemporaryPermissions(hasTemporaryPermissions)
-                .lastPermissionChange(lastPermissionChange)
+                .lastPermissionChange(null)
                 .build();
     }
 }

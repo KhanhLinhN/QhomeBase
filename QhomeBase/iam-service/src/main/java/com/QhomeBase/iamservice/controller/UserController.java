@@ -1,17 +1,20 @@
 package com.QhomeBase.iamservice.controller;
 
 import com.QhomeBase.iamservice.dto.UserInfoDto;
+import com.QhomeBase.iamservice.model.UserRole;
+import com.QhomeBase.iamservice.repository.RolePermissionRepository;
 import com.QhomeBase.iamservice.repository.UserRepository;
-import com.QhomeBase.iamservice.repository.UserRolePermissionRepository;
-import com.QhomeBase.iamservice.repository.UserTenantRoleRepository;
-import com.QhomeBase.iamservice.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/users")
@@ -19,68 +22,40 @@ import java.util.UUID;
 public class UserController {
 
     private final UserRepository userRepository;
-    private final AuthService authService;
-    private final UserRolePermissionRepository userRolePermissionRepository;
-    private final UserTenantRoleRepository userTenantRoleRepository;
+    private final RolePermissionRepository rolePermissionRepository;
 
     @GetMapping("/{userId}")
     @PreAuthorize("@authz.canViewUser(#userId)")
     public ResponseEntity<UserInfoDto> getUserInfo(@PathVariable UUID userId) {
         return userRepository.findById(userId)
                 .map(user -> {
-                    List<UUID> tenantIds = authService.getUserTenants(userId);
-                    UUID primaryTenant = tenantIds.isEmpty() ? null : tenantIds.get(0);
-                    List<String> roles = primaryTenant != null ? 
-                        authService.getUserRolesInTenant(userId, primaryTenant) : List.of();
+                    List<UserRole> userRoles = user.getRoles();
+                    List<String> roleNames = userRoles != null && !userRoles.isEmpty()
+                            ? userRoles.stream()
+                                .map(UserRole::getRoleName)
+                                .collect(Collectors.toList())
+                            : List.of();
 
-                    List<String> permissions = primaryTenant != null ? 
-                        userRolePermissionRepository.getUserRolePermissionsCodeByUserIdAndTenantId(userId, primaryTenant) : List.of();
+                    // Get permissions from all roles
+                    Set<String> permissionsSet = new HashSet<>();
+                    if (userRoles != null && !userRoles.isEmpty()) {
+                        for (UserRole role : userRoles) {
+                            List<String> rolePerms = rolePermissionRepository.findPermissionCodesByRole(role.getRoleName());
+                            permissionsSet.addAll(rolePerms);
+                        }
+                    }
+                    List<String> permissions = new ArrayList<>(permissionsSet);
 
                     UserInfoDto userInfo = new UserInfoDto(
                             user.getId().toString(),
                             user.getUsername(),
                             user.getEmail(),
-                            primaryTenant != null ? primaryTenant.toString() : null,
-                            null,
-                            roles,
+                            roleNames,
                             permissions
                     );
                     return ResponseEntity.ok(userInfo);
                 })
                 .orElse(ResponseEntity.notFound().build());
-    }
-
-    @GetMapping("/{userId}/tenants")
-    @PreAuthorize("@authz.canViewUser(#userId)")
-    public ResponseEntity<List<UUID>> getUserTenants(@PathVariable UUID userId) {
-        try {
-            List<UUID> tenants = authService.getUserTenants(userId);
-            return ResponseEntity.ok(tenants);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    @GetMapping("/{userId}/tenant/{tenantId}/roles")
-    @PreAuthorize("@authz.canViewUser(#userId)")
-    public ResponseEntity<List<String>> getUserRolesInTenant(
-            @PathVariable UUID userId,
-            @PathVariable UUID tenantId) {
-        try {
-            List<String> roles = authService.getUserRolesInTenant(userId, tenantId);
-            return ResponseEntity.ok(roles);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    @GetMapping("/{userId}/tenant/{tenantId}/validate")
-    @PreAuthorize("@authz.canViewUser(#userId)")
-    public ResponseEntity<Boolean> validateUserAccess(
-            @PathVariable UUID userId,
-            @PathVariable UUID tenantId) {
-        boolean hasAccess = authService.validateUserAccess(userId, tenantId);
-        return ResponseEntity.ok(hasAccess);
     }
 
     @GetMapping("/{userId}/status")
@@ -106,19 +81,32 @@ public class UserController {
             List<UserInfoDto> availableStaff = userRepository.findAvailableStaff()
                     .stream()
                     .map(user -> {
-                        List<String> roles = userTenantRoleRepository.findGlobalRolesByUserId(user.getId());
+                        List<UserRole> userRoles = user.getRoles();
+                        List<String> roleNames = userRoles != null && !userRoles.isEmpty()
+                                ? userRoles.stream()
+                                    .map(UserRole::getRoleName)
+                                    .collect(Collectors.toList())
+                                : List.of();
+                        
+                        // Get permissions from all roles
+                        Set<String> permissionsSet = new HashSet<>();
+                        if (userRoles != null && !userRoles.isEmpty()) {
+                            for (UserRole role : userRoles) {
+                                List<String> rolePerms = rolePermissionRepository.findPermissionCodesByRole(role.getRoleName());
+                                permissionsSet.addAll(rolePerms);
+                            }
+                        }
+                        List<String> permissions = new ArrayList<>(permissionsSet);
                         
                         return new UserInfoDto(
                                 user.getId().toString(),
                                 user.getUsername(),
                                 user.getEmail(),
-                                null,
-                                null,
-                                roles,
-                                List.of()
+                                roleNames,
+                                permissions
                         );
                     })
-                    .toList();
+                    .collect(Collectors.toList());
             return ResponseEntity.ok(availableStaff);
         } catch (Exception e) {
             return ResponseEntity.internalServerError().build();

@@ -22,3 +22,6 @@ public interface BuildingMapper {
 
 
 
+
+
+

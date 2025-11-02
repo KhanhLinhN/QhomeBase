@@ -1,7 +1,6 @@
 package com.QhomeBase.customerinteractionservice.controller;
 
 import com.QhomeBase.customerinteractionservice.dto.news.*;
-import com.QhomeBase.customerinteractionservice.security.AuthzService;
 import com.QhomeBase.customerinteractionservice.security.UserPrincipal;
 import com.QhomeBase.customerinteractionservice.service.NewsService;
 import jakarta.validation.Valid;
@@ -21,7 +20,6 @@ import java.util.UUID;
 public class NewsController {
 
     private final NewsService newsService;
-    private final AuthzService authzService;
 
     @PostMapping
     @PreAuthorize("@authz.canCreateNews()")
@@ -40,7 +38,6 @@ public class NewsController {
             @Valid @RequestBody UpdateNewsRequest request,
             Authentication authentication) {
         
-        var principal = (UserPrincipal) authentication.getPrincipal();
         NewsManagementResponse response = newsService.updateNews(newsId, request, authentication);
         return ResponseEntity.ok(response);
     }
@@ -87,23 +84,6 @@ public class NewsController {
             @RequestParam UUID residentId) {
         
         NewsDetailResponse response = newsService.getNewsForResident(newsId, residentId);
-        return ResponseEntity.ok(response);
-    }
-
-    @PostMapping("/{id}/read")
-    public ResponseEntity<MarkAsReadResponse> markAsRead(
-            @PathVariable("id") UUID newsId,
-            @RequestParam UUID residentId) {
-        
-        MarkAsReadResponse response = newsService.markAsRead(newsId, residentId);
-        return ResponseEntity.ok(response);
-    }
-
-    @GetMapping("/unread/count")
-    public ResponseEntity<UnreadCountResponse> countUnreadNews(
-            @RequestParam UUID residentId) {
-        
-        UnreadCountResponse response = newsService.countUnreadNews(residentId);
         return ResponseEntity.ok(response);
     }
 

@@ -5,16 +5,17 @@ import com.QhomeBase.iamservice.dto.LoginResponseDto;
 import com.QhomeBase.iamservice.dto.UserInfoDto;
 import com.QhomeBase.iamservice.model.Permission;
 import com.QhomeBase.iamservice.model.User;
+import com.QhomeBase.iamservice.model.UserRole;
 import com.QhomeBase.iamservice.repository.PermissionRepository;
 import com.QhomeBase.iamservice.repository.UserRepository;
-import com.QhomeBase.iamservice.repository.UserTenantRoleRepository;
-import com.QhomeBase.iamservice.repository.UserRolePermissionRepository;
+import com.QhomeBase.iamservice.repository.RolePermissionRepository;
 import com.QhomeBase.iamservice.security.JwtIssuer;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -26,10 +27,10 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtIssuer jwtIssuer;
-    private final UserTenantRoleRepository userTenantRoleRepository;
-    private final UserRolePermissionRepository userRolePermissionRepository;
+    private final RolePermissionRepository rolePermissionRepository;
     private final PermissionRepository permissionRepository;
 
+    @Transactional
     public LoginResponseDto login(LoginRequestDto loginRequestDto) {
         User user = userRepository.findByUsername(loginRequestDto.username())
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + loginRequestDto.username()));
@@ -54,101 +55,30 @@ public class AuthService {
             throw new IllegalArgumentException("User account is locked: " + user.getUsername());
         }
 
-       
-        List<String> globalRoles = userTenantRoleRepository.findGlobalRolesByUserId(user.getId());
-        boolean isGlobalAdmin = globalRoles.contains("admin");
-        log.debug("User {} has global roles: {} (isAdmin={})", user.getUsername(), globalRoles, isGlobalAdmin);
-
-        
-        if (isGlobalAdmin && loginRequestDto.tenantId() == null) {
-            log.info("Admin {} logging in with global access (no tenant)", user.getUsername());
-            
-            user.resetFailedLoginAttempts();
-            user.updateLastLogin();
-            userRepository.save(user);
-
-          
-            List<String> adminPermissions = getAllPermissions();
-            
-            String accessToken = jwtIssuer.issueForService(
-                    user.getId(),
-                    user.getUsername(),
-                    null,  
-                    globalRoles,
-                    adminPermissions,
-                    "base-service,finance-service,customer-service,iam-service"
-            );
-
-            return new LoginResponseDto(
-                    accessToken,
-                    "Bearer",
-                    3600L,
-                    java.time.Instant.now().plusSeconds(3600),
-                    new UserInfoDto(
-                            user.getId().toString(),
-                            user.getUsername(),
-                            user.getEmail(),
-                            null,  // tenantId = null
-                            null,
-                            globalRoles,
-                            adminPermissions
-                    )
-            );
+        List<UserRole> userRoles = user.getRoles();
+        if (userRoles == null || userRoles.isEmpty()) {
+            log.warn("User has no roles: {}", user.getUsername());
+            throw new IllegalArgumentException("User has no roles assigned: " + user.getUsername());
         }
 
-        // REGULAR USER OR ADMIN WITH SPECIFIC TENANT
-        List<UUID> tenantIds = userTenantRoleRepository.findTenantIdsByUserId(user.getId());
-        log.debug("User {} has access to {} tenants: {}", user.getUsername(), tenantIds.size(), tenantIds);
+        List<String> roleNames = userRoles.stream()
+                .map(UserRole::getRoleName)
+                .collect(Collectors.toList());
         
-        // Admin can access any tenant, even if not explicitly assigned
-        if (!isGlobalAdmin && tenantIds.isEmpty()) {
-            log.warn("User has no tenant access: {}", user.getUsername());
-            throw new IllegalArgumentException("User has no access to any tenant: " + user.getUsername());
-        }
-
-        UUID selectedTenantId;
-        if (isGlobalAdmin && loginRequestDto.tenantId() != null) {
-            // Admin can login to any tenant directly
-            selectedTenantId = loginRequestDto.tenantId();
-            log.info("Admin {} logging into specific tenant: {}", user.getUsername(), selectedTenantId);
-        } else {
-            selectedTenantId = validateTenantAccess(loginRequestDto.tenantId(), tenantIds);
-        }
-        
-        log.debug("Selected tenant for user {}: {} (requested: {})", user.getUsername(), selectedTenantId, loginRequestDto.tenantId());
-        
-        List<String> tenantRoles = userTenantRoleRepository.findRolesInTenant(user.getId(), selectedTenantId);
-        log.debug("User tenant-specific roles in tenant {}: {}", selectedTenantId, tenantRoles);
-
-        // Merge global + tenant roles for admin
-        Set<String> allRoles = new HashSet<>();
-        if (isGlobalAdmin) {
-            allRoles.addAll(globalRoles);
-        }
-        allRoles.addAll(tenantRoles);
-        
-        if (allRoles.isEmpty()) {
-            log.warn("User has no roles in tenant {}: {}", selectedTenantId, user.getUsername());
-            throw new IllegalArgumentException("User has no roles in the selected tenant: " + selectedTenantId);
-        }
+        log.debug("User {} has roles: {}", user.getUsername(), roleNames);
 
         user.resetFailedLoginAttempts();
         user.updateLastLogin();
         userRepository.save(user);
 
-        List<String> userPermissions;
-        if (isGlobalAdmin) {
-            // Admin gets all permissions
-            userPermissions = getAllPermissions();
-        } else {
-            userPermissions = userRolePermissionRepository.getUserRolePermissionsCodeByUserIdAndTenantId(user.getId(), selectedTenantId);
-        }
-        
+        List<String> userPermissions = getUserPermissions(userRoles);
+        log.debug("User {} has permissions: {}", user.getUsername(), userPermissions.size());
+
         String accessToken = jwtIssuer.issueForService(
                 user.getId(),
                 user.getUsername(),
-                selectedTenantId,
-                new ArrayList<>(allRoles),
+                null,
+                roleNames,
                 userPermissions,
                 "base-service,finance-service,customer-service,iam-service"
         );
@@ -162,12 +92,24 @@ public class AuthService {
                         user.getId().toString(),
                         user.getUsername(),
                         user.getEmail(),
-                        selectedTenantId != null ? selectedTenantId.toString() : null,
-                        null,
-                        new ArrayList<>(allRoles),
+                        roleNames,
                         userPermissions
                 )
         );
+    }
+
+    private List<String> getUserPermissions(List<UserRole> userRoles) {
+        if (userRoles.contains(UserRole.ADMIN)) {
+            return getAllPermissions();
+        }
+
+        Set<String> permissions = new HashSet<>();
+        for (UserRole role : userRoles) {
+            List<String> rolePerms = rolePermissionRepository.findPermissionCodesByRole(role.getRoleName());
+            permissions.addAll(rolePerms);
+        }
+        
+        return new ArrayList<>(permissions);
     }
 
     private List<String> getAllPermissions() {
@@ -182,28 +124,13 @@ public class AuthService {
         userRepository.save(user);
     }
 
-    private UUID validateTenantAccess(UUID requestedTenantId, List<UUID> userTenantIds) {
-        if (requestedTenantId != null) {
-            if (userTenantIds.contains(requestedTenantId)) {
-                return requestedTenantId;
-            } else {
-                throw new IllegalArgumentException("No access to requested tenant: " + requestedTenantId);
-            }
-        } else {
-            if (userTenantIds.size() == 1) {
-                return userTenantIds.get(0);
-            } else {
-                throw new IllegalArgumentException("Multiple tenants available, please specify tenant ID");
-            }
-        }
-    }
-
     public void logout(UUID userId) {
         userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
     }
 
-    public void refreshToken(UUID userId, UUID tenantId) {
+    @Transactional
+    public void refreshToken(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
@@ -211,44 +138,24 @@ public class AuthService {
             throw new IllegalArgumentException("User account is disabled");
         }
 
-        List<UUID> tenantIds = userTenantRoleRepository.findTenantIdsByUserId(user.getId());
-        if (!tenantIds.contains(tenantId)) {
-            throw new IllegalArgumentException("User does not have access to the specified tenant");
+        List<UserRole> userRoles = user.getRoles();
+        if (userRoles == null || userRoles.isEmpty()) {
+            throw new IllegalArgumentException("User has no roles assigned");
         }
 
-        List<String> userRoles = userTenantRoleRepository.findRolesInTenant(user.getId(), tenantId);
-        if (userRoles.isEmpty()) {
-            throw new IllegalArgumentException("User has no roles in the specified tenant");
-        }
+        List<String> roleNames = userRoles.stream()
+                .map(UserRole::getRoleName)
+                .collect(Collectors.toList());
 
-        List<String> userPermissions = userRolePermissionRepository.getUserRolePermissionsCodeByUserIdAndTenantId(user.getId(), tenantId);
+        List<String> userPermissions = getUserPermissions(userRoles);
         
         jwtIssuer.issueForService(
                 user.getId(),
                 user.getUsername(),
-                tenantId,
-                userRoles,
+                null,
+                roleNames,
                 userPermissions,
                 "base-service,finance-service,customer-service,iam-service"
         );
-    }
-
-    public List<UUID> getUserTenants(UUID userId) {
-        userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
-        
-        return userTenantRoleRepository.findTenantIdsByUserId(userId);
-    }
-
-    public List<String> getUserRolesInTenant(UUID userId, UUID tenantId) {
-        userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
-        
-        return userTenantRoleRepository.findRolesInTenant(userId, tenantId);
-    }
-
-    public boolean validateUserAccess(UUID userId, UUID tenantId) {
-        List<UUID> userTenantIds = userTenantRoleRepository.findTenantIdsByUserId(userId);
-        return userTenantIds.contains(tenantId);
     }
 }

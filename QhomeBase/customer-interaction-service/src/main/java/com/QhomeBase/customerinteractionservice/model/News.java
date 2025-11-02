@@ -72,34 +72,47 @@ public class News {
     @Column(name = "updated_by")
     private UUID updatedBy;
 
-    @OneToMany(mappedBy = "news", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Builder.Default
-    private List<NewsTarget> targets = new ArrayList<>();
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "scope", columnDefinition = "notification_scope")
+    private NotificationScope scope;
+
+    @Column(name = "target_role", length = 50)
+    private String targetRole;
+
+    @Column(name = "target_building_id")
+    private UUID targetBuildingId;
 
     @OneToMany(mappedBy = "news", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC")
     @Builder.Default
     private List<NewsImage> images = new ArrayList<>();
 
-    @OneToMany(mappedBy = "news", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Builder.Default
-    private List<NewsView> views = new ArrayList<>();
+
+    @PrePersist
+    private void validate() {
+        if (scope != null) {
+            if (scope == NotificationScope.INTERNAL) {
+                if (targetBuildingId != null) {
+                    throw new IllegalStateException("INTERNAL news cannot have target_building_id");
+                }
+                if (targetRole == null) {
+                    throw new IllegalStateException("INTERNAL news must have target_role (use 'ALL' for all roles)");
+                }
+            } else if (scope == NotificationScope.EXTERNAL) {
+                if (targetRole != null) {
+                    throw new IllegalStateException("EXTERNAL news cannot have target_role");
+                }
+            }
+        }
+    }
 
     @PreUpdate
-    public void preUpdate() {
+    private void preUpdate() {
         this.updatedAt = Instant.now();
+        validate();
     }
 
-
-    public void addTarget(NewsTarget target) {
-        targets.add(target);
-        target.setNews(this);
-    }
-
-    public void removeTarget(NewsTarget target) {
-        targets.remove(target);
-        target.setNews(null);
-    }
 
     public void addImage(NewsImage image) {
         images.add(image);

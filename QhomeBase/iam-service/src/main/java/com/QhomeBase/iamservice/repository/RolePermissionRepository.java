@@ -36,4 +36,18 @@ public interface RolePermissionRepository extends JpaRepository<RolePermission, 
         """, nativeQuery = true)
     boolean existsByRoleAndPermissionCode(@Param("role") String role, 
                                           @Param("permissionCode") String permissionCode);
+
+    @Query(value = """
+        SELECT rp.permission_code
+        FROM iam.role_permissions rp
+        WHERE rp.role = :role
+        """, nativeQuery = true)
+    List<String> findPermissionCodesByRole(@Param("role") String role);
+}
+
+        SELECT rp.permission_code
+        FROM iam.role_permissions rp
+        WHERE rp.role = :role
+        """, nativeQuery = true)
+    List<String> findPermissionCodesByRole(@Param("role") String role);
 }

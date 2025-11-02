@@ -38,19 +38,24 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 UUID uid = UUID.fromString(claims.get("uid", String.class));
                 String username = claims.getSubject();
-                UUID tenant = UUID.fromString(claims.get("tenant", String.class));
+                Object tenantClaim = claims.get("tenant");
+                UUID tenant = tenantClaim != null ? UUID.fromString(tenantClaim.toString()) : null;
                 List<String> roles = claims.get("roles", List.class);
                 List<String> perms = claims.get("perms", List.class);
 
                 var authorities = new ArrayList<SimpleGrantedAuthority>();
-                for (String role : roles) {
-                    authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                if (roles != null) {
+                    for (String role : roles) {
+                        authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                    }
                 }
-                for (String perm : perms) {
-                    authorities.add(new SimpleGrantedAuthority("PERM_" + perm));
+                if (perms != null) {
+                    for (String perm : perms) {
+                        authorities.add(new SimpleGrantedAuthority("PERM_" + perm));
+                    }
                 }
                 
-                var principal = new UserPrincipal(uid, username, tenant, roles, perms, token);
+                var principal = new UserPrincipal(uid, username, tenant, roles != null ? roles : new ArrayList<>(), perms != null ? perms : new ArrayList<>(), token);
                 var authn = new UsernamePasswordAuthenticationToken(principal, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(authn);
             }
@@ -62,6 +67,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
         
+
+        filterChain.doFilter(request, response);
+    }
+}
+
 
         filterChain.doFilter(request, response);
     }

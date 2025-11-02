@@ -10,4 +10,22 @@ public record UserPrincipal(
         List<String> roles,
         List<String> perms,
         String token
-) {}
+) {
+    public UserPrincipal {
+        if (roles == null) {
+            roles = List.of();
+        }
+        if (perms == null) {
+            perms = List.of();
+        }
+    }
+}
+
+        if (roles == null) {
+            roles = List.of();
+        }
+        if (perms == null) {
+            perms = List.of();
+        }
+    }
+}

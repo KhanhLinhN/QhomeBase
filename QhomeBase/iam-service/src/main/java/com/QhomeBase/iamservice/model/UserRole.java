@@ -1,11 +1,12 @@
 package com.QhomeBase.iamservice.model;
 
 public enum UserRole {
-    ACCOUNT("Account"),
     ADMIN("Administrator"),
-    TENANT_OWNER("Tenant Owner"),
+    ACCOUNTANT("Accountant"),
     TECHNICIAN("Technician"),
-    SUPPORTER("Supporter");
+    SUPPORTER("Supporter"),
+    RESIDENT("Resident"),
+    UNIT_OWNER("Unit Owner");
     
     private final String description;
     
@@ -21,8 +22,8 @@ public enum UserRole {
         return this == ADMIN;
     }
     
-    public boolean isTenantOwner() {
-        return this == TENANT_OWNER;
+    public boolean isAccountant() {
+        return this == ACCOUNTANT;
     }
     
     public boolean isTechnician() {
@@ -33,7 +34,24 @@ public enum UserRole {
         return this == SUPPORTER;
     }
     
-    public boolean isAccount() {
-        return this == ACCOUNT;
+    public boolean isResident() {
+        return this == RESIDENT;
+    }
+    
+    public boolean isUnitOwner() {
+        return this == UNIT_OWNER;
+    }
+    
+    public String getRoleName() {
+        return this.name().toLowerCase();
+    }
+}
+    
+    public boolean isUnitOwner() {
+        return this == UNIT_OWNER;
+    }
+    
+    public String getRoleName() {
+        return this.name().toLowerCase();
     }
 }

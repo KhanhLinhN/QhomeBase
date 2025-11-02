@@ -3,7 +3,6 @@ package com.QhomeBase.iamservice.controller;
 import com.QhomeBase.iamservice.dto.AvailablePermissionDto;
 import com.QhomeBase.iamservice.dto.AvailableRoleDto;
 import com.QhomeBase.iamservice.dto.EmployeeRoleDto;
-import com.QhomeBase.iamservice.dto.RoleRemovalRequest;
 import com.QhomeBase.iamservice.security.UserPrincipal;
 import com.QhomeBase.iamservice.service.EmployeeRoleManagementService;
 import lombok.RequiredArgsConstructor;
@@ -22,98 +21,69 @@ public class EmployeeRoleManagementController {
 
     private final EmployeeRoleManagementService employeeRoleManagementService;
 
-
-    @PostMapping("/{tenantId}/employees/unassign-all")
-    @PreAuthorize("@authz.canRemoveEmployeeRole(#tenantId, T(java.util.UUID).randomUUID())")
-    public ResponseEntity<Void> unassignAllEmployeesFromTenant(@PathVariable UUID tenantId) {
-            employeeRoleManagementService.unassignAllEmployeesFromTenant(tenantId);
-            return ResponseEntity.ok().build();
-    }
-
-
-    @GetMapping("/tenant/{tenantId}")
-    @PreAuthorize("@authz.canViewTenantEmployees(#tenantId)")
-    public ResponseEntity<List<EmployeeRoleDto>> getEmployeesInTenant(@PathVariable UUID tenantId) {
-        List<EmployeeRoleDto> employees = employeeRoleManagementService.getEmployeesInTenant(tenantId);
+    @GetMapping
+    @PreAuthorize("@authz.canViewAllUsers()")
+    public ResponseEntity<List<EmployeeRoleDto>> getAllEmployees() {
+        List<EmployeeRoleDto> employees = employeeRoleManagementService.getAllEmployees();
         return ResponseEntity.ok(employees);
     }
 
     @GetMapping("/employee/{userId}")
-    @PreAuthorize("@authz.canViewEmployeeDetails(#tenantId, #userId)")
-    public ResponseEntity<EmployeeRoleDto> getEmployeeDetails(
-            @PathVariable UUID userId,
-            @RequestParam UUID tenantId) {
-        EmployeeRoleDto employee = employeeRoleManagementService.getEmployeeDetails(userId, tenantId);
+    @PreAuthorize("@authz.canViewUser(#userId)")
+    public ResponseEntity<EmployeeRoleDto> getEmployeeDetails(@PathVariable UUID userId) {
+        EmployeeRoleDto employee = employeeRoleManagementService.getEmployeeDetails(userId);
         return ResponseEntity.ok(employee);
     }
 
-    @GetMapping("/available-roles/{tenantId}")
-    @PreAuthorize("@authz.canViewTenantEmployees(#tenantId)")
-    public ResponseEntity<List<AvailableRoleDto>> getAvailableRoles(
-            @PathVariable UUID tenantId) {
-        List<AvailableRoleDto> roles = 
-                employeeRoleManagementService.getAvailableRolesForTenant(tenantId);
+    @GetMapping("/available-roles")
+    @PreAuthorize("@authz.canViewAllRoles()")
+    public ResponseEntity<List<AvailableRoleDto>> getAvailableRoles() {
+        List<AvailableRoleDto> roles = employeeRoleManagementService.getAvailableRoles();
         return ResponseEntity.ok(roles);
     }
 
     @GetMapping("/available-permissions")
-    @PreAuthorize("hasAnyRole('admin', 'tenant_owner')")
+    @PreAuthorize("@authz.canViewAllPermissions()")
     public ResponseEntity<List<AvailablePermissionDto>> getAvailablePermissionsGroupedByService() {
         List<AvailablePermissionDto> permissions = employeeRoleManagementService.getAvailablePermissionsGroupedByService();
         return ResponseEntity.ok(permissions);
     }
 
     @PostMapping("/assign")
-    @PreAuthorize("@authz.canAssignEmployeeRole(#tenantId, #userId)")
+    @PreAuthorize("@authz.canAssignEmployeeRole(null, #userId)")
     public ResponseEntity<String> assignRolesToEmployee(
             @RequestParam UUID userId,
-            @RequestParam UUID tenantId,
             @RequestBody List<String> roleNames,
             Authentication authentication) {
         
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
-        employeeRoleManagementService.assignRolesToEmployee(userId, tenantId, roleNames, principal.username());
+        employeeRoleManagementService.assignRolesToEmployee(userId, roleNames, principal.username());
         return ResponseEntity.ok("Roles assigned successfully");
     }
 
     @PostMapping("/remove")
-    @PreAuthorize("@authz.canRemoveEmployeeRole(#request.tenantId, #request.userId)")
+    @PreAuthorize("@authz.canRemoveEmployeeRole(null, #userId)")
     public ResponseEntity<String> removeRolesFromEmployee(
-            @RequestBody RoleRemovalRequest request,
+            @RequestParam UUID userId,
+            @RequestBody List<String> roleNames,
             Authentication authentication) {
         
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
-        employeeRoleManagementService.removeRolesFromEmployee(request, principal.username());
+        employeeRoleManagementService.removeRolesFromEmployee(userId, roleNames, principal.username());
         return ResponseEntity.ok("Roles removed successfully");
     }
 
     @GetMapping("/employee/{userId}/permissions")
-    @PreAuthorize("@authz.canViewEmployeeDetails(#tenantId, #userId)")
-    public ResponseEntity<List<String>> getEmployeePermissions(
-            @PathVariable UUID userId,
-            @RequestParam UUID tenantId) {
-        List<String> permissions = employeeRoleManagementService.getEmployeePermissions(userId, tenantId);
+    @PreAuthorize("@authz.canViewUser(#userId)")
+    public ResponseEntity<List<String>> getEmployeePermissions(@PathVariable UUID userId) {
+        List<String> permissions = employeeRoleManagementService.getEmployeePermissions(userId);
         return ResponseEntity.ok(permissions);
     }
 
-    @GetMapping("/tenant/{tenantId}/department/{department}")
-    @PreAuthorize("@authz.canViewTenantEmployees(#tenantId)")
-    public ResponseEntity<List<EmployeeRoleDto>> getEmployeesByDepartment(
-            @PathVariable UUID tenantId,
-            @PathVariable String department) {
-        List<EmployeeRoleDto> employees = employeeRoleManagementService.getEmployeesInTenant(tenantId)
-                .stream()
-                .filter(emp -> department.equals(emp.getDepartment()))
-                .toList();
-        return ResponseEntity.ok(employees);
-    }
-
-    @GetMapping("/tenant/{tenantId}/role/{roleName}")
-    @PreAuthorize("@authz.canViewTenantEmployees(#tenantId)")
-    public ResponseEntity<List<EmployeeRoleDto>> getEmployeesByRole(
-            @PathVariable UUID tenantId,
-            @PathVariable String roleName) {
-        List<EmployeeRoleDto> employees = employeeRoleManagementService.getEmployeesInTenant(tenantId)
+    @GetMapping("/role/{roleName}")
+    @PreAuthorize("@authz.canViewAllUsers()")
+    public ResponseEntity<List<EmployeeRoleDto>> getEmployeesByRole(@PathVariable String roleName) {
+        List<EmployeeRoleDto> employees = employeeRoleManagementService.getAllEmployees()
                 .stream()
                 .filter(emp -> emp.getAssignedRoles().stream()
                         .anyMatch(role -> roleName.equals(role.getRoleName())))

@@ -1,6 +1,7 @@
 package com.QhomeBase.customerinteractionservice.dto.news;
 
 import com.QhomeBase.customerinteractionservice.model.NewsStatus;
+import com.QhomeBase.customerinteractionservice.model.NotificationScope;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,11 +28,12 @@ public class NewsManagementResponse {
     private Instant expireAt;
     private Integer displayOrder;
     
+    private NotificationScope scope;
+    private String targetRole;
+    private UUID targetBuildingId;
 
     private Long viewCount;
     private List<NewsImageDto> images;
-    private List<NewsTargetDto> targets;
-    
 
     private UUID createdBy;
     private Instant createdAt;
@@ -41,6 +43,7 @@ public class NewsManagementResponse {
 
     private NewsStatsResponse stats;
 }
+
 
 
 

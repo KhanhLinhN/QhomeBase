@@ -1,5 +1,6 @@
 package com.QhomeBase.iamservice.security;
 
+import org.springframework.lang.Nullable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
@@ -39,7 +40,10 @@ public class AuthzService {
 
     private boolean sameTenant(UUID tenantId) {
         var p = principal();
-        return p != null && p.tenant() != null && p.tenant().equals(tenantId);
+        if (p == null || tenantId == null) {
+            return p != null && p.tenant() == null;
+        }
+        return p.tenant() != null && p.tenant().equals(tenantId);
     }
 
     
@@ -53,7 +57,7 @@ public class AuthzService {
     }
     
     public boolean canViewAllUsers() {
-        return hasPerm("iam.user.read") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        return hasPerm("iam.user.read") || hasAnyRole(Set.of("admin", "technician", "supporter"));
     }
     
     public boolean canUpdateUser(UUID userId) {
@@ -67,7 +71,7 @@ public class AuthzService {
     }
     
     public boolean canManageUserRoles(UUID userId) {
-        return hasPerm("iam.user.role.manage") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        return hasPerm("iam.user.role.manage") || hasAnyRole(Set.of("admin", "technician", "supporter"));
     }
     
     public boolean canViewUserPermissions(UUID userId) {
@@ -76,20 +80,20 @@ public class AuthzService {
     }
     
     public boolean canResetUserPassword(UUID userId) {
-        return hasPerm("iam.user.password.reset") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        return hasPerm("iam.user.password.reset") || hasAnyRole(Set.of("admin", "technician", "supporter"));
     }
     
     public boolean canLockUserAccount(UUID userId) {
-        return hasPerm("iam.user.account.lock") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        return hasPerm("iam.user.account.lock") || hasAnyRole(Set.of("admin", "technician", "supporter"));
     }
     
     public boolean canUnlockUserAccount(UUID userId) {
-        return hasPerm("iam.user.account.unlock") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        return hasPerm("iam.user.account.unlock") || hasAnyRole(Set.of("admin", "technician", "supporter"));
     }
 
     
     public boolean canViewAllRoles() {
-        return hasPerm("iam.role.read") || hasAnyRole(Set.of("admin", "tenant_owner", "technician", "supporter"));
+        return hasPerm("iam.role.read") || hasAnyRole(Set.of("admin", "technician", "supporter"));
     }
     
     public boolean canCreateRole() {
@@ -105,11 +109,11 @@ public class AuthzService {
     }
     
     public boolean canAssignRoleToUser(UUID userId) {
-        return hasPerm("iam.role.assign") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        return hasPerm("iam.role.assign") || hasAnyRole(Set.of("admin", "technician", "supporter"));
     }
     
     public boolean canRemoveRoleFromUser(UUID userId) {
-        return hasPerm("iam.role.remove") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        return hasPerm("iam.role.remove") || hasAnyRole(Set.of("admin", "technician", "supporter"));
     }
     
     public boolean canViewRolePermissions(String roleName) {
@@ -122,7 +126,7 @@ public class AuthzService {
 
     
     public boolean canViewAllPermissions() {
-        return hasPerm("iam.permission.read") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        return hasPerm("iam.permission.read") || hasAnyRole(Set.of("admin", "technician", "supporter"));
     }
     
     public boolean canCreatePermission() {
@@ -138,53 +142,53 @@ public class AuthzService {
     }
     
     public boolean canViewPermissionsByService(String servicePrefix) {
-        return hasPerm("iam.permission.read") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        return hasPerm("iam.permission.read") || hasAnyRole(Set.of("admin", "technician", "supporter"));
     }
     
     public boolean canViewPermissionByCode(String permissionCode) {
-        return hasPerm("iam.permission.read") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        return hasPerm("iam.permission.read") || hasAnyRole(Set.of("admin", "technician", "supporter"));
     }
 
     
     public boolean canViewTenantRoles(UUID tenantId) {
         boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.tenant.role.read") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        boolean okRole = hasPerm("iam.tenant.role.read") || hasAnyRole(Set.of("admin", "technician", "supporter"));
         return sameTenant && okRole;
     }
     
     public boolean canAssignTenantRole(UUID tenantId, UUID userId) {
         boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.tenant.role.assign") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        boolean okRole = hasPerm("iam.tenant.role.assign") || hasAnyRole(Set.of("admin", "technician", "supporter"));
         return sameTenant && okRole;
     }
     
     public boolean canRemoveTenantRole(UUID tenantId, UUID userId) {
         boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.tenant.role.remove") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        boolean okRole = hasPerm("iam.tenant.role.remove") || hasAnyRole(Set.of("admin", "technician", "supporter"));
         return sameTenant && okRole;
     }
     
     public boolean canCreateTenantRole(UUID tenantId) {
         boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.tenant.role.create") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        boolean okRole = hasPerm("iam.tenant.role.create") || hasAnyRole(Set.of("admin", "technician", "supporter"));
         return sameTenant && okRole;
     }
     
     public boolean canUpdateTenantRole(UUID tenantId, String roleName) {
         boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.tenant.role.update") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        boolean okRole = hasPerm("iam.tenant.role.update") || hasAnyRole(Set.of("admin", "technician", "supporter"));
         return sameTenant && okRole;
     }
     
     public boolean canDeleteTenantRole(UUID tenantId, String roleName) {
         boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.tenant.role.delete") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        boolean okRole = hasPerm("iam.tenant.role.delete") || hasAnyRole(Set.of("admin", "technician", "supporter"));
         return sameTenant && okRole;
     }
     
     public boolean canViewTenantManagers(UUID tenantId) {
         boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.tenant.manager.read") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        boolean okRole = hasPerm("iam.tenant.manager.read") || hasAnyRole(Set.of("admin", "technician", "supporter"));
         return sameTenant && okRole;
     }
 
@@ -224,11 +228,11 @@ public class AuthzService {
     }
     
     public boolean canViewAuditLogs() {
-        return hasPerm("iam.system.audit.read") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        return hasPerm("iam.system.audit.read") || hasAnyRole(Set.of("admin", "technician", "supporter"));
     }
     
     public boolean canExportData() {
-        return hasPerm("iam.system.data.export") || hasAnyRole(Set.of("admin", "tenant_owner"));
+        return hasPerm("iam.system.data.export") || hasAnyRole(Set.of("admin", "technician", "supporter"));
     }
     
     public boolean canImportData() {
@@ -254,7 +258,7 @@ public class AuthzService {
     }
     
     public boolean isTenantOwner() {
-        return hasAnyRole(Set.of("tenant_owner"));
+        return hasAnyRole(Set.of("admin"));
     }
     
     public boolean isTechnician() {
@@ -265,8 +269,8 @@ public class AuthzService {
         return hasAnyRole(Set.of("supporter"));
     }
     
-    public boolean isAccount() {
-        return hasAnyRole(Set.of("account"));
+    public boolean isAccountant() {
+        return hasAnyRole(Set.of("accountant"));
     }
     
     public UUID getCurrentUserId() {
@@ -278,39 +282,23 @@ public class AuthzService {
     }
     
 
-    public boolean canViewTenantEmployees(UUID tenantId) {
+    public boolean canAssignEmployeeRole(@Nullable UUID tenantId, UUID employeeId) {
+        boolean okRole = hasPerm("iam.employee.role.assign") || hasAnyRole(Set.of("admin", "technician", "supporter"));
         if (hasAnyRole(Set.of("admin"))) {
             return true;
         }
-        
-        boolean sameTenant = sameTenant(tenantId);
-        boolean isTenantOwner = hasAnyRole(Set.of("tenant_owner"));
-        return sameTenant && isTenantOwner;
+        return okRole;
     }
     
-    public boolean canAssignEmployeeRole(UUID tenantId, UUID employeeId) {
-        boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.employee.role.assign") || hasAnyRole(Set.of("admin", "tenant_owner"));
-        
+    public boolean canRemoveEmployeeRole(@Nullable UUID tenantId, UUID employeeId) {
+        boolean okRole = hasPerm("iam.employee.role.remove") || hasAnyRole(Set.of("admin", "technician", "supporter"));
         if (hasAnyRole(Set.of("admin"))) {
             return true;
         }
-        
-        return sameTenant && okRole;
+        return okRole;
     }
     
-    public boolean canRemoveEmployeeRole(UUID tenantId, UUID employeeId) {
-        boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.employee.role.remove") || hasAnyRole(Set.of("admin", "tenant_owner"));
-        
-        if (hasAnyRole(Set.of("admin"))) {
-            return true;
-        }
-        
-        return sameTenant && okRole;
-    }
-    
-    public boolean canViewEmployeeDetails(UUID tenantId, UUID employeeId) {
+    public boolean canViewEmployeeDetails(@Nullable UUID tenantId, UUID employeeId) {
         var p = principal();
         
         if (hasAnyRole(Set.of("admin"))) {
@@ -321,82 +309,56 @@ public class AuthzService {
             return true;
         }
         
-        boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.employee.read") || hasAnyRole(Set.of("tenant_owner"));
-        return sameTenant && okRole;
+        boolean okRole = hasPerm("iam.employee.read") || hasAnyRole(Set.of("technician", "supporter"));
+        return okRole;
     }
     
-    public boolean canManageDepartment(UUID tenantId, String department) {
-        boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasAnyRole(Set.of("admin", "tenant_owner"));
-        return sameTenant && okRole;
+    public boolean canManageDepartment(@Nullable UUID tenantId, @Nullable String department) {
+        boolean okRole = hasAnyRole(Set.of("admin", "technician", "supporter"));
+        return okRole;
     }
     
-    public boolean canManagePermissions(UUID tenantId) {
-        if (hasAnyRole(Set.of("admin"))) {
-            return true;
-        }
-        
-        boolean sameTenant = sameTenant(tenantId);
-        boolean isTenantOwner = hasAnyRole(Set.of("tenant_owner"));
-        return sameTenant && isTenantOwner;
+    public boolean canBulkAssignRoles(@Nullable UUID tenantId) {
+        boolean okRole = hasPerm("iam.employee.role.bulk_assign") || hasAnyRole(Set.of("admin", "technician", "supporter"));
+        return okRole;
     }
     
-    public boolean canBulkAssignRoles(UUID tenantId) {
-        boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.employee.role.bulk_assign") || hasAnyRole(Set.of("admin", "tenant_owner"));
-        return sameTenant && okRole;
+    public boolean canExportEmployeeList(@Nullable UUID tenantId) {
+        boolean okRole = hasPerm("iam.employee.export") || hasAnyRole(Set.of("admin", "technician", "supporter"));
+        return okRole;
     }
     
-    public boolean canExportEmployeeList(UUID tenantId) {
-        boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.employee.export") || hasAnyRole(Set.of("admin", "tenant_owner"));
-        return sameTenant && okRole;
+    public boolean canImportEmployeeList(@Nullable UUID tenantId) {
+        boolean okRole = hasPerm("iam.employee.import") || hasAnyRole(Set.of("admin", "technician", "supporter"));
+        return okRole;
     }
     
-    public boolean canImportEmployeeList(UUID tenantId) {
-        boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.employee.import") || hasAnyRole(Set.of("admin", "tenant_owner"));
-        return sameTenant && okRole;
+    public boolean canManageBuilding(@Nullable UUID tenantId) {
+        boolean okRole = hasPerm("base.building.manage") || hasAnyRole(Set.of("admin", "technician", "supporter"));
+        return okRole;
     }
     
-    public boolean canManageTenantEmployees(UUID tenantId) {
-        boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("iam.employee.manage") || hasAnyRole(Set.of("admin", "tenant_owner"));
-        return sameTenant && okRole;
+    public boolean canManageUnits(@Nullable UUID tenantId) {
+        boolean okRole = hasPerm("base.unit.manage") || hasAnyRole(Set.of("admin", "technician", "supporter"));
+        return okRole;
     }
     
-    public boolean canManageBuilding(UUID tenantId) {
-        boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("base.building.manage") || hasAnyRole(Set.of("admin", "tenant_owner"));
-        return sameTenant && okRole;
+    public boolean canManageResidents(@Nullable UUID tenantId) {
+        boolean okRole = hasPerm("base.resident.manage") || hasAnyRole(Set.of("admin", "technician", "supporter"));
+        return okRole;
     }
     
-    public boolean canManageUnits(UUID tenantId) {
-        boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("base.unit.manage") || hasAnyRole(Set.of("admin", "tenant_owner"));
-        return sameTenant && okRole;
+    public boolean canManageFees(@Nullable UUID tenantId) {
+        boolean okRole = hasPerm("finance.fee.manage") || hasAnyRole(Set.of("admin", "technician", "supporter", "accountant"));
+        return okRole;
     }
     
-    public boolean canManageResidents(UUID tenantId) {
-        boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("base.resident.manage") || hasAnyRole(Set.of("admin", "tenant_owner"));
-        return sameTenant && okRole;
-    }
-    
-    public boolean canManageFees(UUID tenantId) {
-        boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("finance.fee.manage") || hasAnyRole(Set.of("admin", "tenant_owner", "account"));
-        return sameTenant && okRole;
-    }
-    
-    public boolean canApproveResidents(UUID tenantId) {
-        boolean sameTenant = sameTenant(tenantId);
-        boolean okRole = hasPerm("base.resident.approve") || hasAnyRole(Set.of("admin", "tenant_owner"));
-        return sameTenant && okRole;
+    public boolean canApproveResidents(@Nullable UUID tenantId) {
+        boolean okRole = hasPerm("base.resident.approve") || hasAnyRole(Set.of("admin", "technician", "supporter"));
+        return okRole;
     }
     
     public boolean isBuildingManager() {
-        return hasAnyRole(Set.of("tenant_owner"));
+        return hasAnyRole(Set.of("admin", "technician", "supporter"));
     }
 }
