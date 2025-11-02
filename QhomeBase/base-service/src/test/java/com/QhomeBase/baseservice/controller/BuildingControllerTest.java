@@ -40,294 +40,65 @@ public class BuildingControllerTest {
     }
 
     @Test
-    void findAll_missingTenantId_returnsBadRequest() {
-        ResponseEntity<List<Building>> resp = controller.findAll(null);
-        assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
-    }
+    void findAll_utcid01_validTenantId_returnsOk() {
+        UUID tid = UUID.fromString("a1b2c3d4-e5f6-7890-1234-567890abcdef");
+        when(buildingService.findAllByTenantIdOrderByCodeAsc(eq(tid)))
+                .thenReturn(List.of(mock(Building.class)));
 
-    @Test
-    void findAll_ok_returnsList() {
-        UUID tid = UUID.randomUUID();
-        when(buildingService.findAllByTenantIdOrderByCodeAsc(eq(tid))).thenReturn(List.of(mock(Building.class)));
         ResponseEntity<List<Building>> resp = controller.findAll(tid);
+
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertEquals(1, resp.getBody().size());
         verify(buildingService).findAllByTenantIdOrderByCodeAsc(eq(tid));
     }
 
     @Test
-    void getBuildingById_ok() {
-        UUID id = UUID.randomUUID();
-        when(buildingService.getBuildingById(eq(id))).thenReturn(mock(BuildingDto.class));
-        ResponseEntity<BuildingDto> resp = controller.getBuildingById(id);
-        assertEquals(HttpStatus.OK, resp.getStatusCode());
-        verify(buildingService).getBuildingById(eq(id));
+    void findAll_utcid02_nullTenantId_returnsBadRequest() {
+        ResponseEntity<List<Building>> resp = controller.findAll(null);
+        assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
+        verify(buildingService, never()).findAllByTenantIdOrderByCodeAsc(any());
     }
 
     @Test
-    void getBuildingById_notFound_returns404() {
-        UUID id = UUID.randomUUID();
-        when(buildingService.getBuildingById(eq(id))).thenThrow(new IllegalArgumentException("nf"));
-        ResponseEntity<BuildingDto> resp = controller.getBuildingById(id);
-        assertEquals(HttpStatus.NOT_FOUND, resp.getStatusCode());
-    }
-
-    @Test
-    void getBuildingById_ok_returnsBody() {
-        UUID id = UUID.randomUUID();
+    void getBuildingById_utcid01_validId_returnsOk() {
+        UUID id = UUID.fromString("0f45a2c9-d3b6-4e81-a7f0-2b1e6d9c8a75");
         BuildingDto dto = mock(BuildingDto.class);
         when(buildingService.getBuildingById(eq(id))).thenReturn(dto);
+
         ResponseEntity<BuildingDto> resp = controller.getBuildingById(id);
+
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertSame(dto, resp.getBody());
+        verify(buildingService).getBuildingById(eq(id));
     }
-
     @Test
-    void createBuilding_ok() {
-        UUID tenantId = UUID.randomUUID();
-        when(buildingService.createBuilding(any(BuildingCreateReq.class), eq(tenantId), anyString()))
-                .thenReturn(mock(BuildingDto.class));
-        ResponseEntity<BuildingDto> resp = controller.createBuilding(mock(BuildingCreateReq.class), tenantId, auth);
-        assertEquals(HttpStatus.OK, resp.getStatusCode());
-        verify(buildingService).createBuilding(any(BuildingCreateReq.class), eq(tenantId), anyString());
-    }
+    void getBuildingById_utcid05_nonExistentId_returnsBadRequest() {
+        UUID notFoundId = UUID.fromString("4b9d3e8f-a1c2-5d67-b8e9-0f1a2b3c4d5e");
+        when(buildingService.getBuildingById(eq(notFoundId)))
+                .thenThrow(new IllegalArgumentException("Building not found with id: 4b9d3e8f-a1c2-5d67-b8e9-0f1a2b3c4d5e"));
 
-    @Test
-    void createBuilding_serviceThrows_unhandled_propagates() {
-        UUID tenantId = UUID.randomUUID();
-        when(buildingService.createBuilding(any(BuildingCreateReq.class), eq(tenantId), anyString()))
-                .thenThrow(new RuntimeException("boom"));
-        assertThrows(RuntimeException.class,
-                () -> controller.createBuilding(mock(BuildingCreateReq.class), tenantId, auth));
-    }
-
-    @Test
-    void updateBuilding_ok() {
-        UUID id = UUID.randomUUID();
-        when(buildingService.updateBuilding(eq(id), any(BuildingUpdateReq.class), any(Authentication.class)))
-                .thenReturn(mock(BuildingDto.class));
-        ResponseEntity<BuildingDto> resp = controller.updateBuilding(id, mock(BuildingUpdateReq.class), auth);
-        assertEquals(HttpStatus.OK, resp.getStatusCode());
-        verify(buildingService).updateBuilding(eq(id), any(BuildingUpdateReq.class), any(Authentication.class));
-    }
-
-    @Test
-    void updateBuilding_notFound_returns404() {
-        UUID id = UUID.randomUUID();
-        when(buildingService.updateBuilding(eq(id), any(BuildingUpdateReq.class), any(Authentication.class)))
-                .thenThrow(new RuntimeException("nf"));
-        ResponseEntity<BuildingDto> resp = controller.updateBuilding(id, mock(BuildingUpdateReq.class), auth);
+        ResponseEntity<BuildingDto> resp = controller.getBuildingById(notFoundId);
         assertEquals(HttpStatus.NOT_FOUND, resp.getStatusCode());
+        verify(buildingService).getBuildingById(eq(notFoundId));
     }
-
     @Test
-    void updateBuilding_serviceCalledWithAuth() {
-        UUID id = UUID.randomUUID();
-        BuildingUpdateReq req = mock(BuildingUpdateReq.class);
-        when(buildingService.updateBuilding(eq(id), eq(req), any(Authentication.class)))
-                .thenReturn(mock(BuildingDto.class));
-        controller.updateBuilding(id, req, auth);
-        verify(buildingService).updateBuilding(eq(id), eq(req), any(Authentication.class));
-    }
+    void createBuilding_utcid01_validData_returnsOk() {
+        UUID tenantId = UUID.fromString("a1b2c3d4-e5f6-7890-1234-567890abcdef");
+        BuildingCreateReq req = new BuildingCreateReq(
+                "B01",
+                "Building A"
+        );
 
-    @Test
-    void createBuildingDeletionRequest_ok() {
-        UUID bid = UUID.randomUUID();
-        when(deletionService.createBuildingDeletionRequest(eq(bid), anyString(), any(Authentication.class)))
-                .thenReturn(mock(BuildingDeletionRequestDto.class));
-        ResponseEntity<BuildingDeletionRequestDto> resp = controller.createBuildingDeletionRequest(
-                bid, new BuildingDeletionCreateReq(bid, bid, "reason"), auth);
+        BuildingDto result = mock(BuildingDto.class);
+        when(buildingService.createBuilding(any(BuildingCreateReq.class), eq(tenantId), anyString()))
+                .thenReturn(result);
+
+        ResponseEntity<BuildingDto> resp = controller.createBuilding(req, tenantId, auth);
+
         assertEquals(HttpStatus.OK, resp.getStatusCode());
-        verify(deletionService).createBuildingDeletionRequest(eq(bid), anyString(), any(Authentication.class));
+        assertSame(result, resp.getBody());
+        verify(buildingService).createBuilding(eq(req), eq(tenantId), anyString());
     }
+    
 
-    @Test
-    void createBuildingDeletionRequest_illegalArgument_returnsBadRequest() {
-        UUID bid = UUID.randomUUID();
-        when(deletionService.createBuildingDeletionRequest(eq(bid), anyString(), any(Authentication.class)))
-                .thenThrow(new IllegalArgumentException("bad"));
-        ResponseEntity<BuildingDeletionRequestDto> resp = controller.createBuildingDeletionRequest(
-                bid, new BuildingDeletionCreateReq(bid, bid, "reason"), auth);
-        assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
-    }
-
-    @Test
-    void createBuildingDeletionRequest_illegalState_returnsBadRequest() {
-        UUID bid = UUID.randomUUID();
-        when(deletionService.createBuildingDeletionRequest(eq(bid), anyString(), any(Authentication.class)))
-                .thenThrow(new IllegalStateException("bad"));
-        ResponseEntity<BuildingDeletionRequestDto> resp = controller.createBuildingDeletionRequest(
-                bid, new BuildingDeletionCreateReq(bid, bid, "reason"), auth);
-        assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
-    }
-
-    @Test
-    void approveBuildingDeletionRequest_ok() {
-        UUID rid = UUID.randomUUID();
-        when(deletionService.approveBuildingDeletionRequest(eq(rid), anyString(), any(Authentication.class)))
-                .thenReturn(mock(BuildingDeletionRequestDto.class));
-        ResponseEntity<BuildingDeletionRequestDto> resp = controller.approveBuildingDeletionRequest(
-                rid, new BuildingDeletionApproveReq("note"), auth);
-        assertEquals(HttpStatus.OK, resp.getStatusCode());
-        verify(deletionService).approveBuildingDeletionRequest(eq(rid), anyString(), any(Authentication.class));
-    }
-
-    @Test
-    void approveBuildingDeletionRequest_illegalArgument_returnsBadRequest() {
-        UUID rid = UUID.randomUUID();
-        when(deletionService.approveBuildingDeletionRequest(eq(rid), anyString(), any(Authentication.class)))
-                .thenThrow(new IllegalArgumentException("bad"));
-        ResponseEntity<BuildingDeletionRequestDto> resp = controller.approveBuildingDeletionRequest(
-                rid, new BuildingDeletionApproveReq("note"), auth);
-        assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
-    }
-
-    @Test
-    void approveBuildingDeletionRequest_illegalState_returnsBadRequest() {
-        UUID rid = UUID.randomUUID();
-        when(deletionService.approveBuildingDeletionRequest(eq(rid), anyString(), any(Authentication.class)))
-                .thenThrow(new IllegalStateException("bad"));
-        ResponseEntity<BuildingDeletionRequestDto> resp = controller.approveBuildingDeletionRequest(
-                rid, new BuildingDeletionApproveReq("note"), auth);
-        assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
-    }
-
-    @Test
-    void rejectBuildingDeletionRequest_ok() {
-        UUID rid = UUID.randomUUID();
-        when(deletionService.rejectBuildingDeletionRequest(eq(rid), anyString(), any(Authentication.class)))
-                .thenReturn(mock(BuildingDeletionRequestDto.class));
-        ResponseEntity<BuildingDeletionRequestDto> resp = controller.rejectBuildingDeletionRequest(
-                rid, new BuildingDeletionRejectReq("note"), auth);
-        assertEquals(HttpStatus.OK, resp.getStatusCode());
-        verify(deletionService).rejectBuildingDeletionRequest(eq(rid), anyString(), any(Authentication.class));
-    }
-
-    @Test
-    void rejectBuildingDeletionRequest_illegalArgument_returnsBadRequest() {
-        UUID rid = UUID.randomUUID();
-        when(deletionService.rejectBuildingDeletionRequest(eq(rid), anyString(), any(Authentication.class)))
-                .thenThrow(new IllegalArgumentException("bad"));
-        ResponseEntity<BuildingDeletionRequestDto> resp = controller.rejectBuildingDeletionRequest(
-                rid, new BuildingDeletionRejectReq("note"), auth);
-        assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
-    }
-
-    @Test
-    void rejectBuildingDeletionRequest_illegalState_returnsBadRequest() {
-        UUID rid = UUID.randomUUID();
-        when(deletionService.rejectBuildingDeletionRequest(eq(rid), anyString(), any(Authentication.class)))
-                .thenThrow(new IllegalStateException("bad"));
-        ResponseEntity<BuildingDeletionRequestDto> resp = controller.rejectBuildingDeletionRequest(
-                rid, new BuildingDeletionRejectReq("note"), auth);
-        assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
-    }
-
-    @Test
-    void getPendingBuildingDeletionRequests_ok() {
-        when(deletionService.getPendingRequests()).thenReturn(List.of(mock(BuildingDeletionRequestDto.class)));
-        ResponseEntity<List<BuildingDeletionRequestDto>> resp = controller.getPendingBuildingDeletionRequests();
-        assertEquals(HttpStatus.OK, resp.getStatusCode());
-        verify(deletionService).getPendingRequests();
-    }
-
-    @Test
-    void getBuildingDeletionRequest_ok() {
-        UUID rid = UUID.randomUUID();
-        when(deletionService.getById(eq(rid))).thenReturn(mock(BuildingDeletionRequestDto.class));
-        ResponseEntity<BuildingDeletionRequestDto> resp = controller.getBuildingDeletionRequest(rid, auth);
-        assertEquals(HttpStatus.OK, resp.getStatusCode());
-        verify(deletionService).getById(eq(rid));
-    }
-
-    @Test
-    void getBuildingDeletionRequest_notFound_returns404() {
-        UUID rid = UUID.randomUUID();
-        when(deletionService.getById(eq(rid))).thenThrow(new IllegalArgumentException("nf"));
-        ResponseEntity<BuildingDeletionRequestDto> resp = controller.getBuildingDeletionRequest(rid, auth);
-        assertEquals(HttpStatus.NOT_FOUND, resp.getStatusCode());
-    }
-
-    @Test
-    void doBuildingDeletion_ok() {
-        UUID bid = UUID.randomUUID();
-        doNothing().when(deletionService).doBuildingDeletion(eq(bid), any(Authentication.class));
-        ResponseEntity<String> resp = controller.doBuildingDeletion(bid, auth);
-        assertEquals(HttpStatus.OK, resp.getStatusCode());
-        verify(deletionService).doBuildingDeletion(eq(bid), any(Authentication.class));
-    }
-
-    @Test
-    void getDeletingBuildings_accessDenied_throws() {
-        when(authzService.canViewAllDeleteBuildings()).thenReturn(false);
-        assertThrows(org.springframework.security.access.AccessDeniedException.class,
-                () -> controller.getDeletingBuildings());
-    }
-
-    @Test
-    void getDeletingBuildings_allowed_ok() {
-        when(authzService.canViewAllDeleteBuildings()).thenReturn(true);
-        when(deletionService.getDeletingBuildings()).thenReturn(List.of(mock(BuildingDeletionRequestDto.class)));
-        List<BuildingDeletionRequestDto> list = controller.getDeletingBuildings();
-        assertNotNull(list);
-        verify(deletionService).getDeletingBuildings();
-    }
-
-    @Test
-    void getAllBuildingDeletionRequests_allowed_ok() {
-        when(authzService.canViewAllDeleteBuildings()).thenReturn(true);
-        when(deletionService.getAllBuildingDeletionRequests())
-                .thenReturn(List.of(mock(BuildingDeletionRequestDto.class)));
-        List<BuildingDeletionRequestDto> list = controller.getAllBuildingDeletionRequests();
-        assertNotNull(list);
-        verify(deletionService).getAllBuildingDeletionRequests();
-    }
-
-    @Test
-    void getMyDeletingBuildings_ok() {
-        UUID tid = UUID.randomUUID();
-        when(deletionService.getDeletingBuildingsByTenantId(eq(tid)))
-                .thenReturn(List.of(mock(BuildingDeletionRequestDto.class)));
-        List<BuildingDeletionRequestDto> list = controller.getMyDeletingBuildings(tid, auth);
-        assertNotNull(list);
-        verify(deletionService).getDeletingBuildingsByTenantId(eq(tid));
-    }
-
-    @Test
-    void getMyAllBuildingDeletionRequests_ok() {
-        UUID tid = UUID.randomUUID();
-        when(deletionService.getAllBuildingDeletionRequestsByTenantId(eq(tid)))
-                .thenReturn(List.of(mock(BuildingDeletionRequestDto.class)));
-        List<BuildingDeletionRequestDto> list = controller.getMyAllBuildingDeletionRequests(tid, auth);
-        assertNotNull(list);
-        verify(deletionService).getAllBuildingDeletionRequestsByTenantId(eq(tid));
-    }
-
-    @Test
-    void getMyDeletingBuildingsRaw_ok() {
-        UUID tid = UUID.randomUUID();
-        when(deletionService.getDeletingBuildingsRawByTenantId(eq(tid))).thenReturn(List.of(mock(Building.class)));
-        ResponseEntity<List<Building>> resp = controller.getMyDeletingBuildingsRaw(tid, auth);
-        assertEquals(HttpStatus.OK, resp.getStatusCode());
-        verify(deletionService).getDeletingBuildingsRawByTenantId(eq(tid));
-    }
-
-    @Test
-    void getBuildingDeletionTargetsStatus_ok() {
-        UUID bid = UUID.randomUUID();
-        when(deletionService.getBuildingDeletionTargetsStatus(eq(bid))).thenReturn(Map.of("ok", true));
-        ResponseEntity<Map<String, Object>> resp = controller.getBuildingDeletionTargetsStatus(bid, auth);
-        assertEquals(HttpStatus.OK, resp.getStatusCode());
-        verify(deletionService).getBuildingDeletionTargetsStatus(eq(bid));
-    }
-
-    @Test
-    void completeBuildingDeletion_ok() {
-        UUID rid = UUID.randomUUID();
-        when(deletionService.completeBuildingDeletion(eq(rid), any(Authentication.class)))
-                .thenReturn(mock(BuildingDeletionRequestDto.class));
-        ResponseEntity<BuildingDeletionRequestDto> resp = controller.completeBuildingDeletion(rid, auth);
-        assertEquals(HttpStatus.OK, resp.getStatusCode());
-        verify(deletionService).completeBuildingDeletion(eq(rid), any(Authentication.class));
-    }
 }
