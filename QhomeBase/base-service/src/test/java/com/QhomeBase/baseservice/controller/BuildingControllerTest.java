@@ -100,5 +100,5 @@ public class BuildingControllerTest {
         verify(buildingService).createBuilding(eq(req), eq(tenantId), anyString());
     }
     
-.
+
 }
