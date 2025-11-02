@@ -579,5 +579,5 @@ public class UnitControllerTest {
         verify(service).getUnitsByFloor(eq(bid), eq(floor));
     }
 
-    .
+
 }
