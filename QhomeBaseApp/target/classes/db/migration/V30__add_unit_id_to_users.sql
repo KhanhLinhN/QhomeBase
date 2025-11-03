@@ -1,3 +1,0 @@
-ALTER TABLE qhomebaseapp.users
-ADD COLUMN IF NOT EXISTS unit_id VARCHAR(255);
-

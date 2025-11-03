@@ -48,5 +48,18 @@ public interface ServiceBookingRepository extends JpaRepository<ServiceBooking, 
     List<ServiceBooking> findUnpaidBookingsOlderThan(
         @Param("cutoffTime") OffsetDateTime cutoffTime
     );
+    
+    // Calculate total number of people booked for a service in a time range
+    @Query("SELECT COALESCE(SUM(b.numberOfPeople), 0) FROM ServiceBooking b " +
+           "WHERE b.service.id = :serviceId " +
+           "AND b.bookingDate = :date " +
+           "AND b.status IN ('PENDING', 'APPROVED', 'PAID') " +
+           "AND (b.startTime < :endTime AND b.endTime > :startTime)")
+    Integer sumBookedPeople(
+        @Param("serviceId") Long serviceId,
+        @Param("date") LocalDate date,
+        @Param("startTime") LocalTime startTime,
+        @Param("endTime") LocalTime endTime
+    );
 }
 

@@ -26,5 +26,7 @@ public class AvailableServiceDto {
     private Boolean isAvailable; // Slot có available không
     private String availabilityStatus; // "AVAILABLE", "FULL", "PARTIAL"
     private Integer currentBookings; // Số booking hiện có trong khoảng thời gian này
+    private Integer bookedPeople; // Tổng số người đã booking trong khoảng thời gian này
+    private Integer availableCapacity; // Số người còn có thể booking (maxCapacity - bookedPeople)
 }
 

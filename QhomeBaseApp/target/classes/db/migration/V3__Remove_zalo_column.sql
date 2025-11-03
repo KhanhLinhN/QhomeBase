@@ -1,2 +1,0 @@
-ALTER TABLE login.users
-DROP COLUMN IF EXISTS zalo_id;

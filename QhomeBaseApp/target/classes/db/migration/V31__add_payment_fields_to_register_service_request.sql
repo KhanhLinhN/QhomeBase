@@ -1,6 +1,0 @@
-ALTER TABLE qhomebaseapp.register_service_request
-ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) DEFAULT 'UNPAID',
-ADD COLUMN IF NOT EXISTS payment_amount DECIMAL(19,2),
-ADD COLUMN IF NOT EXISTS payment_date TIMESTAMP WITH TIME ZONE,
-ADD COLUMN IF NOT EXISTS payment_gateway VARCHAR(50),
-ADD COLUMN IF NOT EXISTS vnpay_transaction_ref VARCHAR(255);

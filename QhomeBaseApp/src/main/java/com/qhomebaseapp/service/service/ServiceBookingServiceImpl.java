@@ -9,7 +9,6 @@ import com.qhomebaseapp.model.Service;
 import com.qhomebaseapp.model.ServiceAvailability;
 import com.qhomebaseapp.model.ServiceBooking;
 import com.qhomebaseapp.model.ServiceBookingSlot;
-import com.qhomebaseapp.model.ServiceCategory;
 import com.qhomebaseapp.model.User;
 import com.qhomebaseapp.repository.service.*;
 import com.qhomebaseapp.repository.UserRepository;
@@ -23,8 +22,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -222,9 +224,23 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
                     List<ServiceBooking> existingBookings = bookingRepository.findOverlappingBookings(
                             service.getId(), date, startTime, endTime);
                     
+                    // Calculate total booked people in the time range
+                    Integer bookedPeople = bookingRepository.sumBookedPeople(
+                            service.getId(), date, startTime, endTime);
+                    if (bookedPeople == null) bookedPeople = 0;
+                    
+                    int maxCapacity = service.getMaxCapacity() != null ? service.getMaxCapacity() : 0;
+                    int availableCapacity = Math.max(0, maxCapacity - bookedPeople);
+                    
                     int currentBookings = existingBookings.size();
-                    String availabilityStatus = isAvailable ? 
-                            (currentBookings == 0 ? "AVAILABLE" : "PARTIAL") : "FULL";
+                    String availabilityStatus;
+                    if (!isAvailable || bookedPeople >= maxCapacity) {
+                        availabilityStatus = "FULL";
+                    } else if (bookedPeople == 0) {
+                        availabilityStatus = "AVAILABLE";
+                    } else {
+                        availabilityStatus = "PARTIAL";
+                    }
                     
                     // Calculate estimated amount
                     long hours = ChronoUnit.HOURS.between(startTime, endTime);
@@ -241,16 +257,17 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
                             .mapUrl(service.getMapUrl())
                             .pricePerHour(service.getPricePerHour())
                             .estimatedTotalAmount(estimatedAmount)
-                            .maxCapacity(service.getMaxCapacity())
+                            .maxCapacity(maxCapacity)
                             .minDurationHours(service.getMinDurationHours())
                             .maxDurationHours(service.getMaxDurationHours())
                             .rules(service.getRules())
-                            .isAvailable(isAvailable)
+                            .isAvailable(isAvailable && availableCapacity > 0)
                             .availabilityStatus(availabilityStatus)
                             .currentBookings(currentBookings)
+                            .bookedPeople(bookedPeople)
+                            .availableCapacity(availableCapacity)
                             .build();
                 })
-                .filter(dto -> dto.getIsAvailable())
                 .collect(Collectors.toList());
     }
 
@@ -289,6 +306,35 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
             
             log.info("Service found: {}", service.getId());
             
+            // Validate booking time must be in the future (at least 1 hour from now)
+            ZoneId vietnamZone = ZoneId.of("Asia/Ho_Chi_Minh");
+            ZonedDateTime nowVietnam = ZonedDateTime.now(vietnamZone);
+            LocalDateTime bookingDateTime = LocalDateTime.of(request.getBookingDate(), request.getStartTime());
+            ZonedDateTime bookingDateTimeVietnam = bookingDateTime.atZone(vietnamZone);
+            
+            // Check if booking time is at least 1 hour from now
+            long hoursUntilBooking = ChronoUnit.HOURS.between(nowVietnam, bookingDateTimeVietnam);
+            if (hoursUntilBooking < 1) {
+                log.warn("Booking time {} is too soon. Current time: {}", bookingDateTimeVietnam, nowVietnam);
+                throw new RuntimeException("Thời gian đặt chỗ phải ít nhất 1 giờ sau thời điểm hiện tại. " +
+                        "Thời gian hiện tại: " + nowVietnam.toLocalDateTime().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) + ". " +
+                        "Vui lòng chọn thời gian hợp lệ.");
+            }
+            
+            // Check if booking date is in the past
+            if (request.getBookingDate().isBefore(nowVietnam.toLocalDate())) {
+                log.warn("Booking date {} is in the past. Current date: {}", request.getBookingDate(), nowVietnam.toLocalDate());
+                throw new RuntimeException("Không thể đặt chỗ cho ngày trong quá khứ. Vui lòng chọn ngày hợp lệ.");
+            }
+            
+            // Check if booking time is today but in the past
+            if (request.getBookingDate().equals(nowVietnam.toLocalDate()) && 
+                request.getStartTime().isBefore(nowVietnam.toLocalTime())) {
+                log.warn("Booking time {} is in the past today. Current time: {}", 
+                        request.getStartTime(), nowVietnam.toLocalTime());
+                throw new RuntimeException("Không thể đặt chỗ cho thời gian trong quá khứ. Vui lòng chọn thời gian hợp lệ.");
+            }
+            
             // Check if user has any unpaid bookings
             List<ServiceBooking> unpaidBookings = bookingRepository.findByUser_IdAndPaymentStatus(
                     userId, "UNPAID");
@@ -304,6 +350,32 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
                         service.getId(), request.getBookingDate(), 
                         request.getStartTime(), request.getEndTime());
                 throw new RuntimeException("Service is not available for the selected time slot");
+            }
+            
+            // Validate number of people based on capacity
+            int requestedPeople = request.getNumberOfPeople() != null ? request.getNumberOfPeople() : 1;
+            int maxCapacity = service.getMaxCapacity() != null ? service.getMaxCapacity() : 0;
+            
+            if (maxCapacity > 0 && requestedPeople > maxCapacity) {
+                log.warn("Requested {} people exceeds max capacity {} for service {}", 
+                        requestedPeople, maxCapacity, service.getId());
+                throw new RuntimeException("Số người tham gia (" + requestedPeople + 
+                        ") vượt quá sức chứa tối đa của khu vực (" + maxCapacity + " người)");
+            }
+            
+            // Check available capacity in the time range
+            Integer bookedPeople = bookingRepository.sumBookedPeople(
+                    service.getId(), request.getBookingDate(), 
+                    request.getStartTime(), request.getEndTime());
+            if (bookedPeople == null) bookedPeople = 0;
+            
+            int availableCapacity = maxCapacity - bookedPeople;
+            if (requestedPeople > availableCapacity) {
+                log.warn("Requested {} people but only {} available ({} booked out of {} max)", 
+                        requestedPeople, availableCapacity, bookedPeople, maxCapacity);
+                throw new RuntimeException("Khu vực này chỉ còn " + availableCapacity + 
+                        " chỗ trống (đã có " + bookedPeople + "/" + maxCapacity + " người đặt). " +
+                        "Vui lòng giảm số người tham gia hoặc chọn thời gian khác.");
             }
             
             List<ServiceBooking> overlapping = bookingRepository.findOverlappingBookings(
