@@ -4,6 +4,7 @@ import com.qhomebaseapp.dto.service.AvailableServiceDto;
 import com.qhomebaseapp.dto.service.ServiceBookingRequestDto;
 import com.qhomebaseapp.dto.service.ServiceBookingResponseDto;
 import com.qhomebaseapp.dto.service.ServiceDto;
+import com.qhomebaseapp.dto.service.ServiceTypeDto;
 import com.qhomebaseapp.service.service.ServiceBookingService;
 import com.qhomebaseapp.security.CustomUserDetails;
 import jakarta.servlet.http.HttpServletRequest;
@@ -53,6 +54,20 @@ public class ServiceBookingController {
         return ResponseEntity.ok(services);
     }
 
+    @GetMapping("/categories/code/{categoryCode}/service-types")
+    public ResponseEntity<List<ServiceTypeDto>> getServiceTypesByCategoryCode(@PathVariable String categoryCode) {
+        List<ServiceTypeDto> serviceTypes = serviceBookingService.getServiceTypesByCategoryCode(categoryCode);
+        return ResponseEntity.ok(serviceTypes);
+    }
+
+    @GetMapping("/categories/code/{categoryCode}/services/type/{serviceType}")
+    public ResponseEntity<List<ServiceDto>> getServicesByCategoryCodeAndType(
+            @PathVariable String categoryCode,
+            @PathVariable String serviceType) {
+        List<ServiceDto> services = serviceBookingService.getServicesByCategoryCodeAndType(categoryCode, serviceType);
+        return ResponseEntity.ok(services);
+    }
+
     @GetMapping("/services/{serviceId}")
     public ResponseEntity<ServiceDto> getServiceById(@PathVariable Long serviceId) {
         ServiceDto service = serviceBookingService.getServiceById(serviceId);
@@ -63,15 +78,22 @@ public class ServiceBookingController {
     public ResponseEntity<List<AvailableServiceDto>> getAvailableServices(
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) String categoryCode,
+            @RequestParam(required = false) String serviceType,
             @RequestParam LocalDate date,
             @RequestParam LocalTime startTime,
             @RequestParam LocalTime endTime) {
         
         List<AvailableServiceDto> available;
         if (categoryCode != null) {
-            // Get available services by category code
-            available = serviceBookingService.getAvailableServicesByCategoryCode(
-                    categoryCode, date, startTime, endTime);
+            // If serviceType is provided, filter by both category and type
+            if (serviceType != null && !serviceType.isEmpty()) {
+                available = serviceBookingService.getAvailableServicesByCategoryCodeAndType(
+                        categoryCode, serviceType, date, startTime, endTime);
+            } else {
+                // Get available services by category code only
+                available = serviceBookingService.getAvailableServicesByCategoryCode(
+                        categoryCode, date, startTime, endTime);
+            }
         } else if (categoryId != null) {
             available = serviceBookingService.getAvailableServices(
                     categoryId, date, startTime, endTime);

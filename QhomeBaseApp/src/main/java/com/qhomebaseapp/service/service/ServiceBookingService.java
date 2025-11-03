@@ -4,6 +4,7 @@ import com.qhomebaseapp.dto.service.AvailableServiceDto;
 import com.qhomebaseapp.dto.service.ServiceBookingRequestDto;
 import com.qhomebaseapp.dto.service.ServiceBookingResponseDto;
 import com.qhomebaseapp.dto.service.ServiceDto;
+import com.qhomebaseapp.dto.service.ServiceTypeDto;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -13,6 +14,10 @@ public interface ServiceBookingService {
     List<ServiceDto> getServicesByCategory(Long categoryId);
     
     List<ServiceDto> getServicesByCategoryCode(String categoryCode);
+    
+    List<ServiceTypeDto> getServiceTypesByCategoryCode(String categoryCode);
+    
+    List<ServiceDto> getServicesByCategoryCodeAndType(String categoryCode, String serviceType);
     
     ServiceDto getServiceById(Long serviceId);
     
@@ -25,6 +30,14 @@ public interface ServiceBookingService {
     
     List<AvailableServiceDto> getAvailableServicesByCategoryCode(
         String categoryCode,
+        LocalDate date,
+        LocalTime startTime,
+        LocalTime endTime
+    );
+    
+    List<AvailableServiceDto> getAvailableServicesByCategoryCodeAndType(
+        String categoryCode,
+        String serviceType,
         LocalDate date,
         LocalTime startTime,
         LocalTime endTime

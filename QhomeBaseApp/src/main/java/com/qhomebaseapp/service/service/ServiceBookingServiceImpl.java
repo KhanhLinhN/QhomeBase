@@ -4,6 +4,7 @@ import com.qhomebaseapp.dto.service.AvailableServiceDto;
 import com.qhomebaseapp.dto.service.ServiceBookingRequestDto;
 import com.qhomebaseapp.dto.service.ServiceBookingResponseDto;
 import com.qhomebaseapp.dto.service.ServiceDto;
+import com.qhomebaseapp.dto.service.ServiceTypeDto;
 import com.qhomebaseapp.model.Service;
 import com.qhomebaseapp.model.ServiceAvailability;
 import com.qhomebaseapp.model.ServiceBooking;
@@ -62,6 +63,100 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
     }
 
     @Override
+    public List<ServiceTypeDto> getServiceTypesByCategoryCode(String categoryCode) {
+        List<Service> services = serviceRepository.findByCategory_CodeAndIsActiveTrue(categoryCode);
+        
+        // Group services by type (extract from code: e.g., "BBQ_ZONE_A" -> "BBQ")
+        return services.stream()
+                .collect(Collectors.groupingBy(service -> {
+                    String code = service.getCode();
+                    // Extract type from code (part before first underscore or whole code if no underscore)
+                    int underscoreIndex = code.indexOf('_');
+                    if (underscoreIndex > 0) {
+                        return code.substring(0, underscoreIndex);
+                    }
+                    // Fallback: extract from name (e.g., "Khu nướng BBQ - Tòa A" -> "BBQ")
+                    String name = service.getName();
+                    if (name.contains("BBQ") || name.contains("bbq") || name.contains("Bbq")) {
+                        return "BBQ";
+                    }
+                    if (name.contains("Tennis") || name.contains("tennis")) {
+                        return "TENNIS";
+                    }
+                    if (name.contains("Pool") || name.contains("pool") || name.contains("Bơi") || name.contains("bơi")) {
+                        return "POOL";
+                    }
+                    // Default: use code
+                    return code;
+                }))
+                .entrySet().stream()
+                .map(entry -> {
+                    String typeCode = entry.getKey();
+                    List<Service> typeServices = entry.getValue();
+                    
+                    // Get type name from first service's name or code
+                    String typeName = typeServices.get(0).getName();
+                    // Extract type name (e.g., "Khu nướng BBQ - Tòa A" -> "Nướng BBQ" or keep first part)
+                    if (typeName.contains("BBQ") || typeName.contains("bbq")) {
+                        typeName = "Nướng BBQ";
+                    } else if (typeName.contains("Tennis") || typeName.contains("tennis")) {
+                        typeName = "Sân Tennis";
+                    } else if (typeName.contains("Pool") || typeName.contains("pool") || typeName.contains("Bơi")) {
+                        typeName = "Hồ Bơi";
+                    } else {
+                        // Extract meaningful part from name (before first "-" or "Tòa")
+                        int dashIndex = typeName.indexOf(" - ");
+                        if (dashIndex > 0) {
+                            typeName = typeName.substring(0, dashIndex).trim();
+                        } else {
+                            int toaIndex = typeName.indexOf("Tòa");
+                            if (toaIndex > 0) {
+                                typeName = typeName.substring(0, toaIndex).trim();
+                            }
+                        }
+                    }
+                    
+                    // Get description from first service
+                    String description = typeServices.get(0).getDescription();
+                    if (description != null && description.length() > 100) {
+                        description = description.substring(0, 100) + "...";
+                    }
+                    
+                    return ServiceTypeDto.builder()
+                            .typeCode(typeCode)
+                            .typeName(typeName)
+                            .description(description)
+                            .serviceCount(typeServices.size())
+                            .build();
+                })
+                .sorted((a, b) -> a.getTypeName().compareTo(b.getTypeName()))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<ServiceDto> getServicesByCategoryCodeAndType(String categoryCode, String serviceType) {
+        List<Service> services = serviceRepository.findByCategory_CodeAndIsActiveTrue(categoryCode);
+        
+        // Filter services by type
+        return services.stream()
+                .filter(service -> {
+                    String code = service.getCode();
+                    // Check if service code starts with type
+                    if (code.startsWith(serviceType + "_") || code.equals(serviceType)) {
+                        return true;
+                    }
+                    // Check in name as fallback
+                    String name = service.getName();
+                    String typeUpper = serviceType.toUpperCase();
+                    return (name.contains("BBQ") || name.contains("bbq")) && typeUpper.contains("BBQ")
+                            || (name.contains("Tennis") || name.contains("tennis")) && typeUpper.contains("TENNIS")
+                            || (name.contains("Pool") || name.contains("pool") || name.contains("Bơi")) && typeUpper.contains("POOL");
+                })
+                .map(this::toServiceDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public List<AvailableServiceDto> getAvailableServices(
             Long categoryId, 
             LocalDate date, 
@@ -83,6 +178,36 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
         List<Service> services = serviceRepository.findByCategory_CodeAndIsActiveTrue(categoryCode);
         
         return buildAvailableServiceDtoList(services, date, startTime, endTime);
+    }
+
+    @Override
+    public List<AvailableServiceDto> getAvailableServicesByCategoryCodeAndType(
+            String categoryCode,
+            String serviceType,
+            LocalDate date,
+            LocalTime startTime,
+            LocalTime endTime) {
+        
+        List<Service> services = serviceRepository.findByCategory_CodeAndIsActiveTrue(categoryCode);
+        
+        // Filter services by type
+        List<Service> filteredServices = services.stream()
+                .filter(service -> {
+                    String code = service.getCode();
+                    // Check if service code starts with type
+                    if (code.startsWith(serviceType + "_") || code.equals(serviceType)) {
+                        return true;
+                    }
+                    // Check in name as fallback
+                    String name = service.getName();
+                    String typeUpper = serviceType.toUpperCase();
+                    return (name.contains("BBQ") || name.contains("bbq")) && typeUpper.contains("BBQ")
+                            || (name.contains("Tennis") || name.contains("tennis")) && typeUpper.contains("TENNIS")
+                            || (name.contains("Pool") || name.contains("pool") || name.contains("Bơi")) && typeUpper.contains("POOL");
+                })
+                .collect(Collectors.toList());
+        
+        return buildAvailableServiceDtoList(filteredServices, date, startTime, endTime);
     }
 
     private List<AvailableServiceDto> buildAvailableServiceDtoList(

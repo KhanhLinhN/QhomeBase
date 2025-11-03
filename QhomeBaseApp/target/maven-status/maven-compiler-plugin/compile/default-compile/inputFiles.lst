@@ -44,6 +44,7 @@ D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\mapper\RegisterS
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\model\Payment.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\model\RefreshToken.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\service\registerregistration\RegisterRegistrationServiceImpl.java
+D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\service\ServiceTypeDto.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\dto\token\JwtResponse.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\repository\registerregistration\RegisterRegistrationRepository.java
 D:\GitHub\QhomeBase\QhomeBaseApp\src\main\java\com\qhomebaseapp\controller\NewsController.java
