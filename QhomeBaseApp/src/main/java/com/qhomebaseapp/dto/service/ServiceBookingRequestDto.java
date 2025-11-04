@@ -38,5 +38,31 @@ public class ServiceBookingRequestDto {
     
     @NotNull(message = "Terms must be accepted")
     private Boolean termsAccepted;
+    
+    // For BBQ: selected options (optionId, quantity)
+    private java.util.List<BookingItemRequestDto> selectedOptions;
+    
+    // For SPA, Bar, Playground: selected combo
+    private Long selectedComboId;
+    
+    // For Pool, Playground: selected ticket
+    private Long selectedTicketId;
+    
+    // For Bar: selected slot
+    private Long selectedBarSlotId;
+    
+    // For BBQ: extra hours (nếu chọn thuê thêm giờ)
+    private Integer extraHours;
+    
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class BookingItemRequestDto {
+        private Long itemId; // ID của option/combo/ticket
+        private String itemType; // OPTION, COMBO, TICKET
+        private String itemCode; // Mã item
+        private Integer quantity; // Số lượng (cho options)
+    }
 }
 

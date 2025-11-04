@@ -1,10 +1,15 @@
 package com.qhomebaseapp.service.service;
 
 import com.qhomebaseapp.dto.service.AvailableServiceDto;
+import com.qhomebaseapp.dto.service.BarSlotDto;
 import com.qhomebaseapp.dto.service.ServiceBookingRequestDto;
 import com.qhomebaseapp.dto.service.ServiceBookingResponseDto;
+import com.qhomebaseapp.dto.service.ServiceComboDto;
 import com.qhomebaseapp.dto.service.ServiceDto;
+import com.qhomebaseapp.dto.service.ServiceOptionDto;
+import com.qhomebaseapp.dto.service.ServiceTicketDto;
 import com.qhomebaseapp.dto.service.ServiceTypeDto;
+import com.qhomebaseapp.dto.service.TimeSlotDto;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -56,5 +61,16 @@ public interface ServiceBookingService {
     List<ServiceBookingResponseDto> getUnpaidBookings(Long userId);
     
     void cancelExpiredUnpaidBookings();
+    
+    List<TimeSlotDto> getTimeSlotsForService(Long serviceId, LocalDate date);
+    
+    // Get options, combos, tickets, bar slots for a service
+    List<ServiceOptionDto> getServiceOptions(Long serviceId);
+    
+    List<ServiceComboDto> getServiceCombos(Long serviceId);
+    
+    List<ServiceTicketDto> getServiceTickets(Long serviceId);
+    
+    List<BarSlotDto> getBarSlots(Long serviceId);
 }
 

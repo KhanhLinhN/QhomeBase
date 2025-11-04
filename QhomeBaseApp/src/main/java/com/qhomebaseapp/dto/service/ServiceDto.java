@@ -22,6 +22,7 @@ public class ServiceDto {
     private BigDecimal pricePerHour;
     private BigDecimal pricePerSession;
     private String pricingType;
+    private String bookingType; // COMBO_BASED, TICKET_BASED, OPTION_BASED, STANDARD
     private Integer maxCapacity;
     private Integer minDurationHours;
     private Integer maxDurationHours;

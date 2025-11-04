@@ -45,6 +45,9 @@ public class Service {
     @Column(name = "pricing_type")
     private String pricingType = "HOURLY"; // HOURLY, SESSION, FREE
 
+    @Column(name = "booking_type")
+    private String bookingType; // COMBO_BASED, TICKET_BASED, OPTION_BASED, STANDARD
+
     @Column(name = "max_capacity")
     private Integer maxCapacity;
 

@@ -76,6 +76,9 @@ public class ServiceBooking {
     @Column(name = "terms_accepted")
     private Boolean termsAccepted = false;
 
+    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<ServiceBookingItem> bookingItems = new java.util.ArrayList<>();
+
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
 

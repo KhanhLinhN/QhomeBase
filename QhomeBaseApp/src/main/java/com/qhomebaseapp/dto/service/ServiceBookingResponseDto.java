@@ -33,6 +33,10 @@ public class ServiceBookingResponseDto {
     private String vnpayTransactionRef;
     private String status;
     private Boolean termsAccepted;
+    
+    // Booking items (options, combos, tickets)
+    private java.util.List<BookingItemDto> bookingItems;
+    
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 }

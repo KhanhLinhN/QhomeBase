@@ -1,10 +1,15 @@
 package com.qhomebaseapp.controller;
 
 import com.qhomebaseapp.dto.service.AvailableServiceDto;
+import com.qhomebaseapp.dto.service.BarSlotDto;
 import com.qhomebaseapp.dto.service.ServiceBookingRequestDto;
 import com.qhomebaseapp.dto.service.ServiceBookingResponseDto;
+import com.qhomebaseapp.dto.service.ServiceComboDto;
 import com.qhomebaseapp.dto.service.ServiceDto;
+import com.qhomebaseapp.dto.service.ServiceOptionDto;
+import com.qhomebaseapp.dto.service.ServiceTicketDto;
 import com.qhomebaseapp.dto.service.ServiceTypeDto;
+import com.qhomebaseapp.dto.service.TimeSlotDto;
 import com.qhomebaseapp.service.service.ServiceBookingService;
 import com.qhomebaseapp.security.CustomUserDetails;
 import jakarta.servlet.http.HttpServletRequest;
@@ -148,6 +153,38 @@ public class ServiceBookingController {
         Long userId = getUserIdFromAuthentication(authentication);
         List<ServiceBookingResponseDto> unpaidBookings = serviceBookingService.getUnpaidBookings(userId);
         return ResponseEntity.ok(unpaidBookings);
+    }
+    
+    @GetMapping("/services/{serviceId}/time-slots")
+    public ResponseEntity<List<TimeSlotDto>> getTimeSlotsForService(
+            @PathVariable Long serviceId,
+            @RequestParam LocalDate date) {
+        List<TimeSlotDto> timeSlots = serviceBookingService.getTimeSlotsForService(serviceId, date);
+        return ResponseEntity.ok(timeSlots);
+    }
+    
+    @GetMapping("/services/{serviceId}/options")
+    public ResponseEntity<List<ServiceOptionDto>> getServiceOptions(@PathVariable Long serviceId) {
+        List<ServiceOptionDto> options = serviceBookingService.getServiceOptions(serviceId);
+        return ResponseEntity.ok(options);
+    }
+    
+    @GetMapping("/services/{serviceId}/combos")
+    public ResponseEntity<List<ServiceComboDto>> getServiceCombos(@PathVariable Long serviceId) {
+        List<ServiceComboDto> combos = serviceBookingService.getServiceCombos(serviceId);
+        return ResponseEntity.ok(combos);
+    }
+    
+    @GetMapping("/services/{serviceId}/tickets")
+    public ResponseEntity<List<ServiceTicketDto>> getServiceTickets(@PathVariable Long serviceId) {
+        List<ServiceTicketDto> tickets = serviceBookingService.getServiceTickets(serviceId);
+        return ResponseEntity.ok(tickets);
+    }
+    
+    @GetMapping("/services/{serviceId}/bar-slots")
+    public ResponseEntity<List<BarSlotDto>> getBarSlots(@PathVariable Long serviceId) {
+        List<BarSlotDto> slots = serviceBookingService.getBarSlots(serviceId);
+        return ResponseEntity.ok(slots);
     }
 
     @PostMapping("/{bookingId}/vnpay-url")
