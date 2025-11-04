@@ -20,12 +20,3 @@ public record UserPrincipal(
         }
     }
 }
-
-        if (roles == null) {
-            roles = List.of();
-        }
-        if (perms == null) {
-            perms = List.of();
-        }
-    }
-}

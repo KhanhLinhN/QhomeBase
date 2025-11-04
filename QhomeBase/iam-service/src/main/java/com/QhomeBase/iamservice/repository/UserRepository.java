@@ -25,4 +25,21 @@ public interface UserRepository extends JpaRepository<User, UUID> {
         AND u.active = true
         """, nativeQuery = true)
     List<User> findAvailableStaff();
+
+    @Query(value = """
+        SELECT DISTINCT u.* 
+        FROM iam.users u
+        JOIN iam.user_roles ur ON u.id = ur.user_id
+        WHERE ur.role = :role
+        AND u.active = true
+        """, nativeQuery = true)
+    List<User> findByRole(@Param("role") String role);
+
+    @Query(value = """
+        SELECT DISTINCT u.* 
+        FROM iam.users u
+        JOIN iam.user_roles ur ON u.id = ur.user_id
+        WHERE ur.role = :role
+        """, nativeQuery = true)
+    List<User> findByRoleIncludingInactive(@Param("role") String role);
 }

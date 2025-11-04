@@ -9,3 +9,9 @@ CREATE INDEX IF NOT EXISTS ix_notifications_deleted_at ON content.notifications(
 -- Add comment
 COMMENT ON COLUMN content.notifications.deleted_at IS 'Timestamp when notification was soft deleted (NULL = active)';
 COMMENT ON COLUMN content.notifications.deleted_by IS 'User ID who deleted the notification';
+
+
+
+
+
+

@@ -7,7 +7,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -40,7 +39,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 String username = claims.getSubject();
                 Object tenantClaim = claims.get("tenant");
                 UUID tenant = tenantClaim != null ? UUID.fromString(tenantClaim.toString()) : null;
+                @SuppressWarnings("unchecked")
                 List<String> roles = claims.get("roles", List.class);
+                @SuppressWarnings("unchecked")
                 List<String> perms = claims.get("perms", List.class);
 
                 var authorities = new ArrayList<SimpleGrantedAuthority>();
@@ -67,11 +68,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
         
-
-        filterChain.doFilter(request, response);
-    }
-}
-
 
         filterChain.doFilter(request, response);
     }

@@ -50,7 +50,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 UUID uid = UUID.fromString(claims.get("uid", String.class));
                 String username = claims.getSubject();
+                @SuppressWarnings("unchecked")
                 List<String> roles = claims.get("roles", List.class);
+                @SuppressWarnings("unchecked")
                 List<String> perms = claims.get("perms", List.class);
 
                 var authorities = new ArrayList<SimpleGrantedAuthority>();
