@@ -27,39 +27,13 @@ public class NewsDetailResponse {
     private Integer displayOrder;
     private Long viewCount;
     private List<NewsImageDto> images;
-    private UUID createdBy;
-    private Instant createdAt;
-    private UUID updatedBy;
-    private Instant updatedAt;
-}
-
-
-    /**
-     * Danh sách ảnh đính kèm
-     */
-    private List<NewsImageDto> images;
-
-    /**
-     * Danh sách targets (ALL hoặc danh sách buildings)
-     */
-    private List<NewsTargetDto> targets;
-
-    /**
-     * Có đọc chưa (chỉ có khi request từ resident/user cụ thể)
-     */
+    private List<String> targets;
     private Boolean isRead;
-
-    /**
-     * Thời điểm user đọc (nếu đã đọc)
-     */
     private Instant readAt;
 
     private UUID createdBy;
-
     private Instant createdAt;
-
     private UUID updatedBy;
-
     private Instant updatedAt;
 }
 

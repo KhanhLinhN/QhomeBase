@@ -21,7 +21,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
         SELECT DISTINCT u.* 
         FROM iam.users u
         JOIN iam.user_roles ur ON u.id = ur.user_id
-        WHERE ur.role IN ('technician', 'supporter', 'accountant') 
+        WHERE ur.role IN ('TECHNICIAN', 'SUPPORTER', 'ACCOUNTANT') 
         AND u.active = true
         """, nativeQuery = true)
     List<User> findAvailableStaff();

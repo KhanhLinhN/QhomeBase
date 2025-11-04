@@ -44,7 +44,8 @@ public class EmployeeRoleManagementService {
     public List<EmployeeRoleDto> getEmployeesByRole(String roleName) {
         try {
             UserRole role = UserRole.valueOf(roleName.toUpperCase());
-            String roleCode = role.getRoleName();
+        
+            String roleCode = role.name();
             return userRepository.findByRole(roleCode)
                     .stream()
                     .map(this::mapToEmployeeRoleDto)
@@ -130,7 +131,7 @@ public class EmployeeRoleManagementService {
         }
         
         return userRoles.stream()
-                .map(role -> role.getRoleName())
+                .map(role -> role.name())
                 .flatMap(roleName -> rolePermissionRepository.findPermissionCodesByRole(roleName).stream())
                 .distinct()
                 .collect(Collectors.toList());

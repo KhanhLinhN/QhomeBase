@@ -21,7 +21,7 @@ public class RoleService {
     }
 
     public List<Permission> getPermissionsByRole(UserRole role) {
-        String roleCode = role.name().toLowerCase();
+        String roleCode = role.name();
         return rolePermissionRepository.findPermissionObjectsByRole(roleCode);
     }
 
@@ -47,3 +47,4 @@ public class RoleService {
                 .anyMatch(permission -> permission.getCode().equals(permissionCode));
     }
 }
+

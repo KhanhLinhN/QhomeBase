@@ -36,11 +36,10 @@ public class UserController {
                                 .collect(Collectors.toList())
                             : List.of();
 
-                    // Get permissions from all roles
                     Set<String> permissionsSet = new HashSet<>();
                     if (userRoles != null && !userRoles.isEmpty()) {
                         for (UserRole role : userRoles) {
-                            List<String> rolePerms = rolePermissionRepository.findPermissionCodesByRole(role.getRoleName());
+                            List<String> rolePerms = rolePermissionRepository.findPermissionCodesByRole(role.name());
                             permissionsSet.addAll(rolePerms);
                         }
                     }
@@ -88,11 +87,10 @@ public class UserController {
                                     .collect(Collectors.toList())
                                 : List.of();
                         
-                        // Get permissions from all roles
                         Set<String> permissionsSet = new HashSet<>();
                         if (userRoles != null && !userRoles.isEmpty()) {
                             for (UserRole role : userRoles) {
-                                List<String> rolePerms = rolePermissionRepository.findPermissionCodesByRole(role.getRoleName());
+                                List<String> rolePerms = rolePermissionRepository.findPermissionCodesByRole(role.name());
                                 permissionsSet.addAll(rolePerms);
                             }
                         }

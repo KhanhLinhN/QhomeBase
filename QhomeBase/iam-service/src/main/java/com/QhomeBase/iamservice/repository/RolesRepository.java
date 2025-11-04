@@ -14,7 +14,7 @@ public interface RolesRepository extends JpaRepository<Roles, String> {
     @Query(value = """
         SELECT r.role, r.description, r.created_at
         FROM iam.roles r
-        WHERE r.role IN ('admin', 'tenant_owner', 'technician', 'supporter', 'account')
+        WHERE r.role IN ('ADMIN', 'TECHNICIAN', 'SUPPORTER', 'ACCOUNTANT', 'RESIDENT', 'UNIT_OWNER')
         ORDER BY r.role
         """, nativeQuery = true)
     List<Object[]> findGlobalRoles();
@@ -38,7 +38,7 @@ public interface RolesRepository extends JpaRepository<Roles, String> {
         SELECT COUNT(*) > 0
         FROM iam.roles r
         WHERE r.role = :roleName
-        AND r.role IN ('admin', 'tenant_owner', 'technician', 'supporter', 'account')
+        AND r.role IN ('ADMIN', 'TECHNICIAN', 'SUPPORTER', 'ACCOUNTANT', 'RESIDENT', 'UNIT_OWNER')
         """, nativeQuery = true)
     boolean isValidRole(@Param("roleName") String roleName);
 }

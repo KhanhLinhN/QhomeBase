@@ -31,3 +31,4 @@ COMMENT ON TABLE content.news IS 'Table uses scope/targetRole/targetBuildingId i
 
 
 
+

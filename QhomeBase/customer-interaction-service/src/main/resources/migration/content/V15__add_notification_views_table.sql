@@ -65,3 +65,4 @@ COMMENT ON COLUMN content.notifications.target_role IS 'Role nhận thông báo 
 COMMENT ON COLUMN content.notifications.target_building_id IS 'Building ID nhận thông báo (EXTERNAL only): NULL = ALL buildings, UUID = building cụ thể';
 
 
+

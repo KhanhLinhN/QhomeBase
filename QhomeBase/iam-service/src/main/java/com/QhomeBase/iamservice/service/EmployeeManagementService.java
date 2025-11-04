@@ -37,7 +37,8 @@ public class EmployeeManagementService {
     public List<EmployeeDto> getEmployeesByRole(String roleName) {
         try {
             UserRole role = UserRole.valueOf(roleName.toUpperCase());
-            String roleCode = role.getRoleName();
+           
+            String roleCode = role.name();
             return userRepository.findByRole(roleCode)
                     .stream()
                     .map(this::mapToEmployeeDto)
