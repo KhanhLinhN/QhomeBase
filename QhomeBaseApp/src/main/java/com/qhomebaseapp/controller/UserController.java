@@ -60,6 +60,12 @@ public class UserController {
         if (request.getUnitId() != null && !request.getUnitId().isBlank()) {
             user.setUnitId(request.getUnitId());
         }
+        if (request.getResidentId() != null && !request.getResidentId().isBlank()) {
+            user.setResidentId(request.getResidentId());
+        }
+        if (request.getBuildingId() != null && !request.getBuildingId().isBlank()) {
+            user.setBuildingId(request.getBuildingId());
+        }
         if (request.getAddress() != null) user.setAddress(request.getAddress());
         if (request.getCitizenId() != null) user.setCitizenId(request.getCitizenId());
 

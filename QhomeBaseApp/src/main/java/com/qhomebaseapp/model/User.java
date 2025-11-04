@@ -69,6 +69,12 @@ public class User implements UserDetails {
     @Column(name = "unit_id")
     private String unitId; // UUID của căn hộ từ admin system (ví dụ: 550e8400-e29b-41d4-a716-446655440011)
 
+    @Column(name = "resident_id")
+    private String residentId; // UUID của cư dân từ admin system, dùng để gọi API news và notifications
+
+    @Column(name = "building_id")
+    private String buildingId; // UUID của tòa nhà từ admin system, dùng để gọi API notifications
+
     @Column(name = "address")
     private String address;
 

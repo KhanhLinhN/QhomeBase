@@ -24,6 +24,8 @@ public class UserResponse {
     private String buildingBlock;
     private Integer floorNumber;
     private String unitId; // UUID của căn hộ từ admin system
+    private String residentId; // UUID của cư dân từ admin system
+    private String buildingId; // UUID của tòa nhà từ admin system
     private String citizenId;
     private LocalDate dateOfBirth;
     
@@ -41,6 +43,8 @@ public class UserResponse {
         dto.setBuildingBlock(user.getBuildingBlock());
         dto.setFloorNumber(user.getFloorNumber());
         dto.setUnitId(user.getUnitId());
+        dto.setResidentId(user.getResidentId());
+        dto.setBuildingId(user.getBuildingId());
         dto.setCitizenId(user.getCitizenId());
         return dto;
     }
