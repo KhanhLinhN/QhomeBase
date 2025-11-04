@@ -111,6 +111,11 @@ public class ServiceBookingController {
             Long userId = getUserIdFromAuthentication(authentication);
             ServiceBookingResponseDto booking = serviceBookingService.createBooking(request, userId);
             return ResponseEntity.ok(booking);
+        } catch (com.qhomebaseapp.exception.UnpaidBookingException | 
+                 com.qhomebaseapp.exception.ServiceNotAvailableException ex) {
+            // These exceptions will be handled by GlobalExceptionHandler
+            // which will return 400 Bad Request with clear message
+            throw ex;
         } catch (Exception ex) {
             log.error("Error creating booking: {}", ex.getMessage(), ex);
             return ResponseEntity.status(500).body(Map.of(

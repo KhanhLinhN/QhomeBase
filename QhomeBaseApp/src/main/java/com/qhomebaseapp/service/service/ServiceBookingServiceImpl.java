@@ -15,6 +15,8 @@ import com.qhomebaseapp.repository.UserRepository;
 import com.qhomebaseapp.service.user.EmailService;
 import com.qhomebaseapp.service.vnpay.VnpayService;
 import com.qhomebaseapp.config.VnpayProperties;
+import com.qhomebaseapp.exception.UnpaidBookingException;
+import com.qhomebaseapp.exception.ServiceNotAvailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +31,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -292,6 +295,52 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
         
         return overlapping.isEmpty();
     }
+    
+    /**
+     * Kiểm tra service availability và trả về thông tin chi tiết nếu không available
+     * @return null nếu available, hoặc message lý do nếu không available
+     */
+    private String checkServiceAvailabilityWithReason(Long serviceId, LocalDate date, LocalTime startTime, LocalTime endTime) {
+        DayOfWeek dayOfWeek = date.getDayOfWeek();
+        int dayOfWeekValue = dayOfWeek.getValue() % 7; 
+        
+        List<ServiceAvailability> availabilities = availabilityRepository
+                .findByService_IdAndIsAvailableTrue(serviceId);
+        
+        // Kiểm tra schedule
+        boolean hasSchedule = availabilities.stream()
+                .anyMatch(avail -> avail.getDayOfWeek().equals(dayOfWeekValue) &&
+                        !startTime.isBefore(avail.getStartTime()) &&
+                        !endTime.isAfter(avail.getEndTime()));
+        
+        if (!hasSchedule) {
+            // Tìm schedule gần nhất để hiển thị thông tin
+            String dayName = dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.forLanguageTag("vi"));
+            Optional<ServiceAvailability> closestSchedule = availabilities.stream()
+                    .filter(avail -> avail.getDayOfWeek().equals(dayOfWeekValue))
+                    .findFirst();
+            
+            if (closestSchedule.isPresent()) {
+                ServiceAvailability schedule = closestSchedule.get();
+                return String.format("Dịch vụ không hoạt động vào %s trong khung giờ bạn đã chọn (%s - %s). " +
+                        "Giờ hoạt động: %s - %s", 
+                        dayName, startTime, endTime, schedule.getStartTime(), schedule.getEndTime());
+            } else {
+                return String.format("Dịch vụ không hoạt động vào %s. Vui lòng chọn ngày khác.", dayName);
+            }
+        }
+        
+        // Kiểm tra overlapping bookings
+        List<ServiceBooking> overlapping = bookingRepository.findOverlappingBookings(
+                serviceId, date, startTime, endTime);
+        
+        if (!overlapping.isEmpty()) {
+            return String.format("Khung giờ %s - %s ngày %s đã được đặt trước. Vui lòng chọn thời gian khác.",
+                    startTime, endTime, date.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+        }
+        
+        return null; // Available
+    }
 
     @Override
     @Transactional
@@ -341,15 +390,19 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
             if (!unpaidBookings.isEmpty()) {
                 log.warn("User {} has {} unpaid bookings. Cannot create new booking until payment is completed.", 
                         userId, unpaidBookings.size());
-                throw new RuntimeException("Bạn có dịch vụ chưa thanh toán. Vui lòng thanh toán trước khi đặt dịch vụ mới.");
+                throw new UnpaidBookingException("Bạn có dịch vụ chưa thanh toán. Vui lòng thanh toán trước khi đặt dịch vụ mới.");
             }
             
-            if (!checkServiceAvailability(service.getId(), request.getBookingDate(), 
-                    request.getStartTime(), request.getEndTime())) {
-                log.warn("Service {} is not available for date {} and time {} - {}", 
+            // Kiểm tra availability với thông tin chi tiết
+            String availabilityReason = checkServiceAvailabilityWithReason(
+                    service.getId(), request.getBookingDate(), 
+                    request.getStartTime(), request.getEndTime());
+            
+            if (availabilityReason != null) {
+                log.warn("Service {} is not available for date {} and time {} - {}. Reason: {}", 
                         service.getId(), request.getBookingDate(), 
-                        request.getStartTime(), request.getEndTime());
-                throw new RuntimeException("Service is not available for the selected time slot");
+                        request.getStartTime(), request.getEndTime(), availabilityReason);
+                throw new ServiceNotAvailableException(availabilityReason);
             }
             
             // Validate number of people based on capacity
@@ -389,10 +442,33 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
             long hours = ChronoUnit.HOURS.between(request.getStartTime(), request.getEndTime());
             if (hours <= 0) hours = 1;
             BigDecimal durationHours = BigDecimal.valueOf(hours);
-            BigDecimal totalAmount = service.getPricePerHour() != null ?
-                    service.getPricePerHour().multiply(durationHours) : BigDecimal.ZERO;
             
-            log.info("Calculated duration: {} hours, total amount: {}", durationHours, totalAmount);
+            // Calculate total amount based on pricing type
+            BigDecimal totalAmount;
+            String pricingType = service.getPricingType() != null ? service.getPricingType() : "HOURLY";
+            
+            if ("PER_SESSION".equalsIgnoreCase(pricingType) || "SESSION".equalsIgnoreCase(pricingType)) {
+                // Use price per session for PER_SESSION pricing
+                totalAmount = service.getPricePerSession() != null ? 
+                        service.getPricePerSession() : BigDecimal.ZERO;
+                log.info("Using PER_SESSION pricing: pricePerSession={}, totalAmount={}", 
+                        service.getPricePerSession(), totalAmount);
+            } else {
+                // Default to HOURLY pricing
+                totalAmount = service.getPricePerHour() != null ?
+                        service.getPricePerHour().multiply(durationHours) : BigDecimal.ZERO;
+                log.info("Using HOURLY pricing: pricePerHour={}, hours={}, totalAmount={}", 
+                        service.getPricePerHour(), durationHours, totalAmount);
+            }
+            
+            if (totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                log.warn("Total amount is zero or negative for service {} with pricing type {}", 
+                        service.getId(), pricingType);
+                throw new RuntimeException("Không thể tính toán giá dịch vụ. Vui lòng liên hệ quản trị viên.");
+            }
+            
+            log.info("Calculated duration: {} hours, pricing type: {}, total amount: {}", 
+                    durationHours, pricingType, totalAmount);
             
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new RuntimeException("User not found"));
@@ -431,6 +507,10 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
             log.info("Booking slot saved");
             
             return toBookingResponseDto(booking);
+        } catch (UnpaidBookingException | ServiceNotAvailableException e) {
+            // Don't log as error - these are expected business logic
+            // Just rethrow to let GlobalExceptionHandler handle it
+            throw e;
         } catch (Exception e) {
             log.error("Error creating booking: {}", e.getMessage(), e);
             throw e;

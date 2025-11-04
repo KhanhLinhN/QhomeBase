@@ -22,7 +22,7 @@ public class ServiceAvailability {
     private Service service;
 
     @Column(name = "day_of_week", nullable = false)
-    private Integer dayOfWeek; // 0=Sunday, 1=Monday, ..., 6=Saturday
+    private Integer dayOfWeek;
 
     @Column(name = "start_time", nullable = false)
     private LocalTime startTime;

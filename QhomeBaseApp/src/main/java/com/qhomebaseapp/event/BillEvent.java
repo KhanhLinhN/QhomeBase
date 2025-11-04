@@ -8,5 +8,5 @@ import lombok.Data;
 public class BillEvent {
     private Long userId;
     private Long billId;
-    private String status; // "UNPAID" hoặc "PAID"
+    private String status;
 }

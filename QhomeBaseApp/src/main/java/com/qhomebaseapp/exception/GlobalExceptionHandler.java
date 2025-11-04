@@ -20,6 +20,27 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
+    @ExceptionHandler(UnpaidBookingException.class)
+    public ResponseEntity<?> handleUnpaidBookingException(UnpaidBookingException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("success", false);
+        body.put("message", ex.getMessage());
+        body.put("errorCode", "UNPAID_BOOKING_EXISTS");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    @ExceptionHandler(ServiceNotAvailableException.class)
+    public ResponseEntity<?> handleServiceNotAvailableException(ServiceNotAvailableException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("success", false);
+        body.put("message", ex.getMessage());
+        body.put("errorCode", "SERVICE_NOT_AVAILABLE");
+        if (ex.getReason() != null) {
+            body.put("reason", ex.getReason());
+        }
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<?> handleValidationException(MethodArgumentNotValidException ex) {
         Map<String, Object> errors = new HashMap<>();
