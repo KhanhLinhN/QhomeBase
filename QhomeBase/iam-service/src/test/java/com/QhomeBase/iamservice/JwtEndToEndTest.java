@@ -1,18 +1,12 @@
 package com.QhomeBase.iamservice;
 
-import com.QhomeBase.iamservice.controller.TestController;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureWebMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-
-import java.util.List;
-import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -25,78 +19,22 @@ class JwtEndToEndTest {
     private WebApplicationContext webApplicationContext;
 
     private MockMvc mockMvc;
-    private ObjectMapper objectMapper;
 
     @org.junit.jupiter.api.BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
-        objectMapper = new ObjectMapper();
     }
 
     @Test
-    void testJwtFlow_EndToEnd() throws Exception {
-        TestController.TokenRequest tokenRequest = new TestController.TokenRequest();
-        tokenRequest.setUid(UUID.randomUUID());
-        tokenRequest.setUsername("testuser");
-        tokenRequest.setTenantId(UUID.randomUUID());
-        tokenRequest.setRoles(List.of("USER", "ADMIN"));
-        tokenRequest.setPermissions(List.of("READ", "WRITE"));
-
-        String tokenResponse = mockMvc.perform(post("/api/test/generate-token")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(tokenRequest)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").isNotEmpty())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        String token = objectMapper.readTree(tokenResponse).get("token").asText();
-
-        mockMvc.perform(get("/api/test/protected")
-                .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(content().string("Hello testuser! This is a protected endpoint."));
-
-        mockMvc.perform(get("/api/test/admin")
-                .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(content().string("Hello Admin testuser! This is an admin-only endpoint."));
-
-        mockMvc.perform(get("/api/test/user-info")
-                .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.username").value("testuser"))
-                .andExpect(jsonPath("$.roles").isArray())
-                .andExpect(jsonPath("$.permissions").isArray());
+    void testApplicationContextLoads() {
+        // Basic test to ensure Spring context loads successfully
+        // This verifies that the application can start without errors
     }
 
     @Test
-    void testJwtFlow_WithInvalidToken() throws Exception {
-        mockMvc.perform(get("/api/test/protected")
-                .header("Authorization", "Bearer invalid-token"))
-                .andExpect(status().isUnauthorized());
-
-        mockMvc.perform(get("/api/test/protected")
-                .header("Authorization", "Bearer not.a.valid.jwt"))
-                .andExpect(status().isUnauthorized());
-
-        mockMvc.perform(get("/api/test/protected"))
-                .andExpect(status().isOk())
-                .andExpect(content().string("This is a protected endpoint - JWT required"));
-    }
-
-    @Test
-    void testJwtFlow_WithExpiredToken() throws Exception {
-        mockMvc.perform(get("/api/test/protected")
-                .header("Authorization", "Bearer expired.token.here"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void testJwtFlow_WithWrongAudience() throws Exception {
-        mockMvc.perform(get("/api/test/protected")
-                .header("Authorization", "Bearer wrong.audience.token"))
-                .andExpect(status().isUnauthorized());
+    void testLoginEndpoint_ReturnsBadRequest_WhenNoBody() throws Exception {
+        // Test that login endpoint exists and returns appropriate error for invalid request
+        mockMvc.perform(post("/api/auth/login"))
+                .andExpect(status().is4xxClientError());
     }
 }

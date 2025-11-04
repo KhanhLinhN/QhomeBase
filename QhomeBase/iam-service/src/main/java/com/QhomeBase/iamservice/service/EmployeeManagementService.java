@@ -37,9 +37,9 @@ public class EmployeeManagementService {
     public List<EmployeeDto> getEmployeesByRole(String roleName) {
         try {
             UserRole role = UserRole.valueOf(roleName.toUpperCase());
-            return userRepository.findAll()
+            String roleCode = role.getRoleName();
+            return userRepository.findByRole(roleCode)
                     .stream()
-                    .filter(user -> user.hasRole(role))
                     .map(this::mapToEmployeeDto)
                     .collect(Collectors.toList());
         } catch (IllegalArgumentException e) {

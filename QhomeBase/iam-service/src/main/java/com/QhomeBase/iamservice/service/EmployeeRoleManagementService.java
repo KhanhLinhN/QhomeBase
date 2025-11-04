@@ -3,7 +3,6 @@ package com.QhomeBase.iamservice.service;
 import com.QhomeBase.iamservice.dto.AvailablePermissionDto;
 import com.QhomeBase.iamservice.dto.AvailableRoleDto;
 import com.QhomeBase.iamservice.dto.EmployeeRoleDto;
-import com.QhomeBase.iamservice.dto.RoleRemovalRequest;
 import com.QhomeBase.iamservice.model.User;
 import com.QhomeBase.iamservice.model.UserRole;
 import com.QhomeBase.iamservice.repository.PermissionRepository;
@@ -40,6 +39,19 @@ public class EmployeeRoleManagementService {
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
         
         return mapToEmployeeRoleDto(user);
+    }
+
+    public List<EmployeeRoleDto> getEmployeesByRole(String roleName) {
+        try {
+            UserRole role = UserRole.valueOf(roleName.toUpperCase());
+            String roleCode = role.getRoleName();
+            return userRepository.findByRole(roleCode)
+                    .stream()
+                    .map(this::mapToEmployeeRoleDto)
+                    .collect(Collectors.toList());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid role: " + roleName);
+        }
     }
 
     public List<AvailableRoleDto> getAvailableRoles() {

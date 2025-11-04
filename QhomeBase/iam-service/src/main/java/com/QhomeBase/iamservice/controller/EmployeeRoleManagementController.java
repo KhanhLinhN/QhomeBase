@@ -83,11 +83,7 @@ public class EmployeeRoleManagementController {
     @GetMapping("/role/{roleName}")
     @PreAuthorize("@authz.canViewAllUsers()")
     public ResponseEntity<List<EmployeeRoleDto>> getEmployeesByRole(@PathVariable String roleName) {
-        List<EmployeeRoleDto> employees = employeeRoleManagementService.getAllEmployees()
-                .stream()
-                .filter(emp -> emp.getAssignedRoles().stream()
-                        .anyMatch(role -> roleName.equals(role.getRoleName())))
-                .toList();
+        List<EmployeeRoleDto> employees = employeeRoleManagementService.getEmployeesByRole(roleName);
         return ResponseEntity.ok(employees);
     }
 }
