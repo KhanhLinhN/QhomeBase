@@ -884,21 +884,32 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
         List<TimeSlotDto> timeSlots = new java.util.ArrayList<>();
         LocalTime currentStart = scheduleStart;
         
-        // Validate: Ngày không được trong quá khứ và phải ít nhất 1 giờ từ bây giờ
         ZoneId vietnamZone = ZoneId.of("Asia/Ho_Chi_Minh");
         ZonedDateTime nowVietnam = ZonedDateTime.now(vietnamZone);
         LocalDateTime nowLocal = nowVietnam.toLocalDateTime();
+        LocalTime currentTime = nowLocal.toLocalTime();
         boolean isToday = date.equals(nowLocal.toLocalDate());
         
         while (currentStart.isBefore(scheduleEnd)) {
             LocalTime currentEnd = currentStart.plusHours(slotDurationHours);
             
-            // Không vượt quá schedule end time
             if (currentEnd.isAfter(scheduleEnd)) {
                 break;
             }
             
-            // Kiểm tra nếu slot này đã quá khứ (cho ngày hôm nay)
+            if (isToday) {
+                if (currentTime.isAfter(currentStart)) {
+                    long minutesPassed = ChronoUnit.MINUTES.between(currentStart, currentTime);
+                    if (minutesPassed > 45) {
+                        currentStart = currentStart.plusHours(1);
+                        continue;
+                    }
+                }
+            } else if (date.isBefore(nowLocal.toLocalDate())) {
+                currentStart = currentStart.plusHours(1);
+                continue;
+            }
+            
             boolean isPastSlot = false;
             if (isToday) {
                 LocalDateTime slotDateTime = LocalDateTime.of(date, currentStart);
@@ -906,11 +917,8 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
                 if (hoursUntilSlot < 1) {
                     isPastSlot = true;
                 }
-            } else if (date.isBefore(nowLocal.toLocalDate())) {
-                isPastSlot = true;
             }
             
-            // Kiểm tra availability
             boolean isAvailable = !isPastSlot;
             String reason = null;
             Integer bookedPeople = null;
@@ -999,8 +1007,31 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
     }
     
     @Override
-    public List<BarSlotDto> getBarSlots(Long serviceId) {
+    public List<BarSlotDto> getBarSlots(Long serviceId, LocalDate selectedDate) {
         List<BarSlot> slots = barSlotRepository.findByService_IdAndIsActiveTrueOrderBySortOrderAsc(serviceId);
+        
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        LocalTime currentTime = LocalTime.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        
+        if (selectedDate != null && selectedDate.equals(today)) {
+            slots = slots.stream()
+                    .filter(slot -> {
+                        LocalTime slotStartTime = slot.getStartTime();
+                        
+                        if (slotStartTime.isBefore(LocalTime.of(2, 0))) {
+                            return true;
+                        }
+                        
+                        if (currentTime.isBefore(slotStartTime)) {
+                            return true;
+                        }
+                        
+                        long minutesPassed = ChronoUnit.MINUTES.between(slotStartTime, currentTime);
+                        return minutesPassed <= 45;
+                    })
+                    .collect(Collectors.toList());
+        }
+        
         return slots.stream()
                 .map(this::toBarSlotDto)
                 .collect(Collectors.toList());

@@ -22,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.format.annotation.DateTimeFormat;
 import java.time.OffsetDateTime;
 import java.util.Map;
 
@@ -182,8 +183,10 @@ public class ServiceBookingController {
     }
     
     @GetMapping("/services/{serviceId}/bar-slots")
-    public ResponseEntity<List<BarSlotDto>> getBarSlots(@PathVariable Long serviceId) {
-        List<BarSlotDto> slots = serviceBookingService.getBarSlots(serviceId);
+    public ResponseEntity<List<BarSlotDto>> getBarSlots(
+            @PathVariable Long serviceId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        List<BarSlotDto> slots = serviceBookingService.getBarSlots(serviceId, date);
         return ResponseEntity.ok(slots);
     }
 

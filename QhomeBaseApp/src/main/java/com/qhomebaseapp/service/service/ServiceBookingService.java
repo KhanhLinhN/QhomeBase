@@ -71,6 +71,6 @@ public interface ServiceBookingService {
     
     List<ServiceTicketDto> getServiceTickets(Long serviceId);
     
-    List<BarSlotDto> getBarSlots(Long serviceId);
+    List<BarSlotDto> getBarSlots(Long serviceId, LocalDate selectedDate);
 }
 

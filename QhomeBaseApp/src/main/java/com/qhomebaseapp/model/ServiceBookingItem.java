@@ -43,7 +43,7 @@ public class ServiceBookingItem {
     private BigDecimal totalPrice;
 
     @Column(name = "metadata", columnDefinition = "TEXT")
-    private String metadata; // JSON metadata
+    private String metadata;
 
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
