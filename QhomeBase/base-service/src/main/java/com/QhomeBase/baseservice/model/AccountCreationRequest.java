@@ -28,6 +28,9 @@ public class AccountCreationRequest {
     @Column(name = "username")
     private String username;
 
+    @Column(name = "password")
+    private String password;
+
     @Column(name = "email")
     private String email;
 
@@ -48,6 +51,9 @@ public class AccountCreationRequest {
 
     @Column(name = "rejection_reason", columnDefinition = "TEXT")
     private String rejectionReason;
+
+    @Column(name = "proof_of_relation_image_url", columnDefinition = "TEXT")
+    private String proofOfRelationImageUrl;
 
     @Column(name = "approved_at")
     private OffsetDateTime approvedAt;

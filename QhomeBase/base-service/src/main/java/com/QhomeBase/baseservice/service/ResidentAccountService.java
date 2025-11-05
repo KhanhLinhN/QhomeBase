@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -97,6 +98,11 @@ public class ResidentAccountService {
     
     @Transactional
     public ResidentAccountDto createAccountForResident(UUID residentId, CreateResidentAccountDto request, UUID requesterUserId) {
+        return createAccountForResident(residentId, request, requesterUserId, null);
+    }
+    
+    @Transactional
+    public ResidentAccountDto createAccountForResident(UUID residentId, CreateResidentAccountDto request, UUID requesterUserId, String token) {
         Resident resident = residentRepository.findById(residentId)
                 .orElseThrow(() -> new IllegalArgumentException("Resident not found"));
         
@@ -132,7 +138,7 @@ public class ResidentAccountService {
             
             int counter = 1;
             String originalUsername = username;
-            while (iamClientService.usernameExists(username)) {
+            while (iamClientService.usernameExists(username, token)) {
                 username = originalUsername + counter;
                 counter++;
             }
@@ -152,11 +158,11 @@ public class ResidentAccountService {
                 ? resident.getEmail() 
                 : username + "@qhome.local";
         
-        if (iamClientService.usernameExists(username)) {
+        if (iamClientService.usernameExists(username, token)) {
             throw new IllegalArgumentException("Username already exists: " + username);
         }
         
-        if (iamClientService.emailExists(email)) {
+        if (iamClientService.emailExists(email, token)) {
             throw new IllegalArgumentException("Email already exists: " + email);
         }
         
@@ -165,7 +171,8 @@ public class ResidentAccountService {
                 email,
                 password,
                 request.autoGenerate(),
-                residentId
+                residentId,
+                token
         );
         
         resident.setUserId(accountDto.userId());
@@ -226,29 +233,49 @@ public class ResidentAccountService {
             throw new IllegalArgumentException("There is already a pending request for this resident");
         }
 
-        List<HouseholdMember> members = householdMemberRepository
+        List<HouseholdMember> residentMembers = householdMemberRepository
                 .findActiveMembersByResidentId(request.residentId());
 
-        if (members.isEmpty()) {
+        if (residentMembers.isEmpty()) {
             throw new IllegalArgumentException("Resident does not belong to any household");
         }
 
-        Household household = householdRepository.findById(members.get(0).getHouseholdId())
-                .orElseThrow(() -> new IllegalArgumentException("Household not found"));
+        boolean hasPermission = false;
+        for (HouseholdMember member : residentMembers) {
+            Household household = householdRepository.findById(member.getHouseholdId())
+                    .orElse(null);
+            if (household != null && canCreateAccountForUnit(household.getUnitId(), requesterUserId)) {
+                hasPermission = true;
+                break;
+            }
+        }
 
-        if (!canCreateAccountForUnit(household.getUnitId(), requesterUserId)) {
+        if (!hasPermission) {
             throw new IllegalArgumentException("You don't have permission to create account request for this resident");
         }
 
         String username = null;
+        String password = null;
         String email = resident.getEmail() != null && !resident.getEmail().isEmpty()
                 ? resident.getEmail()
                 : null;
 
         if (!request.autoGenerate()) {
             username = request.username();
+            password = request.password();
             if (username == null || username.isEmpty()) {
                 throw new IllegalArgumentException("Username is required when autoGenerate is false");
+            }
+            if (password == null || password.isEmpty()) {
+                throw new IllegalArgumentException("Password is required when autoGenerate is false");
+            }
+            
+            if (!username.matches("^[a-zA-Z0-9_-]+$")) {
+                throw new IllegalArgumentException("Username can only contain letters, numbers, underscore, and hyphen");
+            }
+            
+            if (iamClientService.usernameExists(username)) {
+                throw new IllegalArgumentException("Username already exists: " + username);
             }
         }
 
@@ -256,8 +283,10 @@ public class ResidentAccountService {
                 .residentId(request.residentId())
                 .requestedBy(requesterUserId)
                 .username(username)
+                .password(password)
                 .email(email)
                 .autoGenerate(request.autoGenerate())
+                .proofOfRelationImageUrl(request.proofOfRelationImageUrl())
                 .status(AccountCreationRequest.RequestStatus.PENDING)
                 .build();
 
@@ -270,6 +299,11 @@ public class ResidentAccountService {
 
     @Transactional
     public AccountCreationRequestDto approveAccountRequest(UUID requestId, UUID adminUserId, boolean approve, String rejectionReason) {
+        return approveAccountRequest(requestId, adminUserId, approve, rejectionReason, null);
+    }
+    
+    @Transactional
+    public AccountCreationRequestDto approveAccountRequest(UUID requestId, UUID adminUserId, boolean approve, String rejectionReason, String token) {
         AccountCreationRequest request = accountCreationRequestRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Account creation request not found"));
 
@@ -286,20 +320,26 @@ public class ResidentAccountService {
 
             CreateResidentAccountDto createRequest = new CreateResidentAccountDto(
                     request.getUsername(),
-                    null,
+                    request.getPassword(),
                     request.getAutoGenerate()
             );
 
             try {
+                log.info("Attempting to create account for resident {} with autoGenerate={}, username={}", 
+                        request.getResidentId(), request.getAutoGenerate(), request.getUsername());
+                
                 ResidentAccountDto account = createAccountForResident(
                         request.getResidentId(),
                         createRequest,
-                        request.getRequestedBy()
+                        request.getRequestedBy(),
+                        token
                 );
 
-                log.info("Approved and created account for resident {}: userId={}", request.getResidentId(), account.userId());
+                log.info("Approved and created account for resident {}: userId={}, username={}", 
+                        request.getResidentId(), account.userId(), account.username());
             } catch (Exception e) {
-                log.error("Failed to create account after approval: {}", e.getMessage());
+                log.error("Failed to create account after approval for resident {}: {}", 
+                        request.getResidentId(), e.getMessage(), e);
                 request.setStatus(AccountCreationRequest.RequestStatus.REJECTED);
                 request.setRejectedBy(adminUserId);
                 request.setRejectionReason("Failed to create account: " + e.getMessage());
@@ -351,12 +391,40 @@ public class ResidentAccountService {
                 ? residentRepository.findByUserId(request.getRejectedBy()).orElse(null)
                 : null;
 
+        UUID householdId = null;
+        UUID unitId = null;
+        String unitCode = null;
+        String relation = null;
+
+        if (resident != null) {
+            List<HouseholdMember> members = householdMemberRepository
+                    .findActiveMembersByResidentId(resident.getId());
+            if (!members.isEmpty()) {
+                HouseholdMember member = members.get(0);
+                householdId = member.getHouseholdId();
+                relation = member.getRelation();
+
+                Household household = householdRepository.findById(householdId).orElse(null);
+                if (household != null) {
+                    unitId = household.getUnitId();
+                    Unit unit = unitRepository.findById(unitId).orElse(null);
+                    if (unit != null) {
+                        unitCode = unit.getCode();
+                    }
+                }
+            }
+        }
+
         return new AccountCreationRequestDto(
                 request.getId(),
                 request.getResidentId(),
                 resident != null ? resident.getFullName() : null,
                 resident != null ? resident.getEmail() : null,
                 resident != null ? resident.getPhone() : null,
+                householdId,
+                unitId,
+                unitCode,
+                relation,
                 request.getRequestedBy(),
                 requestedByResident != null ? requestedByResident.getFullName() : null,
                 request.getUsername(),
@@ -368,10 +436,93 @@ public class ResidentAccountService {
                 request.getRejectedBy(),
                 rejectedByResident != null ? rejectedByResident.getFullName() : null,
                 request.getRejectionReason(),
+                request.getProofOfRelationImageUrl(),
                 request.getApprovedAt(),
                 request.getRejectedAt(),
                 request.getCreatedAt()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public List<UnitDto> getMyUnits(UUID userId) {
+        List<Unit> units = unitRepository.findAllUnitsByUserId(userId);
+        
+        return units.stream()
+                .map(unit -> {
+                    UUID primaryResidentId = householdRepository.findCurrentHouseholdByUnitId(unit.getId())
+                            .map(Household::getPrimaryResidentId)
+                            .orElse(null);
+                    
+                    return new UnitDto(
+                            unit.getId(),
+                            unit.getBuilding().getId(),
+                            unit.getBuilding().getCode(),
+                            unit.getBuilding().getName(),
+                            unit.getCode(),
+                            unit.getFloor(),
+                            unit.getAreaM2(),
+                            unit.getBedrooms(),
+                            unit.getStatus(),
+                            primaryResidentId,
+                            unit.getCreatedAt(),
+                            unit.getUpdatedAt()
+                    );
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canManageUnit(UUID userId, UUID unitId) {
+        return canCreateAccountForUnit(unitId, userId);
+    }
+
+    @Transactional(readOnly = true)
+    public UnitAccessDto getUnitAccessInfo(UUID userId, UUID unitId) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElse(null);
+        
+        if (resident == null) {
+            return null;
+        }
+        
+        List<HouseholdMember> members = householdMemberRepository
+                .findActiveMembersByResidentId(resident.getId());
+
+        if (members == null || members.isEmpty()) {
+            return null;
+        }
+
+        for (HouseholdMember member : members) {
+            Household household = householdRepository.findById(member.getHouseholdId())
+                    .orElse(null);
+            
+            if (household != null && household.getUnitId().equals(unitId)) {
+                boolean isPrimary = member.getIsPrimary() != null && member.getIsPrimary();
+                
+                if (!isPrimary && household.getPrimaryResidentId() != null) {
+                    Resident primaryResident = residentRepository.findById(household.getPrimaryResidentId())
+                            .orElse(null);
+                    if (primaryResident != null && primaryResident.getUserId() != null && 
+                        primaryResident.getUserId().equals(userId)) {
+                        isPrimary = true;
+                    }
+                }
+                
+                Unit unit = unitRepository.findByIdWithBuilding(unitId);
+                if (unit == null) {
+                    return null;
+                }
+                
+                return new UnitAccessDto(
+                        unitId,
+                        unit.getCode(),
+                        isPrimary,
+                        member.getRelation()
+                );
+            }
+        }
+        
+        return null;
     }
 }
 

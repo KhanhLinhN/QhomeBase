@@ -1,9 +1,11 @@
 package com.QhomeBase.baseservice.service;
 
 import com.QhomeBase.baseservice.dto.ResidentAccountDto;
+import com.QhomeBase.baseservice.security.UserPrincipal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -27,6 +29,16 @@ public class IamClientService {
             String password, 
             boolean autoGenerate,
             UUID residentId) {
+        return createUserForResident(username, email, password, autoGenerate, residentId, null);
+    }
+    
+    public ResidentAccountDto createUserForResident(
+            String username, 
+            String email, 
+            String password, 
+            boolean autoGenerate,
+            UUID residentId,
+            String token) {
         
         CreateUserRequest request = new CreateUserRequest(
                 username,
@@ -37,13 +49,32 @@ public class IamClientService {
         );
         
         try {
-            UserAccountResponse response = webClient
-                    .post()
-                    .uri("/api/users/create-for-resident")
-                    .bodyValue(request)
-                    .retrieve()
-                    .bodyToMono(UserAccountResponse.class)
-                    .block();
+            String authToken = token != null ? token : getCurrentToken();
+            log.info("Calling IAM service to create user for resident {}: username={}, email={}, autoGenerate={}, tokenPresent={}, tokenSource={}", 
+                    residentId, username, email, autoGenerate, authToken != null && !authToken.isEmpty(), 
+                    token != null ? "parameter" : "SecurityContext");
+            
+            UserAccountResponse response;
+            if (authToken != null && !authToken.isEmpty()) {
+                log.info("Forwarding token to IAM service. Token length: {}", authToken.length());
+                response = webClient
+                        .post()
+                        .uri("/api/users/create-for-resident")
+                        .header("Authorization", "Bearer " + authToken)
+                        .bodyValue(request)
+                        .retrieve()
+                        .bodyToMono(UserAccountResponse.class)
+                        .block();
+            } else {
+                log.error("No JWT token available when calling IAM service - this will cause 403 Forbidden");
+                response = webClient
+                        .post()
+                        .uri("/api/users/create-for-resident")
+                        .bodyValue(request)
+                        .retrieve()
+                        .bodyToMono(UserAccountResponse.class)
+                        .block();
+            }
             
             if (response == null) {
                 throw new RuntimeException("Failed to create user account: null response");
@@ -101,10 +132,20 @@ public class IamClientService {
     }
     
     public boolean usernameExists(String username) {
+        return usernameExists(username, null);
+    }
+    
+    public boolean usernameExists(String username, String token) {
         try {
-            webClient
-                    .get()
-                    .uri("/api/users/by-username/{username}", username)
+            String authToken = token != null ? token : getCurrentToken();
+            var webClientBuilder = webClient.get()
+                    .uri("/api/users/by-username/{username}", username);
+            
+            if (authToken != null && !authToken.isEmpty()) {
+                webClientBuilder = webClientBuilder.header("Authorization", "Bearer " + authToken);
+            }
+            
+            webClientBuilder
                     .retrieve()
                     .bodyToMono(Object.class)
                     .block();
@@ -122,10 +163,20 @@ public class IamClientService {
     }
     
     public boolean emailExists(String email) {
+        return emailExists(email, null);
+    }
+    
+    public boolean emailExists(String email, String token) {
         try {
-            webClient
-                    .get()
-                    .uri("/api/users/by-email/{email}", email)
+            String authToken = token != null ? token : getCurrentToken();
+            var webClientBuilder = webClient.get()
+                    .uri("/api/users/by-email/{email}", email);
+            
+            if (authToken != null && !authToken.isEmpty()) {
+                webClientBuilder = webClientBuilder.header("Authorization", "Bearer " + authToken);
+            }
+            
+            webClientBuilder
                     .retrieve()
                     .bodyToMono(Object.class)
                     .block();
@@ -157,5 +208,22 @@ public class IamClientService {
             List<String> roles,
             boolean active
     ) {}
+    
+    private String getCurrentToken() {
+        try {
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.getPrincipal() instanceof UserPrincipal principal) {
+                String token = principal.token();
+                log.debug("Retrieved token from SecurityContext: tokenPresent={}, username={}, roles={}", 
+                        token != null && !token.isEmpty(), principal.username(), principal.roles());
+                return token;
+            } else {
+                log.warn("No UserPrincipal found in SecurityContext. Authentication: {}", auth);
+            }
+        } catch (Exception e) {
+            log.error("Failed to get current token: {}", e.getMessage(), e);
+        }
+        return null;
+    }
 }
 

@@ -18,5 +18,14 @@ public interface UnitRepository extends JpaRepository<Unit, UUID> {
     @Query("SELECT u FROM Unit u JOIN FETCH u.building WHERE u.id = :id")
     Unit findByIdWithBuilding(@Param("id") UUID id);
 
+    @Query("SELECT DISTINCT u FROM Unit u " +
+           "JOIN FETCH u.building " +
+           "JOIN Household h ON h.unitId = u.id " +
+           "JOIN HouseholdMember hm ON hm.householdId = h.id " +
+           "JOIN Resident r ON r.id = hm.residentId " +
+           "WHERE r.userId = :userId " +
+           "AND (hm.leftAt IS NULL OR hm.leftAt >= CURRENT_DATE) " +
+           "AND (h.endDate IS NULL OR h.endDate >= CURRENT_DATE)")
+    List<Unit> findAllUnitsByUserId(@Param("userId") UUID userId);
 
 }

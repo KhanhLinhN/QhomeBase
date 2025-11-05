@@ -101,5 +101,20 @@ public class ResidentController {
             return ResponseEntity.badRequest().build();
         }
     }
+
+    @GetMapping("/my-units")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<List<UnitDto>> getMyUnits(Authentication authentication) {
+        try {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID userId = principal.uid();
+            
+            List<UnitDto> units = residentAccountService.getMyUnits(userId);
+            return ResponseEntity.ok(units);
+        } catch (Exception e) {
+            log.warn("Failed to get my units: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
 }
 

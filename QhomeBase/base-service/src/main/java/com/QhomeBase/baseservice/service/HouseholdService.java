@@ -1,19 +1,25 @@
 package com.QhomeBase.baseservice.service;
 
+import com.QhomeBase.baseservice.dto.HouseholdCreateDto;
+import com.QhomeBase.baseservice.dto.HouseholdDto;
+import com.QhomeBase.baseservice.dto.HouseholdUpdateDto;
 import com.QhomeBase.baseservice.model.Household;
+import com.QhomeBase.baseservice.model.Resident;
+import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.repository.HouseholdRepository;
+import com.QhomeBase.baseservice.repository.ResidentRepository;
+import com.QhomeBase.baseservice.repository.UnitRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
-/**
- * Service to manage households and primary residents (chủ hộ).
- * Primary resident is responsible for all payments related to the unit.
- */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -21,23 +27,173 @@ import java.util.UUID;
 public class HouseholdService {
     
     private final HouseholdRepository householdRepository;
-
+    private final UnitRepository unitRepository;
+    private final ResidentRepository residentRepository;
     public Optional<UUID> getPrimaryResidentForUnit(UUID unitId) {
         return householdRepository.findCurrentHouseholdByUnitId(unitId)
                 .map(Household::getPrimaryResidentId);
     }
 
     public boolean isPrimaryResident(UUID unitId, UUID userId) {
+        Resident resident = residentRepository.findByUserId(userId).orElse(null);
+        if (resident == null) {
+            return false;
+        }
         return getPrimaryResidentForUnit(unitId)
-                .map(primaryId -> primaryId.equals(userId))
+                .map(primaryId -> primaryId.equals(resident.getId()))
                 .orElse(false);
+    }
+
+    @Transactional
+    public HouseholdDto createHousehold(HouseholdCreateDto householdCreateDto) {
+        if (householdCreateDto.startDate().isBefore(LocalDate.now())) {
+            throw new IllegalArgumentException("Start date cannot be in the past");
+        }
+
+        if (householdCreateDto.endDate() != null && 
+            householdCreateDto.endDate().isBefore(householdCreateDto.startDate())) {
+            throw new IllegalArgumentException("End date cannot be before start date");
+        }
+
+        unitRepository.findById(householdCreateDto.unitId())
+                .orElseThrow(() -> new IllegalArgumentException("Unit not found"));
+
+        Optional<Household> existingHousehold = householdRepository.findCurrentHouseholdByUnitId(householdCreateDto.unitId());
+        if (existingHousehold.isPresent()) {
+            throw new IllegalArgumentException("Unit already has an active household");
+        }
+
+        if (householdCreateDto.primaryResidentId() != null) {
+            residentRepository.findById(householdCreateDto.primaryResidentId())
+                    .orElseThrow(() -> new IllegalArgumentException("Primary resident not found"));
+        }
+
+        Household household = Household.builder()
+                .unitId(householdCreateDto.unitId())
+                .kind(householdCreateDto.kind())
+                .primaryResidentId(householdCreateDto.primaryResidentId())
+                .startDate(householdCreateDto.startDate())
+                .endDate(householdCreateDto.endDate())
+                .build();
+
+        Household savedHousehold = householdRepository.save(household);
+        log.info("Created household {} for unit {}", savedHousehold.getId(), householdCreateDto.unitId());
+
+        return toDto(savedHousehold);
+    }
+
+    @Transactional
+    public HouseholdDto updateHousehold(UUID householdId, HouseholdUpdateDto updateDto) {
+        Household household = householdRepository.findById(householdId)
+                .orElseThrow(() -> new IllegalArgumentException("Household not found"));
+
+        if (updateDto.startDate() != null) {
+            if (updateDto.startDate().isBefore(LocalDate.now())) {
+                throw new IllegalArgumentException("Start date cannot be in the past");
+            }
+            household.setStartDate(updateDto.startDate());
+        }
+
+        if (updateDto.endDate() != null) {
+            LocalDate startDate = updateDto.startDate() != null ? updateDto.startDate() : household.getStartDate();
+            if (updateDto.endDate().isBefore(startDate)) {
+                throw new IllegalArgumentException("End date cannot be before start date");
+            }
+            household.setEndDate(updateDto.endDate());
+        }
+
+        if (updateDto.unitId() != null) {
+            unitRepository.findById(updateDto.unitId())
+                    .orElseThrow(() -> new IllegalArgumentException("Unit not found"));
+            household.setUnitId(updateDto.unitId());
+        }
+
+        if (updateDto.kind() != null) {
+            household.setKind(updateDto.kind());
+        }
+
+        if (updateDto.primaryResidentId() != null) {
+            residentRepository.findById(updateDto.primaryResidentId())
+                    .orElseThrow(() -> new IllegalArgumentException("Primary resident not found"));
+            household.setPrimaryResidentId(updateDto.primaryResidentId());
+        }
+
+        Household savedHousehold = householdRepository.save(household);
+        log.info("Updated household {}", householdId);
+
+        return toDto(savedHousehold);
+    }
+
+    @Transactional
+    public void deleteHousehold(UUID householdId) {
+        Household household = householdRepository.findById(householdId)
+                .orElseThrow(() -> new IllegalArgumentException("Household not found"));
+
+        household.setEndDate(LocalDate.now());
+        householdRepository.save(household);
+        log.info("Deactivated household {}", householdId);
+    }
+
+    @Transactional(readOnly = true)
+    public HouseholdDto getHouseholdById(UUID householdId) {
+        Household household = householdRepository.findById(householdId)
+                .orElseThrow(() -> new IllegalArgumentException("Household not found"));
+        return toDto(household);
+    }
+
+    @Transactional(readOnly = true)
+    public HouseholdDto getCurrentHouseholdByUnitId(UUID unitId) {
+        Household household = householdRepository.findCurrentHouseholdByUnitId(unitId)
+                .orElseThrow(() -> new IllegalArgumentException("Unit has no active household"));
+        return toDto(household);
+    }
+
+    @Transactional(readOnly = true)
+    public List<HouseholdDto> getAllHouseholdsByUnitId(UUID unitId) {
+        List<Household> households = householdRepository.findAll()
+                .stream()
+                .filter(h -> h.getUnitId().equals(unitId))
+                .collect(Collectors.toList());
+
+        return households.stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
     }
 
     public UUID getPayerForUnit(UUID unitId) {
         return getPrimaryResidentForUnit(unitId).orElse(null);
     }
+
+    public HouseholdDto toDto(Household household) {
+        if (household == null) {
+            return null;
+        }
+
+        String unitCode = null;
+        Unit unit = unitRepository.findById(household.getUnitId()).orElse(null);
+        if (unit != null) {
+            unitCode = unit.getCode();
+        }
+
+        String primaryResidentName = null;
+        if (household.getPrimaryResidentId() != null) {
+            Resident primaryResident = residentRepository.findById(household.getPrimaryResidentId()).orElse(null);
+            if (primaryResident != null) {
+                primaryResidentName = primaryResident.getFullName();
+            }
+        }
+
+        return new HouseholdDto(
+                household.getId(),
+                household.getUnitId(),
+                unitCode,
+                household.getKind(),
+                household.getPrimaryResidentId(),
+                primaryResidentName,
+                household.getStartDate(),
+                household.getEndDate(),
+                household.getCreatedAt(),
+                household.getUpdatedAt()
+        );
+    }
 }
-
-
-
-

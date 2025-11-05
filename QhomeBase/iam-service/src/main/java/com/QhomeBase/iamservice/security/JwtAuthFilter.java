@@ -47,7 +47,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 var authorities = new ArrayList<SimpleGrantedAuthority>();
                 if (roles != null) {
                     for (String role : roles) {
-                        authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                        String normalizedRole = role != null ? role.toUpperCase() : null;
+                        if (normalizedRole != null) {
+                            authorities.add(new SimpleGrantedAuthority("ROLE_" + normalizedRole));
+                        }
                     }
                 }
                 if (perms != null) {

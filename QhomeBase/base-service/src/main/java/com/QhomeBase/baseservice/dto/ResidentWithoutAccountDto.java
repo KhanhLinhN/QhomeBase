@@ -13,8 +13,6 @@ public record ResidentWithoutAccountDto(
         String nationalId,
         LocalDate dob,
         ResidentStatus status,
-        String relation,  // Relation in household (e.g., "Chồng", "Vợ", "Con")
+        String relation,
         boolean isPrimary
 ) {}
-
-

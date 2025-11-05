@@ -32,6 +32,9 @@ public class HouseholdMember {
     @Column(name = "relation")
     private String relation;
     
+    @Column(name = "proof_of_relation_image_url", columnDefinition = "TEXT")
+    private String proofOfRelationImageUrl;
+    
     @Column(name = "is_primary", nullable = false)
     @Builder.Default
     private Boolean isPrimary = false;

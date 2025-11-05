@@ -11,6 +11,10 @@ public record AccountCreationRequestDto(
         String residentName,
         String residentEmail,
         String residentPhone,
+        UUID householdId,
+        UUID unitId,
+        String unitCode,
+        String relation,
         UUID requestedBy,
         String requestedByName,
         String username,
@@ -22,6 +26,7 @@ public record AccountCreationRequestDto(
         UUID rejectedBy,
         String rejectedByName,
         String rejectionReason,
+        String proofOfRelationImageUrl,
         OffsetDateTime approvedAt,
         OffsetDateTime rejectedAt,
         OffsetDateTime createdAt

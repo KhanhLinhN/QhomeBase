@@ -97,14 +97,3 @@ public class Notification {
         validate();
     }
 }
-
-
-    public void markAsRead() {
-        if (status == NotificationStatus.UNREAD) {
-            this.status = NotificationStatus.READ;
-            this.readAt = Instant.now();
-            this.updatedAt = Instant.now();
-        }
-    }
-}
-

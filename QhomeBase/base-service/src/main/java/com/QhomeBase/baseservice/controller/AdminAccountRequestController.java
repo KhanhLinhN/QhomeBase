@@ -44,12 +44,14 @@ public class AdminAccountRequestController {
         try {
             UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
             UUID adminUserId = principal.uid();
+            String token = principal.token();
             
             AccountCreationRequestDto result = residentAccountService.approveAccountRequest(
                     requestId,
                     adminUserId,
                     request.approve(),
-                    request.rejectionReason()
+                    request.rejectionReason(),
+                    token
             );
             
             return ResponseEntity.ok(result);
