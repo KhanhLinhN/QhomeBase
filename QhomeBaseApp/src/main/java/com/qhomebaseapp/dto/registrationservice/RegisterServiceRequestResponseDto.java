@@ -31,4 +31,11 @@ public class RegisterServiceRequestResponseDto {
     private String vehicleColor;
     private List<String> imageUrls;
 
+    // Fields for Resident Card registration (Dịch vụ ra vào)
+    private String residentName;
+    private String apartmentNumber;
+    private String buildingName;
+    private String citizenId;
+    private String phoneNumber;
+
 }

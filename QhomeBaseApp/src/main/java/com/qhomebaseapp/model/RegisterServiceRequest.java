@@ -64,6 +64,22 @@ public class RegisterServiceRequest {
     @Column(name = "vnpay_transaction_ref")
     private String vnpayTransactionRef;
 
+    // Fields for Resident Card registration (Dịch vụ ra vào)
+    @Column(name = "resident_name")
+    private String residentName;
+
+    @Column(name = "apartment_number")
+    private String apartmentNumber;
+
+    @Column(name = "building_name")
+    private String buildingName;
+
+    @Column(name = "citizen_id")
+    private String citizenId;
+
+    @Column(name = "phone_number")
+    private String phoneNumber;
+
     @OneToMany(mappedBy = "registerServiceRequest", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<RegisterServiceImage> images = new ArrayList<>();
