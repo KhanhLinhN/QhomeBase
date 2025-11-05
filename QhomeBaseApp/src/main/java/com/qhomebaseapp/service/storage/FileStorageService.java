@@ -13,7 +13,7 @@ import java.util.List;
 @Service
 public class FileStorageService {
 
-    private final String uploadDir = "uploads/posts/";
+    private final String uploadDir = "uploads/files/";
 
     public List<String> uploadMultiple(List<MultipartFile> files) throws IOException {
         List<String> urls = new ArrayList<>();

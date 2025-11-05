@@ -46,12 +46,6 @@ public class InvoiceController {
         return userRepository.findById(userId).orElse(null);
     }
 
-    /**
-     * Lấy danh sách invoice lines của user đang đăng nhập
-     * GET /api/invoices/me
-     * Lấy unitId từ user đang đăng nhập trong database
-     * Response: danh sách InvoiceLineResponseDto với các field cần thiết
-     */
     @GetMapping("/me")
     public ResponseEntity<?> getMyInvoices(Authentication authentication) {
         User user = getAuthenticatedUser(authentication);
@@ -93,11 +87,6 @@ public class InvoiceController {
         }
     }
 
-    /**
-     * Lấy danh sách invoice lines theo unitId (giữ lại để backward compatibility)
-     * GET /api/invoices/unit/{unitId}
-     * DEPRECATED: Nên dùng GET /api/invoices/me thay thế
-     */
     @GetMapping("/unit/{unitId}")
     public ResponseEntity<?> getInvoiceLinesByUnitId(
             @PathVariable String unitId,
@@ -110,8 +99,6 @@ public class InvoiceController {
                     "message", "Unauthorized"
             ));
         }
-
-        // Kiểm tra user có unitId matching không
         String userUnitId = user.getUnitId();
         if (userUnitId == null || !userUnitId.equals(unitId)) {
             log.warn("⚠️ [InvoiceController] User {} không có quyền xem invoices của unitId: {}", user.getId(), unitId);
@@ -140,10 +127,6 @@ public class InvoiceController {
         }
     }
 
-    /**
-     * Tạo VNPAY payment URL cho invoice
-     * POST /api/invoices/{invoiceId}/vnpay-url
-     */
     @PostMapping("/{invoiceId}/vnpay-url")
     public ResponseEntity<?> createVnpayUrl(
             @PathVariable String invoiceId,
@@ -183,10 +166,6 @@ public class InvoiceController {
         }
     }
 
-    /**
-     * Xử lý VNPAY callback
-     * GET /api/invoices/vnpay/return
-     */
     @GetMapping("/vnpay/return")
     public ResponseEntity<?> handleVnpayReturn(HttpServletRequest request) {
         Map<String, String> params = vnpayService.getVnpayParams(request);
@@ -204,8 +183,6 @@ public class InvoiceController {
                         "message", "Thiếu hoặc sai định dạng mã giao dịch (vnp_TxnRef)"
                 ));
             }
-
-            // Lấy invoiceId từ txnRef
             String invoiceId = invoiceService.getInvoiceIdFromTxnRef(txnRef);
             log.info("[VNPAY RETURN] 🔍 Invoice ID trích xuất được: {}", invoiceId);
 
@@ -214,7 +191,6 @@ public class InvoiceController {
             log.info("[VNPAY RETURN] ↩️ ResponseCode={}, TransactionStatus={}", responseCode, transactionStatus);
 
             if (valid && "00".equals(responseCode) && "00".equals(transactionStatus)) {
-                // Lấy user email từ authentication (nếu có)
                 String userEmail = null;
                 try {
                     Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -253,10 +229,6 @@ public class InvoiceController {
         }
     }
 
-    /**
-     * Redirect sau khi thanh toán VNPAY
-     * GET /api/invoices/vnpay/redirect
-     */
     @GetMapping("/vnpay/redirect")
     public ResponseEntity<?> redirectAfterPayment(HttpServletRequest request, HttpServletResponse response) throws IOException {
         Map<String, String> params = vnpayService.getVnpayParams(request);
@@ -282,10 +254,6 @@ public class InvoiceController {
         return result;
     }
 
-    /**
-     * Thanh toán hóa đơn - cập nhật status thành PAID (không dùng VNPAY - deprecated)
-     * PUT /api/invoices/{invoiceId}/pay
-     */
     @PutMapping("/{invoiceId}/pay")
     public ResponseEntity<?> payInvoice(
             @PathVariable String invoiceId,

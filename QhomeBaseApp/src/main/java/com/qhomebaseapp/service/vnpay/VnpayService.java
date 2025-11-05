@@ -9,7 +9,6 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -38,12 +37,12 @@ public class VnpayService {
             params.put("vnp_Amount", String.valueOf(amount));
             params.put("vnp_CurrCode", "VND");
 
-            // 🔹 Tạo txnRef unique: billId_timestamp
+            // 🔹 Tạo txnRef unique: orderId_timestamp
             String txnRef = orderId + "_" + System.currentTimeMillis();
             params.put("vnp_TxnRef", txnRef);
 
             params.put("vnp_OrderInfo", orderInfo);
-            params.put("vnp_OrderType", "billpayment");
+            params.put("vnp_OrderType", "other"); // Changed from "billpayment" to generic "other"
             params.put("vnp_Locale", "vn");
             params.put("vnp_ReturnUrl", returnUrl);
             params.put("vnp_IpAddr", ipAddress);
