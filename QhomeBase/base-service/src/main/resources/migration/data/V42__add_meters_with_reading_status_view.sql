@@ -108,3 +108,4 @@ $$ LANGUAGE plpgsql STABLE;
 
 COMMENT ON FUNCTION data.get_meters_with_status_for_assignment IS 'Get all meters for a specific assignment with their reading status (READ/PENDING)';
 
+

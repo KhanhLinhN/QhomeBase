@@ -14,6 +14,7 @@ public record ResidentDto(
         String nationalId,
         LocalDate dob,
         ResidentStatus status,
+        UUID userId,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {}

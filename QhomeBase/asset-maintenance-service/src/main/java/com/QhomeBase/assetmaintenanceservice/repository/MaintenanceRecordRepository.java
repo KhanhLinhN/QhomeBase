@@ -66,24 +66,31 @@ public interface MaintenanceRecordRepository extends JpaRepository<MaintenanceRe
     @Query("SELECT mr FROM MaintenanceRecord mr WHERE mr.asset.id = :assetId AND mr.status IN (:statuses)")
     List<MaintenanceRecord> findByAssetIdAndStatusIn(@Param("assetId") UUID assetId, @Param("statuses") List<String> statuses);
 
-     /*@Query("SELECT mr.assignedTo, " +
-           "COUNT(CASE WHEN mr.status IN ('ASSIGNED', 'IN_PROGRESS') THEN 1 END) as pendingCount, " +
-           "COUNT(CASE WHEN mr.status = 'ASSIGNED' THEN 1 END) as assignedCount, " +
-           "COUNT(CASE WHEN mr.status = 'IN_PROGRESS' THEN 1 END) as inProgressCount " +
-           "FROM MaintenanceRecord mr " +
-           "WHERE mr.status IN ('ASSIGNED', 'IN_PROGRESS') " +
-           "GROUP BY mr.assignedTo")
+    @Query(value = """
+        SELECT 
+            mr.assigned_to as technicianId,
+            COUNT(CASE WHEN mr.status IN ('ASSIGNED', 'IN_PROGRESS') THEN 1 END) as pendingCount,
+            COUNT(CASE WHEN mr.status = 'ASSIGNED' THEN 1 END) as assignedCount,
+            COUNT(CASE WHEN mr.status = 'IN_PROGRESS' THEN 1 END) as inProgressCount
+        FROM asset.maintenance_records mr
+        WHERE mr.status IN ('ASSIGNED', 'IN_PROGRESS')
+          AND mr.assigned_to IS NOT NULL
+        GROUP BY mr.assigned_to
+    """, nativeQuery = true)
     List<Object[]> countWorkloadByTechnician();
 
-    @Query("SELECT mr.assignedTo, " +
-           "COUNT(CASE WHEN mr.status IN ('ASSIGNED', 'IN_PROGRESS') THEN 1 END) as pendingCount, " +
-           "COUNT(CASE WHEN mr.status = 'ASSIGNED' THEN 1 END) as assignedCount, " +
-           "COUNT(CASE WHEN mr.status = 'IN_PROGRESS' THEN 1 END) as inProgressCount " +
-           "FROM MaintenanceRecord mr " +
-           "WHERE mr.status IN ('ASSIGNED', 'IN_PROGRESS') " +
-           "AND mr.assignedTo IN :technicianIds " +
-           "GROUP BY mr.assignedTo")
-    List<Object[]> countWorkloadByTechnicians(@Param("technicianIds") List<UUID> technicianIds); */
+    @Query(value = """
+        SELECT 
+            mr.assigned_to as technicianId,
+            COUNT(CASE WHEN mr.status IN ('ASSIGNED', 'IN_PROGRESS') THEN 1 END) as pendingCount,
+            COUNT(CASE WHEN mr.status = 'ASSIGNED' THEN 1 END) as assignedCount,
+            COUNT(CASE WHEN mr.status = 'IN_PROGRESS' THEN 1 END) as inProgressCount
+        FROM asset.maintenance_records mr
+        WHERE mr.status IN ('ASSIGNED', 'IN_PROGRESS')
+          AND mr.assigned_to IN (:technicianIds)
+        GROUP BY mr.assigned_to
+    """, nativeQuery = true)
+    List<Object[]> countWorkloadByTechnicians(@Param("technicianIds") List<UUID> technicianIds);
 
     @Query(value = """
         SELECT 

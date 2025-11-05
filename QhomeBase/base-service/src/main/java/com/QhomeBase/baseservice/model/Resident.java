@@ -49,6 +49,9 @@ public class Resident {
     @Builder.Default
     private ResidentStatus status = ResidentStatus.ACTIVE;
 
+    @Column(name = "user_id")
+    private UUID userId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now(ZoneOffset.UTC);

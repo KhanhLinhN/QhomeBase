@@ -87,29 +87,3 @@ public class EmployeeRoleManagementController {
         return ResponseEntity.ok(employees);
     }
 }
-
-    @GetMapping("/tenant/{tenantId}/department/{department}")
-    @PreAuthorize("@authz.canViewTenantEmployees(#tenantId)")
-    public ResponseEntity<List<EmployeeRoleDto>> getEmployeesByDepartment(
-            @PathVariable UUID tenantId,
-            @PathVariable String department) {
-        List<EmployeeRoleDto> employees = employeeRoleManagementService.getEmployeesInTenant(tenantId)
-                .stream()
-                .filter(emp -> department.equals(emp.getDepartment()))
-                .toList();
-        return ResponseEntity.ok(employees);
-    }
-
-    @GetMapping("/tenant/{tenantId}/role/{roleName}")
-    @PreAuthorize("@authz.canViewTenantEmployees(#tenantId)")
-    public ResponseEntity<List<EmployeeRoleDto>> getEmployeesByRole(
-            @PathVariable UUID tenantId,
-            @PathVariable String roleName) {
-        List<EmployeeRoleDto> employees = employeeRoleManagementService.getEmployeesInTenant(tenantId)
-                .stream()
-                .filter(emp -> emp.getAssignedRoles().stream()
-                        .anyMatch(role -> roleName.equals(role.getRoleName())))
-                .toList();
-        return ResponseEntity.ok(employees);
-    }
-}

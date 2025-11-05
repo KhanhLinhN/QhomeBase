@@ -2,49 +2,47 @@ package com.QhomeBase.iamservice.service;
 
 import com.QhomeBase.iamservice.model.Permission;
 import com.QhomeBase.iamservice.model.UserRole;
-import com.QhomeBase.iamservice.repository.PermissionRepository;
-import com.QhomeBase.iamservice.repository.RolePermissionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class RoleService {
-
-    private final RolePermissionRepository rolePermissionRepository;
-    private final PermissionRepository permissionRepository;
-
+    
+    private final RolePermissionService rolePermissionService;
+    
+    @Transactional(readOnly = true)
     public List<UserRole> getAllRoles() {
-        return List.of(UserRole.values());
+        return Arrays.asList(UserRole.values());
     }
-
+    
+    @Transactional(readOnly = true)
     public List<Permission> getPermissionsByRole(UserRole role) {
-        String roleCode = role.name();
-        return rolePermissionRepository.findPermissionObjectsByRole(roleCode);
+        return rolePermissionService.getPermissionsByRole(role.name());
     }
-
+    
+    @Transactional(readOnly = true)
     public List<Permission> getAccountantPermissions() {
-        return getPermissionsByRole(UserRole.ACCOUNTANT);
+        return rolePermissionService.getPermissionsByRole(UserRole.ACCOUNTANT.name());
     }
-
+    
+    @Transactional(readOnly = true)
     public List<Permission> getAdminPermissions() {
-        return getPermissionsByRole(UserRole.ADMIN);
+        return rolePermissionService.getPermissionsByRole(UserRole.ADMIN.name());
     }
-
+    
+    @Transactional(readOnly = true)
     public List<Permission> getTechnicianPermissions() {
-        return getPermissionsByRole(UserRole.TECHNICIAN);
+        return rolePermissionService.getPermissionsByRole(UserRole.TECHNICIAN.name());
     }
-
+    
+    @Transactional(readOnly = true)
     public List<Permission> getSupporterPermissions() {
-        return getPermissionsByRole(UserRole.SUPPORTER);
-    }
-
-    public boolean hasPermission(UserRole role, String permissionCode) {
-        List<Permission> rolePermissions = getPermissionsByRole(role);
-        return rolePermissions.stream()
-                .anyMatch(permission -> permission.getCode().equals(permissionCode));
+        return rolePermissionService.getPermissionsByRole(UserRole.SUPPORTER.name());
     }
 }
 

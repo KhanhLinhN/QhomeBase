@@ -238,3 +238,4 @@ $$ LANGUAGE plpgsql STABLE;
 
 COMMENT ON FUNCTION data.get_meter_reading_status_by_assignment IS 'Get meter reading status for a specific assignment with detailed status (READ/PENDING/VERIFIED/OVERDUE)';
 
+

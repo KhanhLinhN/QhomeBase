@@ -58,38 +58,3 @@ public class AuthController {
     }
 }
 
-
-    @GetMapping("/user/{userId}/tenants")
-    @PreAuthorize("@authz.canViewUser(#userId)")
-    public ResponseEntity<List<UUID>> getUserTenants(@PathVariable UUID userId) {
-        try {
-            List<UUID> tenants = authService.getUserTenants(userId);
-            return ResponseEntity.ok(tenants);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    @GetMapping("/user/{userId}/tenant/{tenantId}/roles")
-    @PreAuthorize("@authz.canViewUser(#userId)")
-    public ResponseEntity<List<String>> getUserRolesInTenant(
-            @PathVariable UUID userId,
-            @PathVariable UUID tenantId) {
-        try {
-            List<String> roles = authService.getUserRolesInTenant(userId, tenantId);
-            return ResponseEntity.ok(roles);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    @GetMapping("/user/{userId}/tenant/{tenantId}/validate")
-    @PreAuthorize("@authz.canViewUser(#userId)")
-    public ResponseEntity<Boolean> validateUserAccess(
-            @PathVariable UUID userId,
-            @PathVariable UUID tenantId) {
-        boolean hasAccess = authService.validateUserAccess(userId, tenantId);
-        return ResponseEntity.ok(hasAccess);
-    }
-}
-
