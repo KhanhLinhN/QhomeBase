@@ -1,7 +1,6 @@
 package com.QhomeBase.baseservice.service;
 
 import com.QhomeBase.baseservice.dto.ResidentAccountDto;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
@@ -13,12 +12,14 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class IamClientService {
     
-    @Qualifier("iamWebClient")
     private final WebClient webClient;
+
+    public IamClientService(@Qualifier("iamWebClient") WebClient webClient) {
+        this.webClient = webClient;
+    }
     
     public ResidentAccountDto createUserForResident(
             String username, 

@@ -3,7 +3,6 @@ package com.QhomeBase.baseservice.client;
 import com.QhomeBase.baseservice.dto.BillingImportedReadingDto;
 import com.QhomeBase.baseservice.dto.MeterReadingImportResponse;
 import com.QhomeBase.baseservice.dto.VehicleActivatedEvent;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
@@ -13,12 +12,14 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class FinanceBillingClient {
     
-    @Qualifier("financeWebClient")
     private final WebClient financeWebClient;
+
+    public FinanceBillingClient(@Qualifier("financeWebClient") WebClient financeWebClient) {
+        this.financeWebClient = financeWebClient;
+    }
 
     public Mono<Void> notifyVehicleActivated(VehicleActivatedEvent event) {
         return financeWebClient
