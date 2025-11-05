@@ -28,3 +28,4 @@ CREATE INDEX IF NOT EXISTS idx_residents_user_id
 -- Add comment
 COMMENT ON COLUMN data.residents.user_id IS 'Foreign key to iam.users.id. NULL if resident does not have a user account yet.';
 
+

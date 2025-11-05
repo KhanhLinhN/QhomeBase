@@ -1,8 +1,6 @@
 package com.QhomeBase.baseservice.controller;
 
-import com.QhomeBase.baseservice.dto.CreateResidentAccountDto;
-import com.QhomeBase.baseservice.dto.ResidentAccountDto;
-import com.QhomeBase.baseservice.dto.ResidentWithoutAccountDto;
+import com.QhomeBase.baseservice.dto.*;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import com.QhomeBase.baseservice.service.ResidentAccountService;
 import jakarta.validation.Valid;
@@ -25,10 +23,6 @@ public class ResidentController {
     
     private final ResidentAccountService residentAccountService;
     
-    /**
-     * Get list of residents in household without account
-     * GET /api/units/{unitId}/household/members/without-account
-     */
     @GetMapping("/units/{unitId}/household/members/without-account")
     @PreAuthorize("hasRole('RESIDENT')")
     public ResponseEntity<List<ResidentWithoutAccountDto>> getResidentsWithoutAccount(
@@ -48,34 +42,43 @@ public class ResidentController {
         }
     }
     
-    /**
-     * Create account for a resident
-     * POST /api/residents/{residentId}/create-account
-     */
-    @PostMapping("/{residentId}/create-account")
+    @PostMapping("/create-account-request")
     @PreAuthorize("hasRole('RESIDENT')")
-    public ResponseEntity<ResidentAccountDto> createAccountForResident(
-            @PathVariable UUID residentId,
-            @Valid @RequestBody CreateResidentAccountDto request,
+    public ResponseEntity<AccountCreationRequestDto> createAccountRequest(
+            @Valid @RequestBody CreateAccountRequestDto request,
             Authentication authentication) {
         try {
             UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
             UUID requesterUserId = principal.uid();
             
-            ResidentAccountDto account = residentAccountService
-                    .createAccountForResident(residentId, request, requesterUserId);
+            AccountCreationRequestDto accountRequest = residentAccountService
+                    .createAccountRequest(request, requesterUserId);
             
-            return ResponseEntity.status(HttpStatus.CREATED).body(account);
+            return ResponseEntity.status(HttpStatus.CREATED).body(accountRequest);
         } catch (IllegalArgumentException e) {
-            log.warn("Failed to create account for resident {}: {}", residentId, e.getMessage());
+            log.warn("Failed to create account request: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         }
     }
     
-    /**
-     * Get account info for a resident
-     * GET /api/residents/{residentId}/account
-     */
+    @GetMapping("/my-account-requests")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<List<AccountCreationRequestDto>> getMyAccountRequests(
+            Authentication authentication) {
+        try {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID requesterUserId = principal.uid();
+            
+            List<AccountCreationRequestDto> requests = residentAccountService
+                    .getMyRequests(requesterUserId);
+            
+            return ResponseEntity.ok(requests);
+        } catch (Exception e) {
+            log.warn("Failed to get account requests: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
     @GetMapping("/{residentId}/account")
     @PreAuthorize("hasRole('RESIDENT')")
     public ResponseEntity<ResidentAccountDto> getResidentAccount(

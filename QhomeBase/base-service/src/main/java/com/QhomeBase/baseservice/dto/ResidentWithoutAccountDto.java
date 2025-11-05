@@ -17,3 +17,4 @@ public record ResidentWithoutAccountDto(
         boolean isPrimary
 ) {}
 
+

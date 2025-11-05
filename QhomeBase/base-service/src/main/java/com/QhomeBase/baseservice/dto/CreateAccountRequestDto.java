@@ -2,7 +2,11 @@ package com.QhomeBase.baseservice.dto;
 
 import jakarta.validation.constraints.Size;
 
-public record CreateResidentAccountDto(
+import java.util.UUID;
+
+public record CreateAccountRequestDto(
+        UUID residentId,
+        
         @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
         String username,
         
@@ -11,5 +15,4 @@ public record CreateResidentAccountDto(
         
         boolean autoGenerate
 ) {}
-
 

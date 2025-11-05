@@ -10,6 +10,7 @@ D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservi
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\AvailablePermissionDto.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\AvailableRoleDto.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\CreateEmployeeRequest.java
+D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\CreateUserForResidentDto.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\EmployeeDto.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\EmployeePermissionStatus.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\EmployeeRoleDto.java
@@ -22,6 +23,7 @@ D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservi
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\RolePermissionSummaryDto.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\RoleRemovalRequest.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\UpdateEmployeeRequest.java
+D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\UserAccountDto.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\UserInfoDto.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\UserPermissionDenyRequest.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\UserPermissionGrantRequest.java

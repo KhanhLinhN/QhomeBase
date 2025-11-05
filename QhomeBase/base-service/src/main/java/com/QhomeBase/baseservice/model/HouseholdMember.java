@@ -51,3 +51,4 @@ public class HouseholdMember {
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 }
 
+

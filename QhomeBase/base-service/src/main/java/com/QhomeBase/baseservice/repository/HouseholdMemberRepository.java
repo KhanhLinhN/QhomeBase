@@ -40,3 +40,4 @@ public interface HouseholdMemberRepository extends JpaRepository<HouseholdMember
     );
 }
 
+
