@@ -9,11 +9,13 @@ import com.qhomebaseapp.dto.invoice.ElectricityMonthlyDto;
 import com.qhomebaseapp.dto.service.ServiceBookingResponseDto;
 import com.qhomebaseapp.dto.registrationservice.RegisterServiceRequestResponseDto;
 import com.qhomebaseapp.dto.residentcard.ResidentCardRegistrationResponseDto;
+import com.qhomebaseapp.dto.elevatorcard.ElevatorCardRegistrationResponseDto;
 import com.qhomebaseapp.model.User;
 import com.qhomebaseapp.repository.UserRepository;
 import com.qhomebaseapp.service.service.ServiceBookingService;
 import com.qhomebaseapp.service.registerregistration.RegisterRegistrationService;
 import com.qhomebaseapp.service.residentcard.ResidentCardRegistrationService;
+import com.qhomebaseapp.service.elevatorcard.ElevatorCardRegistrationService;
 import com.qhomebaseapp.service.vnpay.VnpayService;
 import com.qhomebaseapp.service.user.EmailService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -54,6 +56,7 @@ public class InvoiceService {
     private final ServiceBookingService serviceBookingService;
     private final RegisterRegistrationService registerRegistrationService;
     private final ResidentCardRegistrationService residentCardRegistrationService;
+    private final ElevatorCardRegistrationService elevatorCardRegistrationService;
     private final UserRepository userRepository;
 
     @Value("${admin.api.base-url}")
@@ -512,6 +515,46 @@ public class InvoiceService {
                             .id(registration.getId().toString())
                             .category("RESIDENT_CARD_REGISTRATION")
                             .categoryName("Hóa đơn đăng ký thẻ ra vào")
+                            .title(title)
+                            .description(description)
+                            .amount(BigDecimal.valueOf(30000)) // Fixed fee
+                            .paymentDate(registration.getPaymentDate())
+                            .paymentGateway(registration.getPaymentGateway())
+                            .status(registration.getStatus())
+                            .reference(registration.getVnpayTransactionRef())
+                            .build();
+                    
+                    result.add(dto);
+                }
+            }
+            
+            // 5. Lấy paid elevator card registrations
+            List<ElevatorCardRegistrationResponseDto> elevatorCardRegistrations = elevatorCardRegistrationService.getByUserId(userId);
+            for (ElevatorCardRegistrationResponseDto registration : elevatorCardRegistrations) {
+                if ("PAID".equalsIgnoreCase(registration.getPaymentStatus()) 
+                        && registration.getPaymentDate() != null) {
+                    String title = registration.getFullName() != null 
+                            ? "Đăng ký thẻ thang máy - " + registration.getFullName()
+                            : "Đăng ký thẻ thang máy #" + registration.getId();
+                    
+                    String requestTypeName = "NEW_CARD".equalsIgnoreCase(registration.getRequestType()) 
+                            ? "Làm thẻ mới" 
+                            : "Cấp lại thẻ bị mất";
+                    
+                    String description = "";
+                    if (registration.getApartmentNumber() != null && registration.getBuildingName() != null) {
+                        description = registration.getApartmentNumber() + ", " + registration.getBuildingName();
+                    }
+                    if (!description.isEmpty()) description += " - ";
+                    description += requestTypeName;
+                    if (description.isEmpty()) {
+                        description = "Đăng ký thẻ thang máy";
+                    }
+                    
+                    UnifiedPaidInvoiceDto dto = UnifiedPaidInvoiceDto.builder()
+                            .id(registration.getId().toString())
+                            .category("ELEVATOR_CARD_REGISTRATION")
+                            .categoryName("Hóa đơn đăng ký thẻ thang máy")
                             .title(title)
                             .description(description)
                             .amount(BigDecimal.valueOf(30000)) // Fixed fee
