@@ -1,4 +1,5 @@
 -- Drop news_targets table and related objects
+
 -- This table is replaced by scope/targetRole/targetBuildingId in news table
 
 -- Drop foreign key constraint first

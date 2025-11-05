@@ -87,6 +87,15 @@ public class MeterReadingAssignmentController {
         return ResponseEntity.ok(assignment);
     }
 
+    @PatchMapping("/{assignmentId}/cancel")
+    public ResponseEntity<MeterReadingAssignmentDto> cancelAssignment(
+            @PathVariable UUID assignmentId,
+            Authentication authentication) {
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        MeterReadingAssignmentDto assignment = assignmentService.cancelAssignment(assignmentId, principal);
+        return ResponseEntity.ok(assignment);
+    }
+
     @GetMapping("/{assignmentId}/meters")
     public ResponseEntity<List<MeterDto>> getMetersByAssignment(@PathVariable UUID assignmentId) {
         List<MeterDto> meters = meterService.getMetersByAssignment(assignmentId);

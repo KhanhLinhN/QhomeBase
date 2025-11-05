@@ -6,8 +6,12 @@ import com.QhomeBase.iamservice.model.User;
 import com.QhomeBase.iamservice.model.UserRole;
 import com.QhomeBase.iamservice.repository.RolePermissionRepository;
 import com.QhomeBase.iamservice.repository.UserRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -19,28 +23,36 @@ public class EmployeeManagementService {
 
     private final UserRepository userRepository;
     private final RolePermissionRepository rolePermissionRepository;
+    
+    @PersistenceContext
+    private EntityManager entityManager;
 
+    @Transactional(readOnly = true)
     public List<EmployeeDto> getAllEmployees() {
-        return userRepository.findAll()
-                .stream()
+        List<User> users = userRepository.findAll();
+        users.forEach(user -> Hibernate.initialize(user.getRoles()));
+        return users.stream()
                 .map(this::mapToEmployeeDto)
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public EmployeeDto getEmployeeDetails(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
-        
+        Hibernate.initialize(user.getRoles());
         return mapToEmployeeDto(user);
     }
 
+    @Transactional(readOnly = true)
     public List<EmployeeDto> getEmployeesByRole(String roleName) {
         try {
             UserRole role = UserRole.valueOf(roleName.toUpperCase());
            
             String roleCode = role.name();
-            return userRepository.findByRole(roleCode)
-                    .stream()
+            List<User> users = userRepository.findByRole(roleCode);
+            users.forEach(user -> Hibernate.initialize(user.getRoles()));
+            return users.stream()
                     .map(this::mapToEmployeeDto)
                     .collect(Collectors.toList());
         } catch (IllegalArgumentException e) {
@@ -48,9 +60,11 @@ public class EmployeeManagementService {
         }
     }
 
+    @Transactional(readOnly = true)
     public List<EmployeeDto> getActiveEmployees() {
-        return userRepository.findAll()
-                .stream()
+        List<User> users = userRepository.findAll();
+        users.forEach(user -> Hibernate.initialize(user.getRoles()));
+        return users.stream()
                 .filter(User::isActive)
                 .map(this::mapToEmployeeDto)
                 .collect(Collectors.toList());

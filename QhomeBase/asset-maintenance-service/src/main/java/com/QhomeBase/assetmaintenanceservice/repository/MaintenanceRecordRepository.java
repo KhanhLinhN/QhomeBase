@@ -66,7 +66,7 @@ public interface MaintenanceRecordRepository extends JpaRepository<MaintenanceRe
     @Query("SELECT mr FROM MaintenanceRecord mr WHERE mr.asset.id = :assetId AND mr.status IN (:statuses)")
     List<MaintenanceRecord> findByAssetIdAndStatusIn(@Param("assetId") UUID assetId, @Param("statuses") List<String> statuses);
 
-     @Query("SELECT mr.assignedTo, " +
+     /*@Query("SELECT mr.assignedTo, " +
            "COUNT(CASE WHEN mr.status IN ('ASSIGNED', 'IN_PROGRESS') THEN 1 END) as pendingCount, " +
            "COUNT(CASE WHEN mr.status = 'ASSIGNED' THEN 1 END) as assignedCount, " +
            "COUNT(CASE WHEN mr.status = 'IN_PROGRESS' THEN 1 END) as inProgressCount " +
@@ -75,7 +75,7 @@ public interface MaintenanceRecordRepository extends JpaRepository<MaintenanceRe
            "GROUP BY mr.assignedTo")
     List<Object[]> countWorkloadByTechnician();
 
-   @Query("SELECT mr.assignedTo, " +
+    @Query("SELECT mr.assignedTo, " +
            "COUNT(CASE WHEN mr.status IN ('ASSIGNED', 'IN_PROGRESS') THEN 1 END) as pendingCount, " +
            "COUNT(CASE WHEN mr.status = 'ASSIGNED' THEN 1 END) as assignedCount, " +
            "COUNT(CASE WHEN mr.status = 'IN_PROGRESS' THEN 1 END) as inProgressCount " +
@@ -83,11 +83,10 @@ public interface MaintenanceRecordRepository extends JpaRepository<MaintenanceRe
            "WHERE mr.status IN ('ASSIGNED', 'IN_PROGRESS') " +
            "AND mr.assignedTo IN :technicianIds " +
            "GROUP BY mr.assignedTo")
-    List<Object[]> countWorkloadByTechnicians(@Param("technicianIds") List<UUID> technicianIds);
+    List<Object[]> countWorkloadByTechnicians(@Param("technicianIds") List<UUID> technicianIds); */
 
     @Query(value = """
         SELECT 
-            CAST(:technicianId AS UUID) as technicianId,
             COUNT(CASE WHEN mr.status IN ('ASSIGNED', 'IN_PROGRESS') THEN 1 END) as pendingCount,
             COUNT(CASE WHEN mr.status = 'ASSIGNED' THEN 1 END) as assignedCount,
             COUNT(CASE WHEN mr.status = 'IN_PROGRESS' THEN 1 END) as inProgressCount

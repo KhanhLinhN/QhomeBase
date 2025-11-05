@@ -5,10 +5,8 @@ import com.QhomeBase.baseservice.dto.MeterReadingDto;
 import com.QhomeBase.baseservice.model.Meter;
 import com.QhomeBase.baseservice.model.MeterReading;
 import com.QhomeBase.baseservice.model.MeterReadingAssignment;
-import com.QhomeBase.baseservice.model.MeterReadingSession;
 import com.QhomeBase.baseservice.repository.MeterReadingAssignmentRepository;
 import com.QhomeBase.baseservice.repository.MeterReadingRepository;
-import com.QhomeBase.baseservice.repository.MeterReadingSessionRepository;
 import com.QhomeBase.baseservice.repository.MeterRepository;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +18,7 @@ import org.springframework.security.core.Authentication;
 import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @RequiredArgsConstructor
@@ -28,7 +27,6 @@ public class MeterReadingService {
     private final MeterReadingRepository readingRepo;
     private final MeterRepository meterRepo;
     private final MeterReadingAssignmentRepository assignmentRepo;
-    private final MeterReadingSessionRepository sessionRepo;
 
     @Transactional
     public MeterReadingDto create(MeterReadingCreateReq meterReadingCreateReq, Authentication auth){
@@ -37,16 +35,9 @@ public class MeterReadingService {
                 ? meterReadingCreateReq.readerId() 
                 : p.uid();
         
-        MeterReadingSession meterReadingSession = null;
         MeterReadingAssignment meterReadingAssignment = null;
         
-        if (meterReadingCreateReq.sessionId() != null) {
-            meterReadingSession = sessionRepo.findById(meterReadingCreateReq.sessionId())
-                    .orElseThrow(() -> new IllegalArgumentException("Session not found"));
-            meterReadingAssignment = meterReadingSession.getAssignment();
-        }
-        
-        if (meterReadingAssignment == null && meterReadingCreateReq.assignmentId() != null) {
+        if (meterReadingCreateReq.assignmentId() != null) {
             meterReadingAssignment = assignmentRepo.findById(meterReadingCreateReq.assignmentId())
                     .orElseThrow(() -> new IllegalArgumentException("Assignment not found"));
         }
@@ -54,8 +45,8 @@ public class MeterReadingService {
         Meter meter = meterRepo.findById(meterReadingCreateReq.meterId())
                 .orElseThrow(() -> new IllegalArgumentException("Meter not found"));
         
-        if (meterReadingAssignment != null) {
-            validateMeterInScope(meterReadingAssignment, meter);
+        if (meter.getUnit() == null) {
+            throw new IllegalArgumentException("Meter must have a unit");
         }
         
         BigDecimal previousIndex = meterReadingCreateReq.prevIndex() != null
@@ -66,10 +57,35 @@ public class MeterReadingService {
             previousIndex = BigDecimal.ZERO;
         }
         
+        if (meterReadingAssignment != null) {
+            validateMeterInScope(meterReadingAssignment, meter);
+            
+            validNotInExclusive(meterReadingAssignment.getId(), meter.getId());
+            
+            Optional<MeterReading> existingReading = readingRepo.findByMeterIdAndAssignmentId(
+                meter.getId(), 
+                meterReadingAssignment.getId()
+            );
+            
+            if (existingReading.isPresent()) {
+                MeterReading reading = existingReading.get();
+                reading.setReadingDate(meterReadingCreateReq.readingDate());
+                reading.setCurrIndex(meterReadingCreateReq.currIndex());
+                reading.setPrevIndex(previousIndex);
+                reading.setNote(meterReadingCreateReq.note());
+                reading.setPhotoFileId(meterReadingCreateReq.photoFileId());
+                reading.setReaderId(readerId);
+                reading.setReadAt(java.time.OffsetDateTime.now());
+                
+                MeterReading updated = readingRepo.save(reading);
+                return toDto(updated);
+            }
+        }
+        
         MeterReading meterReading = MeterReading.builder()
                 .meter(meter)
+                .unit(meter.getUnit())
                 .assignment(meterReadingAssignment)
-                .session(meterReadingSession)
                 .readingDate(meterReadingCreateReq.readingDate())
                 .prevIndex(previousIndex)
                 .currIndex(meterReadingCreateReq.currIndex())
@@ -79,18 +95,9 @@ public class MeterReadingService {
                 .build();
         
         MeterReading saved = readingRepo.save(meterReading);
-        
-        if (saved.getMeter() != null && saved.getMeter().getUnit() != null) {
-            saved.getMeter().getUnit().getId();
-            saved.getMeter().getUnit().getCode();
-            saved.getMeter().getUnit().getFloor();
-            if (saved.getMeter().getUnit().getBuilding() != null) {
-                saved.getMeter().getUnit().getBuilding().getId();
-            }
-        }
-        
         return toDto(saved);
     }
+
     public BigDecimal getPreviousIndex (UUID meterId){
         List<MeterReading> meterReadingList = readingRepo.findByMeterId(meterId);
         MeterReading latest = meterReadingList.stream()
@@ -118,8 +125,34 @@ public class MeterReadingService {
         }
         
         Integer unitFloor = m.getUnit().getFloor();
-        if (unitFloor == null || unitFloor < a.getFloorFrom() || unitFloor > a.getFloorTo()) {
-            throw new IllegalArgumentException("Not same floor range");
+        if (a.getFloor() != null && !a.getFloor().equals(unitFloor)) {
+            throw new IllegalArgumentException("Unit floor does not match assignment floor");
+        }
+    }
+    public void validNotInExclusive(UUID assignmentId, UUID meterId) {
+        Meter meter = meterRepo.findById(meterId)
+                .orElseThrow(() -> new IllegalArgumentException("Meter not found: " + meterId));
+        
+        if (meter.getUnit() == null) {
+            throw new IllegalArgumentException("Meter must have a unit");
+        }
+        
+        UUID unitId = meter.getUnit().getId();
+        
+        MeterReadingAssignment assignment = assignmentRepo.findById(assignmentId)
+                .orElseThrow(() -> new IllegalArgumentException("Assignment not found: " + assignmentId));
+        
+        List<UUID> exclusiveUnitIds = assignment.getUnitIds();
+        
+        if (exclusiveUnitIds == null || exclusiveUnitIds.isEmpty()) {
+            return;
+        }
+        
+        if (exclusiveUnitIds.contains(unitId)) {
+            throw new IllegalArgumentException(
+                String.format("Unit %s is in exclusive list for assignment %s. This meter reading is not allowed.", 
+                    unitId, assignmentId)
+            );
         }
     }
 
@@ -136,12 +169,11 @@ public class MeterReadingService {
         return new MeterReadingDto(
                 r.getId(),
                 r.getAssignment() != null ? r.getAssignment().getId() : null,
-                r.getSession() != null ? r.getSession().getId() : null,
                 r.getMeter().getId(),
                 r.getMeter().getMeterCode(),
-                r.getMeter().getUnit() != null ? r.getMeter().getUnit().getId() : null,
-                r.getMeter().getUnit() != null ? r.getMeter().getUnit().getCode() : null,
-                r.getMeter().getUnit() != null ? r.getMeter().getUnit().getFloor() : null,
+                r.getUnit() != null ? r.getUnit().getId() : null,
+                r.getUnit() != null ? r.getUnit().getCode() : null,
+                r.getUnit() != null ? r.getUnit().getFloor() : null,
                 r.getPrevIndex(),
                 r.getCurrIndex(),
                 usage,

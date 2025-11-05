@@ -17,4 +17,6 @@ public interface UnitRepository extends JpaRepository<Unit, UUID> {
     
     @Query("SELECT u FROM Unit u JOIN FETCH u.building WHERE u.id = :id")
     Unit findByIdWithBuilding(@Param("id") UUID id);
+
+
 }

@@ -13,7 +13,7 @@ public record MeterReadingAssignmentCreateReq(
         LocalDate startDate,
         LocalDate endDate,
         String note,
-        Integer floorFrom,
-        Integer floorTo
+        Integer floor,
+        java.util.List<UUID> unitIds
 ) {}
 

@@ -28,14 +28,13 @@ public class MeterReading {
     @JoinColumn(name = "meter_id", nullable = false)
     private Meter meter;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "unit_id", nullable = false)
+    private Unit unit;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assignment_id")
     private MeterReadingAssignment assignment;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "session_id")
-    private MeterReadingSession session;
 
     @Column(name = "reading_date", nullable = false)
     private LocalDate readingDate;
@@ -71,6 +70,19 @@ public class MeterReading {
 
     @Column(name = "verified_at")
     private OffsetDateTime verifiedAt;
+
+    @Column(name = "disputed")
+    @Builder.Default
+    private Boolean disputed = false;
+
+    @Column(name = "disputed_by")
+    private UUID disputedBy;
+
+    @Column(name = "disputed_at")
+    private OffsetDateTime disputedAt;
+
+    @Column(name = "dispute_reason")
+    private String disputeReason;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

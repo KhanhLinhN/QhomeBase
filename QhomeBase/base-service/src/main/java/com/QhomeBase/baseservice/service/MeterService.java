@@ -40,18 +40,33 @@ public class MeterService {
 
         List<Meter> meters;
         
-        if (assignment.getFloorFrom() != null && assignment.getFloorTo() != null) {
-            meters = meterRepository.findByBuildingServiceAndFloorRange(
-                    assignment.getBuilding().getId(),
-                    assignment.getService().getId(),
-                    assignment.getFloorFrom(),
-                    assignment.getFloorTo()
-            );
+        UUID buildingId = assignment.getBuilding() != null ? assignment.getBuilding().getId() : null;
+        UUID serviceId = assignment.getService().getId();
+        Integer floor = assignment.getFloor();
+        List<UUID> unitIds = assignment.getUnitIds();
+        
+        if (buildingId == null) {
+            throw new IllegalArgumentException("Assignment must have a building");
+        }
+        
+        // Logic: unit_ids is EXCLUSIVE (excluded units), not inclusive
+        // If unit_ids is set, exclude those units from reading
+        if (unitIds != null && !unitIds.isEmpty()) {
+            // Get all meters in building/service, then exclude units in exclusive list
+            List<Meter> allMeters = floor != null 
+                ? meterRepository.findByBuildingServiceAndFloor(buildingId, serviceId, floor)
+                : meterRepository.findByBuildingAndService(buildingId, serviceId);
+            
+            // Filter out meters in exclusive units
+            meters = allMeters.stream()
+                .filter(m -> !unitIds.contains(m.getUnit().getId()))
+                .toList();
+        } else if (floor != null) {
+            // Specific floor
+            meters = meterRepository.findByBuildingServiceAndFloor(buildingId, serviceId, floor);
         } else {
-            meters = meterRepository.findByBuildingAndService(
-                    assignment.getBuilding().getId(),
-                    assignment.getService().getId()
-            );
+            // All floors
+            meters = meterRepository.findByBuildingAndService(buildingId, serviceId);
         }
 
         return meters.stream()

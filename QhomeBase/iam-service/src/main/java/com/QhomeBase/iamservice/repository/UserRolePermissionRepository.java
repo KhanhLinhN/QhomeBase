@@ -7,3 +7,80 @@ public interface UserRolePermissionRepository extends JpaRepository<RolePermissi
     // Methods removed because tenant-related tables have been dropped
     // This repository is kept for potential future use but currently has no methods
 }
+
+
+    @Query(value = """
+        WITH 
+       
+        base_role_perms AS (
+            SELECT rp.permission_code
+            FROM iam.user_tenant_roles utr
+            JOIN iam.role_permissions rp ON utr.role = rp.role
+            WHERE utr.user_id = :userId AND utr.tenant_id = :tenantId
+        ),
+      
+        tenant_role_grants AS (
+            SELECT trp.permission_code
+            FROM iam.user_tenant_roles utr
+            JOIN iam.tenant_role_permissions trp ON utr.tenant_id = trp.tenant_id AND utr.role = trp.role
+            WHERE utr.user_id = :userId AND utr.tenant_id = :tenantId AND trp.granted = true
+        ),
+      
+        tenant_role_denies AS (
+            SELECT trp.permission_code
+            FROM iam.user_tenant_roles utr
+            JOIN iam.tenant_role_permissions trp ON utr.tenant_id = trp.tenant_id AND utr.role = trp.role
+            WHERE utr.user_id = :userId AND utr.tenant_id = :tenantId AND trp.granted = false
+        ),
+       
+        user_grants AS (
+            SELECT utg.permission_code
+            FROM iam.user_tenant_grants utg
+            WHERE utg.user_id = :userId AND utg.tenant_id = :tenantId 
+              AND (utg.expires_at IS NULL OR utg.expires_at > now())
+        ),
+
+        user_denies AS (
+            SELECT utd.permission_code
+            FROM iam.user_tenant_denies utd
+            WHERE utd.user_id = :userId AND utd.tenant_id = :tenantId
+              AND (utd.expires_at IS NULL OR utd.expires_at > now())
+        ),
+       
+        final_perms AS (
+            SELECT DISTINCT perm.permission_code
+            FROM (
+           
+                SELECT permission_code FROM base_role_perms
+                UNION ALL
+           
+                SELECT permission_code FROM tenant_role_grants
+                UNION ALL
+            
+                SELECT permission_code FROM user_grants
+            ) perm
+            WHERE perm.permission_code NOT IN (
+        
+                SELECT permission_code FROM tenant_role_denies
+                UNION
+           
+                SELECT permission_code FROM user_denies
+            )
+        )
+        SELECT permission_code FROM final_perms
+        """, nativeQuery = true)
+    List<String> getUserRolePermissionsCodeByUserIdAndTenantId(
+            @Param("userId") UUID userId,
+            @Param("tenantId") UUID tenantId
+    );
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+    DELETE FROM iam.tenant_role_permissions
+    WHERE tenant_id = :tenantId
+    """, nativeQuery = true)
+    void deleteByTenantId(@Param("tenantId") UUID tenantId);
+
+
+}

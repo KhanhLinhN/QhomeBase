@@ -45,3 +45,9 @@ WHERE role NOT IN ('admin', 'accountant', 'technician', 'supporter', 'resident',
 -- Step 7: Add comments
 COMMENT ON COLUMN iam.user_roles.role IS 'Base role name (must match UserRole enum getRoleName() values: admin, accountant, technician, supporter, resident, unit_owner)';
 COMMENT ON COLUMN iam.role_permissions.role IS 'Base role name (must match UserRole enum getRoleName() values: admin, accountant, technician, supporter, resident, unit_owner)';
+
+
+
+
+
+

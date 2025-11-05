@@ -37,12 +37,10 @@ public class MeterReadingExportService {
             log.debug("Total readings in database: {}", allReadings.size());
             
             for (MeterReading r : allReadings) {
-                if (r.getSession() != null && r.getSession().getCycle() != null) {
-                    log.debug("Reading {} has session.cycle.id = {}", r.getId(), r.getSession().getCycle().getId());
-                } else if (r.getAssignment() != null && r.getAssignment().getCycle() != null) {
+                if (r.getAssignment() != null && r.getAssignment().getCycle() != null) {
                     log.debug("Reading {} has assignment.cycle.id = {}", r.getId(), r.getAssignment().getCycle().getId());
                 } else {
-                    log.debug("Reading {} has no session/cycle or assignment/cycle", r.getId());
+                    log.debug("Reading {} has no assignment/cycle", r.getId());
                 }
             }
             
@@ -67,12 +65,12 @@ public class MeterReadingExportService {
         List<BillingImportedReadingDto> result = new ArrayList<>();
         
         for (MeterReading reading : readings) {
-            if (reading.getMeter() == null || reading.getMeter().getUnit() == null) {
+            if (reading.getMeter() == null || reading.getUnit() == null) {
                 log.warn("Skipping reading {} - missing meter or unit", reading.getId());
                 continue;
             }
 
-            UUID unitId = reading.getMeter().getUnit().getId();
+            UUID unitId = reading.getUnit().getId();
             UUID residentId = getResidentId(unitId);
             
             if (residentId == null) {
@@ -80,12 +78,10 @@ public class MeterReadingExportService {
             }
 
             UUID cycleId = null;
-            if (reading.getSession() != null && reading.getSession().getCycle() != null) {
-                cycleId = reading.getSession().getCycle().getId();
-            } else if (reading.getAssignment() != null && reading.getAssignment().getCycle() != null) {
+            if (reading.getAssignment() != null && reading.getAssignment().getCycle() != null) {
                 cycleId = reading.getAssignment().getCycle().getId();
             } else {
-                log.warn("Skipping reading {} - missing session/cycle or assignment/cycle", reading.getId());
+                log.warn("Skipping reading {} - missing assignment/cycle", reading.getId());
                 continue;
             }
             String serviceCode = reading.getMeter().getService() != null 

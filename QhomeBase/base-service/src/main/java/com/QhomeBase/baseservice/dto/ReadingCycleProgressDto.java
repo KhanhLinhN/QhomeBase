@@ -14,8 +14,6 @@ public record ReadingCycleProgressDto(
         Long totalAssignments,
         Long assignmentsInProgress,
         Long assignmentsCompleted,
-        Long totalSessions,
-        Long sessionsCompleted,
         Long totalReadings,
         Long readingsVerified,
         Integer progressPercentage

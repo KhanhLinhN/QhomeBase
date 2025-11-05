@@ -27,15 +27,14 @@ public interface MeterRepository extends JpaRepository<Meter, UUID> {
         JOIN m.unit u
         WHERE u.building.id = :buildingId
           AND m.service.id = :serviceId
-          AND u.floor BETWEEN :floorFrom AND :floorTo
+          AND u.floor = :floor
           AND m.active = true
         ORDER BY u.floor, u.code
     """)
-    List<Meter> findByBuildingServiceAndFloorRange(
+    List<Meter> findByBuildingServiceAndFloor(
         @Param("buildingId") UUID buildingId,
         @Param("serviceId") UUID serviceId,
-        @Param("floorFrom") Integer floorFrom,
-        @Param("floorTo") Integer floorTo
+        @Param("floor") Integer floor
     );
     
     @Query("""
@@ -61,5 +60,18 @@ public interface MeterRepository extends JpaRepository<Meter, UUID> {
 
     @Query("SELECT m FROM Meter m WHERE m.active = :active ORDER BY m.meterCode")
     List<Meter> findByActive(@Param("active") Boolean active);
+    
+    @Query("""
+        SELECT m FROM Meter m
+        JOIN m.unit u
+        WHERE u.id IN :unitIds
+          AND m.service.id = :serviceId
+          AND m.active = true
+        ORDER BY u.floor, u.code, m.meterCode
+    """)
+    List<Meter> findByUnitIdsAndService(
+        @Param("unitIds") List<UUID> unitIds,
+        @Param("serviceId") UUID serviceId
+    );
 }
 

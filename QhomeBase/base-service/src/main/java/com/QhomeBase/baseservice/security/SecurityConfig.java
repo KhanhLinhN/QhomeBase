@@ -35,7 +35,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/services/**").permitAll()
                         .requestMatchers("/api/reading-cycles/**").permitAll()
                         .requestMatchers("/api/meter-reading-assignments/**").permitAll()
-                        .requestMatchers("/api/meter-reading-sessions/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

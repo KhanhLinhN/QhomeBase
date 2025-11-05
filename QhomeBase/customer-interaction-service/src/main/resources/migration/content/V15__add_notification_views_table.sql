@@ -1,4 +1,5 @@
 -- Create notification_views table to track individual user reads
+
 CREATE TABLE IF NOT EXISTS content.notification_views (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     notification_id UUID NOT NULL,
