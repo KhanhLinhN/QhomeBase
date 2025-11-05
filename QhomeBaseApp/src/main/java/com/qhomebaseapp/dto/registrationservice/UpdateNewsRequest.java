@@ -1,6 +1,6 @@
 package com.qhomebaseapp.dto.registrationservice;
 
-import com.qhomebaseapp.dto.news.NewsAttachmentDto;
+// import com.qhomebaseapp.dto.news.NewsAttachmentDto; // Removed: News functionality removed
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -25,7 +25,7 @@ public class UpdateNewsRequest {
     private String rawPayload;
     private Instant updatedAt;
 
-    private List<NewsAttachmentDto> attachments;
+    // private List<NewsAttachmentDto> attachments; // Removed: News functionality removed
 
     private String vehicleType;
     private String licensePlate;

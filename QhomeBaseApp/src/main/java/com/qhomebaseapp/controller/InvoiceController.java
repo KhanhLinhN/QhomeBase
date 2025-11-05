@@ -1,6 +1,8 @@
 package com.qhomebaseapp.controller;
 
 import com.qhomebaseapp.dto.invoice.InvoiceLineResponseDto;
+import com.qhomebaseapp.dto.invoice.UnifiedPaidInvoiceDto;
+import com.qhomebaseapp.dto.invoice.ElectricityMonthlyDto;
 import com.qhomebaseapp.model.User;
 import com.qhomebaseapp.repository.UserRepository;
 import com.qhomebaseapp.security.CustomUserDetails;
@@ -281,6 +283,74 @@ public class InvoiceController {
             return ResponseEntity.status(500).body(Map.of(
                     "success", false,
                     "message", "Lỗi khi thanh toán hóa đơn: " + e.getMessage()
+            ));
+        }
+    }
+
+    @GetMapping("/paid/all")
+    public ResponseEntity<?> getAllPaidInvoices(Authentication authentication) {
+        Long userId = getAuthenticatedUserId(authentication);
+        if (userId == null) {
+            return ResponseEntity.status(401).body(Map.of(
+                    "success", false,
+                    "message", "Unauthorized"
+            ));
+        }
+
+        try {
+            log.info("📋 [InvoiceController] Lấy tất cả hóa đơn đã thanh toán cho userId: {}", userId);
+            
+            List<UnifiedPaidInvoiceDto> paidInvoices = invoiceService.getAllPaidInvoices(userId);
+            
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Lấy danh sách hóa đơn đã thanh toán thành công",
+                    "data", paidInvoices
+            ));
+        } catch (Exception e) {
+            log.error("❌ [InvoiceController] Lỗi khi lấy danh sách hóa đơn đã thanh toán cho userId: {}", userId, e);
+            return ResponseEntity.status(500).body(Map.of(
+                    "success", false,
+                    "message", "Lỗi khi lấy danh sách hóa đơn: " + e.getMessage()
+            ));
+        }
+    }
+
+    @GetMapping("/electricity/monthly")
+    public ResponseEntity<?> getElectricityMonthlyData(Authentication authentication) {
+        User user = getAuthenticatedUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(401).body(Map.of(
+                    "success", false,
+                    "message", "Unauthorized"
+            ));
+        }
+
+        String unitId = user.getUnitId();
+        log.info("📊 [InvoiceController] Lấy dữ liệu tiền điện theo tháng cho userId: {}, unitId: {}", user.getId(), unitId);
+        
+        if (unitId == null || unitId.isBlank()) {
+            log.warn("⚠️ [InvoiceController] User {} không có unitId", user.getId());
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Bạn chưa được gán vào căn hộ nào",
+                    "data", List.of()
+            ));
+        }
+
+        try {
+            List<ElectricityMonthlyDto> monthlyData = invoiceService.getElectricityMonthlyData(unitId);
+            
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Lấy dữ liệu tiền điện thành công",
+                    "data", monthlyData
+            ));
+        } catch (Exception e) {
+            log.error("❌ [InvoiceController] Lỗi khi lấy dữ liệu tiền điện cho userId: {}, unitId: {}", user.getId(), unitId, e);
+            return ResponseEntity.status(500).body(Map.of(
+                    "success", false,
+                    "message", "Lỗi khi lấy dữ liệu tiền điện: " + e.getMessage()
             ));
         }
     }

@@ -3,7 +3,15 @@ package com.qhomebaseapp.service.invoice;
 import com.qhomebaseapp.dto.invoice.InvoiceDto;
 import com.qhomebaseapp.dto.invoice.InvoiceLineDto;
 import com.qhomebaseapp.dto.invoice.InvoiceLineResponseDto;
+import com.qhomebaseapp.dto.invoice.UnifiedPaidInvoiceDto;
 import com.qhomebaseapp.dto.invoice.UpdateInvoiceStatusRequest;
+import com.qhomebaseapp.dto.invoice.ElectricityMonthlyDto;
+import com.qhomebaseapp.dto.service.ServiceBookingResponseDto;
+import com.qhomebaseapp.dto.registrationservice.RegisterServiceRequestResponseDto;
+import com.qhomebaseapp.model.User;
+import com.qhomebaseapp.repository.UserRepository;
+import com.qhomebaseapp.service.service.ServiceBookingService;
+import com.qhomebaseapp.service.registerregistration.RegisterRegistrationService;
 import com.qhomebaseapp.service.vnpay.VnpayService;
 import com.qhomebaseapp.service.user.EmailService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,13 +28,17 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
@@ -37,6 +49,9 @@ public class InvoiceService {
     private final RestTemplate restTemplate;
     private final VnpayService vnpayService;
     private final EmailService emailService;
+    private final ServiceBookingService serviceBookingService;
+    private final RegisterRegistrationService registerRegistrationService;
+    private final UserRepository userRepository;
 
     @Value("${admin.api.base-url}")
     private String adminApiBaseUrl;
@@ -372,6 +387,208 @@ public class InvoiceService {
     public void payInvoice(String invoiceId) {
         updateInvoiceStatus(invoiceId, "PAID");
         log.info("✅ [InvoiceService] Đã thanh toán invoice: {}", invoiceId);
+    }
+
+    /**
+     * Lấy tất cả các hóa đơn đã thanh toán từ tất cả các nguồn:
+     * - Hóa đơn điện (invoices từ admin API)
+     * - Hóa đơn dịch vụ (service bookings)
+     * - Hóa đơn đăng ký thẻ xe (vehicle registrations)
+     */
+    public List<UnifiedPaidInvoiceDto> getAllPaidInvoices(Long userId) {
+        List<UnifiedPaidInvoiceDto> result = new ArrayList<>();
+        
+        try {
+            // 1. Lấy paid invoices từ admin API (hóa đơn điện)
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            
+            if (user.getUnitId() != null && !user.getUnitId().isBlank()) {
+                List<InvoiceDto> invoices = getInvoicesByUnitId(user.getUnitId());
+                for (InvoiceDto invoice : invoices) {
+                    if ("PAID".equalsIgnoreCase(invoice.getStatus()) && invoice.getTotalAmount() != null) {
+                        UnifiedPaidInvoiceDto dto = UnifiedPaidInvoiceDto.builder()
+                                .id(invoice.getId())
+                                .category("ELECTRICITY")
+                                .categoryName("Hóa đơn điện")
+                                .title(invoice.getCode() != null ? invoice.getCode() : invoice.getId())
+                                .description(invoice.getLines() != null && !invoice.getLines().isEmpty() 
+                                        ? invoice.getLines().get(0).getDescription() 
+                                        : "Hóa đơn điện")
+                                .amount(invoice.getTotalAmount())
+                                .paymentDate(invoice.getIssuedAt() != null 
+                                        ? invoice.getIssuedAt().atOffset(java.time.ZoneOffset.UTC)
+                                        : OffsetDateTime.now())
+                                .paymentGateway("VNPAY")
+                                .status(invoice.getStatus())
+                                .reference(invoice.getCode())
+                                .invoiceCode(invoice.getCode())
+                                .build();
+                        result.add(dto);
+                    }
+                }
+            }
+            
+            // 2. Lấy paid service bookings
+            List<ServiceBookingResponseDto> bookings = serviceBookingService.getUserBookings(userId);
+            for (ServiceBookingResponseDto booking : bookings) {
+                if ("PAID".equalsIgnoreCase(booking.getPaymentStatus()) 
+                        && booking.getPaymentDate() != null
+                        && booking.getTotalAmount() != null) {
+                    UnifiedPaidInvoiceDto dto = UnifiedPaidInvoiceDto.builder()
+                            .id(booking.getId().toString())
+                            .category("SERVICE_BOOKING")
+                            .categoryName("Hóa đơn dịch vụ")
+                            .title(booking.getServiceName() != null ? booking.getServiceName() : "Dịch vụ")
+                            .description(String.format("%s - %s", 
+                                    booking.getBookingDate() != null ? booking.getBookingDate().toString() : "",
+                                    booking.getPurpose() != null ? booking.getPurpose() : ""))
+                            .amount(booking.getTotalAmount())
+                            .paymentDate(booking.getPaymentDate())
+                            .paymentGateway(booking.getPaymentGateway())
+                            .status(booking.getStatus())
+                            .reference(booking.getVnpayTransactionRef())
+                            .serviceName(booking.getServiceName())
+                            .build();
+                    result.add(dto);
+                }
+            }
+            
+            // 3. Lấy paid vehicle registrations
+            List<RegisterServiceRequestResponseDto> registrations = registerRegistrationService.getByUserId(userId);
+            for (RegisterServiceRequestResponseDto registration : registrations) {
+                if ("PAID".equalsIgnoreCase(registration.getPaymentStatus()) 
+                        && registration.getPaymentDate() != null) {
+                    String title = registration.getLicensePlate() != null 
+                            ? "Đăng ký thẻ xe - " + registration.getLicensePlate()
+                            : "Đăng ký thẻ xe #" + registration.getId();
+                    
+                    UnifiedPaidInvoiceDto dto = UnifiedPaidInvoiceDto.builder()
+                            .id(registration.getId().toString())
+                            .category("VEHICLE_REGISTRATION")
+                            .categoryName("Hóa đơn đăng ký thẻ xe")
+                            .title(title)
+                            .description(registration.getVehicleType() != null 
+                                    ? registration.getVehicleType() 
+                                    : "Đăng ký thẻ xe")
+                            .amount(BigDecimal.valueOf(30000)) // Fixed fee
+                            .paymentDate(registration.getPaymentDate())
+                            .paymentGateway(registration.getPaymentGateway())
+                            .status(registration.getStatus())
+                            .reference(registration.getVnpayTransactionRef())
+                            .licensePlate(registration.getLicensePlate())
+                            .vehicleType(registration.getVehicleType())
+                            .build();
+                    result.add(dto);
+                }
+            }
+            
+            // Sort by payment date descending (newest first)
+            result.sort((a, b) -> {
+                if (a.getPaymentDate() == null) return 1;
+                if (b.getPaymentDate() == null) return -1;
+                return b.getPaymentDate().compareTo(a.getPaymentDate());
+            });
+            
+            log.info("✅ [InvoiceService] Lấy được {} hóa đơn đã thanh toán cho userId: {}", result.size(), userId);
+            return result;
+        } catch (Exception e) {
+            log.error("❌ [InvoiceService] Lỗi khi lấy tất cả hóa đơn đã thanh toán cho userId: {}", userId, e);
+            throw new RuntimeException("Không thể lấy danh sách hóa đơn đã thanh toán: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Lấy dữ liệu tiền điện theo tháng (12 tháng gần nhất)
+     * Filter các invoice lines có serviceCode hoặc description chứa "điện" hoặc "ELECTRICITY"
+     */
+    public List<ElectricityMonthlyDto> getElectricityMonthlyData(String unitId) {
+        try {
+            log.info("📊 [InvoiceService] Lấy dữ liệu tiền điện theo tháng cho unitId: {}", unitId);
+            
+            // Lấy tất cả invoices từ admin API
+            List<InvoiceDto> invoices = getInvoicesByUnitId(unitId);
+            
+            // Filter và group by month
+            Map<String, BigDecimal> monthlyAmounts = new HashMap<>();
+            
+            for (InvoiceDto invoice : invoices) {
+                // Chỉ lấy invoices đã thanh toán (PAID)
+                if (!"PAID".equalsIgnoreCase(invoice.getStatus())) {
+                    continue;
+                }
+                
+                if (invoice.getLines() != null && !invoice.getLines().isEmpty()) {
+                    for (InvoiceLineDto line : invoice.getLines()) {
+                        // Filter lines liên quan đến điện
+                        boolean isElectricity = false;
+                        if (line.getServiceCode() != null) {
+                            String serviceCode = line.getServiceCode().toUpperCase();
+                            if (serviceCode.contains("ELECTRICITY") || 
+                                serviceCode.contains("ĐIỆN") ||
+                                serviceCode.contains("ELEC")) {
+                                isElectricity = true;
+                            }
+                        }
+                        if (!isElectricity && line.getDescription() != null) {
+                            String description = line.getDescription().toLowerCase();
+                            if (description.contains("điện") || 
+                                description.contains("electricity") ||
+                                description.contains("tiền điện")) {
+                                isElectricity = true;
+                            }
+                        }
+                        
+                        if (isElectricity && line.getLineTotal() != null && line.getServiceDate() != null) {
+                            // Parse serviceDate to get month
+                            try {
+                                LocalDate serviceDate = LocalDate.parse(line.getServiceDate());
+                                String monthKey = YearMonth.from(serviceDate).toString(); // "YYYY-MM"
+                                
+                                monthlyAmounts.merge(
+                                    monthKey,
+                                    line.getLineTotal(),
+                                    BigDecimal::add
+                                );
+                            } catch (Exception e) {
+                                log.warn("⚠️ [InvoiceService] Không thể parse serviceDate: {}", line.getServiceDate());
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Convert to DTO list and sort by month
+            List<ElectricityMonthlyDto> result = monthlyAmounts.entrySet().stream()
+                    .map(entry -> {
+                        String monthKey = entry.getKey();
+                        String[] parts = monthKey.split("-");
+                        int year = Integer.parseInt(parts[0]);
+                        int month = Integer.parseInt(parts[1]);
+                        LocalDate date = LocalDate.of(year, month, 1);
+                        
+                        return ElectricityMonthlyDto.builder()
+                                .month(monthKey)
+                                .monthDisplay(DateTimeFormatter.ofPattern("MM/yyyy").format(date))
+                                .amount(entry.getValue())
+                                .year(year)
+                                .monthNumber(month)
+                                .build();
+                    })
+                    .sorted((a, b) -> {
+                        // Sort by year first, then month
+                        int yearCompare = a.getYear().compareTo(b.getYear());
+                        if (yearCompare != 0) return yearCompare;
+                        return a.getMonthNumber().compareTo(b.getMonthNumber());
+                    })
+                    .collect(Collectors.toList());
+            
+            log.info("✅ [InvoiceService] Lấy được {} tháng có dữ liệu tiền điện", result.size());
+            return result;
+        } catch (Exception e) {
+            log.error("❌ [InvoiceService] Lỗi khi lấy dữ liệu tiền điện theo tháng cho unitId: {}", unitId, e);
+            throw new RuntimeException("Không thể lấy dữ liệu tiền điện: " + e.getMessage(), e);
+        }
     }
 }
 
