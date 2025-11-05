@@ -1,4 +1,4 @@
-package com.qhomebaseapp.dto.registrationservice;
+package com.qhomebaseapp.dto.residentcard;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -6,18 +6,21 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
-import java.util.List;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class RegisterServiceRequestResponseDto {
+public class ResidentCardRegistrationResponseDto {
     private Long id;
-    private String serviceType;
+    private String residentName;
+    private String apartmentNumber;
+    private String buildingName;
+    private String citizenId;
+    private String phoneNumber;
     private String note;
-    private String status; // PENDING, DRAFT - trạng thái xử lý của admin
-    private String paymentStatus; // PAID, UNPAID - trạng thái thanh toán
+    private String status; // PENDING
+    private String paymentStatus; // PAID, UNPAID
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private OffsetDateTime paymentDate;
@@ -25,10 +28,5 @@ public class RegisterServiceRequestResponseDto {
     private String vnpayTransactionRef;
     private Long userId;
     private String userEmail;
-    private String vehicleType;
-    private String licensePlate;
-    private String vehicleBrand;
-    private String vehicleColor;
-    private List<String> imageUrls;
-
 }
+

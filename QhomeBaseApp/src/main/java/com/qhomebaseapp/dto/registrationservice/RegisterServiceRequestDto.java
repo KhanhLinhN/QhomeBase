@@ -21,10 +21,4 @@ public class RegisterServiceRequestDto {
     private String description;
     private String phoneNumber;
     private String address;
-
-    // Fields for Resident Card registration (Dịch vụ ra vào)
-    private String residentName;
-    private String apartmentNumber;
-    private String buildingName;
-    private String citizenId;
 }

@@ -118,13 +118,7 @@ public class RegisterRegistrationServiceImpl implements RegisterRegistrationServ
             clientIp = request.getRemoteAddr();
         }
 
-        // Customize order info based on service type
-        String orderInfo;
-        if ("RESIDENT_CARD".equalsIgnoreCase(dto.getServiceType())) {
-            orderInfo = "Thanh toán phí đăng ký thẻ cư dân #" + registrationId;
-        } else {
-            orderInfo = "Thanh toán phí đăng ký thẻ xe #" + registrationId;
-        }
+        String orderInfo = "Thanh toán phí đăng ký thẻ xe #" + registrationId;
         String baseUrl = vnpayProperties.getReturnUrl().replace("/api/invoices/vnpay/redirect", "");
         String registerReturnUrl = baseUrl + "/api/register-service/vnpay/redirect";
         
@@ -283,13 +277,7 @@ public class RegisterRegistrationServiceImpl implements RegisterRegistrationServ
             clientIp = request.getRemoteAddr();
         }
 
-        // Customize order info based on service type
-        String orderInfo;
-        if ("RESIDENT_CARD".equalsIgnoreCase(registration.getServiceType())) {
-            orderInfo = "Thanh toán phí đăng ký thẻ cư dân #" + registrationId;
-        } else {
-            orderInfo = "Thanh toán phí đăng ký thẻ xe #" + registrationId;
-        }
+        String orderInfo = "Thanh toán phí đăng ký thẻ xe #" + registrationId;
         BigDecimal amount = registration.getPaymentAmount() != null 
                 ? registration.getPaymentAmount() 
                 : REGISTRATION_FEE;
@@ -355,42 +343,22 @@ public class RegisterRegistrationServiceImpl implements RegisterRegistrationServ
             try {
                 User user = registration.getUser();
                 if (user != null && user.getEmail() != null) {
-                    String serviceTypeName = "RESIDENT_CARD".equalsIgnoreCase(registration.getServiceType()) 
-                            ? "thẻ cư dân" 
-                            : "thẻ xe";
-                    String emailSubject = "Thanh toán thành công - Đăng ký " + serviceTypeName;
+                    String emailSubject = "Thanh toán thành công - Đăng ký thẻ xe";
                     String paymentDateStr = paymentDateNow.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
                     NumberFormat currencyFormat = NumberFormat.getNumberInstance(new Locale("vi", "VN"));
                     String amountStr = currencyFormat.format(REGISTRATION_FEE) + " VNĐ";
                     
-                    // Build service details based on type
                     StringBuilder serviceDetails = new StringBuilder();
-                    if ("RESIDENT_CARD".equalsIgnoreCase(registration.getServiceType())) {
-                        if (registration.getResidentName() != null) {
-                            serviceDetails.append("- Họ tên cư dân: ").append(registration.getResidentName()).append("\n");
-                        }
-                        if (registration.getApartmentNumber() != null && registration.getBuildingName() != null) {
-                            serviceDetails.append("- Địa chỉ: ").append(registration.getApartmentNumber())
-                                    .append(", ").append(registration.getBuildingName()).append("\n");
-                        }
-                        if (registration.getCitizenId() != null) {
-                            serviceDetails.append("- Căn cước công dân: ").append(registration.getCitizenId()).append("\n");
-                        }
-                        if (registration.getPhoneNumber() != null) {
-                            serviceDetails.append("- Số điện thoại: ").append(registration.getPhoneNumber()).append("\n");
-                        }
-                    } else {
-                        if (registration.getLicensePlate() != null) {
-                            serviceDetails.append("- Biển số xe: ").append(registration.getLicensePlate()).append("\n");
-                        }
-                        if (registration.getVehicleType() != null) {
-                            serviceDetails.append("- Loại xe: ").append(registration.getVehicleType()).append("\n");
-                        }
+                    if (registration.getLicensePlate() != null) {
+                        serviceDetails.append("- Biển số xe: ").append(registration.getLicensePlate()).append("\n");
+                    }
+                    if (registration.getVehicleType() != null) {
+                        serviceDetails.append("- Loại xe: ").append(registration.getVehicleType()).append("\n");
                     }
                     
                     String emailBody = String.format(
                         "Xin chào %s,\n\n" +
-                        "Thanh toán đăng ký %s của bạn đã được xử lý thành công!\n\n" +
+                        "Thanh toán đăng ký thẻ xe của bạn đã được xử lý thành công!\n\n" +
                         "Thông tin đăng ký:\n" +
                         "%s" +
                         "Thông tin thanh toán:\n" +
@@ -401,8 +369,7 @@ public class RegisterRegistrationServiceImpl implements RegisterRegistrationServ
                         "Cảm ơn bạn đã sử dụng dịch vụ của chúng tôi!\n\n" +
                         "Trân trọng,\n" +
                         "Hệ thống QHomeBase",
-                        user.getEmail().split("@")[0], // Tên user từ email
-                        serviceTypeName,
+                        user.getEmail().split("@")[0],
                         serviceDetails.toString(),
                         amountStr,
                         paymentDateStr,

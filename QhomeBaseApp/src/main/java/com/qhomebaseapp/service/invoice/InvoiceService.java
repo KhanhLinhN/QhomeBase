@@ -8,10 +8,12 @@ import com.qhomebaseapp.dto.invoice.UpdateInvoiceStatusRequest;
 import com.qhomebaseapp.dto.invoice.ElectricityMonthlyDto;
 import com.qhomebaseapp.dto.service.ServiceBookingResponseDto;
 import com.qhomebaseapp.dto.registrationservice.RegisterServiceRequestResponseDto;
+import com.qhomebaseapp.dto.residentcard.ResidentCardRegistrationResponseDto;
 import com.qhomebaseapp.model.User;
 import com.qhomebaseapp.repository.UserRepository;
 import com.qhomebaseapp.service.service.ServiceBookingService;
 import com.qhomebaseapp.service.registerregistration.RegisterRegistrationService;
+import com.qhomebaseapp.service.residentcard.ResidentCardRegistrationService;
 import com.qhomebaseapp.service.vnpay.VnpayService;
 import com.qhomebaseapp.service.user.EmailService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -51,6 +53,7 @@ public class InvoiceService {
     private final EmailService emailService;
     private final ServiceBookingService serviceBookingService;
     private final RegisterRegistrationService registerRegistrationService;
+    private final ResidentCardRegistrationService residentCardRegistrationService;
     private final UserRepository userRepository;
 
     @Value("${admin.api.base-url}")
@@ -454,67 +457,69 @@ public class InvoiceService {
                 }
             }
             
-            // 3. Lấy paid registrations (vehicle và resident card)
-            List<RegisterServiceRequestResponseDto> registrations = registerRegistrationService.getByUserId(userId);
-            for (RegisterServiceRequestResponseDto registration : registrations) {
+            // 3. Lấy paid vehicle registrations
+            List<RegisterServiceRequestResponseDto> vehicleRegistrations = registerRegistrationService.getByUserId(userId);
+            for (RegisterServiceRequestResponseDto registration : vehicleRegistrations) {
                 if ("PAID".equalsIgnoreCase(registration.getPaymentStatus()) 
                         && registration.getPaymentDate() != null) {
-                    UnifiedPaidInvoiceDto dto;
+                    String title = registration.getLicensePlate() != null 
+                            ? "Đăng ký thẻ xe - " + registration.getLicensePlate()
+                            : "Đăng ký thẻ xe #" + registration.getId();
                     
-                    // Check service type
-                    if ("RESIDENT_CARD".equalsIgnoreCase(registration.getServiceType())) {
-                        // Resident Card registration
-                        String title = registration.getResidentName() != null 
-                                ? "Đăng ký thẻ cư dân - " + registration.getResidentName()
-                                : "Đăng ký thẻ cư dân #" + registration.getId();
-                        
-                        String description = "";
-                        if (registration.getApartmentNumber() != null && registration.getBuildingName() != null) {
-                            description = registration.getApartmentNumber() + ", " + registration.getBuildingName();
-                        }
-                        if (registration.getCitizenId() != null) {
-                            if (!description.isEmpty()) description += " - ";
-                            description += "CCCD: " + registration.getCitizenId();
-                        }
-                        if (description.isEmpty()) {
-                            description = "Đăng ký thẻ cư dân";
-                        }
-                        
-                        dto = UnifiedPaidInvoiceDto.builder()
-                                .id(registration.getId().toString())
-                                .category("RESIDENT_CARD_REGISTRATION")
-                                .categoryName("Hóa đơn đăng ký thẻ ra vào")
-                                .title(title)
-                                .description(description)
-                                .amount(BigDecimal.valueOf(30000)) // Fixed fee
-                                .paymentDate(registration.getPaymentDate())
-                                .paymentGateway(registration.getPaymentGateway())
-                                .status(registration.getStatus())
-                                .reference(registration.getVnpayTransactionRef())
-                                .build();
-                    } else {
-                        // Vehicle registration
-                        String title = registration.getLicensePlate() != null 
-                                ? "Đăng ký thẻ xe - " + registration.getLicensePlate()
-                                : "Đăng ký thẻ xe #" + registration.getId();
-                        
-                        dto = UnifiedPaidInvoiceDto.builder()
-                                .id(registration.getId().toString())
-                                .category("VEHICLE_REGISTRATION")
-                                .categoryName("Hóa đơn đăng ký thẻ xe")
-                                .title(title)
-                                .description(registration.getVehicleType() != null 
-                                        ? registration.getVehicleType() 
-                                        : "Đăng ký thẻ xe")
-                                .amount(BigDecimal.valueOf(30000)) // Fixed fee
-                                .paymentDate(registration.getPaymentDate())
-                                .paymentGateway(registration.getPaymentGateway())
-                                .status(registration.getStatus())
-                                .reference(registration.getVnpayTransactionRef())
-                                .licensePlate(registration.getLicensePlate())
-                                .vehicleType(registration.getVehicleType())
-                                .build();
+                    UnifiedPaidInvoiceDto dto = UnifiedPaidInvoiceDto.builder()
+                            .id(registration.getId().toString())
+                            .category("VEHICLE_REGISTRATION")
+                            .categoryName("Hóa đơn đăng ký thẻ xe")
+                            .title(title)
+                            .description(registration.getVehicleType() != null 
+                                    ? registration.getVehicleType() 
+                                    : "Đăng ký thẻ xe")
+                            .amount(BigDecimal.valueOf(30000)) // Fixed fee
+                            .paymentDate(registration.getPaymentDate())
+                            .paymentGateway(registration.getPaymentGateway())
+                            .status(registration.getStatus())
+                            .reference(registration.getVnpayTransactionRef())
+                            .licensePlate(registration.getLicensePlate())
+                            .vehicleType(registration.getVehicleType())
+                            .build();
+                    
+                    result.add(dto);
+                }
+            }
+            
+            // 4. Lấy paid resident card registrations
+            List<ResidentCardRegistrationResponseDto> residentCardRegistrations = residentCardRegistrationService.getByUserId(userId);
+            for (ResidentCardRegistrationResponseDto registration : residentCardRegistrations) {
+                if ("PAID".equalsIgnoreCase(registration.getPaymentStatus()) 
+                        && registration.getPaymentDate() != null) {
+                    String title = registration.getResidentName() != null 
+                            ? "Đăng ký thẻ cư dân - " + registration.getResidentName()
+                            : "Đăng ký thẻ cư dân #" + registration.getId();
+                    
+                    String description = "";
+                    if (registration.getApartmentNumber() != null && registration.getBuildingName() != null) {
+                        description = registration.getApartmentNumber() + ", " + registration.getBuildingName();
                     }
+                    if (registration.getCitizenId() != null) {
+                        if (!description.isEmpty()) description += " - ";
+                        description += "CCCD: " + registration.getCitizenId();
+                    }
+                    if (description.isEmpty()) {
+                        description = "Đăng ký thẻ cư dân";
+                    }
+                    
+                    UnifiedPaidInvoiceDto dto = UnifiedPaidInvoiceDto.builder()
+                            .id(registration.getId().toString())
+                            .category("RESIDENT_CARD_REGISTRATION")
+                            .categoryName("Hóa đơn đăng ký thẻ ra vào")
+                            .title(title)
+                            .description(description)
+                            .amount(BigDecimal.valueOf(30000)) // Fixed fee
+                            .paymentDate(registration.getPaymentDate())
+                            .paymentGateway(registration.getPaymentGateway())
+                            .status(registration.getStatus())
+                            .reference(registration.getVnpayTransactionRef())
+                            .build();
                     
                     result.add(dto);
                 }
