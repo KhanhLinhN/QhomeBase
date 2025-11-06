@@ -131,6 +131,17 @@ public class NotificationService {
         return toResponse(notification);
     }
 
+    public NotificationDetailResponse getNotificationDetailById(UUID id) {
+        Notification notification = notificationRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Notification not found with ID: " + id));
+        
+        if (notification.isDeleted()) {
+            throw new IllegalArgumentException("Notification not found with ID: " + id);
+        }
+        
+        return toDetailResponse(notification);
+    }
+
     public List<NotificationResponse> getNotificationsForResident(UUID residentId, UUID buildingId) {
         List<Notification> notifications = notificationRepository.findByScopeAndBuildingId(
                 NotificationScope.EXTERNAL,
@@ -203,6 +214,18 @@ public class NotificationService {
                 .iconUrl(notification.getIconUrl())
                 .createdAt(notification.getCreatedAt())
                 .updatedAt(notification.getUpdatedAt())
+                .build();
+    }
+
+    private NotificationDetailResponse toDetailResponse(Notification notification) {
+        return NotificationDetailResponse.builder()
+                .type(notification.getType())
+                .title(notification.getTitle())
+                .message(notification.getMessage())
+                .scope(notification.getScope())
+                .targetBuildingId(notification.getTargetBuildingId())
+                .actionUrl(notification.getActionUrl())
+                .createdAt(notification.getCreatedAt())
                 .build();
     }
 

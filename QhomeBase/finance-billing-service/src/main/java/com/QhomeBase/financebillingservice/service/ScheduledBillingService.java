@@ -47,12 +47,7 @@ public class ScheduledBillingService {
         log.warn("⚠️ Scheduled billing cycle creation is not fully implemented yet.");
         log.info("✅ Scheduled billing cycle creation completed");
     }
-    
-    /**
-     * Scheduled job to calculate late payment fees
-     * Runs every day at 01:00 AM
-     * Cron: "0 0 1 * * ?" = second minute hour day month weekday
-     */
+
     @Scheduled(cron = "0 0 1 * * ?")
     @Transactional
     public void calculateLateFees() {
@@ -62,22 +57,10 @@ public class ScheduledBillingService {
         
         log.info("📅 Calculating late fees for invoices overdue as of: {}", today);
         
-        // TODO: Implement logic to:
-        // 1. Find all unpaid invoices (status = PUBLISHED)
-        // 2. Check if due_date < today
-        // 3. Calculate days overdue
-        // 4. Apply late_payment_config rules
-        // 5. Create late_payment_charges records
-        
         log.warn("⚠️ Late fee calculation is not fully implemented yet.");
         log.info("✅ Late fee calculation completed");
     }
-    
-    /**
-     * Scheduled job to send payment reminders
-     * Runs every day at 08:00 AM
-     * Cron: "0 0 8 * * ?" = second minute hour day month weekday
-     */
+
     @Scheduled(cron = "0 0 8 * * ?")
     @Transactional
     public void sendPaymentReminders() {
@@ -87,12 +70,6 @@ public class ScheduledBillingService {
         LocalDate reminderDate = today.plusDays(5); // 5 days before due
         
         log.info("📧 Sending reminders for invoices due on: {}", reminderDate);
-        
-        // TODO: Implement logic to:
-        // 1. Find invoices with due_date = today + 5 days
-        // 2. Check if reminder already sent
-        // 3. Create payment_reminders records
-        // 4. Send email/SMS/push notification
         
         log.warn("⚠️ Payment reminder sending is not fully implemented yet.");
         log.info("✅ Payment reminder sending completed");

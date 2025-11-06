@@ -35,7 +35,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/news/*/read").permitAll()
                         .requestMatchers("/api/news/unread/count").permitAll()
                         .requestMatchers("/api/notifications/resident").permitAll()
-                        .requestMatchers("/api/customer-interaction/**").permitAll()  
+                        .requestMatchers("/api/notifications/{id}").permitAll()
+                        .requestMatchers("/api/customer-interaction/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
