@@ -27,6 +27,12 @@ public class Service {
     @Column(name = "name", nullable = false)
     private String name;
 
+    @Column(name = "service_type")
+    private String serviceType; 
+
+    @Column(name = "type_display_name")
+    private String typeDisplayName;
+
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
@@ -43,10 +49,10 @@ public class Service {
     private BigDecimal pricePerSession;
 
     @Column(name = "pricing_type")
-    private String pricingType = "HOURLY"; // HOURLY, SESSION, FREE
+    private String pricingType = "HOURLY";
 
     @Column(name = "booking_type")
-    private String bookingType; // COMBO_BASED, TICKET_BASED, OPTION_BASED, STANDARD
+    private String bookingType; 
 
     @Column(name = "max_capacity")
     private Integer maxCapacity;

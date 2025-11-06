@@ -1,6 +1,7 @@
 package com.qhomebaseapp.service.service;
 
 import com.qhomebaseapp.dto.service.AvailableServiceDto;
+import com.qhomebaseapp.dto.service.ServiceCategoryDto;
 import com.qhomebaseapp.dto.service.ServiceSlotDto;
 import com.qhomebaseapp.dto.service.ServiceBookingRequestDto;
 import com.qhomebaseapp.dto.service.ServiceBookingResponseDto;
@@ -15,6 +16,8 @@ import java.time.LocalTime;
 import java.util.List;
 
 public interface ServiceBookingService {
+    
+    List<ServiceCategoryDto> getAllCategories();
     
     List<ServiceDto> getServicesByCategory(Long categoryId);
     

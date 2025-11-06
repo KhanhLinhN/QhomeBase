@@ -1,6 +1,7 @@
 package com.qhomebaseapp.controller;
 
 import com.qhomebaseapp.dto.service.AvailableServiceDto;
+import com.qhomebaseapp.dto.service.ServiceCategoryDto;
 import com.qhomebaseapp.dto.service.ServiceSlotDto;
 import com.qhomebaseapp.dto.service.ServiceBookingRequestDto;
 import com.qhomebaseapp.dto.service.ServiceBookingResponseDto;
@@ -46,6 +47,12 @@ public class ServiceBookingController {
             return customUser.getUserId();
         }
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found in authentication");
+    }
+
+    @GetMapping("/categories")
+    public ResponseEntity<List<ServiceCategoryDto>> getAllCategories() {
+        List<ServiceCategoryDto> categories = serviceBookingService.getAllCategories();
+        return ResponseEntity.ok(categories);
     }
 
     @GetMapping("/categories/{categoryId}/services")

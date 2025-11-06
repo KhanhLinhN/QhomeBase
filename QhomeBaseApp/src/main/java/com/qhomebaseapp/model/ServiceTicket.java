@@ -28,7 +28,7 @@ public class ServiceTicket {
     private String name;
 
     @Column(name = "ticket_type", nullable = false)
-    private String ticketType; // DAY, NIGHT, HOURLY, DAILY, FAMILY
+    private String ticketType;
 
     @Column(name = "duration_hours", precision = 5, scale = 2)
     private BigDecimal durationHours;
@@ -37,7 +37,7 @@ public class ServiceTicket {
     private BigDecimal price;
 
     @Column(name = "max_people")
-    private Integer maxPeople; // Cho vé gia đình
+    private Integer maxPeople;
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;

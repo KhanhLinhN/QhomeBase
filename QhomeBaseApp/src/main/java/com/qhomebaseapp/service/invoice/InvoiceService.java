@@ -110,6 +110,9 @@ public class InvoiceService {
             }
 
             return invoices;
+        } catch (org.springframework.web.client.ResourceAccessException e) {
+            log.warn("⚠️ [InvoiceService] Không thể kết nối đến admin API (có thể chưa chạy): {}", e.getMessage());
+            return List.of();
         } catch (org.springframework.web.client.HttpClientErrorException e) {
             log.error("❌ [InvoiceService] HTTP Error khi gọi admin API: status={}, body={}", 
                     e.getStatusCode(), e.getResponseBodyAsString(), e);
@@ -121,13 +124,16 @@ public class InvoiceService {
         } catch (Exception e) {
             log.error("❌ [InvoiceService] Lỗi khi gọi admin API để lấy invoices cho unitId: {} - {}", 
                     unitId, e.getMessage(), e);
+            // Nếu là connection error, trả về empty list thay vì throw
+            if (e.getCause() instanceof java.net.ConnectException || 
+                e.getMessage() != null && e.getMessage().contains("Connection refused")) {
+                log.warn("⚠️ [InvoiceService] Admin API không available, trả về empty list");
+                return List.of();
+            }
             throw new RuntimeException("Không thể lấy danh sách hóa đơn từ hệ thống admin: " + e.getMessage(), e);
         }
     }
 
-    /**
-     * Cập nhật trạng thái hóa đơn thành PAID
-     */
     public InvoiceDto updateInvoiceStatus(String invoiceId, String status) {
         try {
             String url = UriComponentsBuilder.fromHttpUrl(adminApiBaseUrl)
@@ -159,9 +165,6 @@ public class InvoiceService {
         }
     }
 
-    /**
-     * Lấy chi tiết một hóa đơn theo invoiceId
-     */
     public InvoiceDto getInvoiceById(String invoiceId) {
         try {
             String url = UriComponentsBuilder.fromHttpUrl(adminApiBaseUrl)
@@ -188,20 +191,14 @@ public class InvoiceService {
         }
     }
 
-    /**
-     * Lấy danh sách invoice lines theo format Flutter cần
-     * Transform từ InvoiceDto sang InvoiceLineResponseDto
-     */
     public List<InvoiceLineResponseDto> getInvoiceLinesForFlutter(String unitId) {
         try {
             log.info("🔄 [InvoiceService] Bắt đầu getInvoiceLinesForFlutter với unitId: {}", unitId);
             
-            // Lấy tất cả invoices từ admin API
             List<InvoiceDto> invoices = getInvoicesByUnitId(unitId);
             
             log.info("📊 [InvoiceService] Số lượng invoices nhận được từ admin API: {}", invoices.size());
             
-            // Transform: flatten invoice lines thành danh sách items
             List<InvoiceLineResponseDto> result = new ArrayList<>();
             
             for (InvoiceDto invoice : invoices) {
@@ -213,7 +210,7 @@ public class InvoiceService {
                     for (InvoiceLineDto line : invoice.getLines()) {
                         InvoiceLineResponseDto responseDto = InvoiceLineResponseDto.builder()
                                 .payerUnitId(invoice.getPayerUnitId())
-                                .invoiceId(invoice.getId()) // Lấy ID từ invoice, không phải từ line
+                                .invoiceId(invoice.getId()) 
                                 .serviceDate(line.getServiceDate())
                                 .description(line.getDescription())
                                 .quantity(line.getQuantity())
@@ -244,12 +241,9 @@ public class InvoiceService {
         }
     }
 
-    /**
-     * Tạo VNPAY payment URL cho invoice
-     */
+
     public String createVnpayPaymentUrl(String invoiceId, HttpServletRequest request) {
         try {
-            // Lấy chi tiết invoice để có totalAmount
             InvoiceDto invoice = getInvoiceById(invoiceId);
             
             if ("PAID".equalsIgnoreCase(invoice.getStatus())) {
@@ -265,11 +259,8 @@ public class InvoiceService {
                 clientIp = request.getRemoteAddr();
             }
             
-            // Tạo orderId từ invoiceId (hashCode để có số nguyên)
-            // Lưu mapping để có thể reverse lookup khi callback
             Long orderId = Math.abs((long) invoiceId.hashCode());
             
-            // Lưu mapping orderId -> invoiceId
             orderIdToInvoiceIdMap.put(orderId, invoiceId);
             
             String orderInfo = "Thanh toán hóa đơn " + invoice.getCode();
@@ -285,12 +276,9 @@ public class InvoiceService {
         }
     }
 
-    /**
-     * Xử lý VNPAY callback và cập nhật invoice status thành PAID
-     */
+
     public void handleVnpayCallback(String invoiceId, Map<String, String> vnpParams, String userEmail) {
         try {
-            // Validate VNPAY response
             boolean valid = vnpayService.validateReturn(new HashMap<>(vnpParams));
             
             String responseCode = vnpParams.get("vnp_ResponseCode");
@@ -300,14 +288,11 @@ public class InvoiceService {
                     invoiceId, valid, responseCode);
             
             if (valid && "00".equals(responseCode) && "00".equals(transactionStatus)) {
-                // Cập nhật status thành PAID
                 updateInvoiceStatus(invoiceId, "PAID");
                 log.info("✅ [InvoiceService] Đã cập nhật invoice {} sang PAID sau khi thanh toán VNPAY", invoiceId);
                 
-                // Gửi email thông báo thanh toán thành công
                 try {
                     if (userEmail != null && !userEmail.isBlank()) {
-                        // Lấy thông tin invoice để tính tổng tiền
                         InvoiceDto invoice = getInvoiceById(invoiceId);
                         BigDecimal totalAmount = BigDecimal.ZERO;
                         if (invoice.getLines() != null) {
@@ -338,7 +323,7 @@ public class InvoiceService {
                             "Cảm ơn bạn đã sử dụng dịch vụ của chúng tôi!\n\n" +
                             "Trân trọng,\n" +
                             "Hệ thống QHomeBase",
-                            userEmail.split("@")[0], // Tên user từ email
+                            userEmail.split("@")[0], 
                             invoice.getCode() != null ? invoice.getCode() : invoiceId,
                             amountStr,
                             paymentDateStr,
@@ -351,7 +336,6 @@ public class InvoiceService {
                     }
                 } catch (Exception e) {
                     log.error("❌ [InvoiceService] Lỗi khi gửi email thông báo thanh toán: {}", e.getMessage(), e);
-                    // Không throw exception để không ảnh hưởng đến flow thanh toán
                 }
             } else {
                 throw new RuntimeException("Thanh toán thất bại hoặc chữ ký không hợp lệ");
@@ -362,10 +346,6 @@ public class InvoiceService {
         }
     }
 
-    /**
-     * Lấy invoiceId từ txnRef (vnpay transaction reference)
-     * Format: orderId_timestamp, trong đó orderId được lưu trong mapping
-     */
     public String getInvoiceIdFromTxnRef(String txnRef) {
         if (txnRef == null || !txnRef.contains("_")) {
             throw new RuntimeException("Thiếu hoặc sai định dạng vnp_TxnRef: " + txnRef);
@@ -387,25 +367,15 @@ public class InvoiceService {
         }
     }
 
-    /**
-     * Thanh toán hóa đơn - cập nhật status thành PAID (không dùng VNPAY)
-     */
     public void payInvoice(String invoiceId) {
         updateInvoiceStatus(invoiceId, "PAID");
         log.info("✅ [InvoiceService] Đã thanh toán invoice: {}", invoiceId);
     }
 
-    /**
-     * Lấy tất cả các hóa đơn đã thanh toán từ tất cả các nguồn:
-     * - Hóa đơn điện (invoices từ admin API)
-     * - Hóa đơn dịch vụ (service bookings)
-     * - Hóa đơn đăng ký thẻ xe (vehicle registrations)
-     */
     public List<UnifiedPaidInvoiceDto> getAllPaidInvoices(Long userId) {
         List<UnifiedPaidInvoiceDto> result = new ArrayList<>();
         
         try {
-            // 1. Lấy paid invoices từ admin API (hóa đơn điện)
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new RuntimeException("User not found"));
             
@@ -435,7 +405,6 @@ public class InvoiceService {
                 }
             }
             
-            // 2. Lấy paid service bookings
             List<ServiceBookingResponseDto> bookings = serviceBookingService.getUserBookings(userId);
             for (ServiceBookingResponseDto booking : bookings) {
                 if ("PAID".equalsIgnoreCase(booking.getPaymentStatus()) 
@@ -460,7 +429,6 @@ public class InvoiceService {
                 }
             }
             
-            // 3. Lấy paid vehicle registrations
             List<RegisterServiceRequestResponseDto> vehicleRegistrations = registerRegistrationService.getByUserId(userId);
             for (RegisterServiceRequestResponseDto registration : vehicleRegistrations) {
                 if ("PAID".equalsIgnoreCase(registration.getPaymentStatus()) 
@@ -490,7 +458,7 @@ public class InvoiceService {
                             .categoryName("Hóa đơn đăng ký thẻ xe")
                             .title(title)
                             .description(description)
-                            .amount(BigDecimal.valueOf(30000)) // Fixed fee
+                            .amount(BigDecimal.valueOf(30000))
                             .paymentDate(registration.getPaymentDate())
                             .paymentGateway(registration.getPaymentGateway())
                             .status(registration.getStatus())
@@ -503,7 +471,6 @@ public class InvoiceService {
                 }
             }
             
-            // 4. Lấy paid resident card registrations
             try {
                 List<ResidentCardRegistrationResponseDto> residentCardRegistrations = residentCardRegistrationService.getByUserId(userId);
                 for (ResidentCardRegistrationResponseDto registration : residentCardRegistrations) {
@@ -538,7 +505,7 @@ public class InvoiceService {
                                 .categoryName("Hóa đơn đăng ký thẻ ra vào")
                                 .title(title)
                                 .description(description)
-                                .amount(BigDecimal.valueOf(30000)) // Fixed fee
+                                .amount(BigDecimal.valueOf(30000))
                                 .paymentDate(registration.getPaymentDate())
                                 .paymentGateway(registration.getPaymentGateway())
                                 .status(registration.getStatus())
@@ -552,7 +519,6 @@ public class InvoiceService {
                 log.warn("⚠️ [InvoiceService] Không thể lấy resident card registrations (bảng có thể chưa tồn tại): {}", e.getMessage());
             }
             
-            // 5. Lấy paid elevator card registrations
             try {
                 List<ElevatorCardRegistrationResponseDto> elevatorCardRegistrations = elevatorCardRegistrationService.getByUserId(userId);
                 for (ElevatorCardRegistrationResponseDto registration : elevatorCardRegistrations) {
@@ -582,7 +548,7 @@ public class InvoiceService {
                                 .categoryName("Hóa đơn đăng ký thẻ thang máy")
                                 .title(title)
                                 .description(description)
-                                .amount(BigDecimal.valueOf(30000)) // Fixed fee
+                                .amount(BigDecimal.valueOf(30000))
                                 .paymentDate(registration.getPaymentDate())
                                 .paymentGateway(registration.getPaymentGateway())
                                 .status(registration.getStatus())
@@ -596,7 +562,6 @@ public class InvoiceService {
                 log.warn("⚠️ [InvoiceService] Không thể lấy elevator card registrations (bảng có thể chưa tồn tại): {}", e.getMessage());
             }
             
-            // Sort by payment date descending (newest first)
             result.sort((a, b) -> {
                 if (a.getPaymentDate() == null) return 1;
                 if (b.getPaymentDate() == null) return -1;
@@ -611,29 +576,21 @@ public class InvoiceService {
         }
     }
 
-    /**
-     * Lấy dữ liệu tiền điện theo tháng (12 tháng gần nhất)
-     * Filter các invoice lines có serviceCode hoặc description chứa "điện" hoặc "ELECTRICITY"
-     */
     public List<ElectricityMonthlyDto> getElectricityMonthlyData(String unitId) {
         try {
             log.info("📊 [InvoiceService] Lấy dữ liệu tiền điện theo tháng cho unitId: {}", unitId);
             
-            // Lấy tất cả invoices từ admin API
             List<InvoiceDto> invoices = getInvoicesByUnitId(unitId);
             
-            // Filter và group by month
             Map<String, BigDecimal> monthlyAmounts = new HashMap<>();
             
             for (InvoiceDto invoice : invoices) {
-                // Chỉ lấy invoices đã thanh toán (PAID)
                 if (!"PAID".equalsIgnoreCase(invoice.getStatus())) {
                     continue;
                 }
                 
                 if (invoice.getLines() != null && !invoice.getLines().isEmpty()) {
                     for (InvoiceLineDto line : invoice.getLines()) {
-                        // Filter lines liên quan đến điện
                         boolean isElectricity = false;
                         if (line.getServiceCode() != null) {
                             String serviceCode = line.getServiceCode().toUpperCase();
@@ -653,7 +610,7 @@ public class InvoiceService {
                         }
                         
                         if (isElectricity && line.getLineTotal() != null && line.getServiceDate() != null) {
-                            // Parse serviceDate to get month
+
                             try {
                                 LocalDate serviceDate = LocalDate.parse(line.getServiceDate());
                                 String monthKey = YearMonth.from(serviceDate).toString(); // "YYYY-MM"
@@ -671,7 +628,6 @@ public class InvoiceService {
                 }
             }
             
-            // Convert to DTO list and sort by month
             List<ElectricityMonthlyDto> result = monthlyAmounts.entrySet().stream()
                     .map(entry -> {
                         String monthKey = entry.getKey();
@@ -689,7 +645,6 @@ public class InvoiceService {
                                 .build();
                     })
                     .sorted((a, b) -> {
-                        // Sort by year first, then month
                         int yearCompare = a.getYear().compareTo(b.getYear());
                         if (yearCompare != 0) return yearCompare;
                         return a.getMonthNumber().compareTo(b.getMonthNumber());
@@ -700,6 +655,12 @@ public class InvoiceService {
             return result;
         } catch (Exception e) {
             log.error("❌ [InvoiceService] Lỗi khi lấy dữ liệu tiền điện theo tháng cho unitId: {}", unitId, e);
+            if (e.getCause() instanceof java.net.ConnectException || 
+                e.getMessage() != null && (e.getMessage().contains("Connection refused") || 
+                                          e.getMessage().contains("admin API"))) {
+                log.warn("⚠️ [InvoiceService] Admin API không available, trả về empty list cho tiền điện");
+                return List.of();
+            }
             throw new RuntimeException("Không thể lấy dữ liệu tiền điện: " + e.getMessage(), e);
         }
     }

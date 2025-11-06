@@ -1,6 +1,7 @@
 package com.qhomebaseapp.service.service;
 
 import com.qhomebaseapp.dto.service.AvailableServiceDto;
+import com.qhomebaseapp.dto.service.ServiceCategoryDto;
 import com.qhomebaseapp.dto.service.ServiceSlotDto;
 import com.qhomebaseapp.dto.service.BookingItemDto;
 import com.qhomebaseapp.dto.service.ServiceBookingRequestDto;
@@ -17,6 +18,7 @@ import com.qhomebaseapp.model.ServiceCombo;
 import com.qhomebaseapp.model.ServiceOption;
 import com.qhomebaseapp.model.ServiceTicket;
 import com.qhomebaseapp.model.Service;
+import com.qhomebaseapp.model.ServiceCategory;
 import com.qhomebaseapp.model.ServiceAvailability;
 import com.qhomebaseapp.model.ServiceBooking;
 import com.qhomebaseapp.model.ServiceBookingSlot;
@@ -51,6 +53,7 @@ import java.util.stream.Collectors;
 public class ServiceBookingServiceImpl implements ServiceBookingService {
 
     private final ServiceRepository serviceRepository;
+    private final ServiceCategoryRepository categoryRepository;
     private final ServiceBookingRepository bookingRepository;
     private final ServiceAvailabilityRepository availabilityRepository;
     private final ServiceBookingSlotRepository slotRepository;
@@ -63,6 +66,14 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
     private final EmailService emailService;
     private final VnpayService vnpayService;
     private final VnpayProperties vnpayProperties;
+
+    @Override
+    public List<ServiceCategoryDto> getAllCategories() {
+        List<ServiceCategory> categories = categoryRepository.findByIsActiveTrueOrderBySortOrderAsc();
+        return categories.stream()
+                .map(this::toCategoryDto)
+                .collect(Collectors.toList());
+    }
 
     @Override
     public List<ServiceDto> getServicesByCategory(Long categoryId) {
@@ -87,53 +98,21 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
     public List<ServiceTypeDto> getServiceTypesByCategoryCode(String categoryCode) {
         List<Service> services = serviceRepository.findByCategory_CodeAndIsActiveTrue(categoryCode);
         
-        // Group services by type (extract from code: e.g., "BBQ_ZONE_A" -> "BBQ")
+        // Group services by serviceType (from database field, not hardcoded)
         return services.stream()
-                .collect(Collectors.groupingBy(service -> {
-                    String code = service.getCode();
-                    // Extract type from code (part before first underscore or whole code if no underscore)
-                    int underscoreIndex = code.indexOf('_');
-                    if (underscoreIndex > 0) {
-                        return code.substring(0, underscoreIndex);
-                    }
-                    // Fallback: extract from name (e.g., "Khu nướng BBQ - Tòa A" -> "BBQ")
-                    String name = service.getName();
-                    if (name.contains("BBQ") || name.contains("bbq") || name.contains("Bbq")) {
-                        return "BBQ";
-                    }
-                    if (name.contains("Tennis") || name.contains("tennis")) {
-                        return "TENNIS";
-                    }
-                    if (name.contains("Pool") || name.contains("pool") || name.contains("Bơi") || name.contains("bơi")) {
-                        return "POOL";
-                    }
-                    // Default: use code
-                    return code;
-                }))
+                .filter(service -> service.getServiceType() != null && !service.getServiceType().isEmpty())
+                .collect(Collectors.groupingBy(Service::getServiceType))
                 .entrySet().stream()
                 .map(entry -> {
                     String typeCode = entry.getKey();
                     List<Service> typeServices = entry.getValue();
                     
-                    // Get type name - chỉ hiển thị tên ngắn gọn (trừ BBQ)
-                    String typeName;
-                    
-                    // Map theo code để lấy tên ngắn gọn
-                    if (typeCode.equalsIgnoreCase("BBQ")) {
-                        // BBQ: Giữ tên chi tiết
-                        typeName = "Nướng BBQ";
-                    } else if (typeCode.equalsIgnoreCase("SPA")) {
-                        typeName = "Spa";
-                    } else if (typeCode.equalsIgnoreCase("POOL")) {
-                        typeName = "Hồ bơi"; // Chỉ hiển thị "Hồ bơi", không phải "Hồ bơi A"
-                    } else if (typeCode.equalsIgnoreCase("PLAYGROUND")) {
-                        typeName = "Khu vui chơi điện tử";
-                    } else if (typeCode.equalsIgnoreCase("BAR")) {
-                        typeName = "Bar"; // Chỉ hiển thị "Bar", không phải "Bar A"
-                    } else {
-                        // Fallback: Lấy từ code
-                        typeName = typeCode;
-                    }
+                    // Get type display name from first service (from database field)
+                    String typeName = typeServices.stream()
+                            .filter(s -> s.getTypeDisplayName() != null && !s.getTypeDisplayName().isEmpty())
+                            .findFirst()
+                            .map(Service::getTypeDisplayName)
+                            .orElse(typeCode); // Fallback to typeCode if no display name
                     
                     // Get description from first service
                     String description = typeServices.get(0).getDescription();
@@ -156,20 +135,16 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
     public List<ServiceDto> getServicesByCategoryCodeAndType(String categoryCode, String serviceType) {
         List<Service> services = serviceRepository.findByCategory_CodeAndIsActiveTrue(categoryCode);
         
-        // Filter services by type
+        // Filter services by serviceType (from database field, not hardcoded)
         return services.stream()
                 .filter(service -> {
-                    String code = service.getCode();
-                    // Check if service code starts with type
-                    if (code.startsWith(serviceType + "_") || code.equals(serviceType)) {
-                        return true;
+                    // Use serviceType field from database
+                    if (service.getServiceType() != null) {
+                        return service.getServiceType().equalsIgnoreCase(serviceType);
                     }
-                    // Check in name as fallback
-                    String name = service.getName();
-                    String typeUpper = serviceType.toUpperCase();
-                    return (name.contains("BBQ") || name.contains("bbq")) && typeUpper.contains("BBQ")
-                            || (name.contains("Tennis") || name.contains("tennis")) && typeUpper.contains("TENNIS")
-                            || (name.contains("Pool") || name.contains("pool") || name.contains("Bơi")) && typeUpper.contains("POOL");
+                    // Fallback: check if code starts with type (for backward compatibility)
+                    String code = service.getCode();
+                    return code.startsWith(serviceType + "_") || code.equalsIgnoreCase(serviceType);
                 })
                 .map(this::toServiceDto)
                 .collect(Collectors.toList());
@@ -209,20 +184,16 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
         
         List<Service> services = serviceRepository.findByCategory_CodeAndIsActiveTrue(categoryCode);
         
-        // Filter services by type
+        // Filter services by serviceType (from database field, not hardcoded)
         List<Service> filteredServices = services.stream()
                 .filter(service -> {
-                    String code = service.getCode();
-                    // Check if service code starts with type
-                    if (code.startsWith(serviceType + "_") || code.equals(serviceType)) {
-                        return true;
+                    // Use serviceType field from database
+                    if (service.getServiceType() != null) {
+                        return service.getServiceType().equalsIgnoreCase(serviceType);
                     }
-                    // Check in name as fallback
-                    String name = service.getName();
-                    String typeUpper = serviceType.toUpperCase();
-                    return (name.contains("BBQ") || name.contains("bbq")) && typeUpper.contains("BBQ")
-                            || (name.contains("Tennis") || name.contains("tennis")) && typeUpper.contains("TENNIS")
-                            || (name.contains("Pool") || name.contains("pool") || name.contains("Bơi")) && typeUpper.contains("POOL");
+                    // Fallback: check if code starts with type (for backward compatibility)
+                    String code = service.getCode();
+                    return code.startsWith(serviceType + "_") || code.equalsIgnoreCase(serviceType);
                 })
                 .collect(Collectors.toList());
         
@@ -665,6 +636,18 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
         }
         
         return toBookingResponseDto(booking);
+    }
+
+    private ServiceCategoryDto toCategoryDto(ServiceCategory category) {
+        return ServiceCategoryDto.builder()
+                .id(category.getId())
+                .code(category.getCode())
+                .name(category.getName())
+                .description(category.getDescription())
+                .icon(category.getIcon())
+                .sortOrder(category.getSortOrder())
+                .isActive(category.getIsActive())
+                .build();
     }
 
     private ServiceDto toServiceDto(Service service) {
@@ -1269,24 +1252,26 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
         
         // Thêm extra hours nếu có (tìm option có code chứa "EXTRA_HOUR" hoặc tương tự)
         if (request.getExtraHours() != null && request.getExtraHours() > 0) {
-            // Thêm extra hours: 100.000 VNĐ/giờ (ví dụ: 2 giờ = 200.000 VNĐ)
-            BigDecimal pricePerExtraHour = BigDecimal.valueOf(100000);
-            BigDecimal extraHoursPrice = pricePerExtraHour.multiply(BigDecimal.valueOf(request.getExtraHours()));
-            total = total.add(extraHoursPrice);
-            
-            // Tìm option extra hour để lưu vào booking items
+            // Tìm option extra hour trong database
             ServiceOption extraHourOption = optionRepository.findByService_IdAndCodeContaining(
                     service.getId(), "EXTRA_HOUR").stream().findFirst().orElse(null);
             
-            // Tạo booking item cho extra hours
-            String extraHourName = extraHourOption != null ? extraHourOption.getName() : "Thuê thêm giờ";
-            String extraHourCode = extraHourOption != null ? extraHourOption.getCode() : "BBQ_EXTRA_HOUR";
+            if (extraHourOption == null) {
+                log.warn("Extra hour option not found for service {}. Using default price.", service.getId());
+                throw new RuntimeException("Không tìm thấy tùy chọn thuê thêm giờ cho dịch vụ này. Vui lòng liên hệ quản trị viên.");
+            }
             
+            // Lấy giá từ option trong database (không hardcode)
+            BigDecimal pricePerExtraHour = extraHourOption.getPrice();
+            BigDecimal extraHoursPrice = pricePerExtraHour.multiply(BigDecimal.valueOf(request.getExtraHours()));
+            total = total.add(extraHoursPrice);
+            
+            // Tạo booking item cho extra hours
             ServiceBookingItem item = ServiceBookingItem.builder()
                     .itemType("OPTION")
-                    .itemId(extraHourOption != null ? extraHourOption.getId() : null)
-                    .itemCode(extraHourCode)
-                    .itemName(extraHourName)
+                    .itemId(extraHourOption.getId())
+                    .itemCode(extraHourOption.getCode())
+                    .itemName(extraHourOption.getName())
                     .quantity(request.getExtraHours())
                     .unitPrice(pricePerExtraHour)
                     .totalPrice(extraHoursPrice)
@@ -1294,8 +1279,8 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
                     .build();
             bookingItems.add(item);
             
-            log.info("Extra hours: {} giờ x {} VNĐ/giờ = {} VNĐ", 
-                    request.getExtraHours(), pricePerExtraHour, extraHoursPrice);
+            log.info("Extra hours: {} giờ x {} VNĐ/giờ = {} VNĐ (from option: {})", 
+                    request.getExtraHours(), pricePerExtraHour, extraHoursPrice, extraHourOption.getCode());
         }
         
         return total;
