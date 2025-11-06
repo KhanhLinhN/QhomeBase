@@ -108,6 +108,23 @@ public class MeterReadingAssignmentController {
         return ResponseEntity.ok(progress);
     }
 
+    @GetMapping("/staff/{staffId}/cycle/{cycleId}/meters")
+    public ResponseEntity<List<MeterDto>> getMetersByStaffAndCycle(
+            @PathVariable UUID staffId,
+            @PathVariable UUID cycleId) {
+        List<MeterDto> meters = meterService.getMetersByStaffAndCycle(staffId, cycleId);
+        return ResponseEntity.ok(meters);
+    }
+
+    @GetMapping("/my-meters/cycle/{cycleId}")
+    public ResponseEntity<List<MeterDto>> getMyMetersByCycle(
+            @PathVariable UUID cycleId,
+            Authentication authentication) {
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        List<MeterDto> meters = meterService.getMetersByStaffAndCycle(principal.uid(), cycleId);
+        return ResponseEntity.ok(meters);
+    }
+
     @DeleteMapping("/{assignmentId}")
     public ResponseEntity<Void> deleteAssignment(@PathVariable UUID assignmentId) {
         assignmentService.delete(assignmentId);

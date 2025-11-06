@@ -21,3 +21,5 @@ public record HouseholdCreateDto(
         LocalDate endDate
 ) {}
 
+
+

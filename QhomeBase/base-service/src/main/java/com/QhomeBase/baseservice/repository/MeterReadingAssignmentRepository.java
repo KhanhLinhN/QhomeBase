@@ -41,5 +41,10 @@ public interface MeterReadingAssignmentRepository extends JpaRepository<MeterRea
         List<MeterReadingAssignmentStatus> statuses
     );
 
+    @Query("SELECT a FROM MeterReadingAssignment a WHERE a.assignedTo = :staffId AND a.cycle.id = :cycleId")
+    List<MeterReadingAssignment> findByAssignedToAndCycleId(
+        @Param("staffId") UUID staffId,
+        @Param("cycleId") UUID cycleId
+    );
 
 }

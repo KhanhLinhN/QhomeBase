@@ -60,7 +60,7 @@ public class MeterReadingService {
         if (meterReadingAssignment != null) {
             validateMeterInScope(meterReadingAssignment, meter);
             
-            validNotInExclusive(meterReadingAssignment.getId(), meter.getId());
+            validateMeterInIncludedUnits(meterReadingAssignment.getId(), meter.getId());
             
             Optional<MeterReading> existingReading = readingRepo.findByMeterIdAndAssignmentId(
                 meter.getId(), 
@@ -129,7 +129,7 @@ public class MeterReadingService {
             throw new IllegalArgumentException("Unit floor does not match assignment floor");
         }
     }
-    public void validNotInExclusive(UUID assignmentId, UUID meterId) {
+    public void validateMeterInIncludedUnits(UUID assignmentId, UUID meterId) {
         Meter meter = meterRepo.findById(meterId)
                 .orElseThrow(() -> new IllegalArgumentException("Meter not found: " + meterId));
         
@@ -142,17 +142,15 @@ public class MeterReadingService {
         MeterReadingAssignment assignment = assignmentRepo.findById(assignmentId)
                 .orElseThrow(() -> new IllegalArgumentException("Assignment not found: " + assignmentId));
         
-        List<UUID> exclusiveUnitIds = assignment.getUnitIds();
+        List<UUID> includedUnitIds = assignment.getUnitIds();
         
-        if (exclusiveUnitIds == null || exclusiveUnitIds.isEmpty()) {
-            return;
-        }
-        
-        if (exclusiveUnitIds.contains(unitId)) {
-            throw new IllegalArgumentException(
-                String.format("Unit %s is in exclusive list for assignment %s. This meter reading is not allowed.", 
-                    unitId, assignmentId)
-            );
+        if (includedUnitIds != null && !includedUnitIds.isEmpty()) {
+            if (!includedUnitIds.contains(unitId)) {
+                throw new IllegalArgumentException(
+                    String.format("Unit %s is not in included units list for assignment %s. This meter reading is not allowed.", 
+                        unitId, assignmentId)
+                );
+            }
         }
     }
 

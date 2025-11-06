@@ -226,7 +226,7 @@ public class MeterReadingAssignmentService {
         UUID buildingId = assignment.getBuilding().getId();
         UUID serviceId = assignment.getService().getId();
         Integer floor = assignment.getFloor();
-        List<UUID> exclusiveUnitIds = assignment.getUnitIds();
+        List<UUID> includedUnitIds = assignment.getUnitIds();
         
         List<Meter> allMeters;
         
@@ -237,22 +237,69 @@ public class MeterReadingAssignmentService {
         }
         
         List<Meter> metersInScope;
-        if (exclusiveUnitIds != null && !exclusiveUnitIds.isEmpty()) {
+        if (includedUnitIds != null && !includedUnitIds.isEmpty()) {
             metersInScope = allMeters.stream()
-                .filter(m -> m.getUnit() != null && !exclusiveUnitIds.contains(m.getUnit().getId()))
+                .filter(m -> m.getUnit() != null && includedUnitIds.contains(m.getUnit().getId()))
                 .toList();
         } else {
             metersInScope = allMeters;
         }
         
-        int totalMetersNeeded = metersInScope.size();
-        List<MeterReading> readings = meterReadingRepository.findByAssignmentId(assignment.getId());
-        int readingsCount = readings.size();
+        if (metersInScope.isEmpty()) {
+            throw new IllegalArgumentException("No meters found in scope for this assignment");
+        }
         
-        if (readingsCount < totalMetersNeeded) {
+        java.util.Set<UUID> requiredMeterIds = metersInScope.stream()
+            .map(Meter::getId)
+            .collect(java.util.stream.Collectors.toSet());
+        
+        List<MeterReading> readings = meterReadingRepository.findByAssignmentId(assignment.getId());
+        
+        if (readings.isEmpty()) {
             throw new IllegalArgumentException(
-                String.format("Not enough meter readings to complete assignment. Required: %d, Current: %d", 
-                    totalMetersNeeded, readingsCount)
+                String.format("No meter readings found. Required: %d meters", requiredMeterIds.size())
+            );
+        }
+        
+        java.util.Set<UUID> readMeterIds = readings.stream()
+            .map(r -> r.getMeter().getId())
+            .collect(java.util.stream.Collectors.toSet());
+        
+        java.util.Set<UUID> missingMeterIds = new java.util.HashSet<>(requiredMeterIds);
+        missingMeterIds.removeAll(readMeterIds);
+        
+        if (!missingMeterIds.isEmpty()) {
+            List<String> missingMeterCodes = missingMeterIds.stream()
+                .map(meterId -> {
+                    Meter meter = meterRepository.findById(meterId).orElse(null);
+                    return meter != null ? meter.getMeterCode() : meterId.toString();
+                })
+                .toList();
+            
+            throw new IllegalArgumentException(
+                String.format("Missing meter readings for %d meter(s): %s. Required: %d, Found: %d", 
+                    missingMeterIds.size(), 
+                    String.join(", ", missingMeterCodes),
+                    requiredMeterIds.size(),
+                    readMeterIds.size())
+            );
+        }
+        
+        java.util.Set<UUID> extraMeterIds = new java.util.HashSet<>(readMeterIds);
+        extraMeterIds.removeAll(requiredMeterIds);
+        
+        if (!extraMeterIds.isEmpty()) {
+            List<String> extraMeterCodes = extraMeterIds.stream()
+                .map(meterId -> {
+                    Meter meter = meterRepository.findById(meterId).orElse(null);
+                    return meter != null ? meter.getMeterCode() : meterId.toString();
+                })
+                .toList();
+            
+            throw new IllegalArgumentException(
+                String.format("Found readings for %d meter(s) not in scope: %s", 
+                    extraMeterIds.size(), 
+                    String.join(", ", extraMeterCodes))
             );
         }
     }
@@ -295,11 +342,20 @@ public class MeterReadingAssignmentService {
         UUID buildingId = assignment.getBuilding().getId();
         UUID serviceId  = assignment.getService().getId();
         Integer floor = assignment.getFloor();
+        List<UUID> includedUnitIds = assignment.getUnitIds();
 
-
-        int total = floor != null 
-            ? meterRepository.findByBuildingServiceAndFloor(buildingId, serviceId, floor).size()
-            : meterRepository.findByBuildingAndService(buildingId, serviceId).size();
+        List<Meter> allMeters = floor != null 
+            ? meterRepository.findByBuildingServiceAndFloor(buildingId, serviceId, floor)
+            : meterRepository.findByBuildingAndService(buildingId, serviceId);
+        
+        int total;
+        if (includedUnitIds != null && !includedUnitIds.isEmpty()) {
+            total = (int) allMeters.stream()
+                .filter(m -> m.getUnit() != null && includedUnitIds.contains(m.getUnit().getId()))
+                .count();
+        } else {
+            total = allMeters.size();
+        }
 
         int done = meterReadingRepository.findByAssignmentId(assignmentId).size();
         int remain = Math.max(0, total-done);

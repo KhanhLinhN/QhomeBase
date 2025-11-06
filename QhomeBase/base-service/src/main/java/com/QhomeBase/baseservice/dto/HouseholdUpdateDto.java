@@ -13,3 +13,5 @@ public record HouseholdUpdateDto(
         LocalDate endDate
 ) {}
 
+
+

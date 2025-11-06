@@ -266,3 +266,5 @@ SET household_id = EXCLUDED.household_id,
     left_at = EXCLUDED.left_at,
     updated_at = now();
 
+
+

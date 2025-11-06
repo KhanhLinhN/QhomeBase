@@ -49,27 +49,70 @@ public class MeterService {
             throw new IllegalArgumentException("Assignment must have a building");
         }
         
-        // Logic: unit_ids is EXCLUSIVE (excluded units), not inclusive
-        // If unit_ids is set, exclude those units from reading
         if (unitIds != null && !unitIds.isEmpty()) {
-            // Get all meters in building/service, then exclude units in exclusive list
             List<Meter> allMeters = floor != null 
                 ? meterRepository.findByBuildingServiceAndFloor(buildingId, serviceId, floor)
                 : meterRepository.findByBuildingAndService(buildingId, serviceId);
             
-            // Filter out meters in exclusive units
             meters = allMeters.stream()
-                .filter(m -> !unitIds.contains(m.getUnit().getId()))
+                .filter(m -> m.getUnit() != null && unitIds.contains(m.getUnit().getId()))
                 .toList();
         } else if (floor != null) {
-            // Specific floor
             meters = meterRepository.findByBuildingServiceAndFloor(buildingId, serviceId, floor);
         } else {
-            // All floors
             meters = meterRepository.findByBuildingAndService(buildingId, serviceId);
         }
 
         return meters.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<MeterDto> getMetersByStaffAndCycle(UUID staffId, UUID cycleId) {
+        List<MeterReadingAssignment> assignments = assignmentRepository.findByAssignedToAndCycleId(staffId, cycleId);
+        
+        if (assignments.isEmpty()) {
+            return List.of();
+        }
+        
+        java.util.Set<UUID> uniqueMeterIds = new java.util.HashSet<>();
+        List<Meter> allMeters = new java.util.ArrayList<>();
+        
+        for (MeterReadingAssignment assignment : assignments) {
+            UUID buildingId = assignment.getBuilding() != null ? assignment.getBuilding().getId() : null;
+            UUID serviceId = assignment.getService().getId();
+            Integer floor = assignment.getFloor();
+            List<UUID> unitIds = assignment.getUnitIds();
+            
+            if (buildingId == null) {
+                continue;
+            }
+            
+            List<Meter> meters;
+            if (unitIds != null && !unitIds.isEmpty()) {
+                List<Meter> allMetersForAssignment = floor != null 
+                    ? meterRepository.findByBuildingServiceAndFloor(buildingId, serviceId, floor)
+                    : meterRepository.findByBuildingAndService(buildingId, serviceId);
+                
+                meters = allMetersForAssignment.stream()
+                    .filter(m -> m.getUnit() != null && unitIds.contains(m.getUnit().getId()))
+                    .toList();
+            } else if (floor != null) {
+                meters = meterRepository.findByBuildingServiceAndFloor(buildingId, serviceId, floor);
+            } else {
+                meters = meterRepository.findByBuildingAndService(buildingId, serviceId);
+            }
+            
+            for (Meter meter : meters) {
+                if (!uniqueMeterIds.contains(meter.getId())) {
+                    uniqueMeterIds.add(meter.getId());
+                    allMeters.add(meter);
+                }
+            }
+        }
+        
+        return allMeters.stream()
                 .map(this::toDto)
                 .toList();
     }
