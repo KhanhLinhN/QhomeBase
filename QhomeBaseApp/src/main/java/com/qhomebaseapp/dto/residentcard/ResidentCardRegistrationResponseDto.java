@@ -16,6 +16,7 @@ public class ResidentCardRegistrationResponseDto {
     private String residentName;
     private String apartmentNumber;
     private String buildingName;
+    private String requestType; // NEW_CARD, REPLACE_CARD
     private String citizenId;
     private String phoneNumber;
     private String note;

@@ -1,11 +1,13 @@
 package com.qhomebaseapp.dto.elevatorcard;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.*;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ElevatorCardRegistrationDto {
 
     private String fullName;

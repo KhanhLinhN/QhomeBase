@@ -25,10 +25,15 @@ public class RegisterServiceRequest {
     @Column(name = "service_type", nullable = false)
     private String serviceType;
 
+    @Column(name = "request_type")
+    @Builder.Default
+    private String requestType = "NEW_CARD"; // NEW_CARD, REPLACE_CARD
+
     @Column(name = "note")
     private String note;
 
     @Column(name = "status", nullable = false)
+    @Builder.Default
     private String status = "PENDING";
 
     @Column(name = "created_at", updatable = false)
@@ -50,6 +55,7 @@ public class RegisterServiceRequest {
     private String vehicleColor;
 
     @Column(name = "payment_status")
+    @Builder.Default
     private String paymentStatus = "UNPAID"; // UNPAID, PAID, PENDING
 
     @Column(name = "payment_amount")

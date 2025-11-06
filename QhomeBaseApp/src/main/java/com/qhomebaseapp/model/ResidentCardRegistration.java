@@ -29,6 +29,10 @@ public class ResidentCardRegistration {
     @Column(name = "building_name", nullable = false)
     private String buildingName;
 
+    @Column(name = "request_type", nullable = false)
+    @Builder.Default
+    private String requestType = "NEW_CARD"; // NEW_CARD, REPLACE_CARD
+
     @Column(name = "citizen_id", nullable = false)
     private String citizenId;
 

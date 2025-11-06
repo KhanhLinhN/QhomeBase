@@ -50,8 +50,7 @@ public class SecurityConfig {
                             res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                             res.setContentType("application/json");
                             res.getWriter().write("{\"message\":\"" + excep.getMessage() + "\"}");
-                        }
-                ))
+                        }))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/api/auth/login",
@@ -62,17 +61,20 @@ public class SecurityConfig {
                                 "/uploads/**",
                                 "/ws/**",
                                 "/files/**",
-                                    "/api/invoices/vnpay/return",
-                                    "/api/invoices/vnpay/redirect",
-                                    "/api/invoices/*/vnpay-url",
-                                    "/api/register-service/vnpay/return",
-                                    "/api/register-service/vnpay/redirect",
-                                    "/api/register-service/*/vnpay-url",
-                                    "/api/service-booking/vnpay/redirect"
-                        ).permitAll()
+                                "/api/invoices/vnpay/return",
+                                "/api/invoices/vnpay/redirect",
+                                "/api/invoices/*/vnpay-url",
+                                "/api/register-service/vnpay/return",
+                                "/api/register-service/vnpay/redirect",
+                                "/api/register-service/*/vnpay-url",
+                                "/api/service-booking/vnpay/redirect",
+                                "/api/resident-card/vnpay/return",
+                                "/api/resident-card/vnpay/redirect",
+                                "/api/elevator-card/vnpay/return",
+                                "/api/elevator-card/vnpay/redirect")
+                        .permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .anyRequest().authenticated()
-                )
+                        .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .headers(headers -> headers
                         .frameOptions(frame -> frame.sameOrigin())
@@ -80,8 +82,8 @@ public class SecurityConfig {
                                 .maxAgeInSeconds(31536000)
                                 .includeSubDomains(true))
                         .contentSecurityPolicy(csp -> csp
-                                .policyDirectives("default-src 'self' https://*.ngrok.com https://*.ngrok-free.app https://cdn.ngrok.com https://assets.ngrok.com 'unsafe-eval' 'unsafe-inline'; img-src 'self' data: https:; connect-src *; font-src 'self' https://*.ngrok.com https://*.ngrok-free.app https://assets.ngrok.com data:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:;"))
-                );
+                                .policyDirectives(
+                                        "default-src 'self' https://*.ngrok.com https://*.ngrok-free.app https://cdn.ngrok.com https://assets.ngrok.com 'unsafe-eval' 'unsafe-inline'; img-src 'self' data: https:; connect-src *; font-src 'self' https://*.ngrok.com https://*.ngrok-free.app https://assets.ngrok.com data:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:;")));
 
         return http.build();
     }

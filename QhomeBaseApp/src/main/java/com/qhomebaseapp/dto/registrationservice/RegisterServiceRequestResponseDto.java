@@ -15,6 +15,7 @@ import java.util.List;
 public class RegisterServiceRequestResponseDto {
     private Long id;
     private String serviceType;
+    private String requestType; // NEW_CARD, REPLACE_CARD
     private String note;
     private String status; // PENDING, DRAFT - trạng thái xử lý của admin
     private String paymentStatus; // PAID, UNPAID - trạng thái thanh toán

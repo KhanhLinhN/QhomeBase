@@ -469,14 +469,27 @@ public class InvoiceService {
                             ? "Đăng ký thẻ xe - " + registration.getLicensePlate()
                             : "Đăng ký thẻ xe #" + registration.getId();
                     
+                    String description = "";
+                    if (registration.getVehicleType() != null) {
+                        description = registration.getVehicleType();
+                    }
+                    if (registration.getRequestType() != null) {
+                        String requestTypeName = "NEW_CARD".equalsIgnoreCase(registration.getRequestType())
+                                ? "Làm thẻ mới"
+                                : "Cấp lại thẻ bị mất";
+                        if (!description.isEmpty()) description += " - ";
+                        description += requestTypeName;
+                    }
+                    if (description.isEmpty()) {
+                        description = "Đăng ký thẻ xe";
+                    }
+                    
                     UnifiedPaidInvoiceDto dto = UnifiedPaidInvoiceDto.builder()
                             .id(registration.getId().toString())
                             .category("VEHICLE_REGISTRATION")
                             .categoryName("Hóa đơn đăng ký thẻ xe")
                             .title(title)
-                            .description(registration.getVehicleType() != null 
-                                    ? registration.getVehicleType() 
-                                    : "Đăng ký thẻ xe")
+                            .description(description)
                             .amount(BigDecimal.valueOf(30000)) // Fixed fee
                             .paymentDate(registration.getPaymentDate())
                             .paymentGateway(registration.getPaymentGateway())
@@ -491,81 +504,96 @@ public class InvoiceService {
             }
             
             // 4. Lấy paid resident card registrations
-            List<ResidentCardRegistrationResponseDto> residentCardRegistrations = residentCardRegistrationService.getByUserId(userId);
-            for (ResidentCardRegistrationResponseDto registration : residentCardRegistrations) {
-                if ("PAID".equalsIgnoreCase(registration.getPaymentStatus()) 
-                        && registration.getPaymentDate() != null) {
-                    String title = registration.getResidentName() != null 
-                            ? "Đăng ký thẻ cư dân - " + registration.getResidentName()
-                            : "Đăng ký thẻ cư dân #" + registration.getId();
-                    
-                    String description = "";
-                    if (registration.getApartmentNumber() != null && registration.getBuildingName() != null) {
-                        description = registration.getApartmentNumber() + ", " + registration.getBuildingName();
+            try {
+                List<ResidentCardRegistrationResponseDto> residentCardRegistrations = residentCardRegistrationService.getByUserId(userId);
+                for (ResidentCardRegistrationResponseDto registration : residentCardRegistrations) {
+                    if ("PAID".equalsIgnoreCase(registration.getPaymentStatus()) 
+                            && registration.getPaymentDate() != null) {
+                        String title = registration.getResidentName() != null 
+                                ? "Đăng ký thẻ cư dân - " + registration.getResidentName()
+                                : "Đăng ký thẻ cư dân #" + registration.getId();
+                        
+                        String description = "";
+                        if (registration.getApartmentNumber() != null && registration.getBuildingName() != null) {
+                            description = registration.getApartmentNumber() + ", " + registration.getBuildingName();
+                        }
+                        if (registration.getRequestType() != null) {
+                            String requestTypeName = "NEW_CARD".equalsIgnoreCase(registration.getRequestType())
+                                    ? "Làm thẻ mới"
+                                    : "Cấp lại thẻ bị mất";
+                            if (!description.isEmpty()) description += " - ";
+                            description += requestTypeName;
+                        }
+                        if (registration.getCitizenId() != null) {
+                            if (!description.isEmpty()) description += " - ";
+                            description += "CCCD: " + registration.getCitizenId();
+                        }
+                        if (description.isEmpty()) {
+                            description = "Đăng ký thẻ cư dân";
+                        }
+                        
+                        UnifiedPaidInvoiceDto dto = UnifiedPaidInvoiceDto.builder()
+                                .id(registration.getId().toString())
+                                .category("RESIDENT_CARD_REGISTRATION")
+                                .categoryName("Hóa đơn đăng ký thẻ ra vào")
+                                .title(title)
+                                .description(description)
+                                .amount(BigDecimal.valueOf(30000)) // Fixed fee
+                                .paymentDate(registration.getPaymentDate())
+                                .paymentGateway(registration.getPaymentGateway())
+                                .status(registration.getStatus())
+                                .reference(registration.getVnpayTransactionRef())
+                                .build();
+                        
+                        result.add(dto);
                     }
-                    if (registration.getCitizenId() != null) {
-                        if (!description.isEmpty()) description += " - ";
-                        description += "CCCD: " + registration.getCitizenId();
-                    }
-                    if (description.isEmpty()) {
-                        description = "Đăng ký thẻ cư dân";
-                    }
-                    
-                    UnifiedPaidInvoiceDto dto = UnifiedPaidInvoiceDto.builder()
-                            .id(registration.getId().toString())
-                            .category("RESIDENT_CARD_REGISTRATION")
-                            .categoryName("Hóa đơn đăng ký thẻ ra vào")
-                            .title(title)
-                            .description(description)
-                            .amount(BigDecimal.valueOf(30000)) // Fixed fee
-                            .paymentDate(registration.getPaymentDate())
-                            .paymentGateway(registration.getPaymentGateway())
-                            .status(registration.getStatus())
-                            .reference(registration.getVnpayTransactionRef())
-                            .build();
-                    
-                    result.add(dto);
                 }
+            } catch (Exception e) {
+                log.warn("⚠️ [InvoiceService] Không thể lấy resident card registrations (bảng có thể chưa tồn tại): {}", e.getMessage());
             }
             
             // 5. Lấy paid elevator card registrations
-            List<ElevatorCardRegistrationResponseDto> elevatorCardRegistrations = elevatorCardRegistrationService.getByUserId(userId);
-            for (ElevatorCardRegistrationResponseDto registration : elevatorCardRegistrations) {
-                if ("PAID".equalsIgnoreCase(registration.getPaymentStatus()) 
-                        && registration.getPaymentDate() != null) {
-                    String title = registration.getFullName() != null 
-                            ? "Đăng ký thẻ thang máy - " + registration.getFullName()
-                            : "Đăng ký thẻ thang máy #" + registration.getId();
-                    
-                    String requestTypeName = "NEW_CARD".equalsIgnoreCase(registration.getRequestType()) 
-                            ? "Làm thẻ mới" 
-                            : "Cấp lại thẻ bị mất";
-                    
-                    String description = "";
-                    if (registration.getApartmentNumber() != null && registration.getBuildingName() != null) {
-                        description = registration.getApartmentNumber() + ", " + registration.getBuildingName();
+            try {
+                List<ElevatorCardRegistrationResponseDto> elevatorCardRegistrations = elevatorCardRegistrationService.getByUserId(userId);
+                for (ElevatorCardRegistrationResponseDto registration : elevatorCardRegistrations) {
+                    if ("PAID".equalsIgnoreCase(registration.getPaymentStatus()) 
+                            && registration.getPaymentDate() != null) {
+                        String title = registration.getFullName() != null 
+                                ? "Đăng ký thẻ thang máy - " + registration.getFullName()
+                                : "Đăng ký thẻ thang máy #" + registration.getId();
+                        
+                        String requestTypeName = "NEW_CARD".equalsIgnoreCase(registration.getRequestType()) 
+                                ? "Làm thẻ mới" 
+                                : "Cấp lại thẻ bị mất";
+                        
+                        String description = "";
+                        if (registration.getApartmentNumber() != null && registration.getBuildingName() != null) {
+                            description = registration.getApartmentNumber() + ", " + registration.getBuildingName();
+                        }
+                        if (!description.isEmpty()) description += " - ";
+                        description += requestTypeName;
+                        if (description.isEmpty()) {
+                            description = "Đăng ký thẻ thang máy";
+                        }
+                        
+                        UnifiedPaidInvoiceDto dto = UnifiedPaidInvoiceDto.builder()
+                                .id(registration.getId().toString())
+                                .category("ELEVATOR_CARD_REGISTRATION")
+                                .categoryName("Hóa đơn đăng ký thẻ thang máy")
+                                .title(title)
+                                .description(description)
+                                .amount(BigDecimal.valueOf(30000)) // Fixed fee
+                                .paymentDate(registration.getPaymentDate())
+                                .paymentGateway(registration.getPaymentGateway())
+                                .status(registration.getStatus())
+                                .reference(registration.getVnpayTransactionRef())
+                                .build();
+                        
+                        result.add(dto);
                     }
-                    if (!description.isEmpty()) description += " - ";
-                    description += requestTypeName;
-                    if (description.isEmpty()) {
-                        description = "Đăng ký thẻ thang máy";
-                    }
-                    
-                    UnifiedPaidInvoiceDto dto = UnifiedPaidInvoiceDto.builder()
-                            .id(registration.getId().toString())
-                            .category("ELEVATOR_CARD_REGISTRATION")
-                            .categoryName("Hóa đơn đăng ký thẻ thang máy")
-                            .title(title)
-                            .description(description)
-                            .amount(BigDecimal.valueOf(30000)) // Fixed fee
-                            .paymentDate(registration.getPaymentDate())
-                            .paymentGateway(registration.getPaymentGateway())
-                            .status(registration.getStatus())
-                            .reference(registration.getVnpayTransactionRef())
-                            .build();
-                    
-                    result.add(dto);
                 }
+            } catch (Exception e) {
+                log.warn("⚠️ [InvoiceService] Không thể lấy elevator card registrations (bảng có thể chưa tồn tại): {}", e.getMessage());
             }
             
             // Sort by payment date descending (newest first)

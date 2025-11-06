@@ -30,7 +30,7 @@ public class ElevatorCardRegistration {
     private String buildingName;
 
     @Column(name = "request_type", nullable = false)
-    private String requestType; // NEW_CARD, REPLACE_CARD
+    private String requestType;
 
     @Column(name = "citizen_id", nullable = false)
     private String citizenId;
@@ -47,7 +47,7 @@ public class ElevatorCardRegistration {
 
     @Column(name = "payment_status", nullable = false)
     @Builder.Default
-    private String paymentStatus = "UNPAID"; // UNPAID, PAID, PENDING
+    private String paymentStatus = "UNPAID";
 
     @Column(name = "payment_amount")
     private java.math.BigDecimal paymentAmount;
@@ -56,7 +56,7 @@ public class ElevatorCardRegistration {
     private OffsetDateTime paymentDate;
 
     @Column(name = "payment_gateway")
-    private String paymentGateway; // VNPAY
+    private String paymentGateway;
 
     @Column(name = "vnpay_transaction_ref")
     private String vnpayTransactionRef;

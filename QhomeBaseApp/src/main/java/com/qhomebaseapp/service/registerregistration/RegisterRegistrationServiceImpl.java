@@ -355,6 +355,12 @@ public class RegisterRegistrationServiceImpl implements RegisterRegistrationServ
                     if (registration.getVehicleType() != null) {
                         serviceDetails.append("- Loại xe: ").append(registration.getVehicleType()).append("\n");
                     }
+                    if (registration.getRequestType() != null) {
+                        String requestTypeName = "NEW_CARD".equalsIgnoreCase(registration.getRequestType())
+                                ? "Làm thẻ mới"
+                                : "Cấp lại thẻ bị mất";
+                        serviceDetails.append("- Loại yêu cầu: ").append(requestTypeName).append("\n");
+                    }
                     
                     String emailBody = String.format(
                         "Xin chào %s,\n\n" +

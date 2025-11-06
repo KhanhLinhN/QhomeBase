@@ -227,6 +227,12 @@ public class ResidentCardRegistrationServiceImpl implements ResidentCardRegistra
                         serviceDetails.append("- Địa chỉ: ").append(registration.getApartmentNumber())
                                 .append(", ").append(registration.getBuildingName()).append("\n");
                     }
+                    if (registration.getRequestType() != null) {
+                        String requestTypeName = "NEW_CARD".equalsIgnoreCase(registration.getRequestType())
+                                ? "Làm thẻ mới"
+                                : "Cấp lại thẻ bị mất";
+                        serviceDetails.append("- Loại yêu cầu: ").append(requestTypeName).append("\n");
+                    }
                     if (registration.getCitizenId() != null) {
                         serviceDetails.append("- Căn cước công dân: ").append(registration.getCitizenId()).append("\n");
                     }

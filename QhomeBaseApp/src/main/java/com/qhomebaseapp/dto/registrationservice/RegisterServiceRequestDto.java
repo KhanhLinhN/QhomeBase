@@ -10,6 +10,7 @@ import java.util.List;
 public class RegisterServiceRequestDto {
 
     private String serviceType;
+    private String requestType; // NEW_CARD, REPLACE_CARD
     private String note;
     private String vehicleType;
     private String licensePlate;
