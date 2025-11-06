@@ -1,0 +1,120 @@
+package com.QhomeBase.baseservice.controller;
+
+import com.QhomeBase.baseservice.dto.*;
+import com.QhomeBase.baseservice.security.UserPrincipal;
+import com.QhomeBase.baseservice.service.ResidentAccountService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api/residents")
+@RequiredArgsConstructor
+@Slf4j
+public class ResidentController {
+    
+    private final ResidentAccountService residentAccountService;
+    
+    @GetMapping("/units/{unitId}/household/members/without-account")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<List<ResidentWithoutAccountDto>> getResidentsWithoutAccount(
+            @PathVariable UUID unitId,
+            Authentication authentication) {
+        try {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID requesterUserId = principal.uid();
+            
+            List<ResidentWithoutAccountDto> residents = residentAccountService
+                    .getResidentsWithoutAccount(unitId, requesterUserId);
+            
+            return ResponseEntity.ok(residents);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to get residents without account: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    @PostMapping("/create-account-request")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<AccountCreationRequestDto> createAccountRequest(
+            @Valid @RequestBody CreateAccountRequestDto request,
+            Authentication authentication) {
+        try {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID requesterUserId = principal.uid();
+            
+            AccountCreationRequestDto accountRequest = residentAccountService
+                    .createAccountRequest(request, requesterUserId);
+            
+            return ResponseEntity.status(HttpStatus.CREATED).body(accountRequest);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to create account request: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    @GetMapping("/my-account-requests")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<List<AccountCreationRequestDto>> getMyAccountRequests(
+            Authentication authentication) {
+        try {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID requesterUserId = principal.uid();
+            
+            List<AccountCreationRequestDto> requests = residentAccountService
+                    .getMyRequests(requesterUserId);
+            
+            return ResponseEntity.ok(requests);
+        } catch (Exception e) {
+            log.warn("Failed to get account requests: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    @GetMapping("/{residentId}/account")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<ResidentAccountDto> getResidentAccount(
+            @PathVariable UUID residentId,
+            Authentication authentication) {
+        try {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID requesterUserId = principal.uid();
+            
+            ResidentAccountDto account = residentAccountService
+                    .getResidentAccount(residentId, requesterUserId);
+            
+            if (account == null) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            return ResponseEntity.ok(account);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to get account for resident {}: {}", residentId, e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @GetMapping("/my-units")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<List<UnitDto>> getMyUnits(Authentication authentication) {
+        try {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID userId = principal.uid();
+            
+            List<UnitDto> units = residentAccountService.getMyUnits(userId);
+            return ResponseEntity.ok(units);
+        } catch (Exception e) {
+            log.warn("Failed to get my units: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+}
+

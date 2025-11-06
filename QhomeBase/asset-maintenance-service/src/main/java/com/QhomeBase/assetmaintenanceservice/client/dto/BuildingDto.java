@@ -13,3 +13,10 @@ public record BuildingDto(
 ) {}
 
 
+
+
+
+
+
+
+

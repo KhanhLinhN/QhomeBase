@@ -20,8 +20,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query(value = """
         SELECT DISTINCT u.* 
         FROM iam.users u
-        JOIN iam.user_roles ur ON u.id = ur.user_id
-        WHERE ur.role IN ('technician', 'supporter', 'accountant') 
+        WHERE EXISTS (
+            SELECT 1 FROM iam.user_roles ur 
+            WHERE ur.user_id = u.id 
+            AND ur.role IN ('TECHNICIAN', 'SUPPORTER', 'ACCOUNTANT')
+        )
         AND u.active = true
         """, nativeQuery = true)
     List<User> findAvailableStaff();
@@ -29,8 +32,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query(value = """
         SELECT DISTINCT u.* 
         FROM iam.users u
-        JOIN iam.user_roles ur ON u.id = ur.user_id
-        WHERE ur.role = :role
+        WHERE EXISTS (
+            SELECT 1 FROM iam.user_roles ur 
+            WHERE ur.user_id = u.id 
+            AND ur.role = :role
+        )
         AND u.active = true
         """, nativeQuery = true)
     List<User> findByRole(@Param("role") String role);

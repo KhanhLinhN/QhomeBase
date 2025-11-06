@@ -2,7 +2,7 @@
   "info": {
     "name": "Meter Reading Workflow v2 - Full Flow",
     "_postman_id": "meter-reading-workflow-v2-001",
-    "description": "Complete end-to-end workflow: Create Cycle → Assignment → Readings → Export → Invoices",
+    "description": "Complete end-to-end workflow: Create Cycle → Assignment → Readings → Complete Assignment → Export → Invoices\n\nNote: Session is removed. Readings are directly linked to assignments.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -301,9 +301,91 @@
             "description": "Get meters for the unit and auto-save meter ID"
           },
           "response": []
+        },
+        {
+          "name": "Get Available Staff (TECHNICIAN)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const employees = pm.response.json();",
+                  "    if (employees && employees.length > 0) {",
+                  "        const firstTechnician = employees.find(e => e.active === true) || employees[0];",
+                  "        if (firstTechnician) {",
+                  "            pm.environment.set('staffId', firstTechnician.userId || firstTechnician.id);",
+                  "            console.log('✅ Technician ID:', firstTechnician.userId || firstTechnician.id);",
+                  "            console.log('  Name:', firstTechnician.fullName || firstTechnician.name || 'N/A');",
+                  "            console.log('  Role:', firstTechnician.roles || 'N/A');",
+                  "        }",
+                  "        console.log('✅ Found ' + employees.length + ' available technicians');",
+                  "        employees.forEach((emp, index) => {",
+                  "            console.log(`  Technician ${index + 1}: ${emp.fullName || emp.name || emp.username || 'N/A'} (ID: ${emp.userId || emp.id})`);",
+                  "        });",
+                  "    } else {",
+                  "        console.log('⚠️ No available technicians found');",
+                  "    }",
+                  "    pm.test('Status is 200', () => {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{iamUrl}}/api/employees/role/TECHNICIAN",
+              "host": ["{{iamUrl}}"],
+              "path": ["api", "employees", "role", "TECHNICIAN"]
+            },
+            "description": "Get all available technicians (employees with TECHNICIAN role) for assignment"
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Available Staff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const staff = pm.response.json();",
+                  "    console.log('✅ Found ' + staff.length + ' available staff');",
+                  "    if (staff.length > 0 && !pm.environment.get('staffId')) {",
+                  "        const technician = staff.find(s => s.roles && s.roles.includes('TECHNICIAN')) || staff[0];",
+                  "        if (technician) {",
+                  "            pm.environment.set('staffId', technician.id || technician.userId);",
+                  "        }",
+                  "    }",
+                  "    pm.test('Status is 200', () => {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{iamUrl}}/api/users/available-staff",
+              "host": ["{{iamUrl}}"],
+              "path": ["api", "users", "available-staff"]
+            },
+            "description": "Get all available staff (TECHNICIAN, SUPPORTER, ACCOUNTANT) from IAM service"
+          },
+          "response": []
         }
       ],
-      "description": "Setup endpoints to get Service IDs, Building IDs, Unit IDs, Resident IDs, and Meter IDs"
+      "description": "Setup endpoints to get Service IDs, Building IDs, Unit IDs, Resident IDs, Meter IDs, and Available Staff"
     },
     {
       "name": "2. Create Reading Cycle",
@@ -388,7 +470,7 @@
       "name": "3. Create Assignment",
       "item": [
         {
-          "name": "Create Assignment - Electric",
+          "name": "Create Assignment - Electric (All Floors)",
           "event": [
             {
               "listen": "test",
@@ -403,7 +485,12 @@
                   "    pm.test('Response has assignmentId', () => {",
                   "        pm.expect(response.id).to.not.be.empty;",
                   "    });",
+                  "    pm.test('Status is PENDING', () => {",
+                  "        pm.expect(response.status).to.equal('PENDING');",
+                  "    });",
                   "    console.log('✅ Assignment created with ID:', response.id);",
+                  "    console.log('  Status:', response.status);",
+                  "    console.log('  Floor:', response.floor || 'All floors');",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -420,14 +507,131 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"cycleId\": \"{{cycleId}}\",\n  \"buildingId\": \"{{buildingId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"assignedTo\": \"{{staffId}}\",\n  \"startDate\": \"2024-01-06\",\n  \"endDate\": \"2024-01-10\",\n  \"note\": \"Đọc điện tòa A tầng 1-10\",\n  \"floorFrom\": 1,\n  \"floorTo\": 10\n}"
+              "raw": "{\n  \"cycleId\": \"{{cycleId}}\",\n  \"buildingId\": \"{{buildingId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"assignedTo\": \"{{staffId}}\",\n  \"startDate\": \"2024-01-06\",\n  \"endDate\": \"2024-01-10\",\n  \"note\": \"Đọc điện tòa A - tất cả tầng\",\n  \"floor\": null\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/meter-reading-assignments",
               "host": ["{{baseUrl}}"],
               "path": ["api", "meter-reading-assignments"]
             },
-            "description": "Create assignment for electric meter reading"
+            "description": "Create assignment for all floors (floor = null)"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Assignment - Electric (Specific Floor)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('assignmentId', response.id);",
+                  "    console.log('✅ Assignment created with ID:', response.id);",
+                  "    console.log('  Floor:', response.floor);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cycleId\": \"{{cycleId}}\",\n  \"buildingId\": \"{{buildingId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"assignedTo\": \"{{staffId}}\",\n  \"startDate\": \"2024-01-06\",\n  \"endDate\": \"2024-01-10\",\n  \"note\": \"Đọc điện tòa A tầng 5\",\n  \"floor\": 5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments"]
+            },
+            "description": "Create assignment for specific floor (floor = 5)"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Assignment - Electric (With Exclusions)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('assignmentId', response.id);",
+                  "    console.log('✅ Assignment created with ID:', response.id);",
+                  "    console.log('  Excluded units:', response.unitIds || []);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cycleId\": \"{{cycleId}}\",\n  \"buildingId\": \"{{buildingId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"assignedTo\": \"{{staffId}}\",\n  \"startDate\": \"2024-01-06\",\n  \"endDate\": \"2024-01-10\",\n  \"note\": \"Đọc điện tòa A - loại trừ một số căn hộ\",\n  \"floor\": 5,\n  \"unitIds\": [\"{{unitId}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments"]
+            },
+            "description": "Create assignment with unit exclusions (unitIds is EXCLUSIVE list)"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Assignment - Electric (Without Floor Field)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('assignmentId', response.id);",
+                  "    console.log('✅ Assignment created with ID:', response.id);",
+                  "    console.log('  Floor:', response.floor || 'Not specified (all floors)');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cycleId\": \"{{cycleId}}\",\n  \"buildingId\": \"{{buildingId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"assignedTo\": \"{{staffId}}\",\n  \"startDate\": \"2024-01-06\",\n  \"endDate\": \"2024-01-10\",\n  \"note\": \"Đọc điện tòa A - không chỉ định floor (all floors)\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments"]
+            },
+            "description": "Create assignment without floor field (optional - defaults to all floors)"
           },
           "response": []
         },
@@ -458,76 +662,25 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "meter-reading-assignments", "{{assignmentId}}", "meters"]
             },
-            "description": "Get list of meters in assignment scope"
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "3.5. Create Session",
-      "item": [
-        {
-          "name": "Start Session",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 201) {",
-                  "    const response = pm.response.json();",
-                  "    pm.environment.set('sessionId', response.id);",
-                  "    pm.test('Status is 201 Created', () => {",
-                  "        pm.response.to.have.status(201);",
-                  "    });",
-                  "    pm.test('Response has sessionId', () => {",
-                  "        pm.expect(response.id).to.not.be.empty;",
-                  "    });",
-                  "    pm.test('Session status is ACTIVE', () => {",
-                  "        pm.expect(response.status).to.equal('ACTIVE');",
-                  "    });",
-                  "    console.log('✅ Session created with ID:', response.id);",
-                  "    console.log('  Assignment ID:', response.assignmentId);",
-                  "    console.log('  Status:', response.status);",
-                  "} else {",
-                  "    console.log('❌ Failed to create session:', pm.response.json());",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"assignmentId\": \"{{assignmentId}}\",\n  \"deviceInfo\": \"Postman Test Device\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/meter-reading-sessions",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "meter-reading-sessions"]
-            },
-            "description": "Start a new meter reading session for the assignment"
+            "description": "Get list of meters in assignment scope (after excluding units in unitIds)"
           },
           "response": []
         },
         {
-          "name": "Get Session By ID",
+          "name": "Get Assignment Progress",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Status is 200', () => {",
-                  "    pm.response.to.have.status(200);",
-                  "});"
+                  "if (pm.response.code === 200) {",
+                  "    const progress = pm.response.json();",
+                  "    console.log('✅ Assignment Progress:');",
+                  "    console.log('  Total meters:', progress.totalMeters);",
+                  "    console.log('  Readings done:', progress.readingsDone);",
+                  "    console.log('  Readings remaining:', progress.readingsRemaining);",
+                  "    console.log('  Progress %:', Math.round((progress.readingsDone / progress.totalMeters) * 100) + '%');",
+                  "}"
                 ],
                 "type": "text/javascript"
               }
@@ -537,26 +690,26 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/meter-reading-sessions/{{sessionId}}",
+              "raw": "{{baseUrl}}/api/meter-reading-assignments/{{assignmentId}}/progress",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "meter-reading-sessions", "{{sessionId}}"]
+              "path": ["api", "meter-reading-assignments", "{{assignmentId}}", "progress"]
             },
-            "description": "Get session details by ID"
+            "description": "Get assignment progress (total meters, readings done, remaining)"
           },
           "response": []
         },
         {
-          "name": "Get My Active Session",
+          "name": "Get My Active Assignments",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
                   "if (pm.response.code === 200) {",
-                  "    const response = pm.response.json();",
-                  "    if (response && response.id) {",
-                  "        pm.environment.set('sessionId', response.id);",
-                  "        console.log('✅ Active session found:', response.id);",
+                  "    const assignments = pm.response.json();",
+                  "    console.log('✅ Found ' + assignments.length + ' active assignments');",
+                  "    if (assignments.length > 0 && !pm.environment.get('assignmentId')) {",
+                  "        pm.environment.set('assignmentId', assignments[0].id);",
                   "    }",
                   "}"
                 ],
@@ -568,48 +721,15 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/meter-reading-sessions/my-active-session",
+              "raw": "{{baseUrl}}/api/meter-reading-assignments/my-assignments/active",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "meter-reading-sessions", "my-active-session"]
+              "path": ["api", "meter-reading-assignments", "my-assignments", "active"]
             },
-            "description": "Get my active session (if exists)"
-          },
-          "response": []
-        },
-        {
-          "name": "Complete Session",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "    const response = pm.response.json();",
-                  "    pm.test('Session is completed', () => {",
-                  "        pm.expect(response.completedAt).to.not.be.null;",
-                  "    });",
-                  "    console.log('✅ Session completed successfully');",
-                  "    console.log('  Completed at:', response.completedAt);",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "PATCH",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/meter-reading-sessions/{{sessionId}}/complete",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "meter-reading-sessions", "{{sessionId}}", "complete"]
-            },
-            "description": "Complete the session (optional - can export without completing)"
+            "description": "Get my active assignments (PENDING, IN_PROGRESS, OVERDUE)"
           },
           "response": []
         }
-      ],
-      "description": "Create and manage meter reading sessions"
+      ]
     },
     {
       "name": "4. Create Meter Readings",
@@ -624,9 +744,6 @@
                   "if (pm.response.code === 201) {",
                   "    const response = pm.response.json();",
                   "    pm.environment.set('meterReadingId', response.id);",
-                  "    if (response.sessionId) {",
-                  "        pm.environment.set('sessionId', response.sessionId);",
-                  "    }",
                   "    pm.test('Status is 201 Created', () => {",
                   "        pm.response.to.have.status(201);",
                   "    });",
@@ -640,8 +757,8 @@
                   "    console.log('  Consumption:', response.consumption, 'kWh');",
                   "    console.log('  Previous index:', response.prevIndex, 'kWh');",
                   "    console.log('  Current index:', response.currIndex, 'kWh');",
-                  "    if (response.sessionId) {",
-                  "        console.log('  Session ID:', response.sessionId);",
+                  "    if (response.assignmentId) {",
+                  "        console.log('  Assignment ID:', response.assignmentId);",
                   "    }",
                   "} else {",
                   "    console.log('❌ Failed to create meter reading:', pm.response.json());",
@@ -661,7 +778,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"assignmentId\": \"{{assignmentId}}\",\n  \"sessionId\": \"{{sessionId}}\",\n  \"meterId\": \"{{meterId}}\",\n  \"readingDate\": \"2024-01-15\",\n  \"currIndex\": 250.5,\n  \"note\": \"Đọc điện tầng 5\"\n}"
+              "raw": "{\n  \"assignmentId\": \"{{assignmentId}}\",\n  \"meterId\": \"{{meterId}}\",\n  \"readingDate\": \"2024-01-15\",\n  \"currIndex\": 250.5,\n  \"note\": \"Đọc điện tầng 5\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/meter-readings",
@@ -673,7 +790,7 @@
           "response": []
         },
         {
-          "name": "Create Multiple Meter Readings",
+          "name": "Create Meter Reading (Update Existing)",
           "event": [
             {
               "listen": "test",
@@ -681,10 +798,8 @@
                 "exec": [
                   "if (pm.response.code === 201) {",
                   "    const response = pm.response.json();",
-                  "    console.log('✅ Created meter reading:', response.id);",
-                  "    if (response.sessionId && !pm.environment.get('sessionId')) {",
-                  "        pm.environment.set('sessionId', response.sessionId);",
-                  "    }",
+                  "    console.log('✅ Meter reading created/updated:', response.id);",
+                  "    console.log('  Note: If reading already exists for this meter+assignment, it will be updated');",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -701,36 +816,46 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"assignmentId\": \"{{assignmentId}}\",\n  \"sessionId\": \"{{sessionId}}\",\n  \"meterId\": \"{{meterId}}\",\n  \"readingDate\": \"2024-01-15\",\n  \"currIndex\": 350.0,\n  \"note\": \"Reading 2 - same session\"\n}"
+              "raw": "{\n  \"assignmentId\": \"{{assignmentId}}\",\n  \"meterId\": \"{{meterId}}\",\n  \"readingDate\": \"2024-01-15\",\n  \"currIndex\": 350.0,\n  \"note\": \"Cập nhật chỉ số\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/meter-readings",
               "host": ["{{baseUrl}}"],
               "path": ["api", "meter-readings"]
             },
-            "description": "Create another reading in the same session"
+            "description": "Create/Update meter reading. If reading already exists for same meter+assignment, it will be updated instead of creating new one."
           },
           "response": []
-        },
+        }
+      ],
+      "description": "Create meter readings. Readings are directly linked to assignments (no session needed)."
+    },
+    {
+      "name": "5. Complete Assignment",
+      "item": [
         {
-          "name": "Get Readings by Session (Verify)",
+          "name": "Mark Assignment as Completed",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
                   "if (pm.response.code === 200) {",
-                  "    const readings = pm.response.json();",
-                  "    console.log('✅ Found ' + readings.length + ' readings in session');",
-                  "    if (readings.length === 0) {",
-                  "        console.warn('⚠️ WARNING: No readings found in session!');",
-                  "        console.warn('⚠️ Make sure to create readings AFTER creating session');",
-                  "        console.warn('⚠️ Use sessionId in the meter reading request');",
-                  "    } else {",
-                  "        readings.forEach((r, i) => {",
-                  "            console.log(`  Reading ${i+1}: ${r.meterCode || 'N/A'} - ${r.currIndex || 'N/A'} kWh`);",
-                  "        });",
-                  "    }",
+                  "    const response = pm.response.json();",
+                  "    pm.test('Status is 200 OK', () => {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "    pm.test('Assignment is completed', () => {",
+                  "        pm.expect(response.status).to.equal('COMPLETED');",
+                  "        pm.expect(response.completedAt).to.not.be.null;",
+                  "    });",
+                  "    console.log('✅ Assignment completed successfully');",
+                  "    console.log('  Completed at:', response.completedAt);",
+                  "    console.log('  Status:', response.status);",
+                  "} else {",
+                  "    const error = pm.response.json();",
+                  "    console.log('❌ Failed to complete assignment:', error.message || error);",
+                  "    console.log('  Note: Make sure all required meter readings are created');",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -738,28 +863,51 @@
             }
           ],
           "request": {
-            "method": "GET",
+            "method": "PATCH",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/meter-readings?sessionId={{sessionId}}",
+              "raw": "{{baseUrl}}/api/meter-reading-assignments/{{assignmentId}}/complete",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "meter-readings"],
-              "query": [
-                {
-                  "key": "sessionId",
-                  "value": "{{sessionId}}"
-                }
-              ]
+              "path": ["api", "meter-reading-assignments", "{{assignmentId}}", "complete"]
             },
-            "description": "Verify readings exist in session before exporting. IMPORTANT: Create readings AFTER creating session and use sessionId!"
+            "description": "Mark assignment as completed. Validates that all required meter readings are created before allowing completion."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Assignment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    console.log('✅ Assignment cancelled');",
+                  "    console.log('  Status:', response.status);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/meter-reading-assignments/{{assignmentId}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meter-reading-assignments", "{{assignmentId}}", "cancel"]
+            },
+            "description": "Cancel an assignment (sets status to CANCELLED)"
           },
           "response": []
         }
       ],
-      "description": "Create meter readings. ⚠️ IMPORTANT: Create readings AFTER creating session and include sessionId in request body!"
+      "description": "Complete or cancel assignments. Assignment can only be completed if all required readings are done."
     },
     {
-      "name": "5. Export Readings to Finance-Billing",
+      "name": "6. Export Readings to Finance-Billing",
       "item": [
         {
           "name": "Export Readings by Cycle",
@@ -817,7 +965,7 @@
       "description": "Export meter readings from base-service to finance-billing-service. This triggers automatic invoice creation."
     },
     {
-      "name": "6. Query Invoices",
+      "name": "7. Query Invoices",
       "item": [
         {
           "name": "Get Invoice By ID",
@@ -976,7 +1124,7 @@
       "description": "Query invoices created from exported meter readings"
     },
     {
-      "name": "7. Pricing Tiers Management",
+      "name": "8. Pricing Tiers Management",
       "item": [
         {
           "name": "Create Pricing Tier - ELECTRIC Tier 1 (0-50 kWh)",
@@ -1037,151 +1185,6 @@
           "response": []
         },
         {
-          "name": "Create Pricing Tier - ELECTRIC Tier 2 (51-100 kWh)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 201) {",
-                  "    const response = pm.response.json();",
-                  "    if (!pm.environment.get('pricingTierId')) {",
-                  "        pm.environment.set('pricingTierId', response.id);",
-                  "    }",
-                  "    console.log('✅ Tier 2 created:', response.id);",
-                  "    console.log('  Range:', response.minQuantity, '-', response.maxQuantity || '∞');",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"serviceCode\": \"ELECTRIC\",\n  \"tierOrder\": 2,\n  \"minQuantity\": 51,\n  \"maxQuantity\": 100,\n  \"unitPrice\": 2100.00,\n  \"effectiveFrom\": \"2024-01-01\",\n  \"effectiveUntil\": null,\n  \"active\": true,\n  \"description\": \"Bậc 2: 51-100 kWh\"\n}"
-            },
-            "url": {
-              "raw": "{{financeBillingUrl}}/api/pricing-tiers?createdBy={{userId}}",
-              "host": ["{{financeBillingUrl}}"],
-              "path": ["api", "pricing-tiers"],
-              "query": [
-                {
-                  "key": "createdBy",
-                  "value": "{{userId}}"
-                }
-              ]
-            },
-            "description": "Create second tier: 51-100 kWh at 2100 VND/kWh"
-          },
-          "response": []
-        },
-        {
-          "name": "Create Pricing Tier - ELECTRIC Tier 3 (101-200 kWh)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 201) {",
-                  "    const response = pm.response.json();",
-                  "    console.log('✅ Tier 3 created:', response.id);",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"serviceCode\": \"ELECTRIC\",\n  \"tierOrder\": 3,\n  \"minQuantity\": 101,\n  \"maxQuantity\": 200,\n  \"unitPrice\": 2500.00,\n  \"effectiveFrom\": \"2024-01-01\",\n  \"effectiveUntil\": null,\n  \"active\": true,\n  \"description\": \"Bậc 3: 101-200 kWh\"\n}"
-            },
-            "url": {
-              "raw": "{{financeBillingUrl}}/api/pricing-tiers?createdBy={{userId}}",
-              "host": ["{{financeBillingUrl}}"],
-              "path": ["api", "pricing-tiers"],
-              "query": [
-                {
-                  "key": "createdBy",
-                  "value": "{{userId}}"
-                }
-              ]
-            },
-            "description": "Create third tier: 101-200 kWh at 2500 VND/kWh"
-          },
-          "response": []
-        },
-        {
-          "name": "Create Pricing Tier - ELECTRIC Tier 4 (201+ kWh)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 201) {",
-                  "    const response = pm.response.json();",
-                  "    console.log('✅ Tier 4 created:', response.id);",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"serviceCode\": \"ELECTRIC\",\n  \"tierOrder\": 4,\n  \"minQuantity\": 201,\n  \"maxQuantity\": null,\n  \"unitPrice\": 3000.00,\n  \"effectiveFrom\": \"2024-01-01\",\n  \"effectiveUntil\": null,\n  \"active\": true,\n  \"description\": \"Bậc 4: Trên 200 kWh\"\n}"
-            },
-            "url": {
-              "raw": "{{financeBillingUrl}}/api/pricing-tiers?createdBy={{userId}}",
-              "host": ["{{financeBillingUrl}}"],
-              "path": ["api", "pricing-tiers"],
-              "query": [
-                {
-                  "key": "createdBy",
-                  "value": "{{userId}}"
-                }
-              ]
-            },
-            "description": "Create fourth tier: 201+ kWh (no max limit) at 3000 VND/kWh"
-          },
-          "response": []
-        },
-        {
           "name": "Get All Pricing Tiers by Service Code (ELECTRIC)",
           "event": [
             {
@@ -1220,224 +1223,6 @@
               "path": ["api", "pricing-tiers", "service", "ELECTRIC"]
             },
             "description": "Get all pricing tiers for ELECTRIC service"
-          },
-          "response": []
-        },
-        {
-          "name": "Get Pricing Tier By ID",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "    const tier = pm.response.json();",
-                  "    pm.test('Status is 200 OK', () => {",
-                  "        pm.response.to.have.status(200);",
-                  "    });",
-                  "    pm.test('Response has tier data', () => {",
-                  "        pm.expect(tier).to.have.property('id');",
-                  "        pm.expect(tier).to.have.property('serviceCode');",
-                  "        pm.expect(tier).to.have.property('tierOrder');",
-                  "    });",
-                  "    console.log('✅ Pricing Tier Details:');",
-                  "    console.log('  ID:', tier.id);",
-                  "    console.log('  Service Code:', tier.serviceCode);",
-                  "    console.log('  Tier Order:', tier.tierOrder);",
-                  "    console.log('  Range:', tier.minQuantity, '-', tier.maxQuantity || '∞', 'kWh');",
-                  "    console.log('  Unit Price:', tier.unitPrice, 'VND/kWh');",
-                  "    console.log('  Active:', tier.active);",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{financeBillingUrl}}/api/pricing-tiers/{{pricingTierId}}",
-              "host": ["{{financeBillingUrl}}"],
-              "path": ["api", "pricing-tiers", "{{pricingTierId}}"]
-            },
-            "description": "Get pricing tier details by ID"
-          },
-          "response": []
-        },
-        {
-          "name": "Get Active Tiers By Service And Date",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "    const tiers = pm.response.json();",
-                  "    console.log('✅ Found ' + tiers.length + ' active tiers for date');",
-                  "    tiers.forEach((tier, index) => {",
-                  "        console.log(`Tier ${index + 1}: Order ${tier.tierOrder}, Range ${tier.minQuantity}-${tier.maxQuantity || '∞'}`);",
-                  "    });",
-                  "    pm.test('Status is 200 OK', () => {",
-                  "        pm.response.to.have.status(200);",
-                  "    });",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{financeBillingUrl}}/api/pricing-tiers/service/ELECTRIC/active?date=2024-01-15",
-              "host": ["{{financeBillingUrl}}"],
-              "path": ["api", "pricing-tiers", "service", "ELECTRIC", "active"],
-              "query": [
-                {
-                  "key": "date",
-                  "value": "2024-01-15"
-                }
-              ]
-            },
-            "description": "Get active pricing tiers for ELECTRIC service on a specific date"
-          },
-          "response": []
-        },
-        {
-          "name": "Get Last Order for Service",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "    const lastOrder = pm.response.json();",
-                  "    console.log('✅ Last tier order for ELECTRIC:', lastOrder);",
-                  "    pm.test('Status is 200 OK', () => {",
-                  "        pm.response.to.have.status(200);",
-                  "    });",
-                  "    pm.test('Response is a number', () => {",
-                  "        pm.expect(lastOrder).to.be.a('number');",
-                  "    });",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{financeBillingUrl}}/api/pricing-tiers/service/ELECTRIC/last-order",
-              "host": ["{{financeBillingUrl}}"],
-              "path": ["api", "pricing-tiers", "service", "ELECTRIC", "last-order"]
-            },
-            "description": "Get the last tier order number for a service (useful for creating next tier)"
-          },
-          "response": []
-        },
-        {
-          "name": "Update Pricing Tier",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "    const tier = pm.response.json();",
-                  "    pm.test('Status is 200 OK', () => {",
-                  "        pm.response.to.have.status(200);",
-                  "    });",
-                  "    console.log('✅ Pricing tier updated successfully');",
-                  "    console.log('  New unit price:', tier.unitPrice, 'VND/kWh');",
-                  "    console.log('  Active:', tier.active);",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"unitPrice\": 1900.00,\n  \"description\": \"Bậc 1: 0-50 kWh (Updated)\"\n}"
-            },
-            "url": {
-              "raw": "{{financeBillingUrl}}/api/pricing-tiers/{{pricingTierId}}?updatedBy={{userId}}",
-              "host": ["{{financeBillingUrl}}"],
-              "path": ["api", "pricing-tiers", "{{pricingTierId}}"],
-              "query": [
-                {
-                  "key": "updatedBy",
-                  "value": "{{userId}}"
-                }
-              ]
-            },
-            "description": "Update pricing tier (partial update - only specified fields)"
-          },
-          "response": []
-        },
-        {
-          "name": "Delete Pricing Tier",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 204) {",
-                  "    pm.test('Status is 204 No Content', () => {",
-                  "        pm.response.to.have.status(204);",
-                  "    });",
-                  "    console.log('✅ Pricing tier deleted successfully');",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{financeBillingUrl}}/api/pricing-tiers/{{pricingTierId}}",
-              "host": ["{{financeBillingUrl}}"],
-              "path": ["api", "pricing-tiers", "{{pricingTierId}}"]
-            },
-            "description": "Delete a pricing tier by ID"
           },
           "response": []
         }

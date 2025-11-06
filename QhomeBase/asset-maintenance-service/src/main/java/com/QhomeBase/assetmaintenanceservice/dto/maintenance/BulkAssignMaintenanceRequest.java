@@ -41,3 +41,10 @@ public class BulkAssignMaintenanceRequest {
 }
 
 
+
+
+
+
+
+
+

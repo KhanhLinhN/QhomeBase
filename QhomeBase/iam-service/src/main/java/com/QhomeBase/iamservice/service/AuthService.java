@@ -105,7 +105,8 @@ public class AuthService {
 
         Set<String> permissions = new HashSet<>();
         for (UserRole role : userRoles) {
-            List<String> rolePerms = rolePermissionRepository.findPermissionCodesByRole(role.getRoleName());
+          
+            List<String> rolePerms = rolePermissionRepository.findPermissionCodesByRole(role.name());
             permissions.addAll(rolePerms);
         }
         

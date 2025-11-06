@@ -26,8 +26,8 @@ public class BillingCycleController {
 
     @GetMapping
     public List<BillingCycleDto> getBillingCycle(
-                                                 @RequestParam LocalDate startDate,
-                                                 @RequestParam LocalDate endDate) {
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
         return billingCycleService.getListByTime(startDate, endDate);
     }
 

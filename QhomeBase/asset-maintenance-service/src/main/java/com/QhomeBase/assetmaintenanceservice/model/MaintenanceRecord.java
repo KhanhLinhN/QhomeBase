@@ -66,7 +66,7 @@ public class MaintenanceRecord {
     private BigDecimal cost;
 
     @JdbcTypeCode(SqlTypes.ARRAY)
-    @Column(name = "parts_replaced", columnDefinition = "TEXT[]")
+    @Column(name = "parts_replaced", columnDefinition = "text[]")
     @Builder.Default
     private List<String> partsReplaced = new ArrayList<>();
 

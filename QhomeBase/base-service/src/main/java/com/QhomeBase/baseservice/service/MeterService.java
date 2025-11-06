@@ -3,12 +3,15 @@ package com.QhomeBase.baseservice.service;
 import com.QhomeBase.baseservice.dto.MeterCreateReq;
 import com.QhomeBase.baseservice.dto.MeterDto;
 import com.QhomeBase.baseservice.dto.MeterUpdateReq;
+import com.QhomeBase.baseservice.dto.MeterWithReadingDto;
 import com.QhomeBase.baseservice.model.Meter;
 import com.QhomeBase.baseservice.model.MeterReading;
 import com.QhomeBase.baseservice.model.MeterReadingAssignment;
+import com.QhomeBase.baseservice.model.ReadingCycle;
 import com.QhomeBase.baseservice.repository.MeterReadingAssignmentRepository;
 import com.QhomeBase.baseservice.repository.MeterReadingRepository;
 import com.QhomeBase.baseservice.repository.MeterRepository;
+import com.QhomeBase.baseservice.repository.ReadingCycleRepository;
 import com.QhomeBase.baseservice.repository.ServiceRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +35,7 @@ public class MeterService {
     private final UnitRepository unitRepository;
     private final ServiceRepository serviceRepository;
     private final MeterReadingRepository meterReadingRepository;
+    private final ReadingCycleRepository readingCycleRepository;
 
     @Transactional(readOnly = true)
     public List<MeterDto> getMetersByAssignment(UUID assignmentId) {
@@ -40,23 +44,184 @@ public class MeterService {
 
         List<Meter> meters;
         
-        if (assignment.getFloorFrom() != null && assignment.getFloorTo() != null) {
-            meters = meterRepository.findByBuildingServiceAndFloorRange(
-                    assignment.getBuilding().getId(),
-                    assignment.getService().getId(),
-                    assignment.getFloorFrom(),
-                    assignment.getFloorTo()
-            );
+        UUID buildingId = assignment.getBuilding() != null ? assignment.getBuilding().getId() : null;
+        UUID serviceId = assignment.getService().getId();
+        Integer floor = assignment.getFloor();
+        List<UUID> unitIds = assignment.getUnitIds();
+        
+        if (buildingId == null) {
+            throw new IllegalArgumentException("Assignment must have a building");
+        }
+        
+        if (unitIds != null && !unitIds.isEmpty()) {
+            List<Meter> allMeters = floor != null 
+                ? meterRepository.findByBuildingServiceAndFloor(buildingId, serviceId, floor)
+                : meterRepository.findByBuildingAndService(buildingId, serviceId);
+            
+            meters = allMeters.stream()
+                .filter(m -> m.getUnit() != null && unitIds.contains(m.getUnit().getId()))
+                .toList();
+        } else if (floor != null) {
+            meters = meterRepository.findByBuildingServiceAndFloor(buildingId, serviceId, floor);
         } else {
-            meters = meterRepository.findByBuildingAndService(
-                    assignment.getBuilding().getId(),
-                    assignment.getService().getId()
-            );
+            meters = meterRepository.findByBuildingAndService(buildingId, serviceId);
         }
 
         return meters.stream()
                 .map(this::toDto)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<MeterDto> getMetersByStaffAndCycle(UUID staffId, UUID cycleId) {
+        List<MeterReadingAssignment> assignments = assignmentRepository.findByAssignedToAndCycleId(staffId, cycleId);
+        
+        if (assignments.isEmpty()) {
+            return List.of();
+        }
+        
+        java.util.Set<UUID> uniqueMeterIds = new java.util.HashSet<>();
+        List<Meter> allMeters = new java.util.ArrayList<>();
+        
+        for (MeterReadingAssignment assignment : assignments) {
+            UUID buildingId = assignment.getBuilding() != null ? assignment.getBuilding().getId() : null;
+            UUID serviceId = assignment.getService().getId();
+            Integer floor = assignment.getFloor();
+            List<UUID> unitIds = assignment.getUnitIds();
+            
+            if (buildingId == null) {
+                continue;
+            }
+            
+            List<Meter> meters;
+            if (unitIds != null && !unitIds.isEmpty()) {
+                List<Meter> allMetersForAssignment = floor != null 
+                    ? meterRepository.findByBuildingServiceAndFloor(buildingId, serviceId, floor)
+                    : meterRepository.findByBuildingAndService(buildingId, serviceId);
+                
+                meters = allMetersForAssignment.stream()
+                    .filter(m -> m.getUnit() != null && unitIds.contains(m.getUnit().getId()))
+                    .toList();
+            } else if (floor != null) {
+                meters = meterRepository.findByBuildingServiceAndFloor(buildingId, serviceId, floor);
+            } else {
+                meters = meterRepository.findByBuildingAndService(buildingId, serviceId);
+            }
+            
+            for (Meter meter : meters) {
+                if (!uniqueMeterIds.contains(meter.getId())) {
+                    uniqueMeterIds.add(meter.getId());
+                    allMeters.add(meter);
+                }
+            }
+        }
+        
+        return allMeters.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<MeterWithReadingDto> getMetersWithReadingByStaffAndCycle(UUID staffId, UUID cycleId) {
+        ReadingCycle cycle = readingCycleRepository.findById(cycleId)
+                .orElseThrow(() -> new IllegalArgumentException("Cycle not found: " + cycleId));
+        
+        List<MeterReadingAssignment> assignments = assignmentRepository.findByAssignedToAndCycleId(staffId, cycleId);
+        
+        if (assignments.isEmpty()) {
+            return List.of();
+        }
+        
+        java.util.Set<UUID> uniqueMeterIds = new java.util.HashSet<>();
+        List<Meter> allMeters = new java.util.ArrayList<>();
+        
+        for (MeterReadingAssignment assignment : assignments) {
+            UUID buildingId = assignment.getBuilding() != null ? assignment.getBuilding().getId() : null;
+            UUID serviceId = assignment.getService().getId();
+            Integer floor = assignment.getFloor();
+            List<UUID> unitIds = assignment.getUnitIds();
+            
+            if (buildingId == null) {
+                continue;
+            }
+            
+            List<Meter> meters;
+            if (unitIds != null && !unitIds.isEmpty()) {
+                List<Meter> allMetersForAssignment = floor != null 
+                    ? meterRepository.findByBuildingServiceAndFloor(buildingId, serviceId, floor)
+                    : meterRepository.findByBuildingAndService(buildingId, serviceId);
+                
+                meters = allMetersForAssignment.stream()
+                    .filter(m -> m.getUnit() != null && unitIds.contains(m.getUnit().getId()))
+                    .toList();
+            } else if (floor != null) {
+                meters = meterRepository.findByBuildingServiceAndFloor(buildingId, serviceId, floor);
+            } else {
+                meters = meterRepository.findByBuildingAndService(buildingId, serviceId);
+            }
+            
+            for (Meter meter : meters) {
+                if (!uniqueMeterIds.contains(meter.getId())) {
+                    uniqueMeterIds.add(meter.getId());
+                    allMeters.add(meter);
+                }
+            }
+        }
+        
+        return allMeters.stream()
+                .map(meter -> toMeterWithReadingDto(meter, cycle))
+                .toList();
+    }
+
+    private MeterWithReadingDto toMeterWithReadingDto(Meter meter, ReadingCycle cycle) {
+        java.math.BigDecimal prevIndex = null;
+        java.math.BigDecimal currIndex = null;
+        Boolean hasReading = false;
+        UUID readingId = null;
+        LocalDate readingDate = null;
+        
+        List<MeterReading> cycleReadings = meterReadingRepository.findByMeterIdAndCycleId(meter.getId(), cycle.getId());
+        MeterReading cycleReading = cycleReadings.stream()
+                .max(Comparator.comparing(MeterReading::getReadingDate)
+                        .thenComparing((MeterReading mr) -> 
+                            mr.getCreatedAt() != null ? mr.getCreatedAt() : OffsetDateTime.MIN))
+                .orElse(null);
+        
+        if (cycleReading != null) {
+            hasReading = true;
+            readingId = cycleReading.getId();
+            readingDate = cycleReading.getReadingDate();
+            prevIndex = cycleReading.getPrevIndex();
+            currIndex = cycleReading.getCurrIndex();
+        } else {
+            List<MeterReading> previousReadings = meterReadingRepository.findPreviousReadings(
+                    meter.getId(), cycle.getPeriodFrom());
+            if (!previousReadings.isEmpty()) {
+                MeterReading previousReading = previousReadings.get(0);
+                prevIndex = previousReading.getCurrIndex();
+            }
+        }
+        
+        return new MeterWithReadingDto(
+                meter.getId(),
+                meter.getUnit() != null ? meter.getUnit().getId() : null,
+                meter.getUnit() != null ? meter.getUnit().getCode() : null,
+                meter.getUnit() != null ? meter.getUnit().getFloor() : null,
+                meter.getService() != null ? meter.getService().getId() : null,
+                meter.getService() != null ? meter.getService().getCode() : null,
+                meter.getService() != null ? meter.getService().getName() : null,
+                meter.getMeterCode(),
+                meter.getActive(),
+                meter.getInstalledAt(),
+                meter.getRemovedAt(),
+                prevIndex,
+                currIndex,
+                hasReading,
+                readingId,
+                readingDate,
+                meter.getCreatedAt(),
+                meter.getUpdatedAt()
+        );
     }
 
     @Transactional(readOnly = true)

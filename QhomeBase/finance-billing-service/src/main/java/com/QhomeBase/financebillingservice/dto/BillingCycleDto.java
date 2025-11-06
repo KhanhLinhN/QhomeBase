@@ -14,7 +14,6 @@ import java.util.UUID;
 @Builder
 public class BillingCycleDto {
     private UUID id;
-    private UUID tenantId;
     private String name;
     private LocalDate periodFrom;
     private LocalDate periodTo;

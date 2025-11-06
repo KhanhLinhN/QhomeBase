@@ -37,5 +37,7 @@ public interface ResidentRepository extends JpaRepository<Resident, UUID> {
     boolean existsByEmailAndIdNot(String email, UUID id);
     
     boolean existsByNationalIdAndIdNot(String nationalId, UUID id);
+    
+    Optional<Resident> findByUserId(UUID userId);
 }
 

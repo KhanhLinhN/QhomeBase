@@ -56,11 +56,16 @@ public class MeterReadingAssignment {
     @Column(name = "note")
     private String note;
 
-    @Column(name = "floor_from")
-    private Integer floorFrom;
+    @Column(name = "floor")
+    private Integer floor;
 
-    @Column(name = "floor_to")
-    private Integer floorTo;
+    @Column(name = "unit_ids", columnDefinition = "UUID[]")
+    private java.util.List<UUID> unitIds;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    @Builder.Default
+    private MeterReadingAssignmentStatus status = MeterReadingAssignmentStatus.PENDING;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

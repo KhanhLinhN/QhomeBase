@@ -1,7 +1,7 @@
 package com.QhomeBase.baseservice.client;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
@@ -11,11 +11,14 @@ import java.util.List;
 import java.util.UUID;
 
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class WebSeverClient {
     
     private final WebClient webClient;
+
+    public WebSeverClient(@Qualifier("iamWebClient") WebClient webClient) {
+        this.webClient = webClient;
+    }
 
     public Flux<UUID> getManagersTenantsIDs(UUID tenantID) {
         return webClient.get()

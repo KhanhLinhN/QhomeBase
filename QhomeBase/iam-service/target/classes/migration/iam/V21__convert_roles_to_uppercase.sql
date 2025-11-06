@@ -3,12 +3,12 @@
 -- role_permissions table currently stores roles as lowercase (admin, technician, etc.)
 -- This migration converts role_permissions to uppercase for consistency
 
-UPDATE iam.role_permissions
+UPDATE iam.role_permissions 
 SET role = UPPER(role)
 WHERE role != UPPER(role);
 
 -- Also update roles table if needed
-UPDATE iam.roles
+UPDATE iam.roles 
 SET role = UPPER(role)
 WHERE role != UPPER(role);
 

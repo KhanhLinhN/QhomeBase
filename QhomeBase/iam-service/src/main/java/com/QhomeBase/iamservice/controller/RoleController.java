@@ -110,7 +110,7 @@ public class RoleController {
             if (permissionCode == null || permissionCode.isBlank()) {
                 return ResponseEntity.badRequest().build();
             }
-            rolePermissionService.addPermissionToRole(role.toLowerCase(), permissionCode);
+            rolePermissionService.addPermissionToRole(role.toUpperCase(), permissionCode);
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
@@ -123,7 +123,7 @@ public class RoleController {
             @PathVariable String role,
             @PathVariable String permissionCode) {
         try {
-            rolePermissionService.removePermissionFromRole(role.toLowerCase(), permissionCode);
+            rolePermissionService.removePermissionFromRole(role.toUpperCase(), permissionCode);
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
@@ -140,7 +140,7 @@ public class RoleController {
             if (permissionCodes == null || permissionCodes.isEmpty()) {
                 return ResponseEntity.badRequest().build();
             }
-            rolePermissionService.addMultiplePermissionsToRole(role.toLowerCase(), permissionCodes);
+            rolePermissionService.addMultiplePermissionsToRole(role.toUpperCase(), permissionCodes);
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
@@ -157,7 +157,7 @@ public class RoleController {
             if (permissionCodes == null || permissionCodes.isEmpty()) {
                 return ResponseEntity.badRequest().build();
             }
-            rolePermissionService.removeMultiplePermissionsFromRole(role.toLowerCase(), permissionCodes);
+            rolePermissionService.removeMultiplePermissionsFromRole(role.toUpperCase(), permissionCodes);
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
@@ -174,7 +174,7 @@ public class RoleController {
             if (permissionCodes == null) {
                 return ResponseEntity.badRequest().build();
             }
-            rolePermissionService.updateRolePermissions(role.toLowerCase(), permissionCodes);
+            rolePermissionService.updateRolePermissions(role.toUpperCase(), permissionCodes);
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
@@ -186,7 +186,7 @@ public class RoleController {
     public ResponseEntity<Map<String, Boolean>> checkRolePermission(
             @PathVariable String role,
             @PathVariable String permissionCode) {
-        boolean hasPermission = rolePermissionService.hasPermission(role.toLowerCase(), permissionCode);
+        boolean hasPermission = rolePermissionService.hasPermission(role.toUpperCase(), permissionCode);
         return ResponseEntity.ok(Map.of("hasPermission", hasPermission));
     }
 }

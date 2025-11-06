@@ -21,8 +21,9 @@ public record MeterReadingAssignmentDto(
         LocalDate endDate,
         OffsetDateTime completedAt,
         String note,
-        Integer floorFrom,
-        Integer floorTo,
+        Integer floor,
+        java.util.List<UUID> unitIds,
+        String status,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {}

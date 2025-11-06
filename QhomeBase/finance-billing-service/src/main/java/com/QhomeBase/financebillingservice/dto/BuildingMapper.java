@@ -30,3 +30,10 @@ public interface BuildingMapper {
 
 
 
+
+
+
+
+
+
+

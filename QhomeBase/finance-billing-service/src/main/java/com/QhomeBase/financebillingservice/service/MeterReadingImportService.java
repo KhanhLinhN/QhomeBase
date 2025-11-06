@@ -67,7 +67,16 @@ public class MeterReadingImportService {
             BigDecimal totalUsage = group.stream()
                     .map(ImportedReadingDto::getUsageKwh)
                     .filter(Objects::nonNull)
+                    .filter(usage -> usage.compareTo(BigDecimal.ZERO) > 0)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+            
+            if (totalUsage.compareTo(BigDecimal.ZERO) == 0) {
+                log.warn("Total usage is 0 for unit={}, cycle={}. Readings: {}", 
+                        unitId, readingCycleId, group.stream()
+                                .map(r -> String.format("usageKwh=%s", r.getUsageKwh()))
+                                .collect(Collectors.joining(", ")));
+                continue;
+            }
 
             LocalDate serviceDate = group.stream()
                     .map(ImportedReadingDto::getReadingDate)
@@ -100,6 +109,24 @@ public class MeterReadingImportService {
 
             List<CreateInvoiceLineRequest> invoiceLines = calculateInvoiceLines(
                     serviceCode, totalUsage, serviceDate, description);
+            
+            if (invoiceLines.isEmpty()) {
+                log.warn("No invoice lines calculated for unit={}, cycle={}, serviceCode={}, totalUsage={}. Skipping invoice creation.", 
+                        unitId, readingCycleId, serviceCode, totalUsage);
+                continue;
+            }
+            
+            boolean hasValidPrice = invoiceLines.stream()
+                    .anyMatch(line -> line.getUnitPrice() != null && line.getUnitPrice().compareTo(BigDecimal.ZERO) > 0);
+            
+            if (!hasValidPrice) {
+                log.warn("No valid pricing found for unit={}, cycle={}, serviceCode={}, totalUsage={}. Invoice lines: {}. Skipping invoice creation.", 
+                        unitId, readingCycleId, serviceCode, totalUsage, 
+                        invoiceLines.stream()
+                                .map(line -> String.format("quantity=%s, unitPrice=%s", line.getQuantity(), line.getUnitPrice()))
+                                .collect(Collectors.joining(", ")));
+                continue;
+            }
 
             CreateInvoiceRequest req = CreateInvoiceRequest.builder()
                     .payerUnitId(unitId)

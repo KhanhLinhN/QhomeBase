@@ -16,8 +16,7 @@ public record MeterReadingKanbanDto(
         String serviceName,
         UUID assignedTo,
         LocalDate dueDate,
-        Integer floorFrom,
-        Integer floorTo,
+        Integer floor,
         String kanbanStatus,
         Integer totalMeters,
         Integer readingsCount,
@@ -25,8 +24,6 @@ public record MeterReadingKanbanDto(
         Integer progressPercentage,
         Boolean isOverdue,
         Boolean hasAnomaly,
-        OffsetDateTime sessionStartedAt,
-        OffsetDateTime sessionCompletedAt,
         OffsetDateTime lastVerifiedAt,
         OffsetDateTime invoiceGeneratedAt
 ) {}

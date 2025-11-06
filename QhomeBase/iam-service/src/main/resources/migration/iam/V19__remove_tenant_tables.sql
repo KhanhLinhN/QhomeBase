@@ -10,3 +10,5 @@ DROP TABLE IF EXISTS iam.tenant_role_permissions CASCADE;
 DROP TABLE IF EXISTS iam.user_tenant_grants CASCADE;
 DROP TABLE IF EXISTS iam.user_tenant_denies CASCADE;
 
+
+
