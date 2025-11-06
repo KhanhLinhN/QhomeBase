@@ -6,12 +6,12 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 
 @Entity
-@Table(name = "bar_slot", schema = "qhomebaseapp")
+@Table(name = "service_slot", schema = "qhomebaseapp")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class BarSlot {
+public class ServiceSlot {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -37,9 +37,11 @@ public class BarSlot {
     private String note;
 
     @Column(name = "is_active")
+    @Builder.Default
     private Boolean isActive = true;
 
     @Column(name = "sort_order")
+    @Builder.Default
     private Integer sortOrder = 0;
 
     @Column(name = "created_at", updatable = false)

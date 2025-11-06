@@ -1,7 +1,7 @@
 package com.qhomebaseapp.controller;
 
 import com.qhomebaseapp.dto.service.AvailableServiceDto;
-import com.qhomebaseapp.dto.service.BarSlotDto;
+import com.qhomebaseapp.dto.service.ServiceSlotDto;
 import com.qhomebaseapp.dto.service.ServiceBookingRequestDto;
 import com.qhomebaseapp.dto.service.ServiceBookingResponseDto;
 import com.qhomebaseapp.dto.service.ServiceComboDto;
@@ -182,11 +182,11 @@ public class ServiceBookingController {
         return ResponseEntity.ok(tickets);
     }
     
-    @GetMapping("/services/{serviceId}/bar-slots")
-    public ResponseEntity<List<BarSlotDto>> getBarSlots(
+    @GetMapping("/services/{serviceId}/service-slots")
+    public ResponseEntity<List<ServiceSlotDto>> getServiceSlots(
             @PathVariable Long serviceId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        List<BarSlotDto> slots = serviceBookingService.getBarSlots(serviceId, date);
+        List<ServiceSlotDto> slots = serviceBookingService.getServiceSlots(serviceId, date);
         return ResponseEntity.ok(slots);
     }
 

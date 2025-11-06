@@ -11,8 +11,9 @@ import java.time.LocalTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class BarSlotDto {
+public class ServiceSlotDto {
     private Long id;
+    private Long serviceId; // For create/update
     private String code;
     private String name;
     private LocalTime startTime;

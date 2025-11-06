@@ -1,7 +1,7 @@
 package com.qhomebaseapp.service.service;
 
 import com.qhomebaseapp.dto.service.AvailableServiceDto;
-import com.qhomebaseapp.dto.service.BarSlotDto;
+import com.qhomebaseapp.dto.service.ServiceSlotDto;
 import com.qhomebaseapp.dto.service.BookingItemDto;
 import com.qhomebaseapp.dto.service.ServiceBookingRequestDto;
 import com.qhomebaseapp.dto.service.ServiceBookingResponseDto;
@@ -11,7 +11,7 @@ import com.qhomebaseapp.dto.service.ServiceOptionDto;
 import com.qhomebaseapp.dto.service.ServiceTicketDto;
 import com.qhomebaseapp.dto.service.ServiceTypeDto;
 import com.qhomebaseapp.dto.service.TimeSlotDto;
-import com.qhomebaseapp.model.BarSlot;
+import com.qhomebaseapp.model.ServiceSlot;
 import com.qhomebaseapp.model.ServiceBookingItem;
 import com.qhomebaseapp.model.ServiceCombo;
 import com.qhomebaseapp.model.ServiceOption;
@@ -57,7 +57,7 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
     private final ServiceOptionRepository optionRepository;
     private final ServiceComboRepository comboRepository;
     private final ServiceTicketRepository ticketRepository;
-    private final BarSlotRepository barSlotRepository;
+    private final ServiceSlotRepository serviceSlotRepository;
     private final ServiceBookingItemRepository bookingItemRepository;
     private final UserRepository userRepository;
     private final EmailService emailService;
@@ -447,7 +447,25 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
                     durationHours = BigDecimal.valueOf(hours);
                 } else {
                     // OPTION_BASED và STANDARD: Check availability và time slot
-                    if (request.getStartTime() == null || request.getEndTime() == null) {
+                    // Nếu service có service_slot, validate và set time từ slot
+                    if (request.getSelectedServiceSlotId() != null) {
+                        ServiceSlot slot = serviceSlotRepository.findById(request.getSelectedServiceSlotId())
+                                .orElseThrow(() -> new RuntimeException("Service slot not found: " + request.getSelectedServiceSlotId()));
+                        
+                        if (!slot.getService().getId().equals(service.getId())) {
+                            throw new RuntimeException("Slot không thuộc dịch vụ này.");
+                        }
+                        
+                        if (!Boolean.TRUE.equals(slot.getIsActive())) {
+                            throw new RuntimeException("Slot này đã bị vô hiệu hóa.");
+                        }
+                        
+                        // Set startTime và endTime từ slot
+                        request.setStartTime(slot.getStartTime());
+                        request.setEndTime(slot.getEndTime());
+                        
+                        log.info("Service with slot: {} - {}", slot.getStartTime(), slot.getEndTime());
+                    } else if (request.getStartTime() == null || request.getEndTime() == null) {
                         throw new RuntimeException("Vui lòng chọn thời gian cho dịch vụ này.");
                     }
                     
@@ -857,6 +875,15 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
         Service service = serviceRepository.findById(serviceId)
                 .orElseThrow(() -> new RuntimeException("Service not found"));
         
+        // Kiểm tra xem service có service_slot không
+        // Nếu có, ưu tiên dùng service_slot thay vì time slots động
+        List<ServiceSlot> serviceSlots = serviceSlotRepository.findByService_IdAndIsActiveTrueOrderBySortOrderAsc(serviceId);
+        if (!serviceSlots.isEmpty()) {
+            // Service có service_slot - convert sang TimeSlotDto
+            return convertServiceSlotsToTimeSlots(serviceSlots, serviceId, date);
+        }
+        
+        // Nếu không có service_slot, dùng time slots động (logic cũ)
         DayOfWeek dayOfWeek = date.getDayOfWeek();
         int dayOfWeekValue = dayOfWeek.getValue() % 7;
         
@@ -973,6 +1000,88 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
         return timeSlots;
     }
     
+    /**
+     * Convert service slots sang TimeSlotDto với logic check availability
+     */
+    private List<TimeSlotDto> convertServiceSlotsToTimeSlots(List<ServiceSlot> serviceSlots, Long serviceId, LocalDate date) {
+        Service service = serviceRepository.findById(serviceId)
+                .orElseThrow(() -> new RuntimeException("Service not found"));
+        
+        ZoneId vietnamZone = ZoneId.of("Asia/Ho_Chi_Minh");
+        ZonedDateTime nowVietnam = ZonedDateTime.now(vietnamZone);
+        LocalDateTime nowLocal = nowVietnam.toLocalDateTime();
+        LocalTime currentTime = nowLocal.toLocalTime();
+        boolean isToday = date.equals(nowLocal.toLocalDate());
+        
+        return serviceSlots.stream()
+                .map(slot -> {
+                    LocalTime slotStart = slot.getStartTime();
+                    LocalTime slotEnd = slot.getEndTime();
+                    
+                    // Check nếu slot đã qua (chỉ check cho hôm nay)
+                    boolean isPastSlot = false;
+                    if (isToday) {
+                        if (slotStart.isBefore(LocalTime.of(2, 0))) {
+                            // Slot đêm (sau 2h sáng) - không check past
+                            isPastSlot = false;
+                        } else {
+                            LocalDateTime slotDateTime = LocalDateTime.of(date, slotStart);
+                            long hoursUntilSlot = ChronoUnit.HOURS.between(nowLocal, slotDateTime);
+                            if (hoursUntilSlot < 1) {
+                                long minutesPassed = ChronoUnit.MINUTES.between(slotStart, currentTime);
+                                isPastSlot = minutesPassed > 45;
+                            }
+                        }
+                    } else if (date.isBefore(nowLocal.toLocalDate())) {
+                        isPastSlot = true;
+                    }
+                    
+                    boolean isAvailable = !isPastSlot;
+                    String reason = null;
+                    Integer bookedPeople = null;
+                    Integer availableCapacity = null;
+                    
+                    if (!isPastSlot) {
+                        // Kiểm tra capacity nếu service có maxCapacity
+                        int maxCapacity = service.getMaxCapacity() != null ? service.getMaxCapacity() : 0;
+                        
+                        if (maxCapacity > 0) {
+                            // Service có giới hạn capacity - check tổng số người đã book
+                            bookedPeople = bookingRepository.sumBookedPeople(
+                                    serviceId, date, slotStart, slotEnd);
+                            if (bookedPeople == null) bookedPeople = 0;
+                            availableCapacity = maxCapacity - bookedPeople;
+                            
+                            if (availableCapacity <= 0) {
+                                isAvailable = false;
+                                reason = "Đã hết chỗ";
+                            }
+                        } else {
+                            // Service không có giới hạn capacity - check overlapping bookings
+                            List<ServiceBooking> overlapping = bookingRepository.findOverlappingBookings(
+                                    serviceId, date, slotStart, slotEnd);
+                            
+                            if (!overlapping.isEmpty()) {
+                                isAvailable = false;
+                                reason = "Đã được đặt trước";
+                            }
+                        }
+                    } else {
+                        reason = "Thời gian đã qua";
+                    }
+                    
+                    return TimeSlotDto.builder()
+                            .startTime(slotStart)
+                            .endTime(slotEnd)
+                            .available(isAvailable)
+                            .reason(reason)
+                            .bookedPeople(bookedPeople)
+                            .availableCapacity(availableCapacity)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+    
     @Override
     public List<ServiceOptionDto> getServiceOptions(Long serviceId) {
         List<ServiceOption> options = optionRepository.findByService_IdAndIsActiveTrue(serviceId);
@@ -1007,8 +1116,8 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
     }
     
     @Override
-    public List<BarSlotDto> getBarSlots(Long serviceId, LocalDate selectedDate) {
-        List<BarSlot> slots = barSlotRepository.findByService_IdAndIsActiveTrueOrderBySortOrderAsc(serviceId);
+    public List<ServiceSlotDto> getServiceSlots(Long serviceId, LocalDate selectedDate) {
+        List<ServiceSlot> slots = serviceSlotRepository.findByService_IdAndIsActiveTrueOrderBySortOrderAsc(serviceId);
         
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
         LocalTime currentTime = LocalTime.now(ZoneId.of("Asia/Ho_Chi_Minh"));
@@ -1018,14 +1127,17 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
                     .filter(slot -> {
                         LocalTime slotStartTime = slot.getStartTime();
                         
+                        // Nếu slot bắt đầu sau 2h sáng (slot đêm), luôn cho phép
                         if (slotStartTime.isBefore(LocalTime.of(2, 0))) {
                             return true;
                         }
                         
+                        // Nếu chưa đến giờ bắt đầu slot, cho phép
                         if (currentTime.isBefore(slotStartTime)) {
                             return true;
                         }
                         
+                        // Nếu đã qua giờ bắt đầu nhưng chưa quá 45 phút, vẫn cho phép
                         long minutesPassed = ChronoUnit.MINUTES.between(slotStartTime, currentTime);
                         return minutesPassed <= 45;
                     })
@@ -1033,7 +1145,7 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
         }
         
         return slots.stream()
-                .map(this::toBarSlotDto)
+                .map(this::toServiceSlotDto)
                 .collect(Collectors.toList());
     }
     
@@ -1081,8 +1193,8 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
                 .build();
     }
     
-    private BarSlotDto toBarSlotDto(BarSlot slot) {
-        return BarSlotDto.builder()
+    private ServiceSlotDto toServiceSlotDto(ServiceSlot slot) {
+        return ServiceSlotDto.builder()
                 .id(slot.getId())
                 .code(slot.getCode())
                 .name(slot.getName())
@@ -1229,20 +1341,24 @@ public class ServiceBookingServiceImpl implements ServiceBookingService {
         
         log.info("Combo-based service combo: {} x {} người = {}", combo.getName(), numberOfPeople, totalPrice);
         
-        // Nếu service có bar slots, cần validate slot
-        if (request.getSelectedBarSlotId() != null) {
-            BarSlot slot = barSlotRepository.findById(request.getSelectedBarSlotId())
-                    .orElseThrow(() -> new RuntimeException("Bar slot not found: " + request.getSelectedBarSlotId()));
+        // Nếu service có service slots, cần validate slot
+        if (request.getSelectedServiceSlotId() != null) {
+            ServiceSlot slot = serviceSlotRepository.findById(request.getSelectedServiceSlotId())
+                    .orElseThrow(() -> new RuntimeException("Service slot not found: " + request.getSelectedServiceSlotId()));
             
             if (!slot.getService().getId().equals(service.getId())) {
                 throw new RuntimeException("Slot không thuộc dịch vụ này.");
+            }
+            
+            if (!Boolean.TRUE.equals(slot.getIsActive())) {
+                throw new RuntimeException("Slot này đã bị vô hiệu hóa.");
             }
             
             // Set startTime và endTime từ slot
             request.setStartTime(slot.getStartTime());
             request.setEndTime(slot.getEndTime());
             
-            log.info("Combo-based service with slot: {} - {}", slot.getStartTime(), slot.getEndTime());
+            log.info("Service with slot: {} - {}", slot.getStartTime(), slot.getEndTime());
         }
         
         return totalPrice;

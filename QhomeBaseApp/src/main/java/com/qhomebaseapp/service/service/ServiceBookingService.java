@@ -1,7 +1,7 @@
 package com.qhomebaseapp.service.service;
 
 import com.qhomebaseapp.dto.service.AvailableServiceDto;
-import com.qhomebaseapp.dto.service.BarSlotDto;
+import com.qhomebaseapp.dto.service.ServiceSlotDto;
 import com.qhomebaseapp.dto.service.ServiceBookingRequestDto;
 import com.qhomebaseapp.dto.service.ServiceBookingResponseDto;
 import com.qhomebaseapp.dto.service.ServiceComboDto;
@@ -71,6 +71,6 @@ public interface ServiceBookingService {
     
     List<ServiceTicketDto> getServiceTickets(Long serviceId);
     
-    List<BarSlotDto> getBarSlots(Long serviceId, LocalDate selectedDate);
+    List<ServiceSlotDto> getServiceSlots(Long serviceId, LocalDate selectedDate);
 }
 

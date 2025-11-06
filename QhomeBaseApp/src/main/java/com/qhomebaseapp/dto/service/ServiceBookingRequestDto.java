@@ -48,8 +48,8 @@ public class ServiceBookingRequestDto {
     // For Pool, Playground: selected ticket
     private Long selectedTicketId;
     
-    // For Bar: selected slot
-    private Long selectedBarSlotId;
+    // For services with fixed slots (Bar, BBQ, etc.): selected service slot
+    private Long selectedServiceSlotId;
     
     // For BBQ: extra hours (nếu chọn thuê thêm giờ)
     private Integer extraHours;

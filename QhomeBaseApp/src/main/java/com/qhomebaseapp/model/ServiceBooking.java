@@ -61,8 +61,8 @@ public class ServiceBooking {
     private String vnpayTransactionRef;
 
     @Column(name = "status")
-    private String status = "PENDING"; // PENDING, APPROVED, REJECTED, COMPLETED, CANCELLED
-
+    private String status = "PENDING";
+    
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "approved_by")
     private User approvedBy;
