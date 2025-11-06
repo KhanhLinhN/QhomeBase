@@ -4,6 +4,7 @@ import com.QhomeBase.baseservice.dto.MeterDto;
 import com.QhomeBase.baseservice.dto.MeterReadingAssignmentCreateReq;
 import com.QhomeBase.baseservice.dto.MeterReadingAssignmentDto;
 import com.QhomeBase.baseservice.dto.AssignmentProgressDto;
+import com.QhomeBase.baseservice.dto.MeterWithReadingDto;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import com.QhomeBase.baseservice.service.MeterReadingAssignmentService;
 import com.QhomeBase.baseservice.service.MeterService;
@@ -116,12 +117,29 @@ public class MeterReadingAssignmentController {
         return ResponseEntity.ok(meters);
     }
 
+    @GetMapping("/staff/{staffId}/cycle/{cycleId}/meters-with-reading")
+    public ResponseEntity<List<MeterWithReadingDto>> getMetersWithReadingByStaffAndCycle(
+            @PathVariable UUID staffId,
+            @PathVariable UUID cycleId) {
+        List<MeterWithReadingDto> meters = meterService.getMetersWithReadingByStaffAndCycle(staffId, cycleId);
+        return ResponseEntity.ok(meters);
+    }
+
     @GetMapping("/my-meters/cycle/{cycleId}")
     public ResponseEntity<List<MeterDto>> getMyMetersByCycle(
             @PathVariable UUID cycleId,
             Authentication authentication) {
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         List<MeterDto> meters = meterService.getMetersByStaffAndCycle(principal.uid(), cycleId);
+        return ResponseEntity.ok(meters);
+    }
+
+    @GetMapping("/my-meters/cycle/{cycleId}/with-reading")
+    public ResponseEntity<List<MeterWithReadingDto>> getMyMetersWithReadingByCycle(
+            @PathVariable UUID cycleId,
+            Authentication authentication) {
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        List<MeterWithReadingDto> meters = meterService.getMetersWithReadingByStaffAndCycle(principal.uid(), cycleId);
         return ResponseEntity.ok(meters);
     }
 

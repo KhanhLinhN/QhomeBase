@@ -37,4 +37,13 @@ public interface MeterReadingRepository extends JpaRepository<MeterReading, UUID
         @Param("meterId") UUID meterId,
         @Param("assignmentId") UUID assignmentId
     );
+    
+    @Query("SELECT mr FROM MeterReading mr " +
+           "WHERE mr.meter.id = :meterId " +
+           "AND mr.readingDate < :beforeDate " +
+           "ORDER BY mr.readingDate DESC, mr.createdAt DESC")
+    List<MeterReading> findPreviousReadings(
+        @Param("meterId") UUID meterId,
+        @Param("beforeDate") java.time.LocalDate beforeDate
+    );
 }
