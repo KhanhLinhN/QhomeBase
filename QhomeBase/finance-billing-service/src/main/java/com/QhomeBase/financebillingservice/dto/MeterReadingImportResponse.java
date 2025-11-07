@@ -15,7 +15,9 @@ import java.util.UUID;
 public class MeterReadingImportResponse {
     private int totalReadings;
     private int invoicesCreated;
+    private int invoicesSkipped;
     private List<UUID> invoiceIds;
+    private List<String> errors;
     private String message;
 }
 

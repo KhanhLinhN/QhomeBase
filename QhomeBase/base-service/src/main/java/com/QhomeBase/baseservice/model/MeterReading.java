@@ -12,7 +12,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "meter_readings", schema = "data",
-       uniqueConstraints = @UniqueConstraint(name = "uq_meter_reading", columnNames = {"meter_id", "reading_date"}))
+       uniqueConstraints = @UniqueConstraint(name = "uq_meter_reading_meter_date_cycle", columnNames = {"meter_id", "reading_date", "cycle_id"}))
 @Getter
 @Setter
 @Builder
@@ -35,6 +35,9 @@ public class MeterReading {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assignment_id")
     private MeterReadingAssignment assignment;
+
+    @Column(name = "cycle_id")
+    private UUID cycleId;
 
     @Column(name = "reading_date", nullable = false)
     private LocalDate readingDate;
