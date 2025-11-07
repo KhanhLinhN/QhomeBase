@@ -25,7 +25,7 @@ public class HouseholdMemberController {
     private final HouseHoldMemberService householdMemberService;
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasRole('RESIDENT')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<HouseholdMemberDto> createHouseholdMember(@Valid @RequestBody HouseholdMemberCreateDto createDto) {
         try {
             HouseholdMemberDto result = householdMemberService.createHouseholdMember(createDto);
@@ -37,7 +37,7 @@ public class HouseholdMemberController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('RESIDENT')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<HouseholdMemberDto> updateHouseholdMember(
             @PathVariable UUID id,
             @Valid @RequestBody HouseholdMemberUpdateDto updateDto) {
@@ -51,7 +51,7 @@ public class HouseholdMemberController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('RESIDENT')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteHouseholdMember(@PathVariable UUID id) {
         try {
             householdMemberService.deleteHouseholdMember(id);

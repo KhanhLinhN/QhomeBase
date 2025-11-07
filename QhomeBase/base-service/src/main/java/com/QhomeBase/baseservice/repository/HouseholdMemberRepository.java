@@ -38,6 +38,15 @@ public interface HouseholdMemberRepository extends JpaRepository<HouseholdMember
             @Param("residentId") UUID residentId,
             @Param("unitId") UUID unitId
     );
+
+    @Query("SELECT hm FROM HouseholdMember hm " +
+           "WHERE hm.householdId = :householdId " +
+           "AND hm.residentId = :residentId " +
+           "AND (hm.leftAt IS NULL OR hm.leftAt >= CURRENT_DATE)")
+    Optional<HouseholdMember> findActiveMemberByResidentAndHousehold(
+            @Param("residentId") UUID residentId,
+            @Param("householdId") UUID householdId
+    );
 }
 
 
