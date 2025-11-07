@@ -2,13 +2,13 @@ package com.QhomeBase.baseservice.service;
 
 import com.QhomeBase.baseservice.dto.MeterReadingCreateReq;
 import com.QhomeBase.baseservice.dto.MeterReadingDto;
+import com.QhomeBase.baseservice.dto.MeterReadingUpdateReq;
 import com.QhomeBase.baseservice.model.Meter;
 import com.QhomeBase.baseservice.model.MeterReading;
 import com.QhomeBase.baseservice.model.MeterReadingAssignment;
 import com.QhomeBase.baseservice.repository.MeterReadingAssignmentRepository;
 import com.QhomeBase.baseservice.repository.MeterReadingRepository;
 import com.QhomeBase.baseservice.repository.MeterRepository;
-import com.QhomeBase.baseservice.repository.ReadingCycleRepository;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -28,7 +28,6 @@ public class MeterReadingService {
     private final MeterReadingRepository readingRepo;
     private final MeterRepository meterRepo;
     private final MeterReadingAssignmentRepository assignmentRepo;
-    private final ReadingCycleRepository readingCycleRepository;
 
     @Transactional
     public MeterReadingDto create(MeterReadingCreateReq meterReadingCreateReq, Authentication auth){
@@ -59,8 +58,6 @@ public class MeterReadingService {
             previousIndex = BigDecimal.ZERO;
         }
         
-        UUID resolvedCycleId = meterReadingCreateReq.cycleId();
-
         if (meterReadingAssignment != null) {
             validateMeterInScope(meterReadingAssignment, meter);
             
@@ -80,25 +77,31 @@ public class MeterReadingService {
                 reading.setPhotoFileId(meterReadingCreateReq.photoFileId());
                 reading.setReaderId(readerId);
                 reading.setReadAt(java.time.OffsetDateTime.now());
-                reading.setCycleId(meterReadingAssignment.getCycle().getId());
+                
+                // Update cycleId if provided
+                if (meterReadingCreateReq.cycleId() != null) {
+                    reading.setCycleId(meterReadingCreateReq.cycleId());
+                } else if (meterReadingAssignment.getCycle() != null) {
+                    reading.setCycleId(meterReadingAssignment.getCycle().getId());
+                }
                 
                 MeterReading updated = readingRepo.save(reading);
                 return toDto(updated);
             }
-
-            resolvedCycleId = meterReadingAssignment.getCycle().getId();
-        } else if (resolvedCycleId != null) {
-            boolean cycleExists = readingCycleRepository.existsById(resolvedCycleId);
-            if (!cycleExists) {
-                throw new IllegalArgumentException("Reading cycle not found: " + resolvedCycleId);
-            }
+        }
+        
+        UUID cycleId = null;
+        if (meterReadingCreateReq.cycleId() != null) {
+            cycleId = meterReadingCreateReq.cycleId();
+        } else if (meterReadingAssignment != null && meterReadingAssignment.getCycle() != null) {
+            cycleId = meterReadingAssignment.getCycle().getId();
         }
         
         MeterReading meterReading = MeterReading.builder()
                 .meter(meter)
                 .unit(meter.getUnit())
                 .assignment(meterReadingAssignment)
-                .cycleId(resolvedCycleId)
+                .cycleId(cycleId)
                 .readingDate(meterReadingCreateReq.readingDate())
                 .prevIndex(previousIndex)
                 .currIndex(meterReadingCreateReq.currIndex())
@@ -165,6 +168,47 @@ public class MeterReadingService {
                 );
             }
         }
+    }
+
+    @Transactional
+    public MeterReadingDto update(UUID readingId, MeterReadingUpdateReq updateReq, Authentication auth) {
+        var p = (UserPrincipal) auth.getPrincipal();
+        
+        MeterReading reading = readingRepo.findById(readingId)
+                .orElseThrow(() -> new IllegalArgumentException("Meter reading not found: " + readingId));
+        
+        if (updateReq.readingDate() != null) {
+            reading.setReadingDate(updateReq.readingDate());
+        }
+        
+        if (updateReq.prevIndex() != null) {
+            reading.setPrevIndex(updateReq.prevIndex());
+        }
+        
+        if (updateReq.currIndex() != null) {
+            reading.setCurrIndex(updateReq.currIndex());
+        }
+        
+        if (updateReq.photoFileId() != null) {
+            reading.setPhotoFileId(updateReq.photoFileId());
+        }
+        
+        if (updateReq.note() != null) {
+            reading.setNote(updateReq.note());
+        }
+        
+        reading.setReadAt(java.time.OffsetDateTime.now());
+        
+        MeterReading updated = readingRepo.save(reading);
+        return toDto(updated);
+    }
+    
+    @Transactional(readOnly = true)
+    public List<MeterReadingDto> getByCycleAndAssignmentAndUnitId(UUID cycleId, UUID assignmentId, UUID unitId) {
+        List<MeterReading> readings = readingRepo.findByCycleAndAssignmentAndUnitId(cycleId, assignmentId, unitId);
+        return readings.stream()
+                .map(this::toDto)
+                .toList();
     }
 
     public  MeterReadingDto toDto(MeterReading r) {
