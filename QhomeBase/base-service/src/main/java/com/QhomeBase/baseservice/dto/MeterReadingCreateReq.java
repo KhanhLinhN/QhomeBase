@@ -10,6 +10,7 @@ import java.util.UUID;
 public record MeterReadingCreateReq(
         @NotNull UUID meterId,
         UUID assignmentId,
+        UUID cycleId,
         @NotNull LocalDate readingDate,
         @PositiveOrZero BigDecimal prevIndex,
         @NotNull @PositiveOrZero BigDecimal currIndex,

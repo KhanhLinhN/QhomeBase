@@ -8,6 +8,7 @@ import java.util.UUID;
 public record MeterReadingDto(
         UUID id,
         UUID assignmentId,
+        UUID cycleId,
         UUID meterId,
         String meterCode,
         UUID unitId,
