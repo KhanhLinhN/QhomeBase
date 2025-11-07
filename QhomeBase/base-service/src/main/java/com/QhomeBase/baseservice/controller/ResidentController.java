@@ -43,7 +43,7 @@ public class ResidentController {
     }
     
     @PostMapping("/create-account-request")
-    @PreAuthorize("hasRole('RESIDENT')")
+
     public ResponseEntity<AccountCreationRequestDto> createAccountRequest(
             @Valid @RequestBody CreateAccountRequestDto request,
             Authentication authentication) {
