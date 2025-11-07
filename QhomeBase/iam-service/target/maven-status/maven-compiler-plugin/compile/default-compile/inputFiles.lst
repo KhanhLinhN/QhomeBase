@@ -17,6 +17,9 @@ D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamse
 D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\ErrorResponseDto.java
 D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\LoginRequestDto.java
 D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\LoginResponseDto.java
+D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\OtpVerificationRequestDto.java
+D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\PasswordResetConfirmRequestDto.java
+D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\PasswordResetRequestDto.java
 D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\RolePermissionDto.java
 D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\RolePermissionGrantRequest.java
 D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\dto\RolePermissionRevokeRequest.java
@@ -50,8 +53,10 @@ D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamse
 D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\security\SecurityConfig.java
 D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\security\UserPrincipal.java
 D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\AuthService.java
+D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\EmailService.java
 D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\EmployeeManagementService.java
 D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\EmployeeRoleManagementService.java
+D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\PasswordResetService.java
 D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\PermissionService.java
 D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\RolePermissionService.java
 D:\GitHub\QhomeBase_test\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\RoleService.java

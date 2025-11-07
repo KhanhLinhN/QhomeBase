@@ -56,4 +56,25 @@ public class Invoice {
 
     @Column(name = "cycle_id")
     private UUID cycleId;
+
+    @Column(name = "payment_gateway")
+    private String paymentGateway;
+
+    @Column(name = "vnp_transaction_ref")
+    private String vnpTransactionRef;
+
+    @Column(name = "vnp_transaction_no")
+    private String vnpTransactionNo;
+
+    @Column(name = "vnp_bank_code")
+    private String vnpBankCode;
+
+    @Column(name = "vnp_card_type")
+    private String vnpCardType;
+
+    @Column(name = "vnp_response_code")
+    private String vnpResponseCode;
+
+    @Column(name = "paid_at")
+    private OffsetDateTime paidAt;
 }

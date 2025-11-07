@@ -33,6 +33,7 @@ public class AuthService {
     @Transactional
     public LoginResponseDto login(LoginRequestDto loginRequestDto) {
         User user = userRepository.findByUsername(loginRequestDto.username())
+                .or(() -> userRepository.findByEmail(loginRequestDto.username()))
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + loginRequestDto.username()));
         log.debug("Found user id={} active={} locked={} failedAttempts={} for username={}",
                 user.getId(), user.isActive(), user.isAccountLocked(), user.getFailedLoginAttempts(), loginRequestDto.username());
