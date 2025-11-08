@@ -1,6 +1,7 @@
 package com.QhomeBase.servicescardservice.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import java.util.UUID;
 import java.util.List;
 
 public record RegisterServiceRequestCreateDto(
@@ -11,6 +12,8 @@ public record RegisterServiceRequestCreateDto(
         
         String note,
         
+        UUID unitId,
+
         String vehicleType,
         
         String licensePlate,
@@ -18,6 +21,10 @@ public record RegisterServiceRequestCreateDto(
         String vehicleBrand,
         
         String vehicleColor,
+        
+        String apartmentNumber,
+        
+        String buildingName,
         
         List<String> imageUrls
 ) {}

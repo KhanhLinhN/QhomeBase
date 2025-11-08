@@ -52,9 +52,18 @@ public class RegisterServiceRequest {
     @Column(name = "vehicle_color")
     private String vehicleColor;
 
+    @Column(name = "apartment_number")
+    private String apartmentNumber;
+
+    @Column(name = "building_name")
+    private String buildingName;
+
     @Column(name = "payment_status")
     @Builder.Default
     private String paymentStatus = "UNPAID";
+
+    @Column(name = "unit_id")
+    private UUID unitId;
 
     @Column(name = "payment_amount", precision = 14, scale = 2)
     private BigDecimal paymentAmount;

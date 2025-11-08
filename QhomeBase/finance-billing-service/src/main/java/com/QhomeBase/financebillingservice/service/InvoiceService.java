@@ -121,6 +121,68 @@ public class InvoiceService {
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
+
+    @Transactional
+    public InvoiceDto recordVehicleRegistrationPayment(VehicleRegistrationPaymentRequest request) {
+        if (request.getUserId() == null) {
+            throw new IllegalArgumentException("Missing userId");
+        }
+
+        UUID residentId = residentRepository.findResidentIdByUserId(request.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + request.getUserId()));
+
+        BigDecimal amount = Optional.ofNullable(request.getAmount())
+                .filter(a -> a.compareTo(BigDecimal.ZERO) > 0)
+                .orElse(BigDecimal.valueOf(30000));
+
+        OffsetDateTime payDate = Optional.ofNullable(request.getPaymentDate())
+                .orElse(OffsetDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh")));
+        LocalDate serviceDate = payDate.toLocalDate();
+
+        String description = buildVehicleRegistrationDescription(request);
+
+        CreateInvoiceRequest createRequest = CreateInvoiceRequest.builder()
+                .dueDate(serviceDate)
+                .currency("VND")
+                .billToName(description)
+                .payerUnitId(request.getUnitId())
+                .payerResidentId(residentId)
+                .lines(List.of(CreateInvoiceLineRequest.builder()
+                        .serviceDate(serviceDate)
+                        .description(description)
+                        .quantity(BigDecimal.ONE)
+                        .unit("lần")
+                        .unitPrice(amount)
+                        .taxRate(BigDecimal.ZERO)
+                        .serviceCode("VEHICLE_CARD")
+                        .externalRefType("VEHICLE_REGISTRATION")
+                        .externalRefId(request.getRegistrationId())
+                        .build()))
+                .build();
+
+        InvoiceDto created = createInvoice(createRequest);
+
+        Invoice invoice = invoiceRepository.findById(created.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Invoice not found: " + created.getId()));
+
+        invoice.setStatus(InvoiceStatus.PAID);
+        invoice.setPaymentGateway("VNPAY");
+        invoice.setPaidAt(payDate);
+        invoice.setVnpTransactionRef(request.getTransactionRef());
+        invoice.setVnpTransactionNo(request.getTransactionNo());
+        invoice.setVnpBankCode(request.getBankCode());
+        invoice.setVnpCardType(request.getCardType());
+        invoice.setVnpResponseCode(request.getResponseCode());
+        invoiceRepository.save(invoice);
+
+        Map<String, String> params = new HashMap<>();
+        if (request.getTransactionRef() != null) {
+            params.put("vnp_TxnRef", request.getTransactionRef());
+        }
+        notifyPaymentSuccess(invoice, params);
+
+        return toDto(invoice);
+    }
     
     @Transactional
     public InvoiceDto createInvoice(CreateInvoiceRequest request) {
@@ -387,6 +449,8 @@ public class InvoiceService {
             }
             response.add(buildCategoryResponse(category, items));
         });
+        log.debug("🔍 [InvoiceService] Grouped categories: {}", grouped.keySet());
+        log.debug("🔍 [InvoiceService] Returning {} categories", response.size());
 
         return response;
     }
@@ -396,23 +460,28 @@ public class InvoiceService {
                 .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + userId));
 
         List<Invoice> invoices = invoiceRepository.findByPayerResidentId(residentId);
+        log.debug("🔍 [InvoiceService] Found {} invoices for resident {}", invoices.size(), residentId);
         if (unitFilter != null) {
             invoices = invoices.stream()
                     .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
                     .collect(Collectors.toList());
+            log.debug("🔍 [InvoiceService] After unit filter {} invoices remain for unit {}", invoices.size(), unitFilter);
         }
         Map<String, List<InvoiceLineResponseDto>> grouped = new HashMap<>();
 
         for (Invoice invoice : invoices) {
+            log.debug("🔍 [InvoiceService] Inspect invoice {} status {}", invoice.getId(), invoice.getStatus());
             if (invoice.getStatus() != InvoiceStatus.PAID) {
                 continue;
             }
 
             List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceId(invoice.getId());
+            log.debug("🔍 [InvoiceService] Invoice {} has {} lines", invoice.getId(), lines.size());
             for (InvoiceLine line : lines) {
                 String category = determineCategory(line.getServiceCode());
                 InvoiceLineResponseDto dto = toInvoiceLineResponseDto(invoice, line);
                 grouped.computeIfAbsent(category, key -> new ArrayList<>()).add(dto);
+                log.debug("🔍 [InvoiceService] Added line {} to category {}", line.getId(), category);
             }
         }
 
@@ -689,6 +758,96 @@ public class InvoiceService {
 
     private String resolveCategoryName(String categoryCode) {
         return CATEGORY_LABELS.getOrDefault(categoryCode, categoryCode);
+    }
+
+    private String buildVehicleRegistrationDescription(VehicleRegistrationPaymentRequest request) {
+        StringBuilder builder = new StringBuilder("Đăng ký thẻ xe");
+        if (request.getLicensePlate() != null && !request.getLicensePlate().isBlank()) {
+            builder.append(" - ").append(request.getLicensePlate());
+        }
+        if (request.getVehicleType() != null && !request.getVehicleType().isBlank()) {
+            builder.append(" (").append(request.getVehicleType()).append(")");
+        }
+        if (request.getNote() != null && !request.getNote().isBlank()) {
+            builder.append(" - ").append(request.getNote());
+        }
+        return builder.toString();
+    }
+
+    @Transactional
+    public InvoiceDto recordElevatorCardPayment(ElevatorCardPaymentRequest request) {
+        if (request.getUserId() == null) {
+            throw new IllegalArgumentException("Missing userId");
+        }
+
+        UUID residentId = residentRepository.findResidentIdByUserId(request.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + request.getUserId()));
+
+        BigDecimal amount = Optional.ofNullable(request.getAmount())
+                .filter(a -> a.compareTo(BigDecimal.ZERO) > 0)
+                .orElse(BigDecimal.valueOf(30000));
+
+        OffsetDateTime payDate = Optional.ofNullable(request.getPaymentDate())
+                .orElse(OffsetDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh")));
+        LocalDate serviceDate = payDate.toLocalDate();
+
+        String description = buildElevatorCardDescription(request);
+
+        CreateInvoiceRequest createRequest = CreateInvoiceRequest.builder()
+                .dueDate(serviceDate)
+                .currency("VND")
+                .billToName(request.getFullName())
+                .payerUnitId(request.getUnitId())
+                .payerResidentId(residentId)
+                .lines(List.of(CreateInvoiceLineRequest.builder()
+                        .serviceDate(serviceDate)
+                        .description(description)
+                        .quantity(BigDecimal.ONE)
+                        .unit("lần")
+                        .unitPrice(amount)
+                        .taxRate(BigDecimal.ZERO)
+                        .serviceCode("ELEVATOR_CARD")
+                        .externalRefType("ELEVATOR_CARD")
+                        .externalRefId(request.getRegistrationId())
+                        .build()))
+                .build();
+
+        InvoiceDto created = createInvoice(createRequest);
+
+        Invoice invoice = invoiceRepository.findById(created.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Invoice not found: " + created.getId()));
+
+        invoice.setStatus(InvoiceStatus.PAID);
+        invoice.setPaymentGateway("VNPAY");
+        invoice.setPaidAt(payDate);
+        invoice.setVnpTransactionRef(request.getTransactionRef());
+        invoice.setVnpTransactionNo(request.getTransactionNo());
+        invoice.setVnpBankCode(request.getBankCode());
+        invoice.setVnpCardType(request.getCardType());
+        invoice.setVnpResponseCode(request.getResponseCode());
+        invoiceRepository.save(invoice);
+
+        Map<String, String> params = new HashMap<>();
+        if (request.getTransactionRef() != null) {
+            params.put("vnp_TxnRef", request.getTransactionRef());
+        }
+        notifyPaymentSuccess(invoice, params);
+
+        return toDto(invoice);
+    }
+
+    private String buildElevatorCardDescription(ElevatorCardPaymentRequest request) {
+        StringBuilder builder = new StringBuilder("Đăng ký thẻ thang máy");
+        if (request.getApartmentNumber() != null && !request.getApartmentNumber().isBlank()) {
+            builder.append(" - Căn ").append(request.getApartmentNumber());
+        }
+        if (request.getBuildingName() != null && !request.getBuildingName().isBlank()) {
+            builder.append(" (").append(request.getBuildingName()).append(")");
+        }
+        if (request.getFullName() != null && !request.getFullName().isBlank()) {
+            builder.append(" - ").append(request.getFullName());
+        }
+        return builder.toString();
     }
 }
 

@@ -14,6 +14,8 @@ public class VnpayProperties {
     private String hashSecret;
     private String vnpUrl;
     private String returnUrl;
+    private String elevatorReturnUrl;
+    private String residentReturnUrl;
     private String version;
     private String command;
 }

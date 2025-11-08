@@ -9,14 +9,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@SuppressWarnings({"NullAway", "DataFlowIssue"})
 public class ResidentAccountService {
     
     private final ResidentRepository residentRepository;
@@ -77,20 +79,26 @@ public class ResidentAccountService {
                 .map(member -> {
                     Resident resident = residentRepository.findById(member.getResidentId())
                             .orElse(null);
-                    if (resident != null && resident.getUserId() == null) {
-                        return new ResidentWithoutAccountDto(
-                                resident.getId(),
-                                resident.getFullName(),
-                                resident.getPhone(),
-                                resident.getEmail(),
-                                resident.getNationalId(),
-                                resident.getDob(),
-                                resident.getStatus(),
-                                member.getRelation(),
-                                member.getIsPrimary()
-                        );
+                    if (resident == null || resident.getUserId() != null) {
+                        return null;
                     }
-                    return null;
+                    boolean hasPendingRequest = accountCreationRequestRepository
+                            .findPendingByResidentId(resident.getId())
+                            .isPresent();
+                    if (hasPendingRequest) {
+                        return null;
+                    }
+                    return new ResidentWithoutAccountDto(
+                            resident.getId(),
+                            resident.getFullName(),
+                            resident.getPhone(),
+                            resident.getEmail(),
+                            resident.getNationalId(),
+                            resident.getDob(),
+                            resident.getStatus(),
+                            member.getRelation(),
+                            member.getIsPrimary()
+                    );
                 })
                 .filter(resident -> resident != null)
                 .collect(Collectors.toList());
@@ -259,6 +267,9 @@ public class ResidentAccountService {
         String email = resident.getEmail() != null && !resident.getEmail().isEmpty()
                 ? resident.getEmail()
                 : null;
+        List<String> proofImages = request.proofOfRelationImageUrls() != null
+                ? new ArrayList<>(request.proofOfRelationImageUrls())
+                : Collections.emptyList();
 
         if (!request.autoGenerate()) {
             username = request.username();
@@ -286,7 +297,7 @@ public class ResidentAccountService {
                 .password(password)
                 .email(email)
                 .autoGenerate(request.autoGenerate())
-                .proofOfRelationImageUrl(request.proofOfRelationImageUrl())
+                .proofOfRelationImageUrls(proofImages)
                 .status(AccountCreationRequest.RequestStatus.PENDING)
                 .build();
 
@@ -436,7 +447,9 @@ public class ResidentAccountService {
                 request.getRejectedBy(),
                 rejectedByResident != null ? rejectedByResident.getFullName() : null,
                 request.getRejectionReason(),
-                request.getProofOfRelationImageUrl(),
+                request.getProofOfRelationImageUrls() != null
+                        ? new ArrayList<>(request.getProofOfRelationImageUrls())
+                        : Collections.emptyList(),
                 request.getApprovedAt(),
                 request.getRejectedAt(),
                 request.getCreatedAt()

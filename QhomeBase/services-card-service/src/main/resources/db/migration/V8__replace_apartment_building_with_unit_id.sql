@@ -1,4 +1,4 @@
--- V7: Replace apartment_number, building_name, and citizen_id with unit_id and resident_id
+-- V8: Replace apartment_number, building_name, and citizen_id with unit_id and resident_id
 -- This migration changes from storing text values to using foreign key references
 
 -- Step 1: Add unit_id and resident_id columns to both tables

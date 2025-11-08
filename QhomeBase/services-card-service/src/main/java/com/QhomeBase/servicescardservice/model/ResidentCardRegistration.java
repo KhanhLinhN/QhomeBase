@@ -34,6 +34,18 @@ public class ResidentCardRegistration {
     @Column(name = "resident_id", nullable = false)
     private UUID residentId;
 
+    @Column(name = "full_name")
+    private String fullName;
+
+    @Column(name = "apartment_number")
+    private String apartmentNumber;
+
+    @Column(name = "building_name")
+    private String buildingName;
+
+    @Column(name = "citizen_id")
+    private String citizenId;
+
     @Column(name = "phone_number")
     private String phoneNumber;
 

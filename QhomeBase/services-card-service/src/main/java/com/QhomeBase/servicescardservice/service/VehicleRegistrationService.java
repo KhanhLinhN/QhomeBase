@@ -51,6 +51,7 @@ public class VehicleRegistrationService {
     private final RegisterServiceRequestRepository requestRepository;
     private final RegisterServiceImageRepository imageRepository;
     private final VnpayService vnpayService;
+    private final BillingClient billingClient;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
     private Path ensureUploadDir() throws IOException {
@@ -86,7 +87,7 @@ public class VehicleRegistrationService {
     }
 
     @Transactional
-    @SuppressWarnings("DataFlowIssue")
+    @SuppressWarnings({"NullAway", "DataFlowIssue"})
     public RegisterServiceRequestDto createRegistration(UUID userId, RegisterServiceRequestCreateDto dto) {
         validatePayload(dto);
 
@@ -95,10 +96,13 @@ public class VehicleRegistrationService {
                 .serviceType(Optional.ofNullable(dto.serviceType()).orElse(SERVICE_TYPE))
                 .requestType(resolveRequestType(dto.requestType()))
                 .note(dto.note())
+                .unitId(dto.unitId())
                 .vehicleType(resolveVehicleType(dto.vehicleType()))
                 .licensePlate(normalize(dto.licensePlate()))
                 .vehicleBrand(normalize(dto.vehicleBrand()))
                 .vehicleColor(normalize(dto.vehicleColor()))
+                .apartmentNumber(normalize(dto.apartmentNumber()))
+                .buildingName(normalize(dto.buildingName()))
                 .status(STATUS_READY_FOR_PAYMENT)
                 .paymentStatus("UNPAID")
                 .paymentAmount(REGISTRATION_FEE)
@@ -114,7 +118,8 @@ public class VehicleRegistrationService {
                     .forEach(request::addImage);
         }
 
-        RegisterServiceRequest saved = Objects.requireNonNull(requestRepository.save(request));
+        RegisterServiceRequest saved = Objects.requireNonNull(requestRepository.save(request),
+                "Không thể tạo đăng ký xe mới");
         return toDto(saved);
     }
 
@@ -132,10 +137,13 @@ public class VehicleRegistrationService {
         request.setServiceType(Optional.ofNullable(dto.serviceType()).orElse(SERVICE_TYPE));
         request.setRequestType(resolveRequestType(dto.requestType()));
         request.setNote(dto.note());
+        request.setUnitId(dto.unitId());
         request.setVehicleType(resolveVehicleType(dto.vehicleType()));
         request.setLicensePlate(normalize(dto.licensePlate()));
         request.setVehicleBrand(normalize(dto.vehicleBrand()));
         request.setVehicleColor(normalize(dto.vehicleColor()));
+        request.setApartmentNumber(normalize(dto.apartmentNumber()));
+        request.setBuildingName(normalize(dto.buildingName()));
         request.setStatus(STATUS_READY_FOR_PAYMENT);
 
         imageRepository.deleteByRegisterServiceRequestId(request.getId());
@@ -150,7 +158,7 @@ public class VehicleRegistrationService {
                     .forEach(request::addImage);
         }
 
-        RegisterServiceRequest saved = requestRepository.save(request);
+        RegisterServiceRequest saved = Objects.requireNonNull(requestRepository.save(request));
         return toDto(saved);
     }
 
@@ -164,7 +172,7 @@ public class VehicleRegistrationService {
         }
 
         registration.setStatus(STATUS_PAYMENT_PENDING);
-        registration.setPaymentStatus("PENDING");
+        registration.setPaymentStatus("PAYMENT_PENDING");
         registration.setPaymentGateway(PAYMENT_VNPAY);
         RegisterServiceRequest saved = requestRepository.save(registration);
 
@@ -230,11 +238,29 @@ public class VehicleRegistrationService {
             registration.setPaymentStatus("PAID");
             registration.setStatus(STATUS_COMPLETED);
             registration.setPaymentGateway(PAYMENT_VNPAY);
-            registration.setPaymentDate(parsePayDate(params.get("vnp_PayDate")));
+            OffsetDateTime payDate = parsePayDate(params.get("vnp_PayDate"));
+            registration.setPaymentDate(payDate);
             requestRepository.save(registration);
 
             // Email placeholder – actual implementation depends on user info lookup
             log.info("✅ [VehicleRegistration] Thanh toán thành công cho đăng ký {}", registrationId);
+            java.math.BigDecimal amount = registration.getPaymentAmount();
+            billingClient.recordVehicleRegistrationPayment(
+                    registrationId,
+                    registration.getUserId(),
+                    registration.getUnitId(),
+                    registration.getVehicleType(),
+                    registration.getLicensePlate(),
+                    registration.getRequestType(),
+                    registration.getNote(),
+                    amount,
+                    payDate,
+                    txnRef,
+                    params.get("vnp_TransactionNo"),
+                    params.get("vnp_BankCode"),
+                    params.get("vnp_CardType"),
+                    responseCode
+            );
             orderIdToRegistrationId.remove(orderId);
             return new VehicleRegistrationPaymentResult(registrationId, true, responseCode, signatureValid);
         }
@@ -268,6 +294,12 @@ public class VehicleRegistrationService {
         }
         if (dto.vehicleType() == null || dto.vehicleType().isBlank()) {
             throw new IllegalArgumentException("Loại phương tiện là bắt buộc");
+        }
+        if (dto.apartmentNumber() == null || dto.apartmentNumber().isBlank()) {
+            throw new IllegalArgumentException("Số căn hộ là bắt buộc");
+        }
+        if (dto.buildingName() == null || dto.buildingName().isBlank()) {
+            throw new IllegalArgumentException("Tòa nhà là bắt buộc");
         }
     }
 
@@ -326,6 +358,9 @@ public class VehicleRegistrationService {
                 entity.getLicensePlate(),
                 entity.getVehicleBrand(),
                 entity.getVehicleColor(),
+                entity.getApartmentNumber(),
+                entity.getBuildingName(),
+                entity.getUnitId(),
                 entity.getPaymentStatus(),
                 entity.getPaymentAmount(),
                 entity.getPaymentDate(),

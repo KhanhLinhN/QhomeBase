@@ -202,6 +202,9 @@ public class VehicleRegistrationController {
         body.put("licensePlate", dto.licensePlate());
         body.put("vehicleBrand", dto.vehicleBrand());
         body.put("vehicleColor", dto.vehicleColor());
+        body.put("apartmentNumber", dto.apartmentNumber());
+        body.put("buildingName", dto.buildingName());
+        body.put("unitId", dto.unitId() != null ? dto.unitId().toString() : null);
         body.put("paymentStatus", dto.paymentStatus());
         body.put("paymentAmount", dto.paymentAmount());
         body.put("paymentDate", dto.paymentDate());

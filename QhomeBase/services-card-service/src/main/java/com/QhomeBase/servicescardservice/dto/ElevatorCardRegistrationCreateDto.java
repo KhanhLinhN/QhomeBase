@@ -1,22 +1,16 @@
 package com.QhomeBase.servicescardservice.dto;
 
-import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 public record ElevatorCardRegistrationCreateDto(
-        @NotNull(message = "User ID is required")
-        UUID userId,
-        
-        @NotNull(message = "Unit ID is required")
-        UUID unitId,
-        
+        String fullName,
+        String apartmentNumber,
+        String buildingName,
         String requestType,
-        
-        @NotNull(message = "Resident ID is required")
-        UUID residentId,
-        
+        String citizenId,
         String phoneNumber,
-        
-        String note
+        String note,
+        UUID unitId,
+        UUID residentId
 ) {}
 

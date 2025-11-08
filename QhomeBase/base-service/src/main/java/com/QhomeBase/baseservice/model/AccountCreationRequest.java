@@ -4,7 +4,11 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+
+import com.QhomeBase.baseservice.util.StringListConverter;
 
 @Entity
 @Table(schema = "data", name = "account_creation_requests")
@@ -53,7 +57,9 @@ public class AccountCreationRequest {
     private String rejectionReason;
 
     @Column(name = "proof_of_relation_image_url", columnDefinition = "TEXT")
-    private String proofOfRelationImageUrl;
+    @Convert(converter = StringListConverter.class)
+    @Builder.Default
+    private List<String> proofOfRelationImageUrls = new ArrayList<>();
 
     @Column(name = "approved_at")
     private OffsetDateTime approvedAt;

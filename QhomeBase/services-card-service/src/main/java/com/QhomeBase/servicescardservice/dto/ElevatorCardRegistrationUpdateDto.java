@@ -5,9 +5,11 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 public record ElevatorCardRegistrationUpdateDto(
-        UUID unitId,
+        String fullName,
+        String apartmentNumber,
+        String buildingName,
         String requestType,
-        UUID residentId,
+        String citizenId,
         String phoneNumber,
         String note,
         String status,

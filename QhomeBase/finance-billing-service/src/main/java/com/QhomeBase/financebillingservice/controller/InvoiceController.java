@@ -5,6 +5,7 @@ import com.QhomeBase.financebillingservice.model.InvoiceStatus;
 import com.QhomeBase.financebillingservice.service.InvoiceService;
 import com.QhomeBase.financebillingservice.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import com.QhomeBase.financebillingservice.service.vnpay.VnpayService;
@@ -21,6 +22,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/invoices")
 @RequiredArgsConstructor
+@Slf4j
 public class InvoiceController {
     
     private final InvoiceService invoiceService;
@@ -69,6 +71,34 @@ public class InvoiceController {
     public ResponseEntity<InvoiceDto> createInvoice(@RequestBody CreateInvoiceRequest request) {
         InvoiceDto invoice = invoiceService.createInvoice(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(invoice);
+    }
+
+    @PostMapping("/vehicle-registration-payment")
+    public ResponseEntity<?> recordVehicleRegistrationPayment(@RequestBody VehicleRegistrationPaymentRequest request) {
+        try {
+            InvoiceDto invoice = invoiceService.recordVehicleRegistrationPayment(request);
+            return ResponseEntity.ok(invoice);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/elevator-card-payment")
+    public ResponseEntity<?> recordElevatorCardPayment(@RequestBody ElevatorCardPaymentRequest request) {
+        try {
+            InvoiceDto invoice = invoiceService.recordElevatorCardPayment(request);
+            return ResponseEntity.ok(invoice);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
     
     @PutMapping("/{id}/status")
@@ -159,6 +189,7 @@ public class InvoiceController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
+            log.error("❌ Error retrieving paid invoices for user {}", authHeader, e);
             return ResponseEntity.ok(Map.of(
                     "data", List.of(),
                     "hasPaid", false
