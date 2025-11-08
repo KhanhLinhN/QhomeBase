@@ -80,7 +80,7 @@ public class ServiceBookingService {
         booking.setBookingDate(request.getBookingDate());
         booking.setStartTime(request.getStartTime());
         booking.setEndTime(request.getEndTime());
-        booking.setDurationHours(request.getDurationHours());
+        booking.setDurationHours(resolveDurationHours(request.getStartTime(), request.getEndTime(), request.getDurationHours()));
         booking.setNumberOfPeople(request.getNumberOfPeople());
         booking.setPurpose(trimToNull(request.getPurpose()));
         booking.setTermsAccepted(Boolean.TRUE.equals(request.getTermsAccepted()));
@@ -120,6 +120,17 @@ public class ServiceBookingService {
         ServiceBooking booking = serviceBookingRepository.findByIdAndUserId(bookingId, principal.uid())
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
         return toDto(booking);
+    }
+
+    private BigDecimal resolveDurationHours(LocalTime start, LocalTime end, BigDecimal requestedDuration) {
+        if (start != null && end != null) {
+            Duration duration = Duration.between(start, end);
+            if (!duration.isNegative() && !duration.isZero()) {
+                BigDecimal minutes = BigDecimal.valueOf(duration.toMinutes());
+                return minutes.divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
+            }
+        }
+        return requestedDuration;
     }
 
     @Transactional
