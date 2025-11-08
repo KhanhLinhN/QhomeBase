@@ -1,12 +1,14 @@
 package com.QhomeBase.customerinteractionservice.service;
 
-import com.QhomeBase.customerinteractionservice.dto.ProcessingLogDTO;
+import com.QhomeBase.customerinteractionservice.client.BaseServiceClient;
+import com.QhomeBase.customerinteractionservice.client.dto.ResidentResponse;
 import com.QhomeBase.customerinteractionservice.dto.RequestDTO;
 import com.QhomeBase.customerinteractionservice.dto.StatusCountDTO;
 import com.QhomeBase.customerinteractionservice.model.ProcessingLog;
 import com.QhomeBase.customerinteractionservice.model.Request;
 import com.QhomeBase.customerinteractionservice.repository.processingLogRepository;
 import com.QhomeBase.customerinteractionservice.repository.requestRepository;
+import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -24,17 +26,24 @@ import java.util.stream.Collectors;
 import jakarta.persistence.criteria.Predicate;
 
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 @Service
+@Slf4j
 public class requestService {
     private final requestRepository requestRepository;
     private final processingLogRepository processingLogRepository;
+    private final BaseServiceClient baseServiceClient;
     private static final int PAGE_SIZE = 5;
 
-    public requestService(requestRepository requestRepository, processingLogRepository processingLogRepository) {
+    public requestService(requestRepository requestRepository,
+                          processingLogRepository processingLogRepository,
+                          BaseServiceClient baseServiceClient) {
         this.requestRepository = requestRepository;
         this.processingLogRepository = processingLogRepository;
+        this.baseServiceClient = baseServiceClient;
     }
 
     public Request createRequest(Request newRequest) {
@@ -67,7 +76,6 @@ public class requestService {
             String projectCode,
             String title,
             String residentName,
-            UUID tenantId,
             String status,
             String priority,
             int pageNo,
@@ -85,9 +93,6 @@ public class requestService {
             }
             if (residentName != null && !residentName.isEmpty()) {
                 predicates.add(cb.like(cb.lower(root.get("residentName")), "%" + residentName.toLowerCase() + "%"));
-            }
-            if (tenantId != null) {
-                predicates.add(cb.equal(root.get("tenantId"), tenantId));
             }
             if (status != null && !status.isEmpty()) {
                 predicates.add(cb.equal(root.get("status"), status));
@@ -114,10 +119,10 @@ public class requestService {
         return requestRepository.findAll(spec, pageable).map(this::mapToDto);
     }
 
-    public Map<String, Long> getRequestCounts(String projectCode, String title, String residentName, UUID tenantId, String priority, String dateFrom, String dateTo) {
+    public Map<String, Long> getRequestCounts(String projectCode, String title, String residentName, String priority, String dateFrom, String dateTo) {
 
         List<StatusCountDTO> countsByStatus = requestRepository.countRequestsByStatus(
-                projectCode, title, residentName, tenantId, priority, dateFrom, dateTo
+                projectCode, title, residentName, priority, dateFrom, dateTo
         );
 
         Map<String, Long> result = countsByStatus.stream()
@@ -137,13 +142,24 @@ public class requestService {
         return String.format("%s-%s-%05d", prefix, year, count);
     }
 
-    // Create a new request
-    public RequestDTO createNewRequest(RequestDTO dto) {
+
+    public RequestDTO createNewRequest(RequestDTO dto, Authentication authentication) {
+        Authentication auth = authentication != null ? authentication : SecurityContextHolder.getContext().getAuthentication();
+        UUID userId = extractUserId(auth);
+        if (userId == null) {
+            throw new IllegalArgumentException("User information is required to create a request");
+        }
+
+        ResidentResponse resident = baseServiceClient.getResidentByUserId(userId);
+        if (resident == null) {
+            throw new IllegalArgumentException("Resident information could not be resolved for user: " + userId);
+        }
+
         Request entity = new Request();
         entity.setId(dto.getId());
         entity.setRequestCode(dto.getRequestCode() != null ? dto.getRequestCode() : generateRequestCode());
-        entity.setResidentId(dto.getResidentId());
-        entity.setResidentName(dto.getResidentName());
+        entity.setResidentId(resident.id());
+        entity.setResidentName(resident.fullName());
         entity.setImagePath(dto.getImagePath());
         entity.setTitle(dto.getTitle());
         entity.setContent(dto.getContent());
@@ -154,7 +170,6 @@ public class requestService {
         entity.setUpdatedAt(now);
         Request savedRequest = requestRepository.save(entity);
 
-        // create processinglog
         ProcessingLog newLog = new ProcessingLog();
         newLog.setRecordType("Request");
         newLog.setRecordId(savedRequest.getId());
@@ -168,4 +183,14 @@ public class requestService {
         return this.mapToDto(savedRequest);
     }
 
+    private UUID extractUserId(Authentication authentication) {
+        if (authentication == null) {
+            return null;
+        }
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof com.QhomeBase.customerinteractionservice.security.UserPrincipal userPrincipal) {
+            return userPrincipal.uid();
+        }
+        return null;
+    }
 }

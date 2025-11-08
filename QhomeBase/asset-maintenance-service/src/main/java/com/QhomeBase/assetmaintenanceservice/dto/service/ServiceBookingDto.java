@@ -2,6 +2,7 @@ package com.QhomeBase.assetmaintenanceservice.dto.service;
 
 import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus;
 import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServicePaymentStatus;
+import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServicePricingType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,6 +25,7 @@ public class ServiceBookingDto {
     private UUID serviceId;
     private String serviceCode;
     private String serviceName;
+    private ServicePricingType servicePricingType;
     private LocalDate bookingDate;
     private LocalTime startTime;
     private LocalTime endTime;

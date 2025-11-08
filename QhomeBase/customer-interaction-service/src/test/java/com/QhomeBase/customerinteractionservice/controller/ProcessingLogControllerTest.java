@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -41,13 +42,14 @@ class ProcessingLogControllerTest {
         sampleLogDTO = new ProcessingLogDTO(
                 UUID.randomUUID(),
                 "Request",
-                sampleRequestId,
-                sampleStaffId,
-                "Updated status to Progressing.",
-                "New",
-                "Reply",
-                "Staff Member",
-                LocalDateTime.now().toString().replace("T", " ")
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "Sample content",
+                "IN_PROGRESS",
+                "UPDATE",
+                "Supporter",
+                "supporter@example.com",
+                LocalDateTime.now().toString()
         );
     }
 
@@ -102,35 +104,37 @@ class ProcessingLogControllerTest {
 
 
     @Test
-    @DisplayName("POST /{requestId}/logs - Find new log success")
-    void addNewProcessLog_whenRequestIsValid_shouldReturnOkAndNewLog() {
+    @DisplayName("POST /{requestId}/logs - Success")
+    void addNewProcessLog_whenValid_shouldReturnCreatedLog() {
         // Arrange
-        when(processingLogService.addProcessingLog(any(UUID.class), any(ProcessingLogDTO.class)))
+        Authentication auth = mock(Authentication.class);
+        when(processingLogService.addProcessingLog(any(UUID.class), any(ProcessingLogDTO.class), any(Authentication.class)))
                 .thenReturn(sampleLogDTO);
 
         // Act
-        ResponseEntity<ProcessingLogDTO> response = requestProcessingLogController.addNewProcessLog(sampleRequestId, sampleLogDTO);
+        ResponseEntity<ProcessingLogDTO> response = requestProcessingLogController.addNewProcessLog(
+                sampleRequestId,
+                sampleLogDTO,
+                auth
+        );
 
         // Assert
-        assertNotNull(response);
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertNotNull(response.getBody());
-        assertEquals(sampleLogDTO.getId(), response.getBody().getId());
-        assertEquals("New", response.getBody().getRequestStatus());
+        assertEquals(sampleLogDTO, response.getBody());
+        verify(processingLogService).addProcessingLog(sampleRequestId, sampleLogDTO, auth);
     }
 
     @Test
-    @DisplayName("POST /{requestId}/logs - Failed when error thrown")
-    void addNewProcessLog_whenServiceThrowsException_shouldThrowException() {
+    @DisplayName("POST /{requestId}/logs - When service throws error")
+    void addNewProcessLog_whenServiceFails_shouldPropagateException() {
         // Arrange
-        when(processingLogService.addProcessingLog(any(UUID.class), any(ProcessingLogDTO.class)))
-                .thenThrow(new RuntimeException("Request not found"));
+        Authentication auth = mock(Authentication.class);
+        when(processingLogService.addProcessingLog(any(UUID.class), any(ProcessingLogDTO.class), any(Authentication.class)))
+                .thenThrow(new RuntimeException("Boom"));
 
         // Act & Assert
-        assertThrows(RuntimeException.class, () -> {
-            requestProcessingLogController.addNewProcessLog(sampleRequestId, sampleLogDTO);
-        });
-
-        verify(processingLogService).addProcessingLog(sampleRequestId, sampleLogDTO);
+        assertThrows(RuntimeException.class, () ->
+                requestProcessingLogController.addNewProcessLog(sampleRequestId, sampleLogDTO, auth)
+        );
     }
 }

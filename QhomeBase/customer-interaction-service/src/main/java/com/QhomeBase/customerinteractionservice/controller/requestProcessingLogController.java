@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import com.QhomeBase.customerinteractionservice.dto.ProcessingLogDTO;
 import com.QhomeBase.customerinteractionservice.service.processingLogService;
+import org.springframework.security.core.Authentication;
 
 @CrossOrigin(origins = "http://localhost:3000")
 
@@ -39,9 +40,10 @@ public class requestProcessingLogController {
     @PostMapping("/{requestId}/logs")
     public ResponseEntity<ProcessingLogDTO> addNewProcessLog(
             @PathVariable("requestId") UUID id,
-            @RequestBody ProcessingLogDTO logData) {
+            @RequestBody ProcessingLogDTO logData,
+            Authentication authentication) {
 
-        ProcessingLogDTO newLog = processingLogService.addProcessingLog(id, logData);
+        ProcessingLogDTO newLog = processingLogService.addProcessingLog(id, logData, authentication);
         return ResponseEntity.ok(newLog);
     }
 

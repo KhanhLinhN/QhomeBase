@@ -3,6 +3,7 @@ package com.QhomeBase.baseservice.controller;
 import com.QhomeBase.baseservice.dto.*;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import com.QhomeBase.baseservice.service.ResidentAccountService;
+import com.QhomeBase.baseservice.service.ResidentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +23,8 @@ import java.util.UUID;
 public class ResidentController {
     
     private final ResidentAccountService residentAccountService;
-    
+    private final ResidentService residentService;
+
     @GetMapping("/units/{unitId}/household/members/without-account")
     @PreAuthorize("hasRole('RESIDENT')")
     public ResponseEntity<List<ResidentWithoutAccountDto>> getResidentsWithoutAccount(
@@ -113,6 +115,55 @@ public class ResidentController {
             return ResponseEntity.ok(units);
         } catch (Exception e) {
             log.warn("Failed to get my units: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @GetMapping("/{residentId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORTER', 'RESIDENT')")
+    public ResponseEntity<ResidentDto> getResidentById(@PathVariable UUID residentId) {
+        try {
+            ResidentDto resident = residentService.getById(residentId);
+            return ResponseEntity.ok(resident);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to get resident {}: {}", residentId, e.getMessage());
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @GetMapping("/by-user/{userId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORTER', 'RESIDENT')")
+    public ResponseEntity<ResidentDto> getResidentByUserId(@PathVariable UUID userId) {
+        try {
+            ResidentDto resident = residentService.getByUserId(userId);
+            return ResponseEntity.ok(resident);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to get resident by user {}: {}", userId, e.getMessage());
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @GetMapping("/me")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<ResidentDto> getMyResident(Authentication authentication) {
+        try {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            ResidentDto resident = residentService.getByUserId(principal.uid());
+            return ResponseEntity.ok(resident);
+        } catch (IllegalArgumentException e) {
+            log.warn("Resident not found for current user: {}", e.getMessage());
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @PostMapping("/staff/sync")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ResidentDto> syncStaffResident(@Valid @RequestBody StaffResidentSyncRequest request) {
+        try {
+            ResidentDto resident = residentService.syncStaffResident(request);
+            return ResponseEntity.ok(resident);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to sync staff resident: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         }
     }

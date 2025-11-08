@@ -31,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
@@ -81,7 +83,6 @@ public class ServiceBookingService {
         booking.setDurationHours(request.getDurationHours());
         booking.setNumberOfPeople(request.getNumberOfPeople());
         booking.setPurpose(trimToNull(request.getPurpose()));
-        booking.setTotalAmount(request.getTotalAmount());
         booking.setTermsAccepted(Boolean.TRUE.equals(request.getTermsAccepted()));
         booking.setPaymentStatus(ServicePaymentStatus.UNPAID);
         booking.setStatus(ServiceBookingStatus.PENDING);
@@ -93,9 +94,7 @@ public class ServiceBookingService {
         booking.getBookingSlots().addAll(buildSlots(booking, request.getSlots(),
                 request.getBookingDate(), request.getStartTime(), request.getEndTime()));
 
-        if (booking.getTotalAmount() == null) {
-            booking.setTotalAmount(calculateTotalAmount(booking));
-        }
+        booking.setTotalAmount(calculateTotalAmount(booking));
 
         ServiceBooking saved = serviceBookingRepository.save(booking);
         return toDto(saved);
@@ -292,6 +291,7 @@ public class ServiceBookingService {
                 .serviceId(service.getId())
                 .serviceCode(service.getCode())
                 .serviceName(service.getName())
+                .pricingType(service.getPricingType())
                 .combos(combos)
                 .options(options)
                 .optionGroups(optionGroups)
@@ -426,6 +426,7 @@ public class ServiceBookingService {
         ItemSource source = resolveItemSource(booking.getService().getId(), request, catalog);
         String code = StringUtils.hasText(request.getItemCode()) ? request.getItemCode().trim() : source.code();
         String name = StringUtils.hasText(request.getItemName()) ? request.getItemName().trim() : source.name();
+
         if (!StringUtils.hasText(code)) {
             throw new IllegalArgumentException("Booking item code is required");
         }
@@ -436,7 +437,7 @@ public class ServiceBookingService {
         if (quantity <= 0) {
             throw new IllegalArgumentException("Booking item quantity must be positive");
         }
-        BigDecimal unitPrice = request.getUnitPrice() != null ? request.getUnitPrice() : source.unitPrice();
+        BigDecimal unitPrice = source.unitPrice;
         if (unitPrice == null) {
             throw new IllegalArgumentException("Booking item unit price is required");
         }
@@ -485,17 +486,60 @@ public class ServiceBookingService {
     }
 
     private BigDecimal calculateTotalAmount(ServiceBooking booking) {
-        return booking.getBookingItems().stream()
+        BigDecimal baseCharge = calculateBaseCharge(booking);
+        BigDecimal itemsTotal = booking.getBookingItems().stream()
                 .map(item -> {
                     if (item.getTotalPrice() != null) {
                         return item.getTotalPrice();
                     }
-                    return item.getUnitPrice().multiply(BigDecimal.valueOf(
-                            item.getQuantity() != null ? item.getQuantity() : 1));
+                    BigDecimal unitPrice = item.getUnitPrice();
+                    Integer quantity = item.getQuantity();
+                    if (unitPrice == null || quantity == null) {
+                        return BigDecimal.ZERO;
+                    }
+                    return unitPrice.multiply(BigDecimal.valueOf(quantity));
                 })
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return baseCharge.add(itemsTotal);
     }
+
+    private BigDecimal calculateBaseCharge(ServiceBooking booking) {
+        com.QhomeBase.assetmaintenanceservice.model.service.Service service = booking.getService();
+        if (service == null || service.getPricingType() == null) {
+            return BigDecimal.ZERO;
+        }
+        return switch (service.getPricingType()) {
+            case HOURLY -> calculateHourlyCharge(service.getPricePerHour(), booking);
+            case SESSION -> defaultCharge(service.getPricePerSession());
+            case FREE -> BigDecimal.ZERO;
+        };
+    }
+
+    private BigDecimal calculateHourlyCharge(BigDecimal pricePerHour, ServiceBooking booking) {
+        if (pricePerHour == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal durationHours = booking.getDurationHours();
+        if (durationHours == null) {
+            if (booking.getStartTime() != null && booking.getEndTime() != null && booking.getEndTime().isAfter(booking.getStartTime())) {
+                long minutes = Duration.between(booking.getStartTime(), booking.getEndTime()).toMinutes();
+                if (minutes > 0) {
+                    durationHours = BigDecimal.valueOf(minutes)
+                            .divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
+                }
+            }
+        }
+        if (durationHours == null || durationHours.compareTo(BigDecimal.ZERO) <= 0) {
+            durationHours = BigDecimal.ONE;
+        }
+        return pricePerHour.multiply(durationHours);
+    }
+
+    private BigDecimal defaultCharge(BigDecimal price) {
+        return price != null ? price : BigDecimal.ZERO;
+    }
+
 
     private void validateSlot(ServiceBooking booking,
                               LocalDate date,
@@ -587,6 +631,7 @@ public class ServiceBookingService {
                 .serviceId(service != null ? service.getId() : null)
                 .serviceCode(service != null ? service.getCode() : null)
                 .serviceName(service != null ? service.getName() : null)
+                .servicePricingType(service != null ? service.getPricingType() : null)
                 .bookingDate(booking.getBookingDate())
                 .startTime(booking.getStartTime())
                 .endTime(booking.getEndTime())
@@ -710,7 +755,8 @@ public class ServiceBookingService {
                 if (combo == null || combo.getService() == null || !combo.getService().getId().equals(serviceId)) {
                     throw new IllegalArgumentException("Combo does not belong to the service: " + itemId);
                 }
-                return new ItemSource(combo.getCode(), combo.getName(), combo.getPrice());
+                BigDecimal priceOfItem =  combo.getPrice();
+                return new ItemSource(combo.getCode(), combo.getName(), priceOfItem);
             }
             case OPTION -> {
                 ServiceOption option = catalog != null
@@ -719,7 +765,8 @@ public class ServiceBookingService {
                 if (option == null || option.getService() == null || !option.getService().getId().equals(serviceId)) {
                     throw new IllegalArgumentException("Option does not belong to the service: " + itemId);
                 }
-                return new ItemSource(option.getCode(), option.getName(), option.getPrice());
+                BigDecimal priceOfItem =  option.getPrice();
+                return new ItemSource(option.getCode(), option.getName(), priceOfItem);
             }
             case TICKET -> {
                 ServiceTicket ticket = catalog != null
@@ -728,8 +775,10 @@ public class ServiceBookingService {
                 if (ticket == null || ticket.getService() == null || !ticket.getService().getId().equals(serviceId)) {
                     throw new IllegalArgumentException("Ticket does not belong to the service: " + itemId);
                 }
-                return new ItemSource(ticket.getCode(), ticket.getName(), ticket.getPrice());
+                BigDecimal priceOfItem =  ticket.getPrice();
+                return new ItemSource(ticket.getCode(),ticket.getName(), priceOfItem);
             }
+
             default -> throw new IllegalArgumentException("Unsupported booking item type: " + itemType);
         }
     }
@@ -754,3 +803,4 @@ public class ServiceBookingService {
 }
 
 
+ 

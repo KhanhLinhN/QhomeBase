@@ -1,5 +1,6 @@
 package com.QhomeBase.iamservice.controller;
 
+import com.QhomeBase.iamservice.client.BaseServiceClient;
 import com.QhomeBase.iamservice.dto.CreateUserForResidentDto;
 import com.QhomeBase.iamservice.dto.UserAccountDto;
 import com.QhomeBase.iamservice.dto.UserInfoDto;
@@ -37,6 +38,7 @@ public class UserController {
     private final UserRepository userRepository;
     private final RolePermissionRepository rolePermissionRepository;
     private final UserService userService;
+    private final BaseServiceClient baseServiceClient;
 
     @GetMapping("/{userId}")
     @PreAuthorize("@authz.canViewUser(#userId)")
@@ -301,6 +303,7 @@ public class UserController {
                     roles,
                     request.active() == null || request.active()
             );
+            baseServiceClient.syncStaffResident(user.getId(), request.username(), request.email(), null);
             return ResponseEntity.status(HttpStatus.CREATED).body(toAccountDto(user));
         } catch (IllegalArgumentException e) {
             log.warn("Failed to create staff account: {}", e.getMessage());
@@ -355,6 +358,7 @@ public class UserController {
                     request.newPassword(),
                     roles
             );
+            baseServiceClient.syncStaffResident(updated.getId(), updated.getUsername(), updated.getEmail(), null);
             return ResponseEntity.ok(toAccountDto(updated));
         } catch (IllegalArgumentException e) {
             log.warn("Failed to update staff account {}: {}", userId, e.getMessage());

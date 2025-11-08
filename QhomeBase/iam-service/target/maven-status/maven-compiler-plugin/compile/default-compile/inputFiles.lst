@@ -1,3 +1,4 @@
+D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\client\BaseServiceClient.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\client\WebClientService.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\config\WebClientConfig.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\controller\AuthController.java
@@ -50,6 +51,7 @@ D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservi
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\security\SecurityConfig.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\security\UserPrincipal.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\AuthService.java
+D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\EmailService.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\EmployeeManagementService.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\EmployeeRoleManagementService.java
 D:\Capstone\QhomeBase\QhomeBase\iam-service\src\main\java\com\QhomeBase\iamservice\service\PermissionService.java
