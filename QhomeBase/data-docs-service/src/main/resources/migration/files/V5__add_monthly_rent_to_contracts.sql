@@ -11,3 +11,8 @@ ALTER TABLE files.contracts
 COMMENT ON COLUMN files.contracts.monthly_rent IS 'Tiền thuê hàng tháng (VND) - chỉ dùng cho hợp đồng RENTAL';
 
 
+
+
+
+
+

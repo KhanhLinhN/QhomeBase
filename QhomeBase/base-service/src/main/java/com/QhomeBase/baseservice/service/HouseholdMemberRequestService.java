@@ -62,14 +62,6 @@ public class HouseholdMemberRequestService {
                     .ifPresent(member -> {
                         throw new IllegalArgumentException("Resident is already a member of this household");
                     });
-        } else if (createDto.residentNationalId() != null && !createDto.residentNationalId().isBlank()) {
-            requestRepository.findFirstByHouseholdIdAndResidentNationalIdAndStatusIn(
-                    createDto.householdId(),
-                    createDto.residentNationalId(),
-                    List.of(RequestStatus.PENDING)
-            ).ifPresent(existing -> {
-                throw new IllegalArgumentException("There is already a pending request for this national ID");
-            });
         } else if (createDto.residentPhone() != null && !createDto.residentPhone().isBlank()) {
             requestRepository.findFirstByHouseholdIdAndResidentFullNameIgnoreCaseAndResidentPhoneAndStatusIn(
                     createDto.householdId(),

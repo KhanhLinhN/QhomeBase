@@ -56,3 +56,8 @@ CREATE TRIGGER trg_sync_meter_readings_cycle
 
 -- 7. Document the column
 COMMENT ON COLUMN data.meter_readings.cycle_id IS 'Reading cycle ID (sync with assignment when present)';
+
+
+
+
+

@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -98,11 +97,26 @@ public class ResidentAccountService {
     
     @Transactional
     public ResidentAccountDto createAccountForResident(UUID residentId, CreateResidentAccountDto request, UUID requesterUserId) {
-        return createAccountForResident(residentId, request, requesterUserId, null);
+        return createAccountForResidentInternal(residentId, request, requesterUserId, null, false);
     }
     
     @Transactional
     public ResidentAccountDto createAccountForResident(UUID residentId, CreateResidentAccountDto request, UUID requesterUserId, String token) {
+        return createAccountForResidentInternal(residentId, request, requesterUserId, token, false);
+    }
+
+    @Transactional
+    public ResidentAccountDto createAccountForResidentAsAdmin(UUID residentId, CreateResidentAccountDto request, String token) {
+        return createAccountForResidentInternal(residentId, request, null, token, true);
+    }
+
+    private ResidentAccountDto createAccountForResidentInternal(
+            UUID residentId,
+            CreateResidentAccountDto request,
+            UUID requesterUserId,
+            String token,
+            boolean skipPermissionCheck
+    ) {
         Resident resident = residentRepository.findById(residentId)
                 .orElseThrow(() -> new IllegalArgumentException("Resident not found"));
         
@@ -120,7 +134,7 @@ public class ResidentAccountService {
         Household household = householdRepository.findById(members.get(0).getHouseholdId())
                 .orElseThrow(() -> new IllegalArgumentException("Household not found"));
         
-        if (!canCreateAccountForUnit(household.getUnitId(), requesterUserId)) {
+        if (!skipPermissionCheck && !canCreateAccountForUnit(household.getUnitId(), requesterUserId)) {
             throw new IllegalArgumentException("You don't have permission to create account for this resident");
         }
         

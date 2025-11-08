@@ -68,6 +68,42 @@ public class AuthzService {
         return okPerm || okRole || isGlobalAdmin();
     }
 
+    public boolean canViewServiceCategory() {
+        boolean okPerm = hasPerm("asset.service-category.view");
+        boolean okRole = hasAnyRole(Set.of("ADMIN", "SUPPORTER", "TECHNICIAN", "ACCOUNTANT"));
+        return okPerm || okRole || isGlobalAdmin();
+    }
+
+    public boolean canManageServiceCategory() {
+        boolean okPerm = hasPerm("asset.service-category.manage");
+        boolean okRole = hasAnyRole(Set.of("ADMIN", "SUPPORTER"));
+        return okPerm || okRole || isGlobalAdmin();
+    }
+
+    public boolean canViewServiceConfig() {
+        boolean okPerm = hasPerm("asset.service.config.view");
+        boolean okRole = hasAnyRole(Set.of("ADMIN", "SUPPORTER", "TECHNICIAN", "ACCOUNTANT"));
+        return okPerm || okRole || isGlobalAdmin();
+    }
+
+    public boolean canManageServiceConfig() {
+        boolean okPerm = hasPerm("asset.service.config.manage");
+        boolean okRole = hasAnyRole(Set.of("ADMIN", "SUPPORTER"));
+        return okPerm || okRole || isGlobalAdmin();
+    }
+
+    public boolean canViewServiceBooking() {
+        boolean okPerm = hasPerm("asset.service.booking.view");
+        boolean okRole = hasAnyRole(Set.of("ADMIN", "SUPPORTER", "ACCOUNTANT"));
+        return okPerm || okRole || isGlobalAdmin();
+    }
+
+    public boolean canManageServiceBooking() {
+        boolean okPerm = hasPerm("asset.service.booking.manage");
+        boolean okRole = hasAnyRole(Set.of("ADMIN", "SUPPORTER"));
+        return okPerm || okRole || isGlobalAdmin();
+    }
+
     public boolean canCreateMaintenanceSchedule() {
         boolean okPerm = hasPerm("asset.maintenance.schedule.create");
         boolean okRole = hasAnyRole(Set.of("ADMIN", "SUPPORTER"));

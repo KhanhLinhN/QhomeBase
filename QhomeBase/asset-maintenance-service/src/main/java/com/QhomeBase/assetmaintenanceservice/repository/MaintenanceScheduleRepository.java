@@ -50,9 +50,9 @@ public interface MaintenanceScheduleRepository extends JpaRepository<Maintenance
            "(:assignedTo IS NULL OR ms.assignedTo = :assignedTo) AND " +
            "(:isActive IS NULL OR ms.isActive = :isActive) AND " +
            "(:maintenanceType IS NULL OR ms.maintenanceType = :maintenanceType)")
-    Page<MaintenanceSchedule> findWithFilters(@Param("assetId") UUID assetId,
+    List<MaintenanceSchedule> findWithFilters(@Param("assetId") UUID assetId,
                                               @Param("assignedTo") UUID assignedTo,
                                               @Param("isActive") Boolean isActive,
-                                              @Param("maintenanceType") String maintenanceType,
-                                              Pageable pageable);
+                                              @Param("maintenanceType") String maintenanceType)
+                                              ;
 }

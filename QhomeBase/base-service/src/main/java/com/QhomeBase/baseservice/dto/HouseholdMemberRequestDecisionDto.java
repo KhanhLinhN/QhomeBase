@@ -8,3 +8,8 @@ public record HouseholdMemberRequestDecisionDto(
 
         String rejectionReason
 ) {}
+
+
+
+
+

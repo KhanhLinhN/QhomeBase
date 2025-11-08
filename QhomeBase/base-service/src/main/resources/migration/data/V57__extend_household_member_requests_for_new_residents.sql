@@ -11,3 +11,8 @@ ALTER TABLE data.household_member_requests
 CREATE INDEX IF NOT EXISTS idx_hmr_national_id
     ON data.household_member_requests (resident_national_id)
     WHERE resident_national_id IS NOT NULL;
+
+
+
+
+
