@@ -41,7 +41,7 @@ public class ServiceOption {
     private BigDecimal price;
 
     @Column(name = "unit")
-    private String unit;
+      private String unit;
 
     @Column(name = "is_required")
     @Builder.Default
