@@ -5,10 +5,12 @@ import com.QhomeBase.iamservice.model.UserRole;
 import com.QhomeBase.iamservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.mail.MailException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,6 +21,7 @@ public class UserService {
     
     public final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
     
     @Transactional
     public User createUserForResident(String username, String email, String password, UUID residentId) {
@@ -68,6 +71,172 @@ public class UserService {
             password.append(chars.charAt(index));
         }
         return password.toString();
+    }
+
+    @Transactional
+    public void updatePassword(UUID userId, String newPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        String encodedPassword = passwordEncoder.encode(newPassword);
+        user.setPasswordHash(encodedPassword);
+        userRepository.save(user);
+        log.info("Updated password for user {}", userId);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<User> findUserWithRolesById(UUID userId) {
+        return userRepository.findById(userId).map(this::initializeRoles);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<User> findUserWithRolesByUsername(String username) {
+        return userRepository.findByUsername(username).map(this::initializeRoles);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<User> findUserWithRolesByEmail(String email) {
+        return userRepository.findByEmail(email).map(this::initializeRoles);
+    }
+
+    @Transactional(readOnly = true)
+    public List<User> findAvailableStaffWithRoles() {
+        List<User> users = userRepository.findAvailableStaff();
+        users.forEach(this::initializeRoles);
+        return users;
+    }
+
+    @Transactional(readOnly = true)
+    public List<User> findStaffWithRoles() {
+        List<User> users = userRepository.findStaffUsers();
+        users.forEach(this::initializeRoles);
+        return users;
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<User> findStaffWithRolesById(UUID userId) {
+        return userRepository.findById(userId)
+                .map(this::initializeRoles)
+                .filter(user -> user.getRoles().stream().anyMatch(this::isStaffRole));
+    }
+
+    @Transactional(readOnly = true)
+    public List<User> findResidentAccounts() {
+        List<User> users = userRepository.findByRoleIncludingInactive(UserRole.RESIDENT.name());
+        users.forEach(this::initializeRoles);
+        return users;
+    }
+
+    @Transactional
+    public User createStaffAccount(String username, String email, List<UserRole> roles, boolean active) {
+        if (roles == null || roles.isEmpty()) {
+            throw new IllegalArgumentException("Staff account requires at least one role");
+        }
+        if (roles.stream().anyMatch(role -> role == UserRole.RESIDENT || role == UserRole.UNIT_OWNER)) {
+            throw new IllegalArgumentException("Staff account cannot include resident or unit owner roles");
+        }
+        if (userRepository.findByUsername(username).isPresent()) {
+            throw new IllegalArgumentException("Username already exists: " + username);
+        }
+        if (userRepository.findByEmail(email).isPresent()) {
+            throw new IllegalArgumentException("Email already exists: " + email);
+        }
+        String rawPassword = generateRandomPassword(12);
+        String encodedPassword = passwordEncoder.encode(rawPassword);
+        User user = User.builder()
+                .username(username)
+                .email(email)
+                .passwordHash(encodedPassword)
+                .active(active)
+                .build();
+        roles.forEach(user::addRole);
+        User saved = userRepository.save(user);
+        log.info("Created staff user account {} with roles {}", saved.getId(), roles);
+        try {
+            emailService.sendStaffAccountCredentials(email, username, rawPassword);
+        } catch (MailException mailException) {
+            log.error("Failed to send credentials email to {} for staff account {}", email, saved.getId(), mailException);
+        }
+        return initializeRoles(saved);
+    }
+
+    @Transactional
+    public User updateStaffAccount(UUID userId,
+                                   String username,
+                                   String email,
+                                   Boolean active,
+                                   String newPassword,
+                                   List<UserRole> roles) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        initializeRoles(user);
+        if (user.getRoles().stream().anyMatch(role -> role == UserRole.RESIDENT || role == UserRole.UNIT_OWNER)) {
+            throw new IllegalArgumentException("Cannot update resident or unit owner using staff endpoint");
+        }
+
+        if (username != null && !username.isBlank() && !username.equalsIgnoreCase(user.getUsername())) {
+            userRepository.findByUsername(username).ifPresent(existing -> {
+                if (!existing.getId().equals(userId)) {
+                    throw new IllegalArgumentException("Username already exists: " + username);
+                }
+            });
+            user.setUsername(username);
+        }
+
+        if (email != null && !email.isBlank() && !email.equalsIgnoreCase(user.getEmail())) {
+            userRepository.findByEmail(email).ifPresent(existing -> {
+                if (!existing.getId().equals(userId)) {
+                    throw new IllegalArgumentException("Email already exists: " + email);
+                }
+            });
+            user.setEmail(email);
+        }
+
+        if (active != null) {
+            user.setActive(active);
+        }
+
+        if (newPassword != null && !newPassword.isBlank()) {
+            String encodedPassword = passwordEncoder.encode(newPassword);
+            user.setPasswordHash(encodedPassword);
+        }
+
+        if (roles != null) {
+            if (roles.isEmpty()) {
+                throw new IllegalArgumentException("Staff account requires at least one role");
+            }
+            if (roles.stream().anyMatch(role -> role == UserRole.RESIDENT || role == UserRole.UNIT_OWNER)) {
+                throw new IllegalArgumentException("Staff account cannot include resident or unit owner roles");
+            }
+            user.setRoles(new java.util.ArrayList<>(roles));
+        }
+
+        User saved = userRepository.save(user);
+        log.info("Updated staff user account {}", userId);
+        return initializeRoles(saved);
+    }
+
+    @Transactional
+    public void deleteStaffAccount(UUID userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        initializeRoles(user);
+        if (user.getRoles().stream().anyMatch(role -> role == UserRole.RESIDENT || role == UserRole.UNIT_OWNER)) {
+            throw new IllegalArgumentException("Cannot delete resident or unit owner using staff endpoint");
+        }
+        userRepository.delete(user);
+        log.info("Deleted staff user account {}", userId);
+    }
+
+    private User initializeRoles(User user) {
+        user.getRoles().size();
+        return user;
+    }
+
+    private boolean isStaffRole(UserRole role) {
+        return role == UserRole.ADMIN
+                || role == UserRole.ACCOUNTANT
+                || role == UserRole.TECHNICIAN
+                || role == UserRole.SUPPORTER;
     }
 }
 
