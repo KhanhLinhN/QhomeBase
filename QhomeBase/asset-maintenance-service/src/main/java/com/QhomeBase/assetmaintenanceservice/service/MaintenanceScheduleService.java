@@ -39,10 +39,15 @@ public class MaintenanceScheduleService {
         return toDto(schedule);
     }
 
-    public Page<MaintenanceScheduleResponse> getAllSchedules(UUID assetId, UUID assignedTo, Boolean isActive, String maintenanceType, Pageable pageable) {
-        Page<MaintenanceSchedule> schedules = maintenanceScheduleRepository.findWithFilters(
-                assetId, assignedTo, isActive, maintenanceType, pageable);
-        return schedules.map(this::toDto);
+    public List<MaintenanceScheduleResponse> getAllSchedules(UUID assetId, UUID assignedTo, Boolean isActive, String maintenanceType) {
+        return maintenanceScheduleRepository.findWithFilters(
+                        assetId,
+                        assignedTo,
+                        isActive,
+                        maintenanceType)
+                .stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
     }
 
     public List<MaintenanceScheduleResponse> getSchedulesByAsset(UUID assetId) {

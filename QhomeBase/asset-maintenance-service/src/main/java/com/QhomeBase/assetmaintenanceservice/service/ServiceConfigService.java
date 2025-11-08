@@ -1,0 +1,404 @@
+package com.QhomeBase.assetmaintenanceservice.service;
+
+import com.QhomeBase.assetmaintenanceservice.repository.ServiceAvailabilityRepository;
+import org.springframework.data.util.Pair;
+import com.QhomeBase.assetmaintenanceservice.dto.service.*;
+import com.QhomeBase.assetmaintenanceservice.model.service.ServiceAvailability;
+import com.QhomeBase.assetmaintenanceservice.model.service.ServiceCombo;
+import com.QhomeBase.assetmaintenanceservice.model.service.ServiceComboItem;
+import com.QhomeBase.assetmaintenanceservice.model.service.ServiceOption;
+import com.QhomeBase.assetmaintenanceservice.model.service.ServiceOptionGroup;
+import com.QhomeBase.assetmaintenanceservice.model.service.ServiceOptionGroupItem;
+import com.QhomeBase.assetmaintenanceservice.model.service.ServiceTicket;
+import com.QhomeBase.assetmaintenanceservice.repository.ServiceCategoryRepository;
+import com.QhomeBase.assetmaintenanceservice.repository.ServiceRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class ServiceConfigService {
+
+    private final ServiceRepository serviceRepository;
+    private final ServiceCategoryRepository serviceCategoryRepository;
+    private final ServiceAvailabilityRepository serviceAvailabilityRepository;
+
+    @Transactional
+    public ServiceDto create(CreateServiceRequest request) {
+        validateCreateRequest(request);
+
+        var category = serviceCategoryRepository.findById(request.getCategoryId())
+                .orElseThrow(() -> new IllegalArgumentException("Service category not found: " + request.getCategoryId()));
+
+        if (serviceRepository.existsByCodeIgnoreCase(request.getCode())) {
+            throw new IllegalArgumentException("Service code already exists: " + request.getCode());
+        }
+
+        var entity = new com.QhomeBase.assetmaintenanceservice.model.service.Service();
+        entity.setCategory(category);
+        entity.setCode(request.getCode().trim());
+        entity.setName(request.getName().trim());
+        entity.setDescription(request.getDescription());
+        entity.setLocation(StringUtils.hasText(request.getLocation()) ? request.getLocation().trim() : null);
+        entity.setMapUrl(StringUtils.hasText(request.getMapUrl()) ? request.getMapUrl().trim() : null);
+        entity.setPricePerHour(request.getPricePerHour());
+        entity.setPricePerSession(request.getPricePerSession());
+        entity.setPricingType(request.getPricingType());
+        entity.setBookingType(request.getBookingType());
+        entity.setMaxCapacity(request.getMaxCapacity());
+        entity.setMinDurationHours(request.getMinDurationHours());
+        entity.setMaxDurationHours(request.getMaxDurationHours());
+        entity.setAdvanceBookingDays(request.getAdvanceBookingDays());
+        entity.setRules(request.getRules());
+        if (request.getIsActive() != null) {
+            entity.setIsActive(request.getIsActive());
+        }
+
+        var saved = serviceRepository.save(entity);
+        return toDto(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public ServiceDto findById(java.util.UUID id) {
+        return serviceRepository.findById(id)
+                .map(this::toDto)
+                .orElseThrow(() -> new IllegalArgumentException("Service not found: " + id));
+    }
+    public void deactive(UUID serivceId) {
+        com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(serivceId).orElseThrow(()
+                -> new IllegalArgumentException("Service not found: " + serivceId));
+        service.setIsActive(false);
+        serviceRepository.save(service);
+
+    }
+    public List<ServiceAvailabilityDto> findAvailability(UUID serivceId) {
+        com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(serivceId).orElseThrow(()
+                -> new IllegalArgumentException("Service not found: " + serivceId));
+        List<ServiceAvailability> serviceAvailability = service.getAvailabilities();
+        return mapAvailabilities(serviceAvailability);
+    }
+    public List<ServiceAvailabilityDto> addAvailability(UUID serivceId, ServiceAvailabilityRequest request) {
+        com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(serivceId).orElseThrow(()
+                -> new IllegalArgumentException("Service not found: " + serivceId));
+        List<ServiceAvailability> serviceAvailability = service.getAvailabilities();
+        if (!validateNewAvailability(serivceId, request)) {
+            throw new IllegalArgumentException("New availability is not valid");
+        };
+        ServiceAvailability serviceAvailabilityToAdd = ServiceAvailability.builder()
+                        .service(service)
+                                .dayOfWeek(request.getDayOfWeek())
+                                        .startTime(request.getStartTime())
+                                                .endTime(request.getEndTime())
+                                                        .isAvailable(request.getIsAvailable())
+                                                                .createdAt(OffsetDateTime.now()).build();
+        serviceAvailabilityRepository.save(serviceAvailabilityToAdd);
+        serviceAvailability.add(serviceAvailabilityToAdd);
+        service.setAvailabilities(serviceAvailability);
+        serviceRepository.save(service);
+        return mapAvailabilities(serviceAvailability);
+
+
+    }
+    public boolean validateNewAvailability(UUID serivceId, ServiceAvailabilityRequest request) {
+        com.QhomeBase.assetmaintenanceservice.model.service.Service services = serviceRepository.findById(serivceId).orElseThrow(()
+                -> new IllegalArgumentException("Service not found: " + serivceId));
+        List<ServiceAvailability> serviceAvailability = services.getAvailabilities();
+        Map<Integer, List<Pair<LocalTime, LocalTime>>> existingSlots = new HashMap<>();
+
+        for (ServiceAvailability availability : serviceAvailability) {
+            if (!existingSlots.containsKey(availability.getDayOfWeek())) {
+                existingSlots.put(availability.getDayOfWeek(), new ArrayList<>());
+                existingSlots.get(availability.getDayOfWeek()).add(Pair.of(availability.getStartTime(), availability.getEndTime()));
+
+            } else {
+                existingSlots.get(availability.getDayOfWeek()).add(Pair.of(availability.getStartTime(), availability.getEndTime()));
+            }
+        }
+        Integer newDayOfWeek = request.getDayOfWeek();
+        List<Pair<LocalTime, LocalTime>> existingSlotsForThisDay = existingSlots.get(newDayOfWeek);
+
+
+        if (existingSlotsForThisDay == null || existingSlotsForThisDay.isEmpty()) {
+            return true;
+        }
+        for(Pair<LocalTime, LocalTime> existingSlot: existingSlotsForThisDay) {
+            LocalTime existingStart = existingSlot.getFirst();
+            LocalTime existingEnd = existingSlot.getSecond();
+            if (request.getStartTime().isBefore(existingEnd) && request.getEndTime().isAfter(existingStart)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    public void deleteAvailability(UUID serivceId, UUID availabilityId) {
+        if (!serviceAvailabilityRepository.findById(availabilityId).isPresent()) {
+            throw new IllegalArgumentException("Service not found: " + availabilityId);
+        }
+        com.QhomeBase.assetmaintenanceservice.model.service.Service services = serviceRepository.findById(serivceId).orElseThrow(()
+                -> new IllegalArgumentException("Service not found: " + serivceId));
+        List<ServiceAvailability> serviceAvailability = services.getAvailabilities();
+        ServiceAvailability u = serviceAvailability.stream().filter(serviceAvailability1 -> serviceAvailability1.getId().equals(availabilityId)).findFirst().orElse(null);
+        serviceAvailability.remove(u);
+        serviceRepository.save(services);
+    }
+
+
+    private void validateCreateRequest(CreateServiceRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Create service request must not be null");
+        }
+        if (!StringUtils.hasText(request.getCode())) {
+            throw new IllegalArgumentException("Service code is required");
+        }
+        if (!StringUtils.hasText(request.getName())) {
+            throw new IllegalArgumentException("Service name is required");
+        }
+        if (request.getPricingType() == null) {
+            throw new IllegalArgumentException("Service pricing type is required");
+        }
+        if (request.getBookingType() == null) {
+            throw new IllegalArgumentException("Service booking type is required");
+        }
+        if (request.getCategoryId() == null) {
+            throw new IllegalArgumentException("Service category ID is required");
+        }
+    }
+
+    public ServiceDto toDto(com.QhomeBase.assetmaintenanceservice.model.service.Service service) {
+        if (service == null) {
+            return null;
+        }
+
+        return ServiceDto.builder()
+                .id(service.getId())
+                .categoryId(service.getCategory() != null ? service.getCategory().getId() : null)
+                .category(service.getCategory() != null ? mapCategory(service.getCategory()) : null)
+                .code(service.getCode())
+                .name(service.getName())
+                .description(service.getDescription())
+                .location(service.getLocation())
+                .mapUrl(service.getMapUrl())
+                .pricePerHour(service.getPricePerHour())
+                .pricePerSession(service.getPricePerSession())
+                .pricingType(service.getPricingType())
+                .bookingType(service.getBookingType())
+                .maxCapacity(service.getMaxCapacity())
+                .minDurationHours(service.getMinDurationHours())
+                .maxDurationHours(service.getMaxDurationHours())
+                .advanceBookingDays(service.getAdvanceBookingDays())
+                .rules(service.getRules())
+                .isActive(service.getIsActive())
+                .createdAt(service.getCreatedAt())
+                .updatedAt(service.getUpdatedAt())
+                .availabilities(mapAvailabilities(service.getAvailabilities()))
+                .combos(mapCombos(service.getCombos()))
+                .options(mapOptions(service.getOptions()))
+                .optionGroups(mapOptionGroups(service.getOptionGroups()))
+                .tickets(mapTickets(service.getTickets()))
+                .build();
+    }
+
+    private ServiceCategoryDto mapCategory(com.QhomeBase.assetmaintenanceservice.model.service.ServiceCategory category) {
+        if (category == null) {
+            return null;
+        }
+        return ServiceCategoryDto.builder()
+                .id(category.getId())
+                .code(category.getCode())
+                .name(category.getName())
+                .description(category.getDescription())
+                .icon(category.getIcon())
+                .sortOrder(category.getSortOrder())
+                .isActive(category.getIsActive())
+                .createdAt(category.getCreatedAt())
+                .updatedAt(category.getUpdatedAt())
+                .build();
+    }
+
+    private List<ServiceAvailabilityDto> mapAvailabilities(List<ServiceAvailability> availabilities) {
+        if (availabilities == null || availabilities.isEmpty()) {
+            return List.of();
+        }
+        return availabilities.stream()
+                .filter(Objects::nonNull)
+                .map(availability -> ServiceAvailabilityDto.builder()
+                        .id(availability.getId())
+                        .serviceId(availability.getService() != null ? availability.getService().getId() : null)
+                        .dayOfWeek(availability.getDayOfWeek())
+                        .startTime(availability.getStartTime())
+                        .endTime(availability.getEndTime())
+                        .isAvailable(availability.getIsAvailable())
+                        .createdAt(availability.getCreatedAt())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    public ServiceComboDto toComboDto(ServiceCombo combo) {
+        if (combo == null) {
+            return null;
+        }
+        return mapCombo(combo);
+    }
+
+    private List<ServiceComboDto> mapCombos(List<ServiceCombo> combos) {
+        if (combos == null || combos.isEmpty()) {
+            return List.of();
+        }
+        return combos.stream()
+                .filter(Objects::nonNull)
+                .map(this::mapCombo)
+                .collect(Collectors.toList());
+    }
+
+    private ServiceComboDto mapCombo(ServiceCombo combo) {
+        return ServiceComboDto.builder()
+                .id(combo.getId())
+                .serviceId(combo.getService() != null ? combo.getService().getId() : null)
+                .code(combo.getCode())
+                .name(combo.getName())
+                .description(combo.getDescription())
+                .servicesIncluded(combo.getServicesIncluded())
+                .durationMinutes(combo.getDurationMinutes())
+                .price(combo.getPrice())
+                .isActive(combo.getIsActive())
+                .sortOrder(combo.getSortOrder())
+                .createdAt(combo.getCreatedAt())
+                .updatedAt(combo.getUpdatedAt())
+                .items(mapComboItems(combo.getItems()))
+                .build();
+    }
+
+    private List<ServiceComboItemDto> mapComboItems(List<ServiceComboItem> items) {
+        if (items == null || items.isEmpty()) {
+            return List.of();
+        }
+        return items.stream()
+                .filter(Objects::nonNull)
+                .map(item -> ServiceComboItemDto.builder()
+                        .id(item.getId())
+                        .comboId(item.getCombo() != null ? item.getCombo().getId() : null)
+                        .includedServiceId(item.getIncludedService() != null ? item.getIncludedService().getId() : null)
+                        .optionId(item.getOption() != null ? item.getOption().getId() : null)
+                        .quantity(item.getQuantity())
+                        .note(item.getNote())
+                        .sortOrder(item.getSortOrder())
+                        .createdAt(item.getCreatedAt())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    public ServiceOptionDto toOptionDto(ServiceOption option) {
+        if (option == null) {
+            return null;
+        }
+        return ServiceOptionDto.builder()
+                .id(option.getId())
+                .serviceId(option.getService() != null ? option.getService().getId() : null)
+                .code(option.getCode())
+                .name(option.getName())
+                .description(option.getDescription())
+                .price(option.getPrice())
+                .unit(option.getUnit())
+                .isRequired(option.getIsRequired())
+                .isActive(option.getIsActive())
+                .sortOrder(option.getSortOrder())
+                .createdAt(option.getCreatedAt())
+                .updatedAt(option.getUpdatedAt())
+                .build();
+    }
+
+    private List<ServiceOptionDto> mapOptions(List<ServiceOption> options) {
+        if (options == null || options.isEmpty()) {
+            return List.of();
+        }
+        return options.stream()
+                .filter(Objects::nonNull)
+                .map(this::toOptionDto)
+                .collect(Collectors.toList());
+    }
+
+    public ServiceOptionGroupDto toOptionGroupDto(ServiceOptionGroup group) {
+        if (group == null) {
+            return null;
+        }
+        return ServiceOptionGroupDto.builder()
+                .id(group.getId())
+                .serviceId(group.getService() != null ? group.getService().getId() : null)
+                .code(group.getCode())
+                .name(group.getName())
+                .description(group.getDescription())
+                .minSelect(group.getMinSelect())
+                .maxSelect(group.getMaxSelect())
+                .isRequired(group.getIsRequired())
+                .sortOrder(group.getSortOrder())
+                .createdAt(group.getCreatedAt())
+                .updatedAt(group.getUpdatedAt())
+                .items(mapOptionGroupItems(group.getItems()))
+                .build();
+    }
+
+    private List<ServiceOptionGroupDto> mapOptionGroups(List<ServiceOptionGroup> groups) {
+        if (groups == null || groups.isEmpty()) {
+            return List.of();
+        }
+        return groups.stream()
+                .filter(Objects::nonNull)
+                .map(this::toOptionGroupDto)
+                .collect(Collectors.toList());
+    }
+
+    private List<ServiceOptionGroupItemDto> mapOptionGroupItems(List<ServiceOptionGroupItem> items) {
+        if (items == null || items.isEmpty()) {
+            return List.of();
+        }
+        return items.stream()
+                .filter(Objects::nonNull)
+                .map(item -> ServiceOptionGroupItemDto.builder()
+                        .id(item.getId())
+                        .groupId(item.getGroup() != null ? item.getGroup().getId() : null)
+                        .optionId(item.getOption() != null ? item.getOption().getId() : null)
+                        .sortOrder(item.getSortOrder())
+                        .createdAt(item.getCreatedAt())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    private List<ServiceTicketDto> mapTickets(List<ServiceTicket> tickets) {
+        if (tickets == null || tickets.isEmpty()) {
+            return List.of();
+        }
+        return tickets.stream()
+                .filter(Objects::nonNull)
+                .map(this::toTicketDto)
+                .collect(Collectors.toList());
+    }
+
+    public ServiceTicketDto toTicketDto(ServiceTicket ticket) {
+        if (ticket == null) {
+            return null;
+        }
+        return ServiceTicketDto.builder()
+                .id(ticket.getId())
+                .serviceId(ticket.getService() != null ? ticket.getService().getId() : null)
+                .code(ticket.getCode())
+                .name(ticket.getName())
+                .ticketType(ticket.getTicketType())
+                .durationHours(ticket.getDurationHours())
+                .price(ticket.getPrice())
+                .maxPeople(ticket.getMaxPeople())
+                .description(ticket.getDescription())
+                .isActive(ticket.getIsActive())
+                .sortOrder(ticket.getSortOrder())
+                .createdAt(ticket.getCreatedAt())
+                .updatedAt(ticket.getUpdatedAt())
+                .build();
+    }
+}
+

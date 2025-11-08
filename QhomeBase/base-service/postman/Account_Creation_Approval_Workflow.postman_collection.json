@@ -49,6 +49,41 @@
 			"key": "accountRequestId",
 			"value": "",
 			"type": "string"
+		},
+		{
+			"key": "householdId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "memberRequestId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "memberFullName",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "memberPhone",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "memberEmail",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "memberNationalId",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "memberDob",
+			"value": "",
+			"type": "string"
 		}
 	],
 	"item": [
@@ -442,6 +477,193 @@
 							"path": ["api", "residents", "{{residentId}}", "account"]
 						},
 						"description": "Get account information for a resident (after approval)"
+					}
+				}
+			]
+		},
+		{
+			"name": "8. Household Member Request Workflow",
+			"item": [
+				{
+					"name": "Resident - Create Household Member Request",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData && jsonData.id) {",
+									"        pm.collectionVariables.set('memberRequestId', jsonData.id);",
+									"        pm.environment.set('memberRequestId', jsonData.id);",
+									"        console.log('✅ Household member request ID saved: ' + jsonData.id);",
+									"    }",
+									"} else {",
+									"    console.log('❌ Failed to create household member request: ' + pm.response.text());",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "{{residentToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"householdId\": \"{{householdId}}\",\n    \"residentFullName\": \"{{memberFullName}}\",\n    \"residentPhone\": \"{{memberPhone}}\",\n    \"residentEmail\": \"{{memberEmail}}\",\n    \"residentNationalId\": \"{{memberNationalId}}\",\n    \"residentDob\": \"{{memberDob}}\",\n    \"relation\": \"Quan hệ\",\n    \"proofOfRelationImageUrl\": null,\n    \"note\": \"Đăng ký cư trú\"\n}"
+						},
+						"url": {
+							"raw": "{{baseServiceUrl}}/api/household-member-requests",
+							"host": ["{{baseServiceUrl}}"],
+							"path": ["api", "household-member-requests"]
+						},
+						"description": "Primary resident submits a household member request"
+					}
+				},
+				{
+					"name": "Resident - View My Household Member Requests",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "{{residentToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseServiceUrl}}/api/household-member-requests/my",
+							"host": ["{{baseServiceUrl}}"],
+							"path": ["api", "household-member-requests", "my"]
+						},
+						"description": "Resident views all membership requests they have created"
+					}
+				},
+				{
+					"name": "Admin - View Pending Household Member Requests",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData && jsonData.length > 0) {",
+									"        var firstRequest = jsonData[0];",
+									"        if (!pm.collectionVariables.get('memberRequestId')) {",
+									"            pm.collectionVariables.set('memberRequestId', firstRequest.id);",
+									"        }",
+									"        pm.environment.set('memberRequestId', firstRequest.id);",
+									"        console.log('✅ Pending household member request ID saved: ' + firstRequest.id);",
+									"    } else {",
+									"        console.log('⚠️ No pending household member requests found');",
+									"    }",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "{{adminToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseServiceUrl}}/api/household-member-requests/pending",
+							"host": ["{{baseServiceUrl}}"],
+							"path": ["api", "household-member-requests", "pending"]
+						},
+						"description": "Admin fetches the list of pending household member requests"
+					}
+				},
+				{
+					"name": "Admin - Approve Household Member Request",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    console.log('✅ Household member request approved');",
+									"    if (jsonData) {",
+									"        if (jsonData.residentId) {",
+									"            pm.collectionVariables.set('residentId', jsonData.residentId);",
+									"            pm.environment.set('residentId', jsonData.residentId);",
+									"            console.log('   Resident ID saved: ' + jsonData.residentId);",
+									"        }",
+									"        if (jsonData.unitId && !pm.collectionVariables.get('unitId')) {",
+									"            pm.collectionVariables.set('unitId', jsonData.unitId);",
+									"            pm.environment.set('unitId', jsonData.unitId);",
+									"            console.log('   Unit ID inferred: ' + jsonData.unitId);",
+									"        }",
+									"    }",
+									"} else {",
+									"    console.log('❌ Failed to approve household member request: ' + pm.response.text());",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "{{adminToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"approve\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseServiceUrl}}/api/household-member-requests/{{memberRequestId}}/decision",
+							"host": ["{{baseServiceUrl}}"],
+							"path": ["api", "household-member-requests", "{{memberRequestId}}", "decision"]
+						},
+						"description": "Admin approves the household member request"
+					}
+				},
+				{
+					"name": "Admin - Reject Household Member Request",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "{{adminToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"approve\": false,\n    \"rejectionReason\": \"Không đủ giấy tờ chứng minh\"\n}"
+						},
+						"url": {
+							"raw": "{{baseServiceUrl}}/api/household-member-requests/{{memberRequestId}}/decision",
+							"host": ["{{baseServiceUrl}}"],
+							"path": ["api", "household-member-requests", "{{memberRequestId}}", "decision"]
+						},
+						"description": "Admin rejects the household member request"
 					}
 				}
 			]

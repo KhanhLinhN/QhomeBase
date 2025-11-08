@@ -46,8 +46,8 @@ public class BuildingDeletionService {
         var building = buildingRepository.findById(buildingId)
                 .orElseThrow(() -> new IllegalArgumentException("Building not found"));
         
-        if (building.getStatus() != BuildingStatus.DELETING) {
-            throw new IllegalStateException("Building must be in DELETING status to perform deletion tasks");
+        if (building.getStatus() != BuildingStatus.INACTIVE) {
+            throw new IllegalStateException("Building must be INACTIVE before performing deletion tasks");
         }
 
         inactivateActiveUnitsOfBuilding(buildingId);
@@ -73,14 +73,14 @@ public class BuildingDeletionService {
     }
 
     public List<BuildingDeletionRequestDto> getDeletingBuildings() {
-        var deletingBuildings = buildingRepository.findAll()
+        var inactiveBuildings = buildingRepository.findAll()
                 .stream()
-                .filter(building -> building.getStatus() == BuildingStatus.DELETING)
+                .filter(building -> building.getStatus() == BuildingStatus.INACTIVE)
                 .toList();
         
         return repo.findAll()
                 .stream()
-                .filter(req -> deletingBuildings.stream()
+                .filter(req -> inactiveBuildings.stream()
                         .anyMatch(building -> building.getId().equals(req.getBuildingId())))
                 .map(BuildingDeletionService::toDto)
                 .toList();
@@ -96,7 +96,7 @@ public class BuildingDeletionService {
     public List<com.QhomeBase.baseservice.model.Building> getDeletingBuildingsRaw() {
         return buildingRepository.findAll()
                 .stream()
-                .filter(building -> building.getStatus() == BuildingStatus.DELETING)
+                .filter(building -> building.getStatus() == BuildingStatus.INACTIVE)
                 .toList();
     }
 
@@ -133,9 +133,9 @@ public class BuildingDeletionService {
                     Collectors.counting()
                 ));
         
-        long unitsInactive = unitStatusCount.getOrDefault("INACTIVE", 0L);
+        long unitsInactive = unitStatusCount.getOrDefault(UnitStatus.INACTIVE.name(), 0L);
         
-        boolean unitsReady = units.size() == 0 || unitsInactive == units.size();
+        boolean unitsReady = units.isEmpty() || unitsInactive == units.size();
         boolean allTargetsReady = unitsReady;
         
         status.put("units", unitStatusCount);
@@ -156,7 +156,7 @@ public class BuildingDeletionService {
         var building = buildingRepository.findById(buildingId)
                 .orElseThrow(() -> new IllegalArgumentException("Building not found with ID: " + buildingId));
         
-        if (building.getStatus() == BuildingStatus.DELETING || building.getStatus() == BuildingStatus.ARCHIVED) {
+        if (building.getStatus() == BuildingStatus.INACTIVE || building.getStatus() == BuildingStatus.ARCHIVED) {
             throw new IllegalStateException("Building is already in deletion process or archived");
         }
         
@@ -197,7 +197,8 @@ public class BuildingDeletionService {
         var building = buildingRepository.findById(request.getBuildingId())
                 .orElseThrow(() -> new IllegalArgumentException("Building not found"));
         
-        building.setStatus(BuildingStatus.DELETING);
+        building.setStatus(BuildingStatus.INACTIVE);
+        inactivateActiveUnitsOfBuilding(request.getBuildingId());
         buildingRepository.save(building);
         
         request.setStatus(BuildingDeletionStatus.APPROVED);

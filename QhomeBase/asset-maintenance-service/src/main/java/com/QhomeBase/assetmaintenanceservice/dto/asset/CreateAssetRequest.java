@@ -66,7 +66,7 @@ public class CreateAssetRequest {
 
     private String notes;
 
-    private Object specifications; // JSON object
+    private Object specifications;
 }
 
 
