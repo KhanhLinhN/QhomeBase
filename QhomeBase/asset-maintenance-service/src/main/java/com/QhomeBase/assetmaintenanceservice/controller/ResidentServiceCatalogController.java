@@ -2,18 +2,22 @@ package com.QhomeBase.assetmaintenanceservice.controller;
 
 import com.QhomeBase.assetmaintenanceservice.dto.service.ResidentServiceDetailDto;
 import com.QhomeBase.assetmaintenanceservice.dto.service.ResidentServiceSummaryDto;
+import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceBookedSlotDto;
 import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceCategoryDto;
 import com.QhomeBase.assetmaintenanceservice.service.ResidentServiceCatalogService;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -42,6 +46,17 @@ public class ResidentServiceCatalogController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ResidentServiceDetailDto> getServiceDetail(@PathVariable UUID serviceId) {
         return ResponseEntity.ok(residentServiceCatalogService.getServiceDetail(serviceId));
+    }
+
+    @GetMapping("/services/{serviceId}/booked-slots")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<ServiceBookedSlotDto>> getServiceBookedSlots(
+            @PathVariable UUID serviceId,
+            @RequestParam(value = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(value = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(residentServiceCatalogService.getBookedSlots(serviceId, from, to));
     }
 }
 

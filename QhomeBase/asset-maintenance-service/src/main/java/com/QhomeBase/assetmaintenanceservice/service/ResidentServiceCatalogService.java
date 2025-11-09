@@ -7,6 +7,9 @@ import com.QhomeBase.assetmaintenanceservice.model.service.ServiceCombo;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceOption;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceOptionGroup;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceTicket;
+import com.QhomeBase.assetmaintenanceservice.model.service.ServiceBooking;
+import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus;
+import com.QhomeBase.assetmaintenanceservice.repository.ServiceBookingSlotRepository;
 import com.QhomeBase.assetmaintenanceservice.repository.ServiceCategoryRepository;
 import com.QhomeBase.assetmaintenanceservice.repository.ServiceRepository;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -30,12 +34,57 @@ public class ResidentServiceCatalogService {
     private final ServiceCategoryRepository categoryRepository;
     private final ServiceRepository serviceRepository;
     private final ServiceConfigService serviceConfigService;
+    private final ServiceBookingSlotRepository serviceBookingSlotRepository;
 
     public List<ServiceCategoryDto> getActiveCategories() {
         return categoryRepository.findByIsActiveTrueOrderBySortOrderAscNameAsc()
                 .stream()
                 .map(this::toCategoryDto)
                 .toList();
+    }
+
+    public List<ServiceBookedSlotDto> getBookedSlots(UUID serviceId, LocalDate fromDate, LocalDate toDate) {
+        java.util.Objects.requireNonNull(serviceId, "Service ID is required");
+
+        com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(serviceId)
+                .orElseThrow(() -> new IllegalArgumentException("Service not found: " + serviceId));
+
+        if (!Boolean.TRUE.equals(service.getIsActive())) {
+            throw new IllegalArgumentException("Service is inactive: " + serviceId);
+        }
+
+        LocalDate start = fromDate != null ? fromDate : LocalDate.now();
+        LocalDate end = toDate != null ? toDate : start.plusDays(30);
+
+        if (end.isBefore(start)) {
+            throw new IllegalArgumentException("The `to` date must be after `from` date");
+        }
+
+        if (end.isAfter(start.plusDays(90))) {
+            end = start.plusDays(90);
+        }
+
+        return serviceBookingSlotRepository
+                .findAllByServiceIdAndSlotDateBetweenOrderBySlotDateAscStartTimeAsc(serviceId, start, end)
+                .stream()
+                .filter(slot -> slot.getBooking() != null && isVisibleStatus(slot.getBooking()))
+                .map(slot -> ServiceBookedSlotDto.builder()
+                        .bookingId(slot.getBooking().getId())
+                        .slotDate(slot.getSlotDate())
+                        .startTime(slot.getStartTime())
+                        .endTime(slot.getEndTime())
+                        .bookingStatus(slot.getBooking().getStatus() != null
+                                ? slot.getBooking().getStatus().name()
+                                : null)
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    private boolean isVisibleStatus(ServiceBooking booking) {
+        ServiceBookingStatus status = booking.getStatus();
+        return status == ServiceBookingStatus.PENDING
+                || status == ServiceBookingStatus.APPROVED
+                || status == ServiceBookingStatus.COMPLETED;
     }
 
     @SuppressWarnings("NullAway")
