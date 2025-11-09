@@ -34,7 +34,7 @@ public class ServiceBookingController {
     private final ServiceBookingPaymentService bookingPaymentService;
     private final VnpayService vnpayService;
 
-    /* Resident / User endpoints */
+
 
     @GetMapping("/services/{serviceId}/booking/catalog")
     @PreAuthorize("isAuthenticated()")

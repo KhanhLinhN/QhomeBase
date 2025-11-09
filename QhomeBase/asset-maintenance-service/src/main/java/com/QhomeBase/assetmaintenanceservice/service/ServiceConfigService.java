@@ -21,6 +21,7 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -70,6 +71,54 @@ public class ServiceConfigService {
         return serviceRepository.findById(id)
                 .map(this::toDto)
                 .orElseThrow(() -> new IllegalArgumentException("Service not found: " + id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceDto> findAll(Boolean isActive) {
+        List<com.QhomeBase.assetmaintenanceservice.model.service.Service> services =
+                isActive == null ? serviceRepository.findAll() : serviceRepository.findAllByIsActive(isActive);
+
+        return services.stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparing(com.QhomeBase.assetmaintenanceservice.model.service.Service::getName,
+                        Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceComboDto> findAllCombos(Boolean isActive) {
+        return serviceRepository.findAll().stream()
+                .flatMap(service -> streamOf(service.getCombos()))
+                .map(this::mapCombo)
+                .filter(combo -> matchesActive(isActive, combo.getIsActive()))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceOptionDto> findAllOptions(Boolean isActive) {
+        return serviceRepository.findAll().stream()
+                .flatMap(service -> streamOf(service.getOptions()))
+                .map(this::toOptionDto)
+                .filter(option -> matchesActive(isActive, option.getIsActive()))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceOptionGroupDto> findAllOptionGroups() {
+        return serviceRepository.findAll().stream()
+                .flatMap(service -> streamOf(service.getOptionGroups()))
+                .map(this::toOptionGroupDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceTicketDto> findAllTickets(Boolean isActive) {
+        return serviceRepository.findAll().stream()
+                .flatMap(service -> streamOf(service.getTickets()))
+                .map(this::toTicketDto)
+                .filter(ticket -> matchesActive(isActive, ticket.getIsActive()))
+                .collect(Collectors.toList());
     }
     public void deactive(UUID serivceId) {
         com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(serivceId).orElseThrow(()
@@ -399,6 +448,21 @@ public class ServiceConfigService {
                 .createdAt(ticket.getCreatedAt())
                 .updatedAt(ticket.getUpdatedAt())
                 .build();
+    }
+
+    private boolean matchesActive(Boolean requested, Boolean actual) {
+        if (requested == null) {
+            return true;
+        }
+        boolean entityActive = Boolean.TRUE.equals(actual);
+        return Boolean.TRUE.equals(requested) ? entityActive : !entityActive;
+    }
+
+    private <T> Stream<T> streamOf(List<T> items) {
+        if (items == null) {
+            return Stream.empty();
+        }
+        return items.stream().filter(Objects::nonNull);
     }
 }
 

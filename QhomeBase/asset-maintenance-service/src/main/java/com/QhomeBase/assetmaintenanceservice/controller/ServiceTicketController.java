@@ -21,6 +21,12 @@ public class ServiceTicketController {
 
     private final ServiceTicketService serviceTicketService;
 
+    @GetMapping("/service-tickets")
+    @PreAuthorize("@authz.canViewServiceConfig()")
+    public ResponseEntity<List<ServiceTicketDto>> getAllTickets(@RequestParam(required = false) Boolean isActive) {
+        return ResponseEntity.ok(serviceTicketService.getAllTickets(isActive));
+    }
+
     @GetMapping("/services/{serviceId}/tickets")
     @PreAuthorize("@authz.canViewServiceConfig()")
     public ResponseEntity<List<ServiceTicketDto>> getTickets(@PathVariable UUID serviceId,
@@ -63,5 +69,6 @@ public class ServiceTicketController {
         return ResponseEntity.noContent().build();
     }
 }
+
 
 

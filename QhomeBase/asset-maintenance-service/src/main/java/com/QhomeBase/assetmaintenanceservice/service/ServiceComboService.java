@@ -35,13 +35,15 @@ public class ServiceComboService {
     public List<ServiceComboDto> getCombos(UUID serviceId, Boolean isActive) {
         com.QhomeBase.assetmaintenanceservice.model.service.Service service = findServiceOrThrow(serviceId);
         return serviceComboRepository.findAllByServiceId(service.getId()).stream()
-                .filter(combo -> {
-                    if (isActive == null) {
-                        return true;
-                    }
-                    boolean comboActive = Boolean.TRUE.equals(combo.getIsActive());
-                    return Boolean.TRUE.equals(isActive) ? comboActive : !comboActive;
-                })
+                .filter(combo -> filterByActive(combo, isActive))
+                .map(serviceConfigService::toComboDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceComboDto> getAllCombos(Boolean isActive) {
+        return serviceComboRepository.findAll().stream()
+                .filter(combo -> filterByActive(combo, isActive))
                 .map(serviceConfigService::toComboDto)
                 .collect(Collectors.toList());
     }
@@ -51,6 +53,14 @@ public class ServiceComboService {
         ServiceCombo combo = serviceComboRepository.findById(comboId)
                 .orElseThrow(() -> new IllegalArgumentException("Service combo not found: " + comboId));
         return serviceConfigService.toComboDto(combo);
+    }
+
+    private boolean filterByActive(ServiceCombo combo, Boolean isActive) {
+        if (isActive == null) {
+            return true;
+        }
+        boolean comboActive = Boolean.TRUE.equals(combo.getIsActive());
+        return Boolean.TRUE.equals(isActive) ? comboActive : !comboActive;
     }
 
     @Transactional

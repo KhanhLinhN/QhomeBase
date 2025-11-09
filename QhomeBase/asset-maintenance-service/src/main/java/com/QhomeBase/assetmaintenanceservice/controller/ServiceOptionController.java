@@ -33,6 +33,12 @@ public class ServiceOptionController {
 
     private final ServiceOptionService serviceOptionService;
 
+    @GetMapping("/service-options")
+    @PreAuthorize("@authz.canViewServiceConfig()")
+    public ResponseEntity<List<ServiceOptionDto>> getAllOptions(@RequestParam(required = false) Boolean isActive) {
+        return ResponseEntity.ok(serviceOptionService.getAllOptions(isActive));
+    }
+
     @GetMapping("/services/{serviceId}/options")
     @PreAuthorize("@authz.canViewServiceConfig()")
     public ResponseEntity<List<ServiceOptionDto>> getOptions(@PathVariable UUID serviceId,
@@ -81,6 +87,12 @@ public class ServiceOptionController {
         return ResponseEntity.ok(serviceOptionService.getOptionGroups(serviceId));
     }
 
+    @GetMapping("/service-option-groups")
+    @PreAuthorize("@authz.canViewServiceConfig()")
+    public ResponseEntity<List<ServiceOptionGroupDto>> getAllOptionGroups() {
+        return ResponseEntity.ok(serviceOptionService.getAllOptionGroups());
+    }
+
     @GetMapping("/service-option-groups/{groupId}")
     @PreAuthorize("@authz.canViewServiceConfig()")
     public ResponseEntity<ServiceOptionGroupDto> getOptionGroup(@PathVariable UUID groupId) {
@@ -116,6 +128,7 @@ public class ServiceOptionController {
         return ResponseEntity.noContent().build();
     }
 }
+
 
 
 
