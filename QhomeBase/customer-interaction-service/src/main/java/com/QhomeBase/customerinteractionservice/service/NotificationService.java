@@ -165,21 +165,6 @@ public class NotificationService {
                 .collect(Collectors.toList());
     }
 
-    private boolean shouldShowNotificationToResident(Notification notification, UUID buildingId) {
-        if (notification.getScope() == NotificationScope.INTERNAL) {
-            return false;
-        }
-
-        if (notification.getScope() == NotificationScope.EXTERNAL) {
-            if (notification.getTargetBuildingId() == null) {
-                return true;
-            }
-            return buildingId != null && buildingId.equals(notification.getTargetBuildingId());
-        }
-
-        return false;
-    }
-
     private void validateNotificationScope(NotificationScope scope, String targetRole, UUID targetBuildingId) {
         if (scope == null) {
             throw new IllegalArgumentException("Scope is required");
@@ -215,6 +200,21 @@ public class NotificationService {
                 .createdAt(notification.getCreatedAt())
                 .updatedAt(notification.getUpdatedAt())
                 .build();
+    }
+
+    private boolean shouldShowNotificationToResident(Notification notification, UUID buildingId) {
+        if (notification.getScope() == NotificationScope.INTERNAL) {
+            return false;
+        }
+
+        if (notification.getScope() == NotificationScope.EXTERNAL) {
+            if (notification.getTargetBuildingId() == null) {
+                return true;
+            }
+            return buildingId != null && buildingId.equals(notification.getTargetBuildingId());
+        }
+
+        return false;
     }
 
     private NotificationDetailResponse toDetailResponse(Notification notification) {

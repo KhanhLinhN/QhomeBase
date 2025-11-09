@@ -47,12 +47,18 @@ public class UserController {
             // Get resident info if exists
             UUID residentId = null;
             String fullName = null;
+            String phone = null;
+            String nationalId = null;
+            java.time.LocalDate dob = null;
             try {
                 var residentOpt = residentRepository.findByUserId(userId);
                 if (residentOpt.isPresent()) {
                     var resident = residentOpt.get();
                     residentId = resident.getId();
                     fullName = resident.getFullName();
+                    phone = resident.getPhone();
+                    nationalId = resident.getNationalId();
+                    dob = resident.getDob();
                 }
                 log.debug("Resident info for userId {}: residentId={}, fullName={}", userId, residentId, fullName);
             } catch (Exception e) {
@@ -71,6 +77,16 @@ public class UserController {
             }
             if (fullName != null) {
                 response.put("fullName", fullName);
+            }
+            if (phone != null) {
+                response.put("phoneNumber", phone);
+            }
+            if (nationalId != null) {
+                response.put("citizenId", nationalId);
+                response.put("identityNumber", nationalId);
+            }
+            if (dob != null) {
+                response.put("dateOfBirth", dob.toString());
             }
             
             log.debug("Returning user info response for userId: {}", userId);
