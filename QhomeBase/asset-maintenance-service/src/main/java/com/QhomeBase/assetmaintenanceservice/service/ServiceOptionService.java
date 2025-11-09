@@ -45,6 +45,14 @@ public class ServiceOptionService {
     }
 
     @Transactional(readOnly = true)
+    public List<ServiceOptionDto> getAllOptions(Boolean isActive) {
+        return serviceOptionRepository.findAll().stream()
+                .filter(option -> filterByActive(option, isActive))
+                .map(serviceConfigService::toOptionDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public ServiceOptionDto getOption(UUID optionId) {
         ServiceOption option = serviceOptionRepository.findById(optionId)
                 .orElseThrow(() -> new IllegalArgumentException("Service option not found: " + optionId));
@@ -129,6 +137,13 @@ public class ServiceOptionService {
         return serviceOptionGroupRepository.findAllByServiceId(service.getId()).stream()
                 .sorted(Comparator.comparing(ServiceOptionGroup::getSortOrder, Comparator.nullsFirst(Integer::compareTo))
                         .thenComparing(ServiceOptionGroup::getName, String.CASE_INSENSITIVE_ORDER))
+                .map(serviceConfigService::toOptionGroupDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceOptionGroupDto> getAllOptionGroups() {
+        return serviceOptionGroupRepository.findAll().stream()
                 .map(serviceConfigService::toOptionGroupDto)
                 .collect(Collectors.toList());
     }

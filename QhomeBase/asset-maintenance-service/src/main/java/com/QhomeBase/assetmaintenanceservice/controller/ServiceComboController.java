@@ -22,6 +22,12 @@ public class ServiceComboController {
 
     private final ServiceComboService serviceComboService;
 
+    @GetMapping("/service-combos")
+    @PreAuthorize("@authz.canViewServiceConfig()")
+    public ResponseEntity<List<ServiceComboDto>> getAllCombos(@RequestParam(required = false) Boolean isActive) {
+        return ResponseEntity.ok(serviceComboService.getAllCombos(isActive));
+    }
+
     @GetMapping("/services/{serviceId}/combos")
     @PreAuthorize("@authz.canViewServiceConfig()")
     public ResponseEntity<List<ServiceComboDto>> getCombos(@PathVariable UUID serviceId,

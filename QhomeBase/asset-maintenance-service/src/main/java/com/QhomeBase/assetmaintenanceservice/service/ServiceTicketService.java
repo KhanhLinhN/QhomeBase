@@ -37,6 +37,14 @@ public class ServiceTicketService {
     }
 
     @Transactional(readOnly = true)
+    public List<ServiceTicketDto> getAllTickets(Boolean isActive) {
+        return serviceTicketRepository.findAll().stream()
+                .filter(ticket -> filterByActive(ticket, isActive))
+                .map(serviceConfigService::toTicketDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public ServiceTicketDto getTicket(UUID ticketId) {
         ServiceTicket ticket = serviceTicketRepository.findById(ticketId)
                 .orElseThrow(() -> new IllegalArgumentException("Service ticket not found: " + ticketId));

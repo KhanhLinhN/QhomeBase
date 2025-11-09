@@ -24,7 +24,7 @@ public class ServiceBookingController {
 
     private final ServiceBookingService bookingService;
 
-    /* Resident / User endpoints */
+
 
     @GetMapping("/services/{serviceId}/booking/catalog")
     @PreAuthorize("isAuthenticated()")
