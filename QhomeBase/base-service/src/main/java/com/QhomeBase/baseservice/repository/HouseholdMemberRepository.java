@@ -47,6 +47,7 @@ public interface HouseholdMemberRepository extends JpaRepository<HouseholdMember
             @Param("residentId") UUID residentId,
             @Param("householdId") UUID householdId
     );
+
 }
 
 

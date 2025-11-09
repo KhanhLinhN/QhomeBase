@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import com.QhomeBase.customerinteractionservice.dto.RequestDTO;
@@ -27,7 +28,6 @@ public class requestController {
            @RequestParam(required = false) String projectCode,
            @RequestParam(required = false) String title,
            @RequestParam(required = false) String residentName,
-           @RequestParam(required = false) UUID tenantId,
            @RequestParam(required = false) String status,
            @RequestParam(required = false) String priority,
            @RequestParam(defaultValue = "0") int pageNo,
@@ -36,7 +36,7 @@ public class requestController {
    {
 
        Page<RequestDTO> requestPage = requestService.getFilteredRequests(
-               projectCode, title, residentName, tenantId, status, priority, pageNo, dateFrom, dateTo
+               projectCode, title, residentName, status, priority, pageNo, dateFrom, dateTo
        );
 
        return requestPage;
@@ -47,13 +47,12 @@ public class requestController {
             @RequestParam(required = false) String projectCode,
             @RequestParam(required = false) String title,
             @RequestParam(required = false) String residentName,
-            @RequestParam(required = false) UUID tenantId,
             @RequestParam(required = false) String priority,
             @RequestParam(required = false) String dateFrom,
             @RequestParam(required = false) String dateTo)
     {
         return requestService.getRequestCounts(
-                projectCode, title, residentName, tenantId, priority, dateFrom, dateTo
+                projectCode, title, residentName, priority, dateFrom, dateTo
         );
     }
 
@@ -64,9 +63,9 @@ public class requestController {
     }
 
     @PostMapping("/createRequest")
-    public ResponseEntity<RequestDTO> addNewRequest(@RequestBody RequestDTO requestDTO)
+    public ResponseEntity<RequestDTO> addNewRequest(@RequestBody RequestDTO requestDTO, Authentication auth)
     {
-        RequestDTO savedRequest = requestService.createNewRequest(requestDTO);
+        RequestDTO savedRequest = requestService.createNewRequest(requestDTO, auth);
         return ResponseEntity.status(HttpStatus.CREATED).body(savedRequest);
     }
 

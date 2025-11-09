@@ -6,9 +6,13 @@ import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class EmailService {
 
@@ -26,6 +30,50 @@ public class EmailService {
             log.error("Failed to send email to {}", to, ex);
             throw ex;
         }
+    }
+    
+    @Value("${app.mail.from:no-reply@qhomebase.com}")
+    private String defaultFromAddress;
+
+    public void sendStaffAccountCredentials(String recipientEmail, String username, String rawPassword) {
+        if (!StringUtils.hasText(recipientEmail)) {
+            log.warn("Recipient email is blank; skip sending staff credentials email");
+            return;
+        }
+
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(recipientEmail);
+        message.setSubject("Your Qhome Base account is ready");
+        message.setText(buildStaffAccountBody(username, rawPassword));
+        if (StringUtils.hasText(defaultFromAddress)) {
+            message.setFrom(defaultFromAddress);
+        }
+
+        mailSender.send(message);
+        log.info("Sent credentials email to {}", recipientEmail);
+    }
+
+    private String buildStaffAccountBody(String username, String rawPassword) {
+        String safeUsername = StringUtils.hasText(username) ? username : "there";
+        String safePassword = StringUtils.hasText(rawPassword) ? rawPassword : "(password unavailable)";
+
+        return String.format(
+                """
+                Hello %s,
+
+                Your Qhome Base account has been created successfully.
+                - Username: %s
+                - Temporary password: %s
+
+                Please sign in and change your password immediately after login.
+
+                Regards,
+                Qhome Base Team
+                """,
+                safeUsername,
+                safeUsername,
+                safePassword
+        );
     }
 }
 

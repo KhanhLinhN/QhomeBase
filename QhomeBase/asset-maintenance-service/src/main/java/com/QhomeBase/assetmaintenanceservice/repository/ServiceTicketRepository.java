@@ -9,6 +9,8 @@ import java.util.UUID;
 public interface ServiceTicketRepository extends JpaRepository<ServiceTicket, UUID> {
 
     List<ServiceTicket> findAllByServiceId(UUID serviceId);
+
+    boolean existsByServiceIdAndCodeIgnoreCase(UUID serviceId, String code);
+
+    boolean existsByServiceIdAndCodeIgnoreCaseAndIdNot(UUID serviceId, String code, UUID ticketId);
 }
-
-

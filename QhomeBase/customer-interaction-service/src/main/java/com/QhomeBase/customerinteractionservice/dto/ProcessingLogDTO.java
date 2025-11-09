@@ -20,5 +20,6 @@ public class ProcessingLogDTO {
     String requestStatus;
     String logType;
     String staffInChargeName;
+    String staffInChargeEmail;
     String createdAt;
 }

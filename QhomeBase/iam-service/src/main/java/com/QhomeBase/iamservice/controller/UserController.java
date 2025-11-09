@@ -1,5 +1,6 @@
 package com.QhomeBase.iamservice.controller;
 
+import com.QhomeBase.iamservice.client.BaseServiceClient;
 import com.QhomeBase.iamservice.dto.CreateUserForResidentDto;
 import com.QhomeBase.iamservice.dto.UserAccountDto;
 import com.QhomeBase.iamservice.dto.UserInfoDto;
@@ -9,6 +10,10 @@ import com.QhomeBase.iamservice.repository.RolePermissionRepository;
 import com.QhomeBase.iamservice.repository.UserRepository;
 import com.QhomeBase.iamservice.service.UserService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -34,11 +39,12 @@ public class UserController {
     private final UserRepository userRepository;
     private final RolePermissionRepository rolePermissionRepository;
     private final UserService userService;
+    private final BaseServiceClient baseServiceClient;
 
     @GetMapping("/{userId}")
     @PreAuthorize("@authz.canViewUser(#userId)")
     public ResponseEntity<UserInfoDto> getUserInfo(@PathVariable UUID userId) {
-        return userRepository.findById(userId)
+        return userService.findUserWithRolesById(userId)
                 .map(user -> {
                     List<UserRole> userRoles = user.getRoles();
                     List<String> roleNames = userRoles != null && !userRoles.isEmpty()
@@ -84,11 +90,28 @@ public class UserController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @RequestMapping(value = "/{userId}/password", method = {RequestMethod.PATCH, RequestMethod.PUT})
+    @PreAuthorize("@authz.canUpdateUser(#userId)")
+    public ResponseEntity<Void> updatePassword(
+            @PathVariable UUID userId,
+            @Valid @RequestBody UpdatePasswordRequest request) {
+        try {
+            userService.updatePassword(userId, request.newPassword());
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to update password for user {}: {}", userId, e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            log.error("Error updating password for user {}", userId, e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @GetMapping("/available-staff")
     @PreAuthorize("@authz.canViewAllUsers()")
     public ResponseEntity<List<UserInfoDto>> getAvailableStaff() {
         try {
-            List<UserInfoDto> availableStaff = userRepository.findAvailableStaff()
+            List<UserInfoDto> availableStaff = userService.findAvailableStaffWithRoles()
                     .stream()
                     .map(user -> {
                         List<UserRole> userRoles = user.getRoles();
@@ -189,7 +212,7 @@ public class UserController {
     @PreAuthorize("@authz.canViewUser(#userId)")
     @Transactional(readOnly = true)
     public ResponseEntity<UserAccountDto> getUserAccountInfo(@PathVariable UUID userId) {
-        return userRepository.findById(userId)
+        return userService.findUserWithRolesById(userId)
                 .map(user -> {
                     // Force initialization of roles collection within transaction
                     List<String> roleNames = user.getRoles().stream()
@@ -211,7 +234,7 @@ public class UserController {
     @GetMapping("/by-username/{username}")
     @PreAuthorize("hasAnyRole('ADMIN', 'RESIDENT') or hasAuthority('PERM_iam.user.read') or hasAuthority('PERM_base.resident.approve')")
     public ResponseEntity<UserInfoDto> getUserByUsername(@PathVariable String username) {
-        return userRepository.findByUsername(username)
+        return userService.findUserWithRolesByUsername(username)
                 .map(user -> {
                     List<UserRole> userRoles = user.getRoles();
                     List<String> roleNames = userRoles != null && !userRoles.isEmpty()
@@ -244,7 +267,7 @@ public class UserController {
     @GetMapping("/by-email/{email}")
     @PreAuthorize("hasAnyRole('ADMIN', 'RESIDENT') or hasAuthority('PERM_iam.user.read') or hasAuthority('PERM_base.resident.approve')")
     public ResponseEntity<UserInfoDto> getUserByEmail(@PathVariable String email) {
-        return userRepository.findByEmail(email)
+        return userService.findUserWithRolesByEmail(email)
                 .map(user -> {
                     List<UserRole> userRoles = user.getRoles();
                     List<String> roleNames = userRoles != null && !userRoles.isEmpty()
@@ -274,10 +297,164 @@ public class UserController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @PostMapping("/staff")
+    @PreAuthorize("@authz.canCreateUser()")
+    public ResponseEntity<UserAccountDto> createStaffAccount(@Valid @RequestBody CreateStaffRequest request) {
+        try {
+            List<UserRole> roles = parseStaffRoles(request.roles());
+            User user = userService.createStaffAccount(
+                    request.username(),
+                    request.email(),
+                    roles,
+                    request.active() == null || request.active()
+            );
+            baseServiceClient.syncStaffResident(user.getId(), request.username(), request.email(), null);
+            return ResponseEntity.status(HttpStatus.CREATED).body(toAccountDto(user));
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to create staff account: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Error creating staff account", e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/staff")
+    @PreAuthorize("@authz.canViewAllUsers()")
+    public ResponseEntity<List<UserAccountDto>> listStaffAccounts() {
+        List<UserAccountDto> staff = userService.findStaffWithRoles()
+                .stream()
+                .map(this::toAccountDto)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(staff);
+    }
+
+    @GetMapping("/residents")
+    @PreAuthorize("@authz.canViewAllUsers()")
+    public ResponseEntity<List<UserAccountDto>> listResidentAccounts() {
+        List<UserAccountDto> residents = userService.findResidentAccounts()
+                .stream()
+                .map(this::toAccountDto)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(residents);
+    }
+
+    @GetMapping("/staff/{userId}")
+    @PreAuthorize("@authz.canViewUser(#userId)")
+    public ResponseEntity<UserAccountDto> getStaffAccount(@PathVariable UUID userId) {
+        return userService.findStaffWithRolesById(userId)
+                .map(this::toAccountDto)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/staff/{userId}")
+    @PreAuthorize("@authz.canUpdateUser(#userId)")
+    public ResponseEntity<UserAccountDto> updateStaffAccount(
+            @PathVariable UUID userId,
+            @Valid @RequestBody UpdateStaffRequest request) {
+        try {
+            List<UserRole> roles = request.roles() != null ? parseStaffRoles(request.roles()) : null;
+            User updated = userService.updateStaffAccount(
+                    userId,
+                    request.username(),
+                    request.email(),
+                    request.active(),
+                    request.newPassword(),
+                    roles
+            );
+            baseServiceClient.syncStaffResident(updated.getId(), updated.getUsername(), updated.getEmail(), null);
+            return ResponseEntity.ok(toAccountDto(updated));
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to update staff account {}: {}", userId, e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Error updating staff account {}", userId, e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @DeleteMapping("/staff/{userId}")
+    @PreAuthorize("@authz.canDeleteUser(#userId)")
+    public ResponseEntity<Void> deleteStaffAccount(@PathVariable UUID userId) {
+        try {
+            userService.deleteStaffAccount(userId);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to delete staff account {}: {}", userId, e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            log.error("Error deleting staff account {}", userId, e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     public record UserStatusResponse(
             boolean active,
             int failedLoginAttempts,
             boolean accountLocked,
             java.time.LocalDateTime lastLogin
     ) {}
+
+    public record UpdatePasswordRequest(
+            @NotBlank(message = "New password is required")
+            @Size(min = 8, message = "New password must be at least 8 characters")
+            String newPassword
+    ) {}
+
+    public record CreateStaffRequest(
+            @NotBlank(message = "Username is required")
+            @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
+            String username,
+            @NotBlank(message = "Email is required")
+            @Email(message = "Email must be valid")
+            String email,
+            @NotEmpty(message = "Staff roles are required")
+            List<@NotBlank(message = "Role value cannot be blank") String> roles,
+            Boolean active
+    ) {}
+
+    public record UpdateStaffRequest(
+            @NotBlank(message = "Username is required")
+            @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
+            String username,
+            @NotBlank(message = "Email is required")
+            @Email(message = "Email must be valid")
+            String email,
+            Boolean active,
+            List<@NotBlank(message = "Role value cannot be blank") String> roles,
+            @Size(min = 8, message = "New password must be at least 8 characters")
+            String newPassword
+    ) {}
+
+    private UserAccountDto toAccountDto(User user) {
+        List<String> roleNames = user.getRoles() != null
+                ? user.getRoles().stream()
+                .map(UserRole::getRoleName)
+                .collect(Collectors.toList())
+                : List.of();
+        return new UserAccountDto(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                roleNames,
+                user.isActive()
+        );
+    }
+
+    private List<UserRole> parseStaffRoles(List<String> roles) {
+        if (roles == null || roles.isEmpty()) {
+            throw new IllegalArgumentException("Staff roles are required");
+        }
+        return roles.stream()
+                .map(roleName -> {
+                    try {
+                        return UserRole.valueOf(roleName.trim().toUpperCase());
+                    } catch (Exception e) {
+                        throw new IllegalArgumentException("Invalid role: " + roleName);
+                    }
+                })
+                .distinct()
+                .collect(Collectors.toList());
+    }
 }

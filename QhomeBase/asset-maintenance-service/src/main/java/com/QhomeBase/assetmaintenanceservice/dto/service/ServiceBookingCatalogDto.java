@@ -1,5 +1,6 @@
 package com.QhomeBase.assetmaintenanceservice.dto.service;
 
+import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServicePricingType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,6 +18,7 @@ public class ServiceBookingCatalogDto {
     private UUID serviceId;
     private String serviceCode;
     private String serviceName;
+    private ServicePricingType pricingType;
     private List<ServiceComboDto> combos;
     private List<ServiceOptionDto> options;
     private List<ServiceOptionGroupDto> optionGroups;

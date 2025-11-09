@@ -14,3 +14,4 @@ WHERE u.building_id = b.id
   AND b.status = 'INACTIVE'
   AND u.status <> 'INACTIVE';
 
+

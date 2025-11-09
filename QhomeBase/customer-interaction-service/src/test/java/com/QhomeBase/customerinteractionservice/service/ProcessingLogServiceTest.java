@@ -1,5 +1,7 @@
 package com.QhomeBase.customerinteractionservice.service;
 
+import com.QhomeBase.customerinteractionservice.client.IamServiceClient;
+import com.QhomeBase.customerinteractionservice.client.dto.IamUserInfoResponse;
 import com.QhomeBase.customerinteractionservice.dto.ProcessingLogDTO;
 import com.QhomeBase.customerinteractionservice.model.ProcessingLog;
 import com.QhomeBase.customerinteractionservice.model.Request;
@@ -33,6 +35,9 @@ class ProcessingLogServiceTest {
     @Mock
     private requestRepository requestRepository;
 
+    @Mock
+    private IamServiceClient iamServiceClient;
+
     @InjectMocks
     private processingLogService processingLogService;
 
@@ -62,8 +67,26 @@ class ProcessingLogServiceTest {
         mockLog.setCreatedAt(now);
 
         mockLogDTO = new ProcessingLogDTO(
-                mockLog.getId(), "Request", recordId, staffId,
-                "New log content", "Processing", "Repy", "Test Staff", null
+                UUID.randomUUID(),
+                "Request",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "Processing content",
+                "IN_PROGRESS",
+                "UPDATE",
+                "Supporter Name",
+                "supporter@example.com",
+                LocalDateTime.now().toString()
+        );
+
+        when(iamServiceClient.fetchUserInfo(any(UUID.class))).thenReturn(
+                new IamUserInfoResponse(
+                        staffId.toString(),
+                        "Test Staff",
+                        "staff@example.com",
+                        Collections.emptyList(),
+                        Collections.emptyList()
+                )
         );
     }
 
@@ -116,18 +139,43 @@ class ProcessingLogServiceTest {
 
         // Assert
         assertNotNull(result);
-        assertEquals("Processing", result.getRequestStatus());
-        assertEquals("New log content", result.getContent());
+        assertEquals(mockLogDTO.getRequestStatus(), result.getRequestStatus());
+        assertEquals(mockLogDTO.getContent(), result.getContent());
 
         verify(requestRepository).save(requestCaptor.capture());
         Request capturedRequest = requestCaptor.getValue();
-        assertEquals("Processing", capturedRequest.getStatus());
+        assertEquals(mockLogDTO.getRequestStatus(), capturedRequest.getStatus());
 
         // Kiểm tra xem processingLogRepository.save() có được gọi không
         verify(processingLogRepository).save(logCaptor.capture());
         ProcessingLog capturedLog = logCaptor.getValue();
         assertEquals(recordId, capturedLog.getRecordId());
         assertEquals("Test Staff", capturedLog.getStaffInChargeName());
+    }
+
+    @Test
+    @DisplayName("Test addProcessingLog - Default status to COMPLETED when missing")
+    void addProcessingLog_whenStatusMissing_shouldDefaultToCompleted() {
+        // Arrange
+        when(requestRepository.findById(recordId)).thenReturn(Optional.of(mockRequest));
+        when(processingLogRepository.save(any(ProcessingLog.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ProcessingLogDTO dtoWithoutStatus = ProcessingLogDTO.builder()
+                .recordType("Request")
+                .content("Hoàn tất xử lý")
+                .logType("SUPPORTER_NOTE")
+                .build();
+
+        // Act
+        ProcessingLogDTO result = processingLogService.addProcessingLog(recordId, dtoWithoutStatus);
+
+        // Assert
+        assertNotNull(result);
+        assertEquals("COMPLETED", result.getRequestStatus());
+
+        ArgumentCaptor<Request> requestCaptor = ArgumentCaptor.forClass(Request.class);
+        verify(requestRepository).save(requestCaptor.capture());
+        assertEquals("COMPLETED", requestCaptor.getValue().getStatus());
     }
 
     @Test
