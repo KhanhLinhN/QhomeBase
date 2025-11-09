@@ -7,3 +7,9 @@
 /QhomeBase/finance-billing-service/target/
 /QhomeBase/services-card-service/target/
 /QhomeBase/staff-work-service/target/
+/QhomeBase/iam-service/target/
+
+# General build outputs
+**/target/
+**/build/
+*.class
