@@ -4,6 +4,8 @@ import com.QhomeBase.assetmaintenanceservice.dto.service.*;
 import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus;
 import com.QhomeBase.assetmaintenanceservice.security.UserPrincipal;
 import com.QhomeBase.assetmaintenanceservice.service.ServiceBookingService;
+import com.QhomeBase.assetmaintenanceservice.service.ServiceBookingPaymentService;
+import com.QhomeBase.assetmaintenanceservice.service.vnpay.VnpayService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -13,8 +15,14 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -23,6 +31,8 @@ import java.util.UUID;
 public class ServiceBookingController {
 
     private final ServiceBookingService bookingService;
+    private final ServiceBookingPaymentService bookingPaymentService;
+    private final VnpayService vnpayService;
 
     /* Resident / User endpoints */
 
@@ -49,6 +59,20 @@ public class ServiceBookingController {
             Authentication authentication
     ) {
         List<ServiceBookingDto> bookings = bookingService.getMyBookings(authentication.getPrincipal(), status, fromDate, toDate);
+        return ResponseEntity.ok(bookings);
+    }
+
+    @GetMapping("/bookings/unpaid")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<ServiceBookingDto>> getMyUnpaidBookings(Authentication authentication) {
+        List<ServiceBookingDto> bookings = bookingService.getMyUnpaidBookings(authentication.getPrincipal());
+        return ResponseEntity.ok(bookings);
+    }
+
+    @GetMapping("/bookings/paid")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<ServiceBookingDto>> getMyPaidBookings(Authentication authentication) {
+        List<ServiceBookingDto> bookings = bookingService.getMyPaidBookings(authentication.getPrincipal());
         return ResponseEntity.ok(bookings);
     }
 
@@ -107,6 +131,80 @@ public class ServiceBookingController {
                                                                 @Valid @RequestBody UpdateServiceBookingSlotsRequest request,
                                                                 Authentication authentication) {
         return ResponseEntity.ok(bookingService.updateBookingSlots(bookingId, request, authentication.getPrincipal(), false));
+    }
+
+    @PostMapping("/bookings/{bookingId}/vnpay-url")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> createVnpayPaymentUrl(@PathVariable UUID bookingId,
+                                                   Authentication authentication,
+                                                   HttpServletRequest request) {
+        try {
+            var response = bookingPaymentService.initiatePayment(bookingId, authentication.getPrincipal(), request);
+            return ResponseEntity.ok(Map.of(
+                    "bookingId", response.bookingId().toString(),
+                    "paymentUrl", response.paymentUrl(),
+                    "transactionRef", response.transactionRef()
+            ));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Không thể tạo URL thanh toán VNPAY"));
+        }
+    }
+
+    @GetMapping("/bookings/vnpay/return")
+    public ResponseEntity<?> handleVnpayReturn(HttpServletRequest request) {
+        Map<String, String> params = vnpayService.extractParams(request);
+        try {
+            var result = bookingPaymentService.handleCallback(params);
+            Map<String, Object> body = Map.of(
+                    "success", result.success(),
+                    "bookingId", result.bookingId() != null ? result.bookingId().toString() : null,
+                    "responseCode", result.responseCode(),
+                    "signatureValid", result.signatureValid(),
+                    "params", params
+            );
+            HttpStatus status = result.success() ? HttpStatus.OK : HttpStatus.BAD_REQUEST;
+            return ResponseEntity.status(status).body(body);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/bookings/vnpay/redirect")
+    public ResponseEntity<?> redirectAfterPayment(HttpServletRequest request,
+                                                  HttpServletResponse response) throws IOException {
+        Map<String, String> params = vnpayService.extractParams(request);
+        ServiceBookingPaymentResult result;
+        try {
+            result = bookingPaymentService.handleCallback(params);
+        } catch (Exception e) {
+            String fallback = "qhomeapp://vnpay-service-booking-result?success=false&message=" +
+                    URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8);
+            response.sendRedirect(fallback);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("success", false, "message", e.getMessage()));
+        }
+        String bookingId = result.bookingId() != null ? result.bookingId().toString() : "";
+        String redirectUrl = new StringBuilder("qhomeapp://vnpay-service-booking-result")
+                .append("?bookingId=").append(bookingId)
+                .append("&responseCode=").append(result.responseCode() != null ? result.responseCode() : "")
+                .append("&success=").append(result.success())
+                .toString();
+        response.sendRedirect(redirectUrl);
+
+        Map<String, Object> body = Map.of(
+                "success", result.success(),
+                "bookingId", bookingId,
+                "responseCode", result.responseCode(),
+                "signatureValid", result.signatureValid(),
+                "params", params
+        );
+
+        HttpStatus status = result.success() ? HttpStatus.OK : HttpStatus.BAD_REQUEST;
+        return ResponseEntity.status(status).body(body);
     }
 
     /* Administrative endpoints */
