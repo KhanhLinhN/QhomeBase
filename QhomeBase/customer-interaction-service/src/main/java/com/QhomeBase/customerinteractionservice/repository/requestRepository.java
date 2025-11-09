@@ -17,18 +17,10 @@ public interface requestRepository extends JpaRepository<Request, UUID>, JpaSpec
 
     @Query(value = "SELECT CAST(r.status AS TEXT) AS status, COUNT(r) AS count " +
             "FROM cs_service.requests r " +
-            "WHERE (:projectCode IS NULL OR r.request_code = :projectCode) " +
-            "AND (:title IS NULL OR r.title LIKE CONCAT('%', :title, '%')) " +
-            "AND (:residentName IS NULL OR r.resident_name LIKE CONCAT('%', :residentName, '%')) " +
-            "AND (:priority IS NULL OR r.priority = :priority) " +
-            "AND (CAST(:dateFrom AS DATE) IS NULL OR r.created_at >= CAST(:dateFrom AS DATE)) " +
+            "WHERE (CAST(:dateFrom AS DATE) IS NULL OR r.created_at >= CAST(:dateFrom AS DATE)) " +
             "AND (CAST(:dateTo AS DATE) IS NULL OR r.created_at < (CAST(:dateTo AS DATE) + interval '1 day')) " +
             "GROUP BY r.status", nativeQuery = true)
     List<StatusCountDTO> countRequestsByStatus(
-            @Param("projectCode") String projectCode,
-            @Param("title") String title,
-            @Param("residentName") String residentName,
-            @Param("priority") String priority,
             @Param("dateFrom") String dateFrom,
             @Param("dateTo") String dateTo
     );

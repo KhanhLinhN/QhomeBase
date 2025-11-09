@@ -48,12 +48,9 @@ public class processingLogService {
         }
         return new ProcessingLogDTO(
                 entity.getId(),
-                entity.getRecordType(),
                 entity.getRecordId(),
-                entity.getStaffInCharge(),
                 entity.getContent(),
                 entity.getRequestStatus(),
-                entity.getLogType(),
                 staffName,
                 staffEmail,
                 entity.getCreatedAt().toString().replace("T", " ")
@@ -91,33 +88,32 @@ public class processingLogService {
         Request request = requestRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Request not found with id: " + id));
 
+        if ("Done".equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Request has been completed and cannot be updated");
+        }
+
         String newStatus = StringUtils.hasText(dto.getRequestStatus())
                 ? dto.getRequestStatus()
-                : "COMPLETED";
+                : request.getStatus();
         request.setStatus(newStatus);
         request.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
         requestRepository.save(request);
 
-        UUID staffId = resolveStaffId(dto, authentication);
-        String staffName = resolveStaffName(dto, staffId);
+        UUID staffId = resolveStaffId(authentication);
+        String staffName = resolveStaffName(staffId);
 
         ProcessingLog entity = new ProcessingLog();
-        entity.setRecordType(dto.getRecordType());
         entity.setRecordId(id);
         entity.setStaffInCharge(staffId);
         entity.setContent(dto.getContent());
         entity.setRequestStatus(newStatus);
-        entity.setLogType(dto.getLogType());
         entity.setStaffInChargeName(staffName);
         entity.setCreatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
         processingLogRepository.save(entity);
         return mapToDto(entity);
     }
 
-    private UUID resolveStaffId(ProcessingLogDTO dto, Authentication authentication) {
-        if (dto.getStaffInCharge() != null) {
-            return dto.getStaffInCharge();
-        }
+    private UUID resolveStaffId(Authentication authentication) {
         Authentication auth = authentication != null ? authentication : SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.getPrincipal() instanceof UserPrincipal principal) {
             return principal.uid();
@@ -125,10 +121,7 @@ public class processingLogService {
         return null;
     }
 
-    private String resolveStaffName(ProcessingLogDTO dto, UUID staffId) {
-        if (StringUtils.hasText(dto.getStaffInChargeName())) {
-            return dto.getStaffInChargeName();
-        }
+    private String resolveStaffName(UUID staffId) {
         if (staffId == null) {
             return null;
         }

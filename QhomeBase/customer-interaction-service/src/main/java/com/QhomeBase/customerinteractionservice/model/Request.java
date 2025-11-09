@@ -31,8 +31,6 @@ public class Request {
     private String content;
     @Column(name = "status", nullable = false)
     private String status;
-    @Column(name = "priority", nullable = false)
-    private String priority;
     @Column(name = "created_at", nullable = false)
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;

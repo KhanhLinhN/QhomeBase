@@ -25,18 +25,14 @@ public class requestController {
 
    @GetMapping()
    public Page<RequestDTO> getRequestsList(
-           @RequestParam(required = false) String projectCode,
-           @RequestParam(required = false) String title,
-           @RequestParam(required = false) String residentName,
            @RequestParam(required = false) String status,
-           @RequestParam(required = false) String priority,
            @RequestParam(defaultValue = "0") int pageNo,
            @RequestParam(required = false) String dateFrom,
            @RequestParam(required = false) String dateTo)
    {
 
        Page<RequestDTO> requestPage = requestService.getFilteredRequests(
-               projectCode, title, residentName, status, priority, pageNo, dateFrom, dateTo
+               status, pageNo, dateFrom, dateTo
        );
 
        return requestPage;
@@ -44,15 +40,11 @@ public class requestController {
 
     @GetMapping("/counts")
     public Map<String, Long> getRequestCounts(
-            @RequestParam(required = false) String projectCode,
-            @RequestParam(required = false) String title,
-            @RequestParam(required = false) String residentName,
-            @RequestParam(required = false) String priority,
             @RequestParam(required = false) String dateFrom,
             @RequestParam(required = false) String dateTo)
     {
         return requestService.getRequestCounts(
-                projectCode, title, residentName, priority, dateFrom, dateTo
+                dateFrom, dateTo
         );
     }
 

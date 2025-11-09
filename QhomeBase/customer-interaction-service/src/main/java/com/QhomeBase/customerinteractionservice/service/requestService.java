@@ -29,6 +29,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 @Service
 @Slf4j
@@ -60,7 +61,6 @@ public class requestService {
             entity.getTitle(),
             entity.getContent(),
             entity.getStatus(),
-            entity.getPriority(),
             entity.getCreatedAt().toString().replace("T", " "),
             entity.getUpdatedAt() != null ? entity.getUpdatedAt().toString().replace("T", " ") : null
         );
@@ -73,11 +73,7 @@ public class requestService {
 
     // Method to get filtered requests with pagination
     public Page<RequestDTO> getFilteredRequests(
-            String projectCode,
-            String title,
-            String residentName,
             String status,
-            String priority,
             int pageNo,
             String dateFrom,
             String dateTo) {
@@ -85,28 +81,16 @@ public class requestService {
         Specification<Request> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            if (projectCode != null && !projectCode.isEmpty()) {
-                predicates.add(cb.like(root.get("requestCode"), "%" + projectCode + "%"));
-            }
-            if (title != null && !title.isEmpty()) {
-                predicates.add(cb.like(cb.lower(root.get("title")), "%" + title.toLowerCase() + "%"));
-            }
-            if (residentName != null && !residentName.isEmpty()) {
-                predicates.add(cb.like(cb.lower(root.get("residentName")), "%" + residentName.toLowerCase() + "%"));
-            }
-            if (status != null && !status.isEmpty()) {
+            if (StringUtils.hasText(status)) {
                 predicates.add(cb.equal(root.get("status"), status));
             }
-            if (priority != null && !priority.isEmpty()) {
-                predicates.add(cb.equal(root.get("priority"), priority));
-            }
 
-            if (dateFrom != null && !dateFrom.isEmpty()) {
+            if (StringUtils.hasText(dateFrom)) {
                 LocalDate fromDate = LocalDate.parse(dateFrom);
                 predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), fromDate.atStartOfDay()));
             }
 
-            if (dateTo != null && !dateTo.isEmpty()) {
+            if (StringUtils.hasText(dateTo)) {
                 LocalDate toDate = LocalDate.parse(dateTo);
                 predicates.add(cb.lessThan(root.get("createdAt"), toDate.plusDays(1).atStartOfDay()));
             }
@@ -119,10 +103,10 @@ public class requestService {
         return requestRepository.findAll(spec, pageable).map(this::mapToDto);
     }
 
-    public Map<String, Long> getRequestCounts(String projectCode, String title, String residentName, String priority, String dateFrom, String dateTo) {
+    public Map<String, Long> getRequestCounts(String dateFrom, String dateTo) {
 
         List<StatusCountDTO> countsByStatus = requestRepository.countRequestsByStatus(
-                projectCode, title, residentName, priority, dateFrom, dateTo
+                dateFrom, dateTo
         );
 
         Map<String, Long> result = countsByStatus.stream()
@@ -163,21 +147,18 @@ public class requestService {
         entity.setImagePath(dto.getImagePath());
         entity.setTitle(dto.getTitle());
         entity.setContent(dto.getContent());
-        entity.setStatus(dto.getStatus());
-        entity.setPriority(dto.getPriority());
+        entity.setStatus(StringUtils.hasText(dto.getStatus()) ? dto.getStatus() : "Pending");
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         entity.setCreatedAt(now);
         entity.setUpdatedAt(now);
         Request savedRequest = requestRepository.save(entity);
 
         ProcessingLog newLog = new ProcessingLog();
-        newLog.setRecordType("Request");
         newLog.setRecordId(savedRequest.getId());
         newLog.setStaffInCharge(null);
         newLog.setStaffInChargeName(null);
         newLog.setContent("Request created by: " + savedRequest.getResidentName());
         newLog.setRequestStatus(savedRequest.getStatus());
-        newLog.setLogType(null);
         newLog.setCreatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
         processingLogRepository.save(newLog);
         return this.mapToDto(savedRequest);
