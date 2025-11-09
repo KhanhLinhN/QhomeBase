@@ -9,6 +9,7 @@ import org.springframework.mail.MailException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Optional;
@@ -52,6 +53,16 @@ public class UserService {
         User savedUser = userRepository.save(user);
         log.info("Created user account for resident {}: userId={}, username={}", 
                 residentId, savedUser.getId(), savedUser.getUsername());
+
+        if (StringUtils.hasText(email)) {
+            try {
+                emailService.sendResidentAccountCredentials(email, username, password);
+            } catch (MailException mailException) {
+                log.error("Failed to send resident credentials email to {} for user {}", email, savedUser.getId(), mailException);
+            }
+        } else {
+            log.warn("Resident {} has no email; credentials email was not sent", residentId);
+        }
         
         return savedUser;
     }

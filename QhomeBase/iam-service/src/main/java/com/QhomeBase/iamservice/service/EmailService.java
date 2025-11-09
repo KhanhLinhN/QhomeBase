@@ -36,6 +36,24 @@ public class EmailService {
         log.info("Sent credentials email to {}", recipientEmail);
     }
 
+    public void sendResidentAccountCredentials(String recipientEmail, String username, String rawPassword) {
+        if (!StringUtils.hasText(recipientEmail)) {
+            log.warn("Recipient email is blank; skip sending resident credentials email");
+            return;
+        }
+
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(recipientEmail);
+        message.setSubject("Your Qhome Base resident account");
+        message.setText(buildResidentAccountBody(username, rawPassword));
+        if (StringUtils.hasText(defaultFromAddress)) {
+            message.setFrom(defaultFromAddress);
+        }
+
+        mailSender.send(message);
+        log.info("Sent resident credentials email to {}", recipientEmail);
+    }
+
     private String buildStaffAccountBody(String username, String rawPassword) {
         String safeUsername = StringUtils.hasText(username) ? username : "there";
         String safePassword = StringUtils.hasText(rawPassword) ? rawPassword : "(password unavailable)";
@@ -52,6 +70,29 @@ public class EmailService {
 
                 Regards,
                 Qhome Base Team
+                """,
+                safeUsername,
+                safeUsername,
+                safePassword
+        );
+    }
+
+    private String buildResidentAccountBody(String username, String rawPassword) {
+        String safeUsername = StringUtils.hasText(username) ? username : "resident";
+        String safePassword = StringUtils.hasText(rawPassword) ? rawPassword : "(password unavailable)";
+
+        return String.format(
+                """
+                Xin chào %s,
+
+                Tài khoản cư dân của bạn trên Qhome Base đã được khởi tạo.
+                - Tên đăng nhập: %s
+                - Mật khẩu tạm thời: %s
+
+                Vui lòng đăng nhập và đổi mật khẩu ngay sau khi truy cập lần đầu.
+
+                Trân trọng,
+                Đội ngũ Qhome Base
                 """,
                 safeUsername,
                 safeUsername,
