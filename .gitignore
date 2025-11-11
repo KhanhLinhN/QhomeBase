@@ -1,4 +1,5 @@
-# Project exclude paths
+# Project specific build output directories
+# Các thư mục 'target' cụ thể cho từng module của bạn
 /QhomeBase/api-gateway/target/
 /QhomeBase/asset-maintenance-service/target/
 /QhomeBase/base-service/target/
@@ -9,7 +10,15 @@
 /QhomeBase/staff-work-service/target/
 /QhomeBase/iam-service/target/
 
-# General build outputs
+# General Build Outputs (Sử dụng quy tắc Wildcard ** để bao phủ tất cả)
+# Loại trừ tất cả các thư mục 'target' ở mọi cấp độ
 **/target/
+# Loại trừ tất cả các thư mục 'build' ở mọi cấp độ
 **/build/
+# Loại trừ tất cả các file .class (Java compiled files)
 *.class
+
+# Cấu hình bảo mật (Ngăn chặn rò rỉ khóa Service Account)
+# Tên file service account Firebase
+# Thay thế tên file bên dưới bằng tên chính xác của file Service Account JSON
+qhomeapp-firebase-adminsdk-fbsvc-5aeda99ea7.json
