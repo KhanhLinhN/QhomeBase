@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -76,16 +77,26 @@ public class NotificationDeviceTokenService {
 
     @Transactional
     public List<String> resolveTokensForNotification(Notification notification) {
+        return resolveTokens(
+                notification.getScope(),
+                notification.getTargetBuildingId(),
+                notification.getTargetRole()
+        );
+    }
+
+    public List<String> resolveTokens(NotificationScope scope, UUID targetBuildingId, String targetRole) {
         List<NotificationDeviceToken> candidates = new ArrayList<>();
 
-        if (notification.getScope() == NotificationScope.EXTERNAL) {
-            if (notification.getTargetBuildingId() != null) {
-                candidates.addAll(repository.findForBuilding(notification.getTargetBuildingId()));
+        NotificationScope effectiveScope = scope != null ? scope : NotificationScope.EXTERNAL;
+
+        if (effectiveScope == NotificationScope.EXTERNAL) {
+            if (targetBuildingId != null) {
+                candidates.addAll(repository.findForBuilding(targetBuildingId));
             } else {
                 candidates.addAll(repository.findAllActive());
             }
-        } else if (notification.getScope() == NotificationScope.INTERNAL) {
-            String role = notification.getTargetRole() != null ? notification.getTargetRole() : "ALL";
+        } else if (effectiveScope == NotificationScope.INTERNAL) {
+            String role = (targetRole != null && !targetRole.isBlank()) ? targetRole : "ALL";
             candidates.addAll(repository.findForRole(role));
         } else {
             candidates.addAll(repository.findAllActive());

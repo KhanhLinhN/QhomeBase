@@ -22,6 +22,7 @@ public class NewsService {
 
     private final NewsRepository newsRepository;
     private final NewsNotificationService notificationService;
+    private final NotificationPushService notificationPushService;
 
     public NewsManagementResponse createNews(CreateNewsRequest request, Authentication authentication) {
         var principal = (UserPrincipal) authentication.getPrincipal();
@@ -68,6 +69,9 @@ public class NewsService {
             savedNews.getCoverImageUrl()
         );
         notificationService.notifyNewsCreated(wsMessage);
+        if (savedNews.isActive()) {
+            notificationPushService.sendNewsCreatedPush(savedNews);
+        }
 
         return toManagementResponse(savedNews);
     }
@@ -169,6 +173,9 @@ public class NewsService {
             updated.getCoverImageUrl()
         );
         notificationService.notifyNewsUpdated(wsMessage);
+        if (updated.isActive()) {
+            notificationPushService.sendNewsUpdatedPush(updated);
+        }
         
         return toManagementResponse(updated);
     }
