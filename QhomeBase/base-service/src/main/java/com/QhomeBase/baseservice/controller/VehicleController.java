@@ -21,7 +21,7 @@ public class VehicleController {
     private final VehicleService vehicleService;
 
     @PostMapping
-    @PreAuthorize("@authz.canCreateVehicle(#dto.tenantId())")
+    @PreAuthorize("@authz.canCreateVehicle()")
     public ResponseEntity<VehicleDto> createVehicle(@Valid @RequestBody VehicleCreateDto dto) {
         VehicleDto result = vehicleService.createVehicle(dto);
         return ResponseEntity.ok(result);
@@ -48,10 +48,10 @@ public class VehicleController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/tenant/{tenantId}")
-    @PreAuthorize("@authz.canViewVehiclesByTenant(#tenantId)")
-    public ResponseEntity<List<VehicleDto>> getVehiclesByTenantId(@PathVariable UUID tenantId) {
-        List<VehicleDto> result = vehicleService.getVehiclesByTenantId(tenantId);
+    @GetMapping
+    @PreAuthorize("@authz.canViewVehicles()")
+    public ResponseEntity<List<VehicleDto>> getAllVehicles() {
+        List<VehicleDto> result = vehicleService.getAllVehicles();
         return ResponseEntity.ok(result);
     }
 
@@ -69,10 +69,10 @@ public class VehicleController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/tenant/{tenantId}/active")
-    @PreAuthorize("@authz.canViewVehiclesByTenant(#tenantId)")
-    public ResponseEntity<List<VehicleDto>> getActiveVehiclesByTenantId(@PathVariable UUID tenantId) {
-        List<VehicleDto> result = vehicleService.getActiveVehiclesByTenantId(tenantId);
+    @GetMapping("/active")
+    @PreAuthorize("@authz.canViewVehicles()")
+    public ResponseEntity<List<VehicleDto>> getActiveVehicles() {
+        List<VehicleDto> result = vehicleService.getActiveVehicles();
         return ResponseEntity.ok(result);
     }
 

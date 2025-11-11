@@ -1,5 +1,6 @@
 package com.QhomeBase.financebillingservice.service;
 
+import com.QhomeBase.financebillingservice.constants.ServiceCode;
 import com.QhomeBase.financebillingservice.dto.ProRataInvoiceRequest;
 import com.QhomeBase.financebillingservice.dto.ProRataInvoiceResponse;
 import com.QhomeBase.financebillingservice.model.Invoice;
@@ -73,10 +74,9 @@ public class ParkingBillingService {
         BigDecimal proRataAmount = dailyRate.multiply(BigDecimal.valueOf(chargedDays))
                                            .setScale(0, RoundingMode.HALF_UP);
         
-        String invoiceCode = generateInvoiceCode(request.getTenantId());
+        String invoiceCode = generateInvoiceCode();
         
         Invoice invoice = Invoice.builder()
-                .tenantId(request.getTenantId())
                 .code(invoiceCode)
                 .issuedAt(OffsetDateTime.now())
                 .dueDate(endOfMonth.plusDays(7))
@@ -94,7 +94,6 @@ public class ParkingBillingService {
                 chargedDays);
         
         InvoiceLine line = InvoiceLine.builder()
-                .tenantId(request.getTenantId())
                 .invoiceId(savedInvoice.getId())
                 .serviceDate(activatedDate)
                 .description(description)
@@ -103,7 +102,7 @@ public class ParkingBillingService {
                 .unitPrice(dailyRate)
                 .taxRate(BigDecimal.ZERO)
                 .taxAmount(BigDecimal.ZERO)
-                .serviceCode("PARKING_PRORATA")
+                .serviceCode(ServiceCode.PARKING_PRORATA)
                 .externalRefType("VEHICLE")
                 .externalRefId(request.getVehicleId())
                 .build();
@@ -125,16 +124,23 @@ public class ParkingBillingService {
                 .build();
     }
     
-    private String generateInvoiceCode(UUID tenantId) {
+    private String generateInvoiceCode() {
         String timestamp = OffsetDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-        String tenantShort = tenantId.toString().substring(0, 8);
-        return String.format("INV-%s-%s", tenantShort, timestamp);
+        return String.format("INV-%s", timestamp);
     }
     
     private BigDecimal getMonthlyPrice(String vehicleKind, UUID tenantId, LocalDate effectiveDate) {
-        String serviceCode = "PARKING_" + (vehicleKind != null ? vehicleKind : "CAR");
+        String vehicleType = vehicleKind != null ? vehicleKind.toUpperCase() : "CAR";
+        String serviceCode;
+        if ("CAR".equals(vehicleType)) {
+            serviceCode = ServiceCode.PARKING_CAR;
+        } else if ("MOTORBIKE".equals(vehicleType)) {
+            serviceCode = ServiceCode.PARKING_MOTORBIKE;
+        } else {
+            serviceCode = "PARKING_" + vehicleType;
+        }
         
-        return servicePricingRepository.findActivePrice(tenantId, serviceCode, effectiveDate)
+        return servicePricingRepository.findActivePriceGlobal(serviceCode, effectiveDate)
                 .map(ServicePricing::getBasePrice)
                 .orElseGet(() -> {
                     log.warn("No active pricing found for service code: {} on date: {}. Using fallback price.", 

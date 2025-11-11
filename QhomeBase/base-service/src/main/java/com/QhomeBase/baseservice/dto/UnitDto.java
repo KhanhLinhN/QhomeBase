@@ -8,7 +8,6 @@ import java.util.UUID;
 
 public record UnitDto(
         UUID id,
-        UUID tenantId,
         UUID buildingId,
         String buildingCode,
         String buildingName,

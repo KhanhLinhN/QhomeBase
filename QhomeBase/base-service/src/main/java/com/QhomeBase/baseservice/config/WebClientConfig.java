@@ -14,7 +14,7 @@ import reactor.core.publisher.Mono;
 public class WebClientConfig {
 
     @Bean
-    public WebClient webClient(@Value("${iam.service.url:http://localhost:8088}") String iamServiceUrl) {
+    public WebClient iamWebClient(@Value("${iam.service.url:http://localhost:8088}") String iamServiceUrl) {
         return WebClient.builder()
                 .baseUrl(iamServiceUrl)
                 .filter(addJwtTokenFilter())

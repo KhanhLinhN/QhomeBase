@@ -11,12 +11,10 @@ import java.util.UUID;
 
 public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
     
-    List<Vehicle> findAllByTenantId(UUID tenantId);
+    List<Vehicle> findAllByActive(Boolean active);
     
-    List<Vehicle> findAllByTenantIdAndActive(UUID tenantId, Boolean active);
-    
-    @Query("SELECT v FROM Vehicle v JOIN FETCH v.unit WHERE v.tenantId = :tenantId")
-    List<Vehicle> findAllByTenantIdWithUnit(@Param("tenantId") UUID tenantId);
+    @Query("SELECT v FROM Vehicle v JOIN FETCH v.unit")
+    List<Vehicle> findAllWithUnit();
     
     @Query("SELECT v FROM Vehicle v WHERE v.residentId = :residentId")
     List<Vehicle> findAllByResidentId(@Param("residentId") UUID residentId);
@@ -27,26 +25,26 @@ public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
     @Query("SELECT v FROM Vehicle v JOIN FETCH v.unit WHERE v.id = :id")
     Vehicle findByIdWithUnit(@Param("id") UUID id);
     
-    boolean existsByTenantIdAndPlateNo(UUID tenantId, String plateNo);
+    boolean existsByPlateNo(String plateNo);
     
-    boolean existsByTenantIdAndPlateNoAndIdNot(UUID tenantId, String plateNo, UUID id);
+    boolean existsByPlateNoAndIdNot(String plateNo, UUID id);
     
-    boolean existsByTenantIdAndResidentId(UUID tenantId, UUID residentId);
+    boolean existsByResidentId(UUID residentId);
     
-    List<Vehicle> findAllByTenantIdAndActiveTrue(UUID tenantId);
+    List<Vehicle> findAllByActiveTrue();
     
     // ========== New queries for activation tracking ==========
     
     /**
      * Find all activated vehicles (vehicles with activatedAt set)
      */
-    List<Vehicle> findAllByTenantIdAndActivatedAtIsNotNull(UUID tenantId);
+    List<Vehicle> findAllByActivatedAtIsNotNull();
     
     /**
      * Find all active and activated vehicles
      */
-    @Query("SELECT v FROM Vehicle v WHERE v.tenantId = :tenantId AND v.active = true AND v.activatedAt IS NOT NULL")
-    List<Vehicle> findAllActiveAndActivated(@Param("tenantId") UUID tenantId);
+    @Query("SELECT v FROM Vehicle v WHERE v.active = true AND v.activatedAt IS NOT NULL")
+    List<Vehicle> findAllActiveAndActivated();
     
     /**
      * Find vehicles activated in a specific month
@@ -54,38 +52,34 @@ public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
      */
     @Query("""
         SELECT v FROM Vehicle v
-        WHERE v.tenantId = :tenantId
-          AND v.activatedAt IS NOT NULL
+        WHERE v.activatedAt IS NOT NULL
           AND v.active = true
           AND FUNCTION('DATE_TRUNC', 'month', v.activatedAt) = FUNCTION('DATE_TRUNC', 'month', :monthStart)
         ORDER BY v.activatedAt ASC
         """)
-    List<Vehicle> findActivatedInMonth(@Param("tenantId") UUID tenantId, 
-                                       @Param("monthStart") OffsetDateTime monthStart);
+    List<Vehicle> findActivatedInMonth(@Param("monthStart") OffsetDateTime monthStart);
     
     /**
      * Find vehicles activated in a date range
      */
     @Query("""
         SELECT v FROM Vehicle v
-        WHERE v.tenantId = :tenantId
-          AND v.activatedAt BETWEEN :startDate AND :endDate
+        WHERE v.activatedAt BETWEEN :startDate AND :endDate
           AND v.active = true
         ORDER BY v.activatedAt ASC
         """)
-    List<Vehicle> findActivatedBetween(@Param("tenantId") UUID tenantId,
-                                       @Param("startDate") OffsetDateTime startDate,
+    List<Vehicle> findActivatedBetween(@Param("startDate") OffsetDateTime startDate,
                                        @Param("endDate") OffsetDateTime endDate);
     
     /**
      * Find all pending activation vehicles (created but not yet activated)
      */
-    @Query("SELECT v FROM Vehicle v WHERE v.tenantId = :tenantId AND v.activatedAt IS NULL")
-    List<Vehicle> findAllPendingActivation(@Param("tenantId") UUID tenantId);
+    @Query("SELECT v FROM Vehicle v WHERE v.activatedAt IS NULL")
+    List<Vehicle> findAllPendingActivation();
     
     /**
-     * Count activated vehicles by tenant
+     * Count activated vehicles
      */
-    @Query("SELECT COUNT(v) FROM Vehicle v WHERE v.tenantId = :tenantId AND v.activatedAt IS NOT NULL")
-    Long countActivatedByTenantId(@Param("tenantId") UUID tenantId);
+    @Query("SELECT COUNT(v) FROM Vehicle v WHERE v.activatedAt IS NOT NULL")
+    Long countActivated();
 }

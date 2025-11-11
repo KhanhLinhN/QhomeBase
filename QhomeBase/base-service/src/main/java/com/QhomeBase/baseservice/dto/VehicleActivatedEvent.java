@@ -14,7 +14,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class VehicleActivatedEvent {
     private UUID vehicleId;
-    private UUID tenantId;
     private UUID unitId;
     private UUID residentId;
     private String plateNo;

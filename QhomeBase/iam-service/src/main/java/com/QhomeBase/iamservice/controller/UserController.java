@@ -1,86 +1,76 @@
 package com.QhomeBase.iamservice.controller;
 
+import com.QhomeBase.iamservice.client.BaseServiceClient;
+import com.QhomeBase.iamservice.dto.CreateUserForResidentDto;
+import com.QhomeBase.iamservice.dto.UserAccountDto;
 import com.QhomeBase.iamservice.dto.UserInfoDto;
+import com.QhomeBase.iamservice.model.User;
+import com.QhomeBase.iamservice.model.UserRole;
+import com.QhomeBase.iamservice.repository.RolePermissionRepository;
 import com.QhomeBase.iamservice.repository.UserRepository;
-import com.QhomeBase.iamservice.repository.UserRolePermissionRepository;
-import com.QhomeBase.iamservice.repository.UserTenantRoleRepository;
-import com.QhomeBase.iamservice.service.AuthService;
+import com.QhomeBase.iamservice.service.UserService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
+@Slf4j
 public class UserController {
 
     private final UserRepository userRepository;
-    private final AuthService authService;
-    private final UserRolePermissionRepository userRolePermissionRepository;
-    private final UserTenantRoleRepository userTenantRoleRepository;
+    private final RolePermissionRepository rolePermissionRepository;
+    private final UserService userService;
+    private final BaseServiceClient baseServiceClient;
 
     @GetMapping("/{userId}")
     @PreAuthorize("@authz.canViewUser(#userId)")
     public ResponseEntity<UserInfoDto> getUserInfo(@PathVariable UUID userId) {
-        return userRepository.findById(userId)
+        return userService.findUserWithRolesById(userId)
                 .map(user -> {
-                    List<UUID> tenantIds = authService.getUserTenants(userId);
-                    UUID primaryTenant = tenantIds.isEmpty() ? null : tenantIds.get(0);
-                    List<String> roles = primaryTenant != null ? 
-                        authService.getUserRolesInTenant(userId, primaryTenant) : List.of();
+                    List<UserRole> userRoles = user.getRoles();
+                    List<String> roleNames = userRoles != null && !userRoles.isEmpty()
+                            ? userRoles.stream()
+                                .map(UserRole::getRoleName)
+                                .collect(Collectors.toList())
+                            : List.of();
 
-                    List<String> permissions = primaryTenant != null ? 
-                        userRolePermissionRepository.getUserRolePermissionsCodeByUserIdAndTenantId(userId, primaryTenant) : List.of();
+                    Set<String> permissionsSet = new HashSet<>();
+                    if (userRoles != null && !userRoles.isEmpty()) {
+                        for (UserRole role : userRoles) {
+                            List<String> rolePerms = rolePermissionRepository.findPermissionCodesByRole(role.name());
+                            permissionsSet.addAll(rolePerms);
+                        }
+                    }
+                    List<String> permissions = new ArrayList<>(permissionsSet);
 
                     UserInfoDto userInfo = new UserInfoDto(
                             user.getId().toString(),
                             user.getUsername(),
                             user.getEmail(),
-                            primaryTenant != null ? primaryTenant.toString() : null,
-                            null,
-                            roles,
+                            roleNames,
                             permissions
                     );
                     return ResponseEntity.ok(userInfo);
                 })
                 .orElse(ResponseEntity.notFound().build());
-    }
-
-    @GetMapping("/{userId}/tenants")
-    @PreAuthorize("@authz.canViewUser(#userId)")
-    public ResponseEntity<List<UUID>> getUserTenants(@PathVariable UUID userId) {
-        try {
-            List<UUID> tenants = authService.getUserTenants(userId);
-            return ResponseEntity.ok(tenants);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    @GetMapping("/{userId}/tenant/{tenantId}/roles")
-    @PreAuthorize("@authz.canViewUser(#userId)")
-    public ResponseEntity<List<String>> getUserRolesInTenant(
-            @PathVariable UUID userId,
-            @PathVariable UUID tenantId) {
-        try {
-            List<String> roles = authService.getUserRolesInTenant(userId, tenantId);
-            return ResponseEntity.ok(roles);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    @GetMapping("/{userId}/tenant/{tenantId}/validate")
-    @PreAuthorize("@authz.canViewUser(#userId)")
-    public ResponseEntity<Boolean> validateUserAccess(
-            @PathVariable UUID userId,
-            @PathVariable UUID tenantId) {
-        boolean hasAccess = authService.validateUserAccess(userId, tenantId);
-        return ResponseEntity.ok(hasAccess);
     }
 
     @GetMapping("/{userId}/status")
@@ -99,28 +89,297 @@ public class UserController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @RequestMapping(value = "/{userId}/password", method = {RequestMethod.PATCH, RequestMethod.PUT})
+    @PreAuthorize("@authz.canUpdateUser(#userId)")
+    public ResponseEntity<Void> updatePassword(
+            @PathVariable UUID userId,
+            @Valid @RequestBody UpdatePasswordRequest request) {
+        try {
+            userService.updatePassword(userId, request.newPassword());
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to update password for user {}: {}", userId, e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            log.error("Error updating password for user {}", userId, e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @GetMapping("/available-staff")
     @PreAuthorize("@authz.canViewAllUsers()")
     public ResponseEntity<List<UserInfoDto>> getAvailableStaff() {
         try {
-            List<UserInfoDto> availableStaff = userRepository.findAvailableStaff()
+            List<UserInfoDto> availableStaff = userService.findAvailableStaffWithRoles()
                     .stream()
                     .map(user -> {
-                        List<String> roles = userTenantRoleRepository.findGlobalRolesByUserId(user.getId());
+                        List<UserRole> userRoles = user.getRoles();
+                        List<String> roleNames = userRoles != null && !userRoles.isEmpty()
+                                ? userRoles.stream()
+                                    .map(UserRole::getRoleName)
+                                    .collect(Collectors.toList())
+                                : List.of();
+                        
+                        Set<String> permissionsSet = new HashSet<>();
+                        if (userRoles != null && !userRoles.isEmpty()) {
+                            for (UserRole role : userRoles) {
+                                List<String> rolePerms = rolePermissionRepository.findPermissionCodesByRole(role.name());
+                                permissionsSet.addAll(rolePerms);
+                            }
+                        }
+                        List<String> permissions = new ArrayList<>(permissionsSet);
                         
                         return new UserInfoDto(
                                 user.getId().toString(),
                                 user.getUsername(),
                                 user.getEmail(),
-                                null,
-                                null,
-                                roles,
-                                List.of()
+                                roleNames,
+                                permissions
                         );
                     })
-                    .toList();
+                    .collect(Collectors.toList());
             return ResponseEntity.ok(availableStaff);
         } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @PostMapping("/create-for-resident")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RESIDENT') or hasAuthority('PERM_iam.user.create') or hasAuthority('PERM_base.resident.approve')")
+    public ResponseEntity<UserAccountDto> createUserForResident(
+            @Valid @RequestBody CreateUserForResidentDto request) {
+        try {
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.getPrincipal() instanceof com.QhomeBase.iamservice.security.UserPrincipal principal) {
+                log.info("Creating user for resident: roles={}, perms={}", principal.roles(), principal.perms());
+            } else {
+                log.warn("No authentication found when creating user for resident");
+            }
+            User user;
+            
+            if (request.autoGenerate()) {
+                if (request.username() == null || request.username().isEmpty()) {
+                    return ResponseEntity.badRequest().build();
+                }
+                if (request.email() == null || request.email().isEmpty()) {
+                    return ResponseEntity.badRequest().build();
+                }
+                user = userService.createUserWithAutoGeneratedPassword(
+                        request.username(),
+                        request.email(),
+                        request.residentId()
+                );
+            } else {
+                if (request.username() == null || request.username().isEmpty()) {
+                    return ResponseEntity.badRequest().build();
+                }
+                if (request.email() == null || request.email().isEmpty()) {
+                    return ResponseEntity.badRequest().build();
+                }
+                if (request.password() == null || request.password().isEmpty()) {
+                    return ResponseEntity.badRequest().build();
+                }
+                user = userService.createUserForResident(
+                        request.username(),
+                        request.email(),
+                        request.password(),
+                        request.residentId()
+                );
+            }
+            
+            UserAccountDto accountDto = new UserAccountDto(
+                    user.getId(),
+                    user.getUsername(),
+                    user.getEmail(),
+                    user.getRoles().stream()
+                            .map(UserRole::getRoleName)
+                            .collect(Collectors.toList()),
+                    user.isActive()
+            );
+            
+            return ResponseEntity.status(HttpStatus.CREATED).body(accountDto);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to create user for resident: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Error creating user for resident", e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+    
+    @GetMapping("/{userId}/account-info")
+    @PreAuthorize("@authz.canViewUser(#userId)")
+    public ResponseEntity<UserAccountDto> getUserAccountInfo(@PathVariable UUID userId) {
+        return userService.findUserWithRolesById(userId)
+                .map(user -> {
+                    UserAccountDto accountDto = new UserAccountDto(
+                            user.getId(),
+                            user.getUsername(),
+                            user.getEmail(),
+                            user.getRoles().stream()
+                                    .map(UserRole::getRoleName)
+                                    .collect(Collectors.toList()),
+                            user.isActive()
+                    );
+                    return ResponseEntity.ok(accountDto);
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+    
+    @GetMapping("/by-username/{username}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RESIDENT') or hasAuthority('PERM_iam.user.read') or hasAuthority('PERM_base.resident.approve')")
+    public ResponseEntity<UserInfoDto> getUserByUsername(@PathVariable String username) {
+        return userService.findUserWithRolesByUsername(username)
+                .map(user -> {
+                    List<UserRole> userRoles = user.getRoles();
+                    List<String> roleNames = userRoles != null && !userRoles.isEmpty()
+                            ? userRoles.stream()
+                                .map(UserRole::getRoleName)
+                                .collect(Collectors.toList())
+                            : List.of();
+                    
+                    Set<String> permissionsSet = new HashSet<>();
+                    if (userRoles != null && !userRoles.isEmpty()) {
+                        for (UserRole role : userRoles) {
+                            List<String> rolePerms = rolePermissionRepository.findPermissionCodesByRole(role.name());
+                            permissionsSet.addAll(rolePerms);
+                        }
+                    }
+                    List<String> permissions = new ArrayList<>(permissionsSet);
+                    
+                    UserInfoDto userInfo = new UserInfoDto(
+                            user.getId().toString(),
+                            user.getUsername(),
+                            user.getEmail(),
+                            roleNames,
+                            permissions
+                    );
+                    return ResponseEntity.ok(userInfo);
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+    
+    @GetMapping("/by-email/{email}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RESIDENT') or hasAuthority('PERM_iam.user.read') or hasAuthority('PERM_base.resident.approve')")
+    public ResponseEntity<UserInfoDto> getUserByEmail(@PathVariable String email) {
+        return userService.findUserWithRolesByEmail(email)
+                .map(user -> {
+                    List<UserRole> userRoles = user.getRoles();
+                    List<String> roleNames = userRoles != null && !userRoles.isEmpty()
+                            ? userRoles.stream()
+                                .map(UserRole::getRoleName)
+                                .collect(Collectors.toList())
+                            : List.of();
+                    
+                    Set<String> permissionsSet = new HashSet<>();
+                    if (userRoles != null && !userRoles.isEmpty()) {
+                        for (UserRole role : userRoles) {
+                            List<String> rolePerms = rolePermissionRepository.findPermissionCodesByRole(role.name());
+                            permissionsSet.addAll(rolePerms);
+                        }
+                    }
+                    List<String> permissions = new ArrayList<>(permissionsSet);
+                    
+                    UserInfoDto userInfo = new UserInfoDto(
+                            user.getId().toString(),
+                            user.getUsername(),
+                            user.getEmail(),
+                            roleNames,
+                            permissions
+                    );
+                    return ResponseEntity.ok(userInfo);
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/staff")
+    @PreAuthorize("@authz.canCreateUser()")
+    public ResponseEntity<UserAccountDto> createStaffAccount(@Valid @RequestBody CreateStaffRequest request) {
+        try {
+            List<UserRole> roles = parseStaffRoles(request.roles());
+            User user = userService.createStaffAccount(
+                    request.username(),
+                    request.email(),
+                    roles,
+                    request.active() == null || request.active()
+            );
+            baseServiceClient.syncStaffResident(user.getId(), request.username(), request.email(), null);
+            return ResponseEntity.status(HttpStatus.CREATED).body(toAccountDto(user));
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to create staff account: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Error creating staff account", e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/staff")
+    @PreAuthorize("@authz.canViewAllUsers()")
+    public ResponseEntity<List<UserAccountDto>> listStaffAccounts() {
+        List<UserAccountDto> staff = userService.findStaffWithRoles()
+                .stream()
+                .map(this::toAccountDto)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(staff);
+    }
+
+    @GetMapping("/residents")
+    @PreAuthorize("@authz.canViewAllUsers()")
+    public ResponseEntity<List<UserAccountDto>> listResidentAccounts() {
+        List<UserAccountDto> residents = userService.findResidentAccounts()
+                .stream()
+                .map(this::toAccountDto)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(residents);
+    }
+
+    @GetMapping("/staff/{userId}")
+    @PreAuthorize("@authz.canViewUser(#userId)")
+    public ResponseEntity<UserAccountDto> getStaffAccount(@PathVariable UUID userId) {
+        return userService.findStaffWithRolesById(userId)
+                .map(this::toAccountDto)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/staff/{userId}")
+    @PreAuthorize("@authz.canUpdateUser(#userId)")
+    public ResponseEntity<UserAccountDto> updateStaffAccount(
+            @PathVariable UUID userId,
+            @Valid @RequestBody UpdateStaffRequest request) {
+        try {
+            List<UserRole> roles = request.roles() != null ? parseStaffRoles(request.roles()) : null;
+            User updated = userService.updateStaffAccount(
+                    userId,
+                    request.username(),
+                    request.email(),
+                    request.active(),
+                    request.newPassword(),
+                    roles
+            );
+            baseServiceClient.syncStaffResident(updated.getId(), updated.getUsername(), updated.getEmail(), null);
+            return ResponseEntity.ok(toAccountDto(updated));
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to update staff account {}: {}", userId, e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Error updating staff account {}", userId, e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @DeleteMapping("/staff/{userId}")
+    @PreAuthorize("@authz.canDeleteUser(#userId)")
+    public ResponseEntity<Void> deleteStaffAccount(@PathVariable UUID userId) {
+        try {
+            userService.deleteStaffAccount(userId);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to delete staff account {}: {}", userId, e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            log.error("Error deleting staff account {}", userId, e);
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -131,4 +390,66 @@ public class UserController {
             boolean accountLocked,
             java.time.LocalDateTime lastLogin
     ) {}
+
+    public record UpdatePasswordRequest(
+            @NotBlank(message = "New password is required")
+            @Size(min = 8, message = "New password must be at least 8 characters")
+            String newPassword
+    ) {}
+
+    public record CreateStaffRequest(
+            @NotBlank(message = "Username is required")
+            @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
+            String username,
+            @NotBlank(message = "Email is required")
+            @Email(message = "Email must be valid")
+            String email,
+            @NotEmpty(message = "Staff roles are required")
+            List<@NotBlank(message = "Role value cannot be blank") String> roles,
+            Boolean active
+    ) {}
+
+    public record UpdateStaffRequest(
+            @NotBlank(message = "Username is required")
+            @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
+            String username,
+            @NotBlank(message = "Email is required")
+            @Email(message = "Email must be valid")
+            String email,
+            Boolean active,
+            List<@NotBlank(message = "Role value cannot be blank") String> roles,
+            @Size(min = 8, message = "New password must be at least 8 characters")
+            String newPassword
+    ) {}
+
+    private UserAccountDto toAccountDto(User user) {
+        List<String> roleNames = user.getRoles() != null
+                ? user.getRoles().stream()
+                .map(UserRole::getRoleName)
+                .collect(Collectors.toList())
+                : List.of();
+        return new UserAccountDto(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                roleNames,
+                user.isActive()
+        );
+    }
+
+    private List<UserRole> parseStaffRoles(List<String> roles) {
+        if (roles == null || roles.isEmpty()) {
+            throw new IllegalArgumentException("Staff roles are required");
+        }
+        return roles.stream()
+                .map(roleName -> {
+                    try {
+                        return UserRole.valueOf(roleName.trim().toUpperCase());
+                    } catch (Exception e) {
+                        throw new IllegalArgumentException("Invalid role: " + roleName);
+                    }
+                })
+                .distinct()
+                .collect(Collectors.toList());
+    }
 }

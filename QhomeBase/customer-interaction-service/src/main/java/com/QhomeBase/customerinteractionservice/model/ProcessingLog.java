@@ -16,8 +16,6 @@ public class ProcessingLog {
     @Id @GeneratedValue
     @Column(name = "id", nullable = false)
     private UUID id;
-    @Column(name = "record_type", nullable = false)
-    private String recordType;
     @Column(name = "record_id", nullable = false)
     private UUID recordId;
     @Column(name = "staff_in_charge", nullable = true)
@@ -26,8 +24,6 @@ public class ProcessingLog {
     private String content;
     @Column(name = "request_status", nullable = true)
     private String requestStatus;
-    @Column(name = "log_type", nullable = true)
-    private String logType;
     @Column(name = "staff_in_charge_name", nullable = true)
     private String staffInChargeName;
     @Column(name = "created_at", nullable = false)

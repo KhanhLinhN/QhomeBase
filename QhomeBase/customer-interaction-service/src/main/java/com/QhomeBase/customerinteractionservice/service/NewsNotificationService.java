@@ -21,20 +21,20 @@ public class NewsNotificationService {
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     
-    public void notifyNewsCreated(UUID tenantId, WebSocketNewsMessage message) {
-        sendMessage(tenantId, message, "NEWS_CREATED");
+    public void notifyNewsCreated(WebSocketNewsMessage message) {
+        sendMessage(message, "NEWS_CREATED");
     }
     
-    public void notifyNewsUpdated(UUID tenantId, WebSocketNewsMessage message) {
-        sendMessage(tenantId, message, "NEWS_UPDATED");
+    public void notifyNewsUpdated(WebSocketNewsMessage message) {
+        sendMessage(message, "NEWS_UPDATED");
     }
     
-    public void notifyNewsDeleted(UUID tenantId, WebSocketNewsMessage message) {
-        sendMessage(tenantId, message, "NEWS_DELETED");
+    public void notifyNewsDeleted(WebSocketNewsMessage message) {
+        sendMessage(message, "NEWS_DELETED");
     }
     
-    private void sendMessage(UUID tenantId, WebSocketNewsMessage message, String action) {
-        String destination = "/topic/news/" + tenantId;
+    private void sendMessage(WebSocketNewsMessage message, String action) {
+        String destination = "/topic/news";
         
         try {
             String jsonMessage = objectMapper.writerWithDefaultPrettyPrinter()

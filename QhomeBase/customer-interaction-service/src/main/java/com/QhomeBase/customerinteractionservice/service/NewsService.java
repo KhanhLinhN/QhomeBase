@@ -3,38 +3,33 @@ package com.QhomeBase.customerinteractionservice.service;
 import com.QhomeBase.customerinteractionservice.dto.news.*;
 import com.QhomeBase.customerinteractionservice.model.*;
 import com.QhomeBase.customerinteractionservice.repository.NewsRepository;
-import com.QhomeBase.customerinteractionservice.repository.NewsViewRepository;
 import com.QhomeBase.customerinteractionservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 @Transactional
 @RequiredArgsConstructor
+@Slf4j
 public class NewsService {
 
     private final NewsRepository newsRepository;
-    private final NewsViewRepository newsViewRepository;
     private final NewsNotificationService notificationService;
 
-    public NewsManagementResponse createNews(CreateNewsRequest request, UUID tenantId, Authentication authentication) {
+    public NewsManagementResponse createNews(CreateNewsRequest request, Authentication authentication) {
         var principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
         
-        if (tenantId == null) {
-            throw new IllegalArgumentException("Tenant ID is required");
-        }
+        validateNewsScope(request.getScope(), request.getTargetRole(), request.getTargetBuildingId());
+        
         News news = News.builder()
-                .tenantId(tenantId)
                 .title(request.getTitle())
                 .summary(request.getSummary())
                 .bodyHtml(request.getBodyHtml())
@@ -43,6 +38,9 @@ public class NewsService {
                 .publishAt(request.getPublishAt())
                 .expireAt(request.getExpireAt())
                 .displayOrder(request.getDisplayOrder())
+                .scope(request.getScope())
+                .targetRole(request.getTargetRole())
+                .targetBuildingId(request.getTargetBuildingId())
                 .createdBy(userId)
                 .updatedBy(userId)
                 .build();
@@ -60,22 +58,6 @@ public class NewsService {
             }
         }
 
-        if (request.getTargetType() == TargetType.ALL) {
-            NewsTarget target = NewsTarget.builder()
-                    .tenantId(tenantId)
-                    .targetType(TargetType.ALL)
-                    .build();
-            news.addTarget(target);
-        } else if (request.getBuildingIds() != null && !request.getBuildingIds().isEmpty()) {
-            for (UUID buildingId : request.getBuildingIds()) {
-                NewsTarget target = NewsTarget.builder()
-                        .tenantId(tenantId)
-                        .targetType(TargetType.BUILDING)
-                        .buildingId(buildingId)
-                        .build();
-                news.addTarget(target);
-            }
-        }
 
         News savedNews = newsRepository.save(news);
 
@@ -85,12 +67,12 @@ public class NewsService {
             savedNews.getSummary(),
             savedNews.getCoverImageUrl()
         );
-        notificationService.notifyNewsCreated(tenantId, wsMessage);
+        notificationService.notifyNewsCreated(wsMessage);
 
         return toManagementResponse(savedNews);
     }
 
-    private NewsDetailResponse toDetailResponse(News news, Boolean isRead, java.time.Instant readAt) {
+    private NewsDetailResponse toDetailResponse(News news) {
         return NewsDetailResponse.builder()
                 .id(news.getId())
                 .title(news.getTitle())
@@ -103,9 +85,6 @@ public class NewsService {
                 .displayOrder(news.getDisplayOrder())
                 .viewCount(news.getViewCount())
                 .images(toImageDtos(news.getImages()))
-                .targets(toTargetDtos(news.getTargets()))
-                .isRead(isRead)
-                .readAt(readAt)
                 .createdBy(news.getCreatedBy())
                 .createdAt(news.getCreatedAt())
                 .updatedBy(news.getUpdatedBy())
@@ -128,30 +107,12 @@ public class NewsService {
                 .collect(Collectors.toList());
     }
 
-    private List<NewsTargetDto> toTargetDtos(List<NewsTarget> targets) {
-        if (targets == null) return List.of();
-        return targets.stream()
-                .map(t -> NewsTargetDto.builder()
-                        .id(t.getId())
-                        .targetType(t.getTargetType())
-                        .buildingId(t.getBuildingId())
-                        .build())
-                .collect(Collectors.toList());
-    }
-    public NewsManagementResponse updateNews(UUID newsId, UUID tenantId, UpdateNewsRequest request, Authentication auth) {
+    public NewsManagementResponse updateNews(UUID newsId, UpdateNewsRequest request, Authentication auth) {
         var principal = (UserPrincipal) auth.getPrincipal();
         UUID userId = principal.uid();
         
-        News news = newsRepository.findByTenantIdAndId(tenantId, newsId);
-        
-        if (news == null) {
-            throw new IllegalArgumentException("News not found with ID: " + newsId);
-        }
-
-        // Verify tenant ownership
-        if (!news.getTenantId().equals(tenantId)) {
-            throw new org.springframework.security.access.AccessDeniedException("Access denied");
-        }
+        News news = newsRepository.findById(newsId)
+                .orElseThrow(() -> new IllegalArgumentException("News not found with ID: " + newsId));
         if (request.getTitle() != null) {
             news.setTitle(request.getTitle());
         }
@@ -176,6 +137,27 @@ public class NewsService {
         if (request.getDisplayOrder() != null) {
             news.setDisplayOrder(request.getDisplayOrder());
         }
+        if (request.getScope() != null) {
+            news.setScope(request.getScope());
+            validateNewsScope(request.getScope(), request.getTargetRole(), request.getTargetBuildingId());
+            
+            if (request.getScope() == NotificationScope.INTERNAL) {
+                news.setTargetRole(request.getTargetRole());
+                news.setTargetBuildingId(null);
+            } else if (request.getScope() == NotificationScope.EXTERNAL) {
+                news.setTargetRole(null);
+                news.setTargetBuildingId(request.getTargetBuildingId());
+            }
+        } else if (news.getScope() != null) {
+            NotificationScope currentScope = news.getScope();
+            validateNewsScope(currentScope, request.getTargetRole(), request.getTargetBuildingId());
+            
+            if (currentScope == NotificationScope.INTERNAL && request.getTargetRole() != null) {
+                news.setTargetRole(request.getTargetRole());
+            } else if (currentScope == NotificationScope.EXTERNAL && request.getTargetBuildingId() != null) {
+                news.setTargetBuildingId(request.getTargetBuildingId());
+            }
+        }
         news.setUpdatedBy(userId);
 
         News updated = newsRepository.save(news);
@@ -186,21 +168,14 @@ public class NewsService {
             updated.getSummary(),
             updated.getCoverImageUrl()
         );
-        notificationService.notifyNewsUpdated(tenantId, wsMessage);
+        notificationService.notifyNewsUpdated(wsMessage);
         
         return toManagementResponse(updated);
     }
     
-    public NewsManagementResponse deleteNews(UUID newsId, UUID tenantId, UUID userId) {
-        News news = newsRepository.findByTenantIdAndId(tenantId, newsId);
-        
-        if (news == null) {
-            throw new IllegalArgumentException("News not found with ID: " + newsId);
-        }
-
-        if (!news.getTenantId().equals(tenantId)) {
-            throw new org.springframework.security.access.AccessDeniedException("Access denied");
-        }
+    public NewsManagementResponse deleteNews(UUID newsId, UUID userId) {
+        News news = newsRepository.findById(newsId)
+                .orElseThrow(() -> new IllegalArgumentException("News not found with ID: " + newsId));
 
         news.setStatus(NewsStatus.ARCHIVED);
         news.setUpdatedBy(userId);
@@ -208,89 +183,93 @@ public class NewsService {
         News deleted = newsRepository.save(news);
         
         WebSocketNewsMessage wsMessage = WebSocketNewsMessage.deleted(deleted.getId());
-        notificationService.notifyNewsDeleted(tenantId, wsMessage);
+        notificationService.notifyNewsDeleted(wsMessage);
         
         return toManagementResponse(deleted);
     }
 
-    public List<NewsManagementResponse> getNewsInTenant(UUID tenantId) {
-        if (tenantId == null) {
-            throw new IllegalArgumentException("Tenant ID is required");
-        }
-
-        return newsRepository.findAll(tenantId)
+    public List<NewsManagementResponse> getAllNews() {
+        return newsRepository.findAll()
                 .stream()
                 .map(this::toManagementResponse)
                 .collect(Collectors.toList());
     }
 
-    public NewsManagementResponse getNewsDetail(UUID newsId, UUID tenantId) {
-        News news = newsRepository.findByTenantIdAndId(tenantId, newsId);
-        
-        if (news == null) {
-            throw new IllegalArgumentException("News not found with ID: " + newsId);
-        }
+    public NewsManagementResponse getNewsDetail(UUID newsId) {
+        News news = newsRepository.findById(newsId)
+                .orElseThrow(() -> new IllegalArgumentException("News not found with ID: " + newsId));
 
         return toManagementResponse(news);
     }
 
-    public NewsDetailResponse getNewsForResident(UUID newsId, UUID tenantId, UUID residentId) {
-        News news = newsRepository.findByTenantIdAndId(tenantId, newsId);
-        
-        if (news == null) {
-            throw new IllegalArgumentException("News not found with ID: " + newsId);
+    public NewsDetailResponse getNewsForResident(UUID newsId, UUID residentId) {
+        News news = newsRepository.findById(newsId)
+                .orElseThrow(() -> new IllegalArgumentException("News not found with ID: " + newsId));
+
+        if (!shouldShowNewsToResident(news, residentId)) {
+            throw new IllegalArgumentException("News not accessible for this resident");
         }
 
-        Optional<NewsView> view = newsViewRepository.findByNewsIdAndResidentId(newsId, residentId);
-        Boolean isRead = view.isPresent();
-        Instant readAt = view.map(NewsView::getViewedAt).orElse(null);
-
-        return toDetailResponse(news, isRead, readAt);
+        return toDetailResponse(news);
     }
 
-    public List<NewsDetailResponse> getNewsForResident(UUID tenantId, UUID residentId) {
-        List<News> newsList = newsRepository.findAll(tenantId);
+    public List<NewsDetailResponse> getNewsForResident(UUID residentId) {
+        List<News> allNews = newsRepository.findAll();
 
-        Map<UUID, NewsView> viewMap = newsViewRepository.findByResidentId(residentId, tenantId)
-                .stream()
-                .collect(Collectors.toMap(v -> v.getNews().getId(), v -> v));
-
-        return newsList.stream()
-                .map(news -> {
-                    NewsView view = viewMap.get(news.getId());
-                    Boolean isRead = (view != null);
-                    Instant readAt = (view != null) ? view.getViewedAt() : null;
-                    return toDetailResponse(news, isRead, readAt);
-                })
+        return allNews.stream()
+                .filter(news -> shouldShowNewsToResident(news, residentId))
+                .map(this::toDetailResponse)
                 .collect(Collectors.toList());
     }
-
-    public MarkAsReadResponse markAsRead(UUID newsId, UUID tenantId, UUID residentId) {
-        News news = newsRepository.findByTenantIdAndId(tenantId, newsId);
-        
-        if (news == null) {
-            throw new IllegalArgumentException("News not found with ID: " + newsId);
+    
+    private boolean shouldShowNewsToResident(News news, UUID residentId) {
+        if (news.getScope() == null) {
+            return true;
         }
-
-        Optional<NewsView> existingView = newsViewRepository.findByNewsIdAndResidentId(newsId, residentId);
         
-        if (existingView.isPresent()) {
-            return MarkAsReadResponse.alreadyRead(existingView.get().getViewedAt());
+        if (news.getScope() == NotificationScope.INTERNAL) {
+            return false;
         }
-
-        NewsView newsView = NewsView.forResident(news, tenantId, residentId);
-        newsViewRepository.save(newsView);
-
-        news.incrementViewCount();
-        newsRepository.save(news);
-
-        return MarkAsReadResponse.success(newsView.getViewedAt());
+        
+        if (news.getScope() == NotificationScope.EXTERNAL) {
+            if (news.getTargetBuildingId() == null) {
+                return true;
+            }
+            UUID residentBuildingId = getResidentBuildingId(residentId);
+            return residentBuildingId != null && residentBuildingId.equals(news.getTargetBuildingId());
+        }
+        
+        return false;
+    }
+    
+    private UUID getResidentBuildingId(UUID residentId) {
+        try {
+            return null;
+        } catch (Exception e) {
+            log.warn("Failed to get buildingId for residentId: {}", residentId, e);
+            return null;
+        }
+    }
+    
+    private void validateNewsScope(NotificationScope scope, String targetRole, UUID targetBuildingId) {
+        if (scope == null) {
+            return;
+        }
+        
+        if (scope == NotificationScope.INTERNAL) {
+            if (targetRole == null || targetRole.isBlank()) {
+                throw new IllegalArgumentException("INTERNAL news must have target_role (use 'ALL' for all roles)");
+            }
+            if (targetBuildingId != null) {
+                throw new IllegalArgumentException("INTERNAL news cannot have target_building_id");
+            }
+        } else if (scope == NotificationScope.EXTERNAL) {
+            if (targetRole != null && !targetRole.isBlank()) {
+                throw new IllegalArgumentException("EXTERNAL news cannot have target_role");
+            }
+        }
     }
 
-    public UnreadCountResponse countUnreadNews(UUID tenantId, UUID residentId) {
-        Long count = newsViewRepository.countUnreadByResident(tenantId, residentId);
-        return UnreadCountResponse.of(count);
-    }
 
     private NewsManagementResponse toManagementResponse(News news) {
         return NewsManagementResponse.builder()
@@ -303,9 +282,11 @@ public class NewsService {
                 .publishAt(news.getPublishAt())
                 .expireAt(news.getExpireAt())
                 .displayOrder(news.getDisplayOrder())
+                .scope(news.getScope())
+                .targetRole(news.getTargetRole())
+                .targetBuildingId(news.getTargetBuildingId())
                 .viewCount(news.getViewCount())
                 .images(toImageDtos(news.getImages()))
-                .targets(toTargetDtos(news.getTargets()))
                 .createdBy(news.getCreatedBy())
                 .createdAt(news.getCreatedAt())
                 .updatedBy(news.getUpdatedBy())

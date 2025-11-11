@@ -13,14 +13,12 @@ import java.util.UUID;
 public class RequestDTO {
     UUID id;
     String requestCode;
-    UUID tenantId;
     UUID residentId;
     String residentName;
     String imagePath;
     String title;
     String content;
     String status;
-    String priority;
     String createdAt;
     String updatedAt;
 }

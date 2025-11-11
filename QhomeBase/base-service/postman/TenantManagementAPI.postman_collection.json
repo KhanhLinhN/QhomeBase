@@ -891,7 +891,7 @@
 								"approve"
 							]
 						},
-						"description": "Admin approve tenant deletion request (chuyển buildings sang DELETING, units sang INACTIVE)"
+						"description": "Admin approve tenant deletion request (chuyển tất cả buildings, units sang INACTIVE)"
 					},
 					"response": []
 				},
@@ -927,7 +927,7 @@
 			"name": "5. Building Deletion Workflow",
 			"item": [
 				{
-					"name": "Get Deleting Buildings (Admin)",
+					"name": "Get Buildings Under Maintenance (Admin)",
 					"event": [
 						{
 							"listen": "test",
@@ -964,12 +964,12 @@
 								"deleting"
 							]
 						},
-						"description": "Admin xem danh sách buildings đang ở trạng thái DELETING (tìm trực tiếp trong Building table)"
+						"description": "Admin xem danh sách buildings đang ở trạng thái INACTIVE (tìm trực tiếp trong Building table)"
 					},
 					"response": []
 				},
 				{
-					"name": "Get My Deleting Buildings",
+					"name": "Get My Buildings Under Maintenance",
 					"request": {
 						"method": "GET",
 						"header": [
@@ -995,12 +995,12 @@
 								}
 							]
 						},
-						"description": "Tenant owner xem danh sách buildings đang DELETING thuộc về tenant của mình (qua BuildingDeletionRequest)"
+						"description": "Tenant owner xem danh sách buildings đang INACTIVE thuộc về tenant của mình (qua BuildingDeletionRequest)"
 					},
 					"response": []
 				},
 				{
-					"name": "Get My Deleting Buildings (Raw)",
+					"name": "Get My Buildings Under Maintenance (Raw)",
 					"request": {
 						"method": "GET",
 						"header": [
@@ -1026,7 +1026,7 @@
 								}
 							]
 						},
-						"description": "Tenant owner xem trực tiếp danh sách buildings có status DELETING của mình (raw Building objects)"
+						"description": "Tenant owner xem trực tiếp danh sách buildings có status INACTIVE của mình (raw Building objects)"
 					},
 					"response": []
 				},

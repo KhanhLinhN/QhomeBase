@@ -1,7 +1,7 @@
 package com.QhomeBase.customerinteractionservice.dto.news;
 
 import com.QhomeBase.customerinteractionservice.model.NewsStatus;
-import com.QhomeBase.customerinteractionservice.model.TargetType;
+import com.QhomeBase.customerinteractionservice.model.NotificationScope;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -40,10 +40,12 @@ public class CreateNewsRequest {
     @Builder.Default
     private Integer displayOrder = 0;
 
-    @NotNull(message = "Target type is required")
-    private TargetType targetType;
+    @NotNull(message = "Scope is required")
+    private NotificationScope scope;
 
-    private List<UUID> buildingIds;
+    private String targetRole;
+
+    private UUID targetBuildingId;
 
     private List<NewsImageDto> images;
 }

@@ -17,3 +17,6 @@ public interface HouseholdRepository extends JpaRepository<Household, UUID> {
     Optional<Household> findCurrentHouseholdByUnitId(@Param("unitId") UUID unitId);
 }
 
+
+
+

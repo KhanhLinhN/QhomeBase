@@ -34,12 +34,8 @@ public class buildingController {
 
 
     @GetMapping
-    public ResponseEntity<List<Building>> findAll(@RequestParam(required = false) UUID tenantId) {
-        if (tenantId == null) {
-            return ResponseEntity.badRequest().build();
-        }
-
-        List<Building> buildings = buildingService.findAllByTenantIdOrderByCodeAsc(tenantId);
+    public ResponseEntity<List<Building>> findAll() {
+        List<Building> buildings = buildingService.findAllOrderByCodeAsc();
         return ResponseEntity.ok(buildings);
     }
 
@@ -57,10 +53,9 @@ public class buildingController {
     @PreAuthorize("@authz.canCreateBuilding()")
     public ResponseEntity<BuildingDto> createBuilding(
             @Valid @RequestBody BuildingCreateReq req, 
-            @RequestParam UUID tenantId,
             Authentication auth) {
         var user = (UserPrincipal) auth.getPrincipal();
-        BuildingDto createdBuilding = buildingService.createBuilding(req, tenantId, user.username());
+        BuildingDto createdBuilding = buildingService.createBuilding(req, user.username());
         return ResponseEntity.ok(createdBuilding);
     }
 
@@ -168,24 +163,18 @@ public class buildingController {
     }
 
     @GetMapping("/my-deleting-buildings")
-    public List<BuildingDeletionRequestDto> getMyDeletingBuildings(
-            @RequestParam UUID tenantId,
-            Authentication auth) {
-        return buildingDeletionService.getDeletingBuildingsByTenantId(tenantId);
+    public List<BuildingDeletionRequestDto> getMyDeletingBuildings(Authentication auth) {
+        return buildingDeletionService.getDeletingBuildings();
     }
 
     @GetMapping("/my-all")
-    public List<BuildingDeletionRequestDto> getMyAllBuildingDeletionRequests(
-            @RequestParam UUID tenantId,
-            Authentication auth) {
-        return buildingDeletionService.getAllBuildingDeletionRequestsByTenantId(tenantId);
+    public List<BuildingDeletionRequestDto> getMyAllBuildingDeletionRequests(Authentication auth) {
+        return buildingDeletionService.getAllBuildingDeletionRequests();
     }
 
     @GetMapping("/my-deleting-buildings-raw")
-    public ResponseEntity<List<Building>> getMyDeletingBuildingsRaw(
-            @RequestParam UUID tenantId,
-            Authentication auth) {
-        var deletingBuildings = buildingDeletionService.getDeletingBuildingsRawByTenantId(tenantId);
+    public ResponseEntity<List<Building>> getMyDeletingBuildingsRaw(Authentication auth) {
+        var deletingBuildings = buildingDeletionService.getDeletingBuildingsRaw();
         return ResponseEntity.ok(deletingBuildings);
     }
     

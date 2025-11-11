@@ -19,7 +19,8 @@ public class RolePermissionService {
 
     @Transactional
     public void addPermissionToRole(String role, String permissionCode) {
-        if (rolePermissionRepository.existsByRoleAndPermissionCode(role, permissionCode)) {
+        String normalizedRole = role.toUpperCase();
+        if (rolePermissionRepository.existsByRoleAndPermissionCode(normalizedRole, permissionCode)) {
             throw new IllegalArgumentException("Permission already exists in this role");
         }
         
@@ -28,7 +29,7 @@ public class RolePermissionService {
         }
         
         var rolePermission = new RolePermission();
-        var rolePermissionId = new RolePermissionId(role, permissionCode);
+        var rolePermissionId = new RolePermissionId(normalizedRole, permissionCode);
         rolePermission.setRolePermissionId(rolePermissionId);
         
         rolePermissionRepository.save(rolePermission);
@@ -36,31 +37,35 @@ public class RolePermissionService {
 
     @Transactional
     public void removePermissionFromRole(String role, String permissionCode) {
-        if (!rolePermissionRepository.existsByRoleAndPermissionCode(role, permissionCode)) {
+        String normalizedRole = role.toUpperCase();
+        if (!rolePermissionRepository.existsByRoleAndPermissionCode(normalizedRole, permissionCode)) {
             throw new IllegalArgumentException("Permission not found in this role");
         }
         
-        var rolePermissionId = new RolePermissionId(role, permissionCode);
+        var rolePermissionId = new RolePermissionId(normalizedRole, permissionCode);
         rolePermissionRepository.deleteById(rolePermissionId);
     }
 
     @Transactional(readOnly = true)
     public List<Permission> getPermissionsByRole(String role) {
-        return rolePermissionRepository.findPermissionObjectsByRole(role);
+        String normalizedRole = role.toUpperCase();
+        return rolePermissionRepository.findPermissionObjectsByRole(normalizedRole);
     }
 
     @Transactional(readOnly = true)
     public boolean hasPermission(String role, String permissionCode) {
-        return rolePermissionRepository.existsByRoleAndPermissionCode(role, permissionCode);
+        String normalizedRole = role.toUpperCase();
+        return rolePermissionRepository.existsByRoleAndPermissionCode(normalizedRole, permissionCode);
     }
 
     @Transactional
     public void addMultiplePermissionsToRole(String role, List<String> permissionCodes) {
+        String normalizedRole = role.toUpperCase();
         for (String permissionCode : permissionCodes) {
-            if (!rolePermissionRepository.existsByRoleAndPermissionCode(role, permissionCode)) {
+            if (!rolePermissionRepository.existsByRoleAndPermissionCode(normalizedRole, permissionCode)) {
                 if (permissionRepository.existsById(permissionCode)) {
                     var rolePermission = new RolePermission();
-                    var rolePermissionId = new RolePermissionId(role, permissionCode);
+                    var rolePermissionId = new RolePermissionId(normalizedRole, permissionCode);
                     rolePermission.setRolePermissionId(rolePermissionId);
                     rolePermissionRepository.save(rolePermission);
                 }
@@ -70,9 +75,10 @@ public class RolePermissionService {
 
     @Transactional
     public void removeMultiplePermissionsFromRole(String role, List<String> permissionCodes) {
+        String normalizedRole = role.toUpperCase();
         for (String permissionCode : permissionCodes) {
-            if (rolePermissionRepository.existsByRoleAndPermissionCode(role, permissionCode)) {
-                var rolePermissionId = new RolePermissionId(role, permissionCode);
+            if (rolePermissionRepository.existsByRoleAndPermissionCode(normalizedRole, permissionCode)) {
+                var rolePermissionId = new RolePermissionId(normalizedRole, permissionCode);
                 rolePermissionRepository.deleteById(rolePermissionId);
             }
         }
@@ -80,7 +86,8 @@ public class RolePermissionService {
 
     @Transactional
     public void updateRolePermissions(String role, List<String> permissionCodes) {
-        List<Permission> currentPermissions = rolePermissionRepository.findPermissionObjectsByRole(role);
+        String normalizedRole = role.toUpperCase();
+        List<Permission> currentPermissions = rolePermissionRepository.findPermissionObjectsByRole(normalizedRole);
         List<String> currentPermissionCodes = currentPermissions.stream()
                 .map(Permission::getCode)
                 .toList();
@@ -93,7 +100,7 @@ public class RolePermissionService {
                 .filter(code -> !permissionCodes.contains(code))
                 .toList();
         
-        addMultiplePermissionsToRole(role, toAdd);
-        removeMultiplePermissionsFromRole(role, toRemove);
+        addMultiplePermissionsToRole(normalizedRole, toAdd);
+        removeMultiplePermissionsFromRole(normalizedRole, toRemove);
     }
 }

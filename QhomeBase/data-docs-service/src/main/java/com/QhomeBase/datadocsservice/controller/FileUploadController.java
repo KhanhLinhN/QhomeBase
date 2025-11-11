@@ -35,10 +35,10 @@ public class FileUploadController {
     @Operation(summary = "Upload news image", description = "Upload a single image for news article")
     public ResponseEntity<FileUploadResponse> uploadNewsImage(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("tenantId") UUID tenantId,
+            @RequestParam("ownerId") UUID ownerId,
             @RequestParam(value = "uploadedBy", required = false) UUID uploadedBy) {
         
-        log.info("Uploading news image: {} for tenant: {}", file.getOriginalFilename(), tenantId);
+        log.info("Uploading news image: {} for owner: {}", file.getOriginalFilename(), ownerId);
         
         if (uploadedBy == null) {
             uploadedBy = UUID.randomUUID();
@@ -46,7 +46,7 @@ public class FileUploadController {
         
         FileUploadResponse response = fileStorageService.uploadImage(
                 file, 
-                tenantId, 
+                ownerId, 
                 uploadedBy, 
                 "news"
         );
@@ -58,10 +58,10 @@ public class FileUploadController {
     @Operation(summary = "Upload multiple news images", description = "Upload multiple images for news article")
     public ResponseEntity<List<FileUploadResponse>> uploadNewsImages(
             @RequestParam("files") MultipartFile[] files,
-            @RequestParam("tenantId") UUID tenantId,
+            @RequestParam("ownerId") UUID ownerId,
             @RequestParam(value = "uploadedBy", required = false) UUID uploadedBy) {
         
-        log.info("Uploading {} news images for tenant: {}", files.length, tenantId);
+        log.info("Uploading {} news images for owner: {}", files.length, ownerId);
         
         if (uploadedBy == null) {
             uploadedBy = UUID.randomUUID();
@@ -71,7 +71,7 @@ public class FileUploadController {
         for (MultipartFile file : files) {
             FileUploadResponse response = fileStorageService.uploadImage(
                     file, 
-                    tenantId, 
+                    ownerId, 
                     uploadedBy, 
                     "news"
             );
@@ -85,10 +85,10 @@ public class FileUploadController {
     @Operation(summary = "Upload profile image", description = "Upload profile/avatar image")
     public ResponseEntity<FileUploadResponse> uploadProfileImage(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("tenantId") UUID tenantId,
+            @RequestParam("ownerId") UUID ownerId,
             @RequestParam(value = "uploadedBy", required = false) UUID uploadedBy) {
         
-        log.info("Uploading profile image: {} for tenant: {}", file.getOriginalFilename(), tenantId);
+        log.info("Uploading profile image: {} for owner: {}", file.getOriginalFilename(), ownerId);
         
         if (uploadedBy == null) {
             uploadedBy = UUID.randomUUID();
@@ -96,7 +96,7 @@ public class FileUploadController {
         
         FileUploadResponse response = fileStorageService.uploadImage(
                 file, 
-                tenantId, 
+                ownerId, 
                 uploadedBy, 
                 "profile"
         );
@@ -104,16 +104,42 @@ public class FileUploadController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @GetMapping("/{category}/{tenantId}/{date}/{fileName:.+}")
+    @GetMapping("/{category}/{ownerId}/{date}/{fileName:.+}")
     @Operation(summary = "Get file", description = "Download or view uploaded file")
     public ResponseEntity<Resource> downloadFile(
             @PathVariable String category,
-            @PathVariable String tenantId,
+            @PathVariable String ownerId,
             @PathVariable String date,
             @PathVariable String fileName,
             HttpServletRequest request) {
         
-        Resource resource = fileStorageService.loadFileAsResource(category, tenantId, date, fileName);
+        Resource resource = fileStorageService.loadFileAsResource(category, ownerId, date, fileName);
+        
+        String contentType = null;
+        try {
+            contentType = request.getServletContext().getMimeType(resource.getFile().getAbsolutePath());
+        } catch (IOException ex) {
+            log.info("Could not determine file type.");
+        }
+        
+        if (contentType == null) {
+            contentType = "application/octet-stream";
+        }
+        
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + resource.getFilename() + "\"")
+                .body(resource);
+    }
+
+    @GetMapping("/contracts/{contractId}/{fileName:.+}")
+    @Operation(summary = "Get contract file", description = "Download or view contract file")
+    public ResponseEntity<Resource> getContractFile(
+            @PathVariable UUID contractId,
+            @PathVariable String fileName,
+            HttpServletRequest request) {
+        
+        Resource resource = fileStorageService.loadContractFileAsResource(contractId, fileName);
         
         String contentType = null;
         try {

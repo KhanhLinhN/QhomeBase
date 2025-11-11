@@ -27,9 +27,10 @@ public class NewsDetailResponse {
     private Integer displayOrder;
     private Long viewCount;
     private List<NewsImageDto> images;
-    private List<NewsTargetDto> targets;
+    private List<String> targets;
     private Boolean isRead;
     private Instant readAt;
+
     private UUID createdBy;
     private Instant createdAt;
     private UUID updatedBy;

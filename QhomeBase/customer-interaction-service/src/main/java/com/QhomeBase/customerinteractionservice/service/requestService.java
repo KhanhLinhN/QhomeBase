@@ -1,12 +1,14 @@
 package com.QhomeBase.customerinteractionservice.service;
 
-import com.QhomeBase.customerinteractionservice.dto.ProcessingLogDTO;
+import com.QhomeBase.customerinteractionservice.client.BaseServiceClient;
+import com.QhomeBase.customerinteractionservice.client.dto.ResidentResponse;
 import com.QhomeBase.customerinteractionservice.dto.RequestDTO;
 import com.QhomeBase.customerinteractionservice.dto.StatusCountDTO;
 import com.QhomeBase.customerinteractionservice.model.ProcessingLog;
 import com.QhomeBase.customerinteractionservice.model.Request;
 import com.QhomeBase.customerinteractionservice.repository.processingLogRepository;
 import com.QhomeBase.customerinteractionservice.repository.requestRepository;
+import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -24,17 +26,25 @@ import java.util.stream.Collectors;
 import jakarta.persistence.criteria.Predicate;
 
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 @Service
+@Slf4j
 public class requestService {
     private final requestRepository requestRepository;
     private final processingLogRepository processingLogRepository;
+    private final BaseServiceClient baseServiceClient;
     private static final int PAGE_SIZE = 5;
 
-    public requestService(requestRepository requestRepository, processingLogRepository processingLogRepository) {
+    public requestService(requestRepository requestRepository,
+                          processingLogRepository processingLogRepository,
+                          BaseServiceClient baseServiceClient) {
         this.requestRepository = requestRepository;
         this.processingLogRepository = processingLogRepository;
+        this.baseServiceClient = baseServiceClient;
     }
 
     public Request createRequest(Request newRequest) {
@@ -45,14 +55,12 @@ public class requestService {
         return new RequestDTO(
             entity.getId(),
             entity.getRequestCode(),
-            entity.getTenantId(),
             entity.getResidentId(),
             entity.getResidentName(),
             entity.getImagePath(),
             entity.getTitle(),
             entity.getContent(),
             entity.getStatus(),
-            entity.getPriority(),
             entity.getCreatedAt().toString().replace("T", " "),
             entity.getUpdatedAt() != null ? entity.getUpdatedAt().toString().replace("T", " ") : null
         );
@@ -65,12 +73,7 @@ public class requestService {
 
     // Method to get filtered requests with pagination
     public Page<RequestDTO> getFilteredRequests(
-            String projectCode,
-            String title,
-            String residentName,
-            UUID tenantId,
             String status,
-            String priority,
             int pageNo,
             String dateFrom,
             String dateTo) {
@@ -78,31 +81,16 @@ public class requestService {
         Specification<Request> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            if (projectCode != null && !projectCode.isEmpty()) {
-                predicates.add(cb.like(root.get("requestCode"), "%" + projectCode + "%"));
-            }
-            if (title != null && !title.isEmpty()) {
-                predicates.add(cb.like(cb.lower(root.get("title")), "%" + title.toLowerCase() + "%"));
-            }
-            if (residentName != null && !residentName.isEmpty()) {
-                predicates.add(cb.like(cb.lower(root.get("residentName")), "%" + residentName.toLowerCase() + "%"));
-            }
-            if (tenantId != null) {
-                predicates.add(cb.equal(root.get("tenantId"), tenantId));
-            }
-            if (status != null && !status.isEmpty()) {
+            if (StringUtils.hasText(status)) {
                 predicates.add(cb.equal(root.get("status"), status));
             }
-            if (priority != null && !priority.isEmpty()) {
-                predicates.add(cb.equal(root.get("priority"), priority));
-            }
 
-            if (dateFrom != null && !dateFrom.isEmpty()) {
+            if (StringUtils.hasText(dateFrom)) {
                 LocalDate fromDate = LocalDate.parse(dateFrom);
                 predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), fromDate.atStartOfDay()));
             }
 
-            if (dateTo != null && !dateTo.isEmpty()) {
+            if (StringUtils.hasText(dateTo)) {
                 LocalDate toDate = LocalDate.parse(dateTo);
                 predicates.add(cb.lessThan(root.get("createdAt"), toDate.plusDays(1).atStartOfDay()));
             }
@@ -115,10 +103,10 @@ public class requestService {
         return requestRepository.findAll(spec, pageable).map(this::mapToDto);
     }
 
-    public Map<String, Long> getRequestCounts(String projectCode, String title, String residentName, UUID tenantId, String priority, String dateFrom, String dateTo) {
+    public Map<String, Long> getRequestCounts(String dateFrom, String dateTo) {
 
         List<StatusCountDTO> countsByStatus = requestRepository.countRequestsByStatus(
-                projectCode, title, residentName, tenantId, priority, dateFrom, dateTo
+                dateFrom, dateTo
         );
 
         Map<String, Long> result = countsByStatus.stream()
@@ -138,36 +126,52 @@ public class requestService {
         return String.format("%s-%s-%05d", prefix, year, count);
     }
 
-    // Create a new request
-    public RequestDTO createNewRequest(RequestDTO dto) {
+
+    public RequestDTO createNewRequest(RequestDTO dto, Authentication authentication) {
+        Authentication auth = authentication != null ? authentication : SecurityContextHolder.getContext().getAuthentication();
+        UUID userId = extractUserId(auth);
+        if (userId == null) {
+            throw new IllegalArgumentException("User information is required to create a request");
+        }
+
+        ResidentResponse resident = baseServiceClient.getResidentByUserId(userId);
+        if (resident == null) {
+            throw new IllegalArgumentException("Resident information could not be resolved for user: " + userId);
+        }
+
         Request entity = new Request();
         entity.setId(dto.getId());
         entity.setRequestCode(dto.getRequestCode() != null ? dto.getRequestCode() : generateRequestCode());
-        entity.setTenantId(dto.getTenantId());
-        entity.setResidentId(dto.getResidentId());
-        entity.setResidentName(dto.getResidentName());
+        entity.setResidentId(resident.id());
+        entity.setResidentName(resident.fullName());
         entity.setImagePath(dto.getImagePath());
         entity.setTitle(dto.getTitle());
         entity.setContent(dto.getContent());
-        entity.setStatus(dto.getStatus());
-        entity.setPriority(dto.getPriority());
+        entity.setStatus(StringUtils.hasText(dto.getStatus()) ? dto.getStatus() : "Pending");
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         entity.setCreatedAt(now);
         entity.setUpdatedAt(now);
         Request savedRequest = requestRepository.save(entity);
 
-        // create processinglog
         ProcessingLog newLog = new ProcessingLog();
-        newLog.setRecordType("Request");
         newLog.setRecordId(savedRequest.getId());
         newLog.setStaffInCharge(null);
         newLog.setStaffInChargeName(null);
         newLog.setContent("Request created by: " + savedRequest.getResidentName());
         newLog.setRequestStatus(savedRequest.getStatus());
-        newLog.setLogType(null);
         newLog.setCreatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
         processingLogRepository.save(newLog);
         return this.mapToDto(savedRequest);
     }
 
+    private UUID extractUserId(Authentication authentication) {
+        if (authentication == null) {
+            return null;
+        }
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof com.QhomeBase.customerinteractionservice.security.UserPrincipal userPrincipal) {
+            return userPrincipal.uid();
+        }
+        return null;
+    }
 }

@@ -11,8 +11,8 @@ import java.util.UUID;
 
 @Entity
 @Table(schema = "data", name = "vehicles",
-        uniqueConstraints = @UniqueConstraint(name = "uq_vehicle_tenant_plate",
-                columnNames = {"tenant_id", "plate_no"}))
+        uniqueConstraints = @UniqueConstraint(name = "uq_vehicle_plate",
+                columnNames = {"plate_no"}))
 @Getter
 @Setter
 @Builder
@@ -23,9 +23,6 @@ public class Vehicle {
     @Id
     @GeneratedValue
     private UUID id;
-
-    @Column(name = "tenant_id", nullable = false)
-    private UUID tenantId;
 
     @Column(name = "resident_id")
     private UUID residentId;

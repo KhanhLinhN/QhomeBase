@@ -23,3 +23,31 @@ public class ProRataInvoiceRequest {
     private UUID approvedBy;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

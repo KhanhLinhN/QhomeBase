@@ -7,3 +7,6 @@ COMMENT ON COLUMN content.news_images.content_type IS 'MIME type: image/jpeg, im
 
 
 
+
+
+

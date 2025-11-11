@@ -173,6 +173,25 @@
                     </excludes>
                 </configuration>
             </plugin>
+            
+            <plugin>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-maven-plugin</artifactId>
+                <configuration>
+                    <url>jdbc:postgresql://localhost:5432/qhome_base_db?currentSchema=cs_service,content,public</url>
+                    <user>postgres</user>
+                    <password>postgres</password>
+                    <schemas>
+                        <schema>cs_service</schema>
+                        <schema>content</schema>
+                    </schemas>
+                    <locations>
+                        <location>classpath:migration/data</location>
+                        <location>classpath:migration/content</location>
+                    </locations>
+                    <baselineOnMigrate>true</baselineOnMigrate>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>

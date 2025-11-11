@@ -46,13 +46,12 @@ public class JwtIssuer {
                 .setIssuedAt(Date.from(Instant.now()))
                 .setExpiration(new Date(System.currentTimeMillis() + ttlMinutes*60*1000))
                 .setAudience(audiences)
-                .claim("uid", uid.toString())
-                .claim("tenant", tenantId != null ? tenantId.toString() : null);
+                .claim("uid", uid.toString());
+        if (tenantId != null) {
+            builder.claim("tenant", tenantId.toString());
+        }
         builder.claim("roles", new ArrayList<>(roles));
         builder.claim("perms", new ArrayList<>(perms));
         return builder.signWith(key, SignatureAlgorithm.HS256).compact();
-
-
-
     }
 }

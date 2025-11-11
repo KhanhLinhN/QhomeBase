@@ -18,7 +18,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class PaymentDto {
     private UUID id;
-    private UUID tenantId;
     private String receiptNo;
     private PaymentMethod method;
     private UUID cashAccountId;
@@ -30,4 +29,7 @@ public class PaymentDto {
     private UUID payerResidentId;
     private List<PaymentAllocationDto> allocations;
 }
+
+
+
 

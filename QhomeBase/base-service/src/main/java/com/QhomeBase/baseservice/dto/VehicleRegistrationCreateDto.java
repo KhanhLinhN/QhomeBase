@@ -6,9 +6,6 @@ import jakarta.validation.constraints.Size;
 import java.util.UUID;
 
 public record VehicleRegistrationCreateDto(
-        @NotNull(message = "Tenant ID is required")
-        UUID tenantId,
-
         @NotNull(message = "Vehicle ID is required")
         UUID vehicleId,
 

@@ -15,7 +15,6 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CreatePaymentRequest {
-    private UUID tenantId;
     private PaymentMethod method;
     private UUID cashAccountId;
     private BigDecimal amountTotal;
@@ -24,4 +23,7 @@ public class CreatePaymentRequest {
     private UUID payerResidentId;
     private List<PaymentAllocationDto> allocations;
 }
+
+
+
 

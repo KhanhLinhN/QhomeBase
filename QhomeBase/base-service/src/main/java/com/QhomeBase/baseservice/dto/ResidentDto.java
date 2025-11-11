@@ -8,13 +8,13 @@ import java.util.UUID;
 
 public record ResidentDto(
         UUID id,
-        UUID tenantId,
         String fullName,
         String phone,
         String email,
         String nationalId,
         LocalDate dob,
         ResidentStatus status,
+        UUID userId,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {}

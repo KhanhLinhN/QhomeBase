@@ -34,9 +34,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 UUID uid = UUID.fromString(claims.get("uid", String.class));
                 String username = claims.getSubject();
-                String tenantStr = claims.get("tenant", String.class);
-                UUID tenant = tenantStr != null ? UUID.fromString(tenantStr) : null;
+                @SuppressWarnings("unchecked")
                 List<String> roles = claims.get("roles", List.class);
+                @SuppressWarnings("unchecked")
                 List<String> perms = claims.get("perms", List.class);
 
                 var authorities = new ArrayList<SimpleGrantedAuthority>();
@@ -47,7 +47,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     authorities.add(new SimpleGrantedAuthority("PERM_" + perm));
                 }
 
-                var principal = new UserPrincipal(uid, username, tenant, roles, perms, token);
+                var principal = new UserPrincipal(uid, username, roles, perms, token);
                 var authn = new UsernamePasswordAuthenticationToken(principal, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(authn);
             }

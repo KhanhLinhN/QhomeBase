@@ -7,7 +7,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -38,19 +37,29 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 UUID uid = UUID.fromString(claims.get("uid", String.class));
                 String username = claims.getSubject();
-                UUID tenant = UUID.fromString(claims.get("tenant", String.class));
+                Object tenantClaim = claims.get("tenant");
+                UUID tenant = tenantClaim != null ? UUID.fromString(tenantClaim.toString()) : null;
+                @SuppressWarnings("unchecked")
                 List<String> roles = claims.get("roles", List.class);
+                @SuppressWarnings("unchecked")
                 List<String> perms = claims.get("perms", List.class);
 
                 var authorities = new ArrayList<SimpleGrantedAuthority>();
-                for (String role : roles) {
-                    authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                if (roles != null) {
+                    for (String role : roles) {
+                        String normalizedRole = role != null ? role.toUpperCase() : null;
+                        if (normalizedRole != null) {
+                            authorities.add(new SimpleGrantedAuthority("ROLE_" + normalizedRole));
+                        }
+                    }
                 }
-                for (String perm : perms) {
-                    authorities.add(new SimpleGrantedAuthority("PERM_" + perm));
+                if (perms != null) {
+                    for (String perm : perms) {
+                        authorities.add(new SimpleGrantedAuthority("PERM_" + perm));
+                    }
                 }
                 
-                var principal = new UserPrincipal(uid, username, tenant, roles, perms, token);
+                var principal = new UserPrincipal(uid, username, tenant, roles != null ? roles : new ArrayList<>(), perms != null ? perms : new ArrayList<>(), token);
                 var authn = new UsernamePasswordAuthenticationToken(principal, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(authn);
             }

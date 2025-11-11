@@ -7,7 +7,6 @@ import java.util.UUID;
 
 public record VehicleDto(
         UUID id,
-        UUID tenantId,
         UUID residentId,
         String residentName,
         UUID unitId,
