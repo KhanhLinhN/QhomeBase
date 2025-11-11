@@ -1,6 +1,10 @@
 package com.QhomeBase.customerinteractionservice.service;
 
-import com.QhomeBase.customerinteractionservice.dto.notification.*;
+import com.QhomeBase.customerinteractionservice.dto.notification.CreateNotificationRequest;
+import com.QhomeBase.customerinteractionservice.dto.notification.NotificationDetailResponse;
+import com.QhomeBase.customerinteractionservice.dto.notification.NotificationResponse;
+import com.QhomeBase.customerinteractionservice.dto.notification.NotificationWebSocketMessage;
+import com.QhomeBase.customerinteractionservice.dto.notification.UpdateNotificationRequest;
 import com.QhomeBase.customerinteractionservice.model.Notification;
 import com.QhomeBase.customerinteractionservice.model.NotificationScope;
 import com.QhomeBase.customerinteractionservice.repository.NotificationRepository;
@@ -143,9 +147,8 @@ public class NotificationService {
     }
 
     public List<NotificationResponse> getNotificationsForResident(UUID residentId, UUID buildingId) {
-        List<Notification> notifications = notificationRepository.findByScopeAndBuildingId(
-                NotificationScope.EXTERNAL,
-                buildingId
+        List<Notification> notifications = notificationRepository.findByScopeOrderByCreatedAtDesc(
+                NotificationScope.EXTERNAL
         );
 
         return notifications.stream()
@@ -230,18 +233,32 @@ public class NotificationService {
     }
 
     private void sendWebSocketNotification(Notification notification, String action) {
+        NotificationWebSocketMessage payload = NotificationWebSocketMessage.of(notification, action);
         try {
-            String destination = "/topic/notifications";
-            if (notification.getScope() == NotificationScope.EXTERNAL && notification.getTargetBuildingId() != null) {
-                destination = "/topic/notifications/building/" + notification.getTargetBuildingId();
-            } else if (notification.getScope() == NotificationScope.INTERNAL && notification.getTargetRole() != null) {
-                destination = "/topic/notifications/role/" + notification.getTargetRole();
+            // Gửi kênh tổng cho tất cả client quan tâm
+            messagingTemplate.convertAndSend("/topic/notifications", payload);
+            log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, "/topic/notifications", notification.getId());
+
+            if (notification.getScope() == NotificationScope.EXTERNAL) {
+                if (notification.getTargetBuildingId() != null) {
+                    String destination = "/topic/notifications/building/" + notification.getTargetBuildingId();
+                    messagingTemplate.convertAndSend(destination, payload);
+                    log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, destination, notification.getId());
+                } else {
+                    messagingTemplate.convertAndSend("/topic/notifications/external", payload);
+                    log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, "/topic/notifications/external", notification.getId());
+                }
+            } else if (notification.getScope() == NotificationScope.INTERNAL) {
+                if (notification.getTargetRole() != null && !notification.getTargetRole().isBlank()) {
+                    String destination = "/topic/notifications/role/" + notification.getTargetRole();
+                    messagingTemplate.convertAndSend(destination, payload);
+                    log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, destination, notification.getId());
+                } else {
+                    messagingTemplate.convertAndSend("/topic/notifications/internal", payload);
+                    log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, "/topic/notifications/internal", notification.getId());
+                }
             }
 
-            log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, destination, notification.getId());
-            
-
-            messagingTemplate.convertAndSend(destination, toResponse(notification));
             log.info("✅ Notification sent successfully via WebSocket");
         } catch (Exception e) {
             log.error("❌ Error sending WebSocket notification", e);

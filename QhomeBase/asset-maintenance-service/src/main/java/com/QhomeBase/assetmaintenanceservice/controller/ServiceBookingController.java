@@ -294,6 +294,32 @@ public class ServiceBookingController {
         return ResponseEntity.ok(bookingService.deleteBookingItem(bookingId, itemId, authentication.getPrincipal(), true));
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity
+                .badRequest()
+                .body(Map.of("message", translateErrorMessage(ex.getMessage())));
+    }
+
+    private String translateErrorMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return "Yêu cầu đặt dịch vụ không hợp lệ. Vui lòng kiểm tra lại thông tin.";
+        }
+        if (message.contains("no available slots configured")) {
+            return "Dịch vụ không có khung giờ hoạt động cho ngày bạn chọn. Vui lòng chọn ngày khác hoặc liên hệ ban quản lý.";
+        }
+        if (message.contains("outside service availability")) {
+            return "Khung giờ bạn chọn nằm ngoài thời gian phục vụ. Vui lòng chọn lại khung giờ nằm trong giờ hoạt động.";
+        }
+        if (message.contains("already booked")) {
+            return "Khung giờ này đã có người đặt. Vui lòng chọn khung giờ khác.";
+        }
+        if (message.contains("overlaps with another slot")) {
+            return "Khung giờ bạn chọn trùng với khung giờ khác trong yêu cầu hiện tại.";
+        }
+        return message;
+    }
+
     private UUID resolveUserId(Authentication authentication) {
         Object principal = authentication.getPrincipal();
         if (principal instanceof UserPrincipal userPrincipal) {

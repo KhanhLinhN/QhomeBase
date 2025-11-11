@@ -223,23 +223,33 @@ public class NewsService {
     }
     
     private boolean shouldShowNewsToResident(News news, UUID residentId) {
-        if (news.getScope() == null) {
-            return true;
-        }
-        
-        if (news.getScope() == NotificationScope.INTERNAL) {
+        if (!news.isActive()) {
             return false;
         }
-        
-        if (news.getScope() == NotificationScope.EXTERNAL) {
+
+        NotificationScope scope = news.getScope();
+        if (scope == null) {
+            return true;
+        }
+
+        if (scope == NotificationScope.INTERNAL) {
+            return false;
+        }
+
+        if (scope == NotificationScope.EXTERNAL) {
             if (news.getTargetBuildingId() == null) {
                 return true;
             }
+
             UUID residentBuildingId = getResidentBuildingId(residentId);
-            return residentBuildingId != null && residentBuildingId.equals(news.getTargetBuildingId());
+            if (residentBuildingId == null) {
+                log.debug("Unable to resolve building for resident {} -> allow news {}", residentId, news.getId());
+                return true;
+            }
+            return residentBuildingId.equals(news.getTargetBuildingId());
         }
-        
-        return false;
+
+        return true;
     }
     
     private UUID getResidentBuildingId(UUID residentId) {
