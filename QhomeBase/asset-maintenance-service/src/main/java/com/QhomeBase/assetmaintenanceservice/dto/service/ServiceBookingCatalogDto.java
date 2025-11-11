@@ -21,7 +21,6 @@ public class ServiceBookingCatalogDto {
     private ServicePricingType pricingType;
     private List<ServiceComboDto> combos;
     private List<ServiceOptionDto> options;
-    private List<ServiceOptionGroupDto> optionGroups;
     private List<ServiceTicketDto> tickets;
 }
 

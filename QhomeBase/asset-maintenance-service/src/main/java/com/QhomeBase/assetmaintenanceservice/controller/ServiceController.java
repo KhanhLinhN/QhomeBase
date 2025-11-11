@@ -39,5 +39,10 @@ public class ServiceController {
         ServiceDto service = serviceConfigService.findById(id);
         return ResponseEntity.ok(service);
     }
+
+    @GetMapping("/public")
+    public ResponseEntity<List<ServiceDto>> getPublicServices(@RequestParam(required = false) Boolean isActive) {
+        return ResponseEntity.ok(serviceConfigService.findAll(isActive));
+    }
 }
 

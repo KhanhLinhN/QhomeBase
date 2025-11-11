@@ -1,13 +1,11 @@
 package com.QhomeBase.assetmaintenanceservice.dto.service;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.List;
 
 @Data
 @Builder
@@ -15,8 +13,8 @@ import java.util.List;
 @AllArgsConstructor
 public class UpdateServiceBookingSlotsRequest {
 
-    @NotEmpty(message = "Slots must not be empty")
     @Valid
-    private List<ServiceBookingSlotRequest> slots;
+    @NotNull(message = "Slot is required")
+    private ServiceBookingSlotRequest slot;
 }
 

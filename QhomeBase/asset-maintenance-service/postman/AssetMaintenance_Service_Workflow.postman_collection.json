@@ -174,7 +174,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"categoryId\": \"{{service_category_id}}\",\n  \"code\": \"{{service_code}}\",\n  \"name\": \"{{service_name}}\",\n  \"description\": \"Personal training sessions for residents\",\n  \"location\": \"Community Gym\",\n  \"pricingType\": \"HOURLY\",\n  \"bookingType\": \"OPTION_BASED\",\n  \"pricePerHour\": 350000,\n  \"minDurationHours\": 1,\n  \"maxDurationHours\": 3,\n  \"advanceBookingDays\": 7,\n  \"rules\": \"Arrive 10 minutes early for warm-up\",\n  \"isActive\": true\n}"
+							"raw": "{\n  \"categoryId\": \"{{service_category_id}}\",\n  \"code\": \"{{service_code}}\",\n  \"name\": \"{{service_name}}\",\n  \"description\": \"Personal training sessions for residents\",\n  \"location\": \"Community Gym\",\n  \"pricingType\": \"HOURLY\",\n  \"pricePerHour\": 350000,\n  \"minDurationHours\": 1,\n  \"rules\": \"Arrive 10 minutes early for warm-up\",\n  \"isActive\": true\n}"
 						},
 						"url": {
 							"raw": "{{asset_service_url}}/api/asset-maintenance/services",

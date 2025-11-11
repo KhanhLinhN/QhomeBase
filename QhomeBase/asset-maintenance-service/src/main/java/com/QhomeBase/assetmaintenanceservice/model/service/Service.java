@@ -1,6 +1,5 @@
 package com.QhomeBase.assetmaintenanceservice.model.service;
 
-import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingType;
 import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServicePricingType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -56,23 +55,12 @@ public class Service {
     @Builder.Default
     private ServicePricingType pricingType = ServicePricingType.HOURLY;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "booking_type")
-    private ServiceBookingType bookingType;
-
     @Column(name = "max_capacity")
     private Integer maxCapacity;
 
     @Column(name = "min_duration_hours")
     @Builder.Default
     private Integer minDurationHours = 1;
-
-    @Column(name = "max_duration_hours")
-    private Integer maxDurationHours;
-
-    @Column(name = "advance_booking_days")
-    @Builder.Default
-    private Integer advanceBookingDays = 30;
 
     @Column(name = "rules", columnDefinition = "TEXT")
     private String rules;
@@ -98,10 +86,6 @@ public class Service {
     @OneToMany(mappedBy = "service", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<ServiceOption> options = new ArrayList<>();
-
-    @OneToMany(mappedBy = "service", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Builder.Default
-    private List<ServiceOptionGroup> optionGroups = new ArrayList<>();
 
     @OneToMany(mappedBy = "service", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
