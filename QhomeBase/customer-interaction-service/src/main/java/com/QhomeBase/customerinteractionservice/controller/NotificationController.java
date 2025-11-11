@@ -1,6 +1,7 @@
 package com.QhomeBase.customerinteractionservice.controller;
 
 import com.QhomeBase.customerinteractionservice.dto.notification.*;
+import com.QhomeBase.customerinteractionservice.service.NotificationDeviceTokenService;
 import com.QhomeBase.customerinteractionservice.service.NotificationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +11,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @RestController
@@ -18,6 +20,7 @@ import java.util.UUID;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final NotificationDeviceTokenService notificationDeviceTokenService;
 
     @PostMapping
     @PreAuthorize("@authz.canManageNotifications()")
@@ -81,6 +84,35 @@ public class NotificationController {
         
         List<NotificationResponse> notifications = notificationService.getNotificationsForRole(role, userId);
         return ResponseEntity.ok(notifications);
+    }
+
+    @PostMapping("/device-tokens")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<DeviceTokenResponse> registerDeviceToken(
+            @Valid @RequestBody RegisterDeviceTokenRequest request,
+            org.springframework.security.core.Authentication authentication) {
+
+        var principal = (com.QhomeBase.customerinteractionservice.security.UserPrincipal) authentication.getPrincipal();
+
+        RegisterDeviceTokenRequest effectiveRequest = RegisterDeviceTokenRequest.builder()
+                .token(request.getToken())
+                .platform(request.getPlatform())
+                .appVersion(request.getAppVersion())
+                .residentId(request.getResidentId())
+                .buildingId(request.getBuildingId())
+                .role(request.getRole())
+                .userId(Optional.ofNullable(request.getUserId()).orElse(principal.uid()))
+                .build();
+
+        DeviceTokenResponse response = notificationDeviceTokenService.registerToken(effectiveRequest);
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/device-tokens/{token}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> deleteDeviceToken(@PathVariable String token) {
+        notificationDeviceTokenService.removeToken(token);
+        return ResponseEntity.noContent().build();
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

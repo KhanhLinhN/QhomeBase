@@ -27,6 +27,7 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final NotificationPushService notificationPushService;
 
     public NotificationResponse createNotification(CreateNotificationRequest request) {
         validateNotificationScope(request.getScope(), request.getTargetRole(), request.getTargetBuildingId());
@@ -48,6 +49,7 @@ public class NotificationService {
         Notification savedNotification = notificationRepository.save(notification);
 
         sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
+        notificationPushService.sendPushNotification(savedNotification);
 
         return toResponse(savedNotification);
     }
@@ -97,6 +99,7 @@ public class NotificationService {
         Notification updatedNotification = notificationRepository.save(notification);
 
         sendWebSocketNotification(updatedNotification, "NOTIFICATION_UPDATED");
+        notificationPushService.sendPushNotification(updatedNotification);
 
         return toResponse(updatedNotification);
     }
