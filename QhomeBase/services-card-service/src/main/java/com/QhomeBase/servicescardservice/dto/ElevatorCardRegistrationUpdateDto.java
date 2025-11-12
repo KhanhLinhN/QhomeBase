@@ -2,7 +2,6 @@ package com.QhomeBase.servicescardservice.dto;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
-import java.util.UUID;
 
 public record ElevatorCardRegistrationUpdateDto(
         String fullName,
