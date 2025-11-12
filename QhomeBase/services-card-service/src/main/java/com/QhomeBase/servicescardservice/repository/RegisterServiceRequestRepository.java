@@ -19,6 +19,21 @@ public interface RegisterServiceRequestRepository extends JpaRepository<Register
     List<RegisterServiceRequest> findByUserId(UUID userId);
 
     List<RegisterServiceRequest> findByUserIdAndUnitId(UUID userId, UUID unitId);
+
+    @Query("""
+            SELECT DISTINCT r
+            FROM RegisterServiceRequest r
+            LEFT JOIN FETCH r.images
+            WHERE r.serviceType = :serviceType
+            ORDER BY r.createdAt DESC
+            """)
+    List<RegisterServiceRequest> findAllByServiceTypeWithImages(@Param("serviceType") String serviceType);
+
+    @Query("""
+            SELECT r
+            FROM RegisterServiceRequest r
+            LEFT JOIN FETCH r.images
+            WHERE r.id = :id
+            """)
+    Optional<RegisterServiceRequest> findByIdWithImages(@Param("id") UUID id);
 }
-
-

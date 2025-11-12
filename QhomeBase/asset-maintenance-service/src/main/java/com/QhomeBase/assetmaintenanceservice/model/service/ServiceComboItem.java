@@ -1,11 +1,21 @@
 package com.QhomeBase.assetmaintenanceservice.model.service;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -25,13 +35,18 @@ public class ServiceComboItem {
     @JoinColumn(name = "combo_id", nullable = false)
     private ServiceCombo combo;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "included_service_id")
-    private Service includedService;
+    @Column(name = "item_name", nullable = false, length = 255)
+    private String itemName;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "option_id")
-    private ServiceOption option;
+    @Column(name = "item_description", columnDefinition = "TEXT")
+    private String itemDescription;
+
+    @Column(name = "item_price", nullable = false, precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal itemPrice = BigDecimal.ZERO;
+
+    @Column(name = "item_duration_minutes")
+    private Integer itemDurationMinutes;
 
     @Column(name = "quantity", nullable = false)
     @Builder.Default
@@ -50,6 +65,9 @@ public class ServiceComboItem {
     @PrePersist
     protected void onCreate() {
         this.createdAt = OffsetDateTime.now();
+        if (this.itemPrice == null) {
+            this.itemPrice = BigDecimal.ZERO;
+        }
     }
 }
 

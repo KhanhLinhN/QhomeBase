@@ -22,6 +22,10 @@ public record ResidentCardRegistrationDto(
         OffsetDateTime paymentDate,
         String paymentGateway,
         String vnpayTransactionRef,
+        String adminNote,
+        UUID approvedBy,
+        OffsetDateTime approvedAt,
+        String rejectionReason,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {}

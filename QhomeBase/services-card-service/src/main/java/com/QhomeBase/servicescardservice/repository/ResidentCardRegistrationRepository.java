@@ -9,6 +9,7 @@ import java.util.UUID;
 
 public interface ResidentCardRegistrationRepository extends JpaRepository<ResidentCardRegistration, UUID> {
     Optional<ResidentCardRegistration> findByIdAndUserId(UUID id, UUID userId);
+
     Optional<ResidentCardRegistration> findByVnpayTransactionRef(String vnpayTransactionRef);
 
     List<ResidentCardRegistration> findByResidentId(UUID residentId);
@@ -18,6 +19,6 @@ public interface ResidentCardRegistrationRepository extends JpaRepository<Reside
     List<ResidentCardRegistration> findByUserId(UUID userId);
 
     List<ResidentCardRegistration> findByUserIdAndUnitId(UUID userId, UUID unitId);
+
+    List<ResidentCardRegistration> findAllByOrderByCreatedAtDesc();
 }
-
-

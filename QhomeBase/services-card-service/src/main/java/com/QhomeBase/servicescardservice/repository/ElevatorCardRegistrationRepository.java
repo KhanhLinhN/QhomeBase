@@ -19,6 +19,6 @@ public interface ElevatorCardRegistrationRepository extends JpaRepository<Elevat
     List<ElevatorCardRegistration> findByUserId(UUID userId);
 
     List<ElevatorCardRegistration> findByUserIdAndUnitId(UUID userId, UUID unitId);
+
+    List<ElevatorCardRegistration> findAllByOrderByCreatedAtDesc();
 }
-
-

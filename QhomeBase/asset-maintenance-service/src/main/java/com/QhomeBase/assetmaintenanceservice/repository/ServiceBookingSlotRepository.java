@@ -32,6 +32,10 @@ public interface ServiceBookingSlotRepository extends JpaRepository<ServiceBooki
             LocalDate startDate,
             LocalDate endDate
     );
+
+    List<ServiceBookingSlot> findAllByServiceIdOrderBySlotDateAscStartTimeAsc(UUID serviceId);
+
+    List<ServiceBookingSlot> findAllByServiceIdAndSlotDateOrderByStartTimeAsc(UUID serviceId, LocalDate slotDate);
 }
 
 

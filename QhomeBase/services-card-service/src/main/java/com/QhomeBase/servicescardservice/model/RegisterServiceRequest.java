@@ -40,6 +40,18 @@ public class RegisterServiceRequest {
     @Builder.Default
     private String status = "PENDING";
 
+    @Column(name = "admin_note")
+    private String adminNote;
+
+    @Column(name = "approved_by")
+    private UUID approvedBy;
+
+    @Column(name = "approved_at")
+    private OffsetDateTime approvedAt;
+
+    @Column(name = "rejection_reason")
+    private String rejectionReason;
+
     @Column(name = "vehicle_type")
     private String vehicleType;
 

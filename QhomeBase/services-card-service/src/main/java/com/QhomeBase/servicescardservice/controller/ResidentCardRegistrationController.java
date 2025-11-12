@@ -1,5 +1,6 @@
 package com.QhomeBase.servicescardservice.controller;
 
+import com.QhomeBase.servicescardservice.dto.CardRegistrationAdminDecisionRequest;
 import com.QhomeBase.servicescardservice.dto.ResidentCardRegistrationCreateDto;
 import com.QhomeBase.servicescardservice.dto.ResidentCardRegistrationDto;
 import com.QhomeBase.servicescardservice.service.ResidentCardRegistrationService;
@@ -9,6 +10,7 @@ import com.QhomeBase.servicescardservice.service.vnpay.VnpayService;
 import com.QhomeBase.servicescardservice.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -30,6 +32,68 @@ public class ResidentCardRegistrationController {
     private final ResidentCardRegistrationService registrationService;
     private final JwtUtil jwtUtil;
     private final VnpayService vnpayService;
+
+    @GetMapping("/admin/registrations")
+    public ResponseEntity<?> getRegistrationsForAdmin(@RequestParam(required = false) String status,
+                                                      @RequestParam(required = false) String paymentStatus,
+                                                      @RequestHeader HttpHeaders headers) {
+        UUID adminId = jwtUtil.getUserIdFromHeaders(headers);
+        if (adminId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        try {
+            return ResponseEntity.ok(
+                    registrationService.getRegistrationsForAdmin(
+                            status != null && !status.isBlank() ? status.trim() : null,
+                            paymentStatus != null && !paymentStatus.isBlank() ? paymentStatus.trim() : null
+                    )
+            );
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            log.error("❌ [ResidentCard] Lỗi tải danh sách đăng ký", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Không thể lấy danh sách đăng ký"));
+        }
+    }
+
+    @GetMapping("/admin/registrations/{registrationId}")
+    public ResponseEntity<?> getRegistrationForAdmin(@PathVariable String registrationId,
+                                                     @RequestHeader HttpHeaders headers) {
+        UUID adminId = jwtUtil.getUserIdFromHeaders(headers);
+        if (adminId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        try {
+            UUID regUuid = UUID.fromString(registrationId);
+            ResidentCardRegistrationDto dto = registrationService.getRegistrationForAdmin(regUuid);
+            return ResponseEntity.ok(toResponse(dto));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/admin/registrations/{registrationId}/decision")
+    public ResponseEntity<?> processAdminDecision(@PathVariable String registrationId,
+                                                  @Valid @RequestBody CardRegistrationAdminDecisionRequest request,
+                                                  @RequestHeader HttpHeaders headers) {
+        UUID adminId = jwtUtil.getUserIdFromHeaders(headers);
+        if (adminId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        try {
+            UUID regUuid = UUID.fromString(registrationId);
+            ResidentCardRegistrationDto dto = registrationService.processAdminDecision(adminId, regUuid, request);
+            return ResponseEntity.ok(toResponse(dto));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", e.getMessage()));
+        }
+    }
 
     @PostMapping("/vnpay-url")
     public ResponseEntity<?> createRegistrationAndPay(@RequestBody ResidentCardRegistrationCreateDto dto,
@@ -151,6 +215,10 @@ public class ResidentCardRegistrationController {
         body.put("paymentDate", dto.paymentDate());
         body.put("paymentGateway", dto.paymentGateway());
         body.put("vnpayTransactionRef", dto.vnpayTransactionRef());
+        body.put("adminNote", dto.adminNote());
+        body.put("approvedBy", dto.approvedBy() != null ? dto.approvedBy().toString() : null);
+        body.put("approvedAt", dto.approvedAt());
+        body.put("rejectionReason", dto.rejectionReason());
         body.put("createdAt", dto.createdAt());
         body.put("updatedAt", dto.updatedAt());
         return body;

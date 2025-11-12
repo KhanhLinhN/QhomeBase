@@ -3,6 +3,7 @@ package com.QhomeBase.servicescardservice.controller;
 import com.QhomeBase.servicescardservice.dto.RegisterServiceImageDto;
 import com.QhomeBase.servicescardservice.dto.RegisterServiceRequestCreateDto;
 import com.QhomeBase.servicescardservice.dto.RegisterServiceRequestDto;
+import com.QhomeBase.servicescardservice.dto.VehicleRegistrationAdminDecisionRequest;
 import com.QhomeBase.servicescardservice.service.VehicleRegistrationService;
 import com.QhomeBase.servicescardservice.service.VehicleRegistrationService.VehicleRegistrationPaymentResponse;
 import com.QhomeBase.servicescardservice.service.VehicleRegistrationService.VehicleRegistrationPaymentResult;
@@ -10,6 +11,7 @@ import com.QhomeBase.servicescardservice.service.vnpay.VnpayService;
 import com.QhomeBase.servicescardservice.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -118,6 +120,85 @@ public class VehicleRegistrationController {
             return ResponseEntity.ok(toResponse(dto));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/admin/vehicle-registrations")
+    public ResponseEntity<?> getRegistrationsForAdmin(@RequestParam(name = "status", required = false) String status,
+                                                      @RequestParam(name = "paymentStatus", required = false) String paymentStatus) {
+        try {
+            return ResponseEntity.ok(
+                    registrationService.getRegistrationsForAdmin(
+                            status != null && !status.isBlank() ? status.trim() : null,
+                            paymentStatus != null && !paymentStatus.isBlank() ? paymentStatus.trim() : null
+                    )
+            );
+        } catch (IllegalArgumentException e) {
+            log.warn("❌ [VehicleRegistration] Tham số không hợp lệ khi tải danh sách admin: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            log.error("❌ [VehicleRegistration] Lỗi lấy danh sách đăng ký cho admin", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Không thể lấy danh sách đăng ký"));
+        }
+    }
+
+    @GetMapping("/admin/vehicle-registrations/{registrationId}")
+    public ResponseEntity<?> getRegistrationForAdmin(@PathVariable String registrationId,
+                                                     @RequestHeader HttpHeaders headers) {
+        UUID adminId = jwtUtil.getUserIdFromHeaders(headers);
+        if (adminId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        try {
+            UUID regUuid = UUID.fromString(registrationId);
+            RegisterServiceRequestDto dto = registrationService.getRegistrationForAdmin(regUuid);
+            return ResponseEntity.ok(toResponse(dto));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/admin/vehicle-registrations/{registrationId}/approve")
+    public ResponseEntity<?> approveRegistration(@PathVariable String registrationId,
+                                                 @RequestHeader HttpHeaders headers,
+                                                 @Valid @RequestBody(required = false) VehicleRegistrationAdminDecisionRequest request) {
+        UUID adminId = jwtUtil.getUserIdFromHeaders(headers);
+        if (adminId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        try {
+            UUID regUuid = UUID.fromString(registrationId);
+            RegisterServiceRequestDto dto = registrationService.approveRegistration(regUuid, adminId,
+                    request != null ? request.getNote() : null);
+            return ResponseEntity.ok(toResponse(dto));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/admin/vehicle-registrations/{registrationId}/reject")
+    public ResponseEntity<?> rejectRegistration(@PathVariable String registrationId,
+                                                @RequestHeader HttpHeaders headers,
+                                                @Valid @RequestBody(required = false) VehicleRegistrationAdminDecisionRequest request) {
+        UUID adminId = jwtUtil.getUserIdFromHeaders(headers);
+        if (adminId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        try {
+            UUID regUuid = UUID.fromString(registrationId);
+            RegisterServiceRequestDto dto = registrationService.rejectRegistration(regUuid, adminId,
+                    request != null ? request.getNote() : null);
+            return ResponseEntity.ok(toResponse(dto));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", e.getMessage()));
         }
     }
 
