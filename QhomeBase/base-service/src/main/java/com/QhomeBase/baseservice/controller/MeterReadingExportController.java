@@ -21,6 +21,7 @@ public class MeterReadingExportController {
     @PostMapping("/cycle/{cycleId}")
     public ResponseEntity<MeterReadingImportResponse> exportByCycle(@PathVariable UUID cycleId) {
         try {
+            log.info("Received export request for cycle {}", cycleId);
             MeterReadingImportResponse response = exportService.exportReadingsByCycle(cycleId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {

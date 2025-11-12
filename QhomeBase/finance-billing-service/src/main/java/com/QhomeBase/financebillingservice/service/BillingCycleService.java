@@ -27,6 +27,7 @@ public class BillingCycleService {
                 .periodFrom(b.getPeriodFrom())
                 .periodTo(b.getPeriodTo())
                 .status(b.getStatus())
+                .externalCycleId(b.getExternalCycleId())
                 .build();
     }
 
@@ -59,6 +60,7 @@ public class BillingCycleService {
                 .periodFrom(request.getPeriodFrom())
                 .periodTo(request.getPeriodTo())
                 .status(request.getStatus() != null ? request.getStatus() : "OPEN")
+                .externalCycleId(request.getExternalCycleId())
                 .build();
 
         BillingCycle saved = billingCycleRepository.save(billingCycle);

@@ -19,7 +19,8 @@ public interface MeterReadingRepository extends JpaRepository<MeterReading, UUID
     
     @Query("SELECT DISTINCT mr FROM MeterReading mr " +
            "LEFT JOIN FETCH mr.assignment a " +
-           "WHERE mr.cycleId = :cycleId")
+           "LEFT JOIN FETCH a.cycle c " +
+           "WHERE mr.cycleId = :cycleId OR (c.id IS NOT NULL AND c.id = :cycleId)")
     List<MeterReading> findByCycleId(@Param("cycleId") UUID cycleId);
     
     @Query("SELECT mr FROM MeterReading mr " +

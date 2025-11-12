@@ -345,22 +345,46 @@ public class MeterReadingImportService {
 
 
     private UUID findOrCreateBillingCycle(UUID readingCycleId, LocalDate serviceDate) {
+        if (readingCycleId != null) {
+            List<BillingCycle> linkedCycles = billingCycleRepository.findByExternalCycleId(readingCycleId);
+            if (!linkedCycles.isEmpty()) {
+                BillingCycle linked = linkedCycles.get(0);
+                log.debug("Reusing billing cycle {} already linked to reading cycle {}", linked.getId(), readingCycleId);
+                return linked.getId();
+            }
+        }
+
         LocalDate periodFrom = serviceDate.withDayOfMonth(1);
         LocalDate periodTo = periodFrom.plusMonths(1).minusDays(1);
         
         List<BillingCycle> existing = billingCycleRepository.findListByTime(periodFrom, periodTo);
-        if (!existing.isEmpty()) {
-            UUID billingCycleId = existing.get(0).getId();
-            log.debug("Found existing BillingCycle {} for period {} to {}", 
-                    billingCycleId, periodFrom, periodTo);
-            return billingCycleId;
+        for (BillingCycle cycle : existing) {
+            if (readingCycleId != null) {
+                if (readingCycleId.equals(cycle.getExternalCycleId())) {
+                    log.debug("Found billing cycle {} already linked to reading cycle {}", cycle.getId(), readingCycleId);
+                    return cycle.getId();
+                }
+                if (cycle.getExternalCycleId() == null) {
+                    cycle.setExternalCycleId(readingCycleId);
+                    BillingCycle saved = billingCycleRepository.save(cycle);
+                    log.debug("Linked existing billing cycle {} to reading cycle {}", saved.getId(), readingCycleId);
+                    return saved.getId();
+                }
+            } else {
+                log.debug("Reusing existing billing cycle {} for period {} - {} with no external link",
+                        cycle.getId(), periodFrom, periodTo);
+                return cycle.getId();
+            }
         }
         
         BillingCycle newCycle = BillingCycle.builder()
-                .name(String.format("Cycle %s", periodFrom.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"))))
+                .name(String.format("Cycle %s (%s)", 
+                        periodFrom.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM")),
+                        readingCycleId != null ? readingCycleId.toString().substring(0, 8) : "AUTO"))
                 .periodFrom(periodFrom)
                 .periodTo(periodTo)
                 .status("ACTIVE")
+                .externalCycleId(readingCycleId)
                 .build();
         
         BillingCycle saved = billingCycleRepository.save(newCycle);
