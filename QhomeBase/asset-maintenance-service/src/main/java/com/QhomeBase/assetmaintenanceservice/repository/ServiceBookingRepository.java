@@ -2,28 +2,43 @@ package com.QhomeBase.assetmaintenanceservice.repository;
 
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceBooking;
 import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus;
+import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServicePaymentStatus;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 public interface ServiceBookingRepository extends JpaRepository<ServiceBooking, UUID> {
 
-    List<ServiceBooking> findAllByUserIdOrderByCreatedAtDesc(UUID userId);
+    List<ServiceBooking> findAllByUserIdOrderByCreatedAtDesc(@NotNull UUID userId);
 
-    List<ServiceBooking> findAllByServiceIdOrderByCreatedAtDesc(UUID serviceId);
+    List<ServiceBooking> findAllByServiceIdOrderByCreatedAtDesc(@NotNull UUID serviceId);
 
-    List<ServiceBooking> findAllByStatusOrderByCreatedAtDesc(ServiceBookingStatus status);
+    List<ServiceBooking> findAllByStatusOrderByCreatedAtDesc(@NotNull ServiceBookingStatus status);
 
-    List<ServiceBooking> findAllByServiceIdAndStatusOrderByCreatedAtDesc(UUID serviceId, ServiceBookingStatus status);
+    List<ServiceBooking> findAllByServiceIdAndStatusOrderByCreatedAtDesc(@NotNull UUID serviceId,
+                                                                         @NotNull ServiceBookingStatus status);
 
-    Optional<ServiceBooking> findByIdAndUserId(UUID id, UUID userId);
+    Optional<ServiceBooking> findByIdAndUserId(@NotNull UUID id, @NotNull UUID userId);
 
-    List<ServiceBooking> findAllByBookingDateBetweenOrderByCreatedAtDesc(LocalDate start, LocalDate end);
+    Optional<ServiceBooking> findByVnpayTransactionRef(String vnpayTransactionRef);
 
-    List<ServiceBooking> findAllByServiceIdAndBookingDateBetweenOrderByCreatedAtDesc(UUID serviceId, LocalDate start, LocalDate end);
+    List<ServiceBooking> findAllByUserIdAndPaymentStatusInOrderByCreatedAtDesc(@NotNull UUID userId,
+                                                                               Collection<ServicePaymentStatus> statuses);
+
+    boolean existsByUserIdAndPaymentStatusIn(@NotNull UUID userId,
+                                             Collection<ServicePaymentStatus> statuses);
+
+    List<ServiceBooking> findAllByBookingDateBetweenOrderByCreatedAtDesc(@NotNull LocalDate start,
+                                                                         @NotNull LocalDate end);
+
+    List<ServiceBooking> findAllByServiceIdAndBookingDateBetweenOrderByCreatedAtDesc(@NotNull UUID serviceId,
+                                                                                     @NotNull LocalDate start,
+                                                                                     @NotNull LocalDate end);
 }
 
 

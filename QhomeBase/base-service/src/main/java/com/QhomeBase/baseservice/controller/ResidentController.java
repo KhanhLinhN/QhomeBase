@@ -14,6 +14,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -27,7 +28,7 @@ public class ResidentController {
 
     @GetMapping("/units/{unitId}/household/members/without-account")
     @PreAuthorize("hasRole('RESIDENT')")
-    public ResponseEntity<List<ResidentWithoutAccountDto>> getResidentsWithoutAccount(
+    public ResponseEntity<?> getResidentsWithoutAccount(
             @PathVariable UUID unitId,
             Authentication authentication) {
         try {
@@ -40,13 +41,14 @@ public class ResidentController {
             return ResponseEntity.ok(residents);
         } catch (IllegalArgumentException e) {
             log.warn("Failed to get residents without account: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", e.getMessage()));
         }
     }
     
     @PostMapping("/create-account-request")
     @PreAuthorize("hasRole('RESIDENT')")
-    public ResponseEntity<AccountCreationRequestDto> createAccountRequest(
+    public ResponseEntity<?> createAccountRequest(
             @Valid @RequestBody CreateAccountRequestDto request,
             Authentication authentication) {
         try {
@@ -59,13 +61,14 @@ public class ResidentController {
             return ResponseEntity.status(HttpStatus.CREATED).body(accountRequest);
         } catch (IllegalArgumentException e) {
             log.warn("Failed to create account request: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", e.getMessage()));
         }
     }
     
     @GetMapping("/my-account-requests")
     @PreAuthorize("hasRole('RESIDENT')")
-    public ResponseEntity<List<AccountCreationRequestDto>> getMyAccountRequests(
+    public ResponseEntity<?> getMyAccountRequests(
             Authentication authentication) {
         try {
             UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
@@ -77,13 +80,14 @@ public class ResidentController {
             return ResponseEntity.ok(requests);
         } catch (Exception e) {
             log.warn("Failed to get account requests: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", e.getMessage()));
         }
     }
     
     @GetMapping("/{residentId}/account")
     @PreAuthorize("hasRole('RESIDENT')")
-    public ResponseEntity<ResidentAccountDto> getResidentAccount(
+    public ResponseEntity<?> getResidentAccount(
             @PathVariable UUID residentId,
             Authentication authentication) {
         try {
@@ -100,7 +104,8 @@ public class ResidentController {
             return ResponseEntity.ok(account);
         } catch (IllegalArgumentException e) {
             log.warn("Failed to get account for resident {}: {}", residentId, e.getMessage());
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", e.getMessage()));
         }
     }
 

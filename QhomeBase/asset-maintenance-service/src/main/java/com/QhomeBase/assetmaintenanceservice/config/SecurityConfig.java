@@ -28,6 +28,9 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/actuator/**").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/api/asset-maintenance/bookings/vnpay/**").permitAll()
                         .requestMatchers(
                                 "/actuator/**",
                                 "/swagger-ui.html",

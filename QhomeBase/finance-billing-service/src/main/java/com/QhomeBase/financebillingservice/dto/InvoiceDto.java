@@ -31,6 +31,13 @@ public class InvoiceDto {
     private UUID cycleId;
     private BigDecimal totalAmount;
     private List<InvoiceLineDto> lines;
+    private String paymentGateway;
+    private String vnpTransactionRef;
+    private String vnpTransactionNo;
+    private String vnpBankCode;
+    private String vnpCardType;
+    private String vnpResponseCode;
+    private OffsetDateTime paidAt;
 }
 
 

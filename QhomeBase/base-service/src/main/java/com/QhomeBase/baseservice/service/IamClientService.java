@@ -101,16 +101,33 @@ public class IamClientService {
     
     public ResidentAccountDto getUserAccountInfo(UUID userId) {
         try {
-            UserAccountResponse response = webClient
+            String token = getCurrentToken();
+            log.debug("Getting user account info for userId: {}, tokenPresent: {}", userId, token != null && !token.isEmpty());
+            
+            var webClientBuilder = webClient
                     .get()
-                    .uri("/api/users/{userId}/account-info", userId)
+                    .uri("/api/users/{userId}/account-info", userId);
+            
+            if (token != null && !token.isEmpty()) {
+                webClientBuilder = webClientBuilder.header("Authorization", "Bearer " + token);
+                log.debug("Added Authorization header to IAM service request");
+            } else {
+                log.warn("No token available when calling IAM service for userId: {}", userId);
+            }
+            
+            log.debug("Calling IAM service: GET /api/users/{}/account-info", userId);
+            UserAccountResponse response = webClientBuilder
                     .retrieve()
                     .bodyToMono(UserAccountResponse.class)
                     .block();
             
             if (response == null) {
+                log.warn("IAM service returned null response for userId: {}", userId);
                 return null;
             }
+            
+            log.debug("Successfully retrieved user account info: username={}, email={}, roles={}", 
+                    response.username(), response.email(), response.roles());
             
             return new ResidentAccountDto(
                     response.userId(),
@@ -121,12 +138,14 @@ public class IamClientService {
             );
         } catch (WebClientResponseException e) {
             if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                log.debug("User account not found in IAM service for userId: {}", userId);
                 return null;
             }
-            log.error("Error calling IAM service to get user account: {}", e.getMessage());
-            throw new RuntimeException("Failed to get user account: " + e.getMessage(), e);
+            log.error("Error calling IAM service to get user account for userId {}: status={}, message={}, responseBody={}", 
+                    userId, e.getStatusCode(), e.getMessage(), e.getResponseBodyAsString());
+            throw new RuntimeException("Failed to get user account: " + e.getMessage() + " (status: " + e.getStatusCode() + ")", e);
         } catch (Exception e) {
-            log.error("Unexpected error calling IAM service", e);
+            log.error("Unexpected error calling IAM service for userId {}: {}", userId, e.getMessage(), e);
             throw new RuntimeException("Failed to get user account: " + e.getMessage(), e);
         }
     }

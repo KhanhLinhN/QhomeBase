@@ -24,15 +24,27 @@ public class ElevatorCardRegistration {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
-    @Column(name = "unit_id", nullable = false)
+    @Column(name = "unit_id")
     private UUID unitId;
 
     @Column(name = "request_type", nullable = false)
     @Builder.Default
     private String requestType = "NEW_CARD";
 
-    @Column(name = "resident_id", nullable = false)
+    @Column(name = "resident_id")
     private UUID residentId;
+
+    @Column(name = "full_name")
+    private String fullName;
+
+    @Column(name = "apartment_number")
+    private String apartmentNumber;
+
+    @Column(name = "building_name")
+    private String buildingName;
+
+    @Column(name = "citizen_id")
+    private String citizenId;
 
     @Column(name = "phone_number")
     private String phoneNumber;
@@ -49,7 +61,8 @@ public class ElevatorCardRegistration {
     private String paymentStatus = "UNPAID";
 
     @Column(name = "payment_amount", precision = 14, scale = 2)
-    private BigDecimal paymentAmount;
+    @Builder.Default
+    private BigDecimal paymentAmount = BigDecimal.valueOf(30000);
 
     @Column(name = "payment_date")
     private OffsetDateTime paymentDate;

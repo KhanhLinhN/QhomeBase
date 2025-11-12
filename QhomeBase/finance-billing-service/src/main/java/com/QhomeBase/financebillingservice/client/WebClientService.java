@@ -25,28 +25,28 @@ public class WebClientService {
 
     private WebClient webClient;
 
-    @EventListener(ApplicationReadyEvent.class)
-    public void testWebClient() {
-        webClient = WebClient.builder()
-                .baseUrl("http://localhost:8081")
-                .defaultHeader("Accept", "application/json")
-                .build();
-        log.info("=== TESTING WEBCLIENT ===");
+    // @EventListener(ApplicationReadyEvent.class)
+    // public void testWebClient() {
+    //     webClient = WebClient.builder()
+    //             .baseUrl("http://localhost:8081")
+    //             .defaultHeader("Accept", "application/json")
+    //             .build();
+    //     log.info("=== TESTING WEBCLIENT ===");
 
-        // Generate a test JWT token for testing
-        String testToken = generateTestToken();
-        log.info("Generated test token: {}", testToken.substring(0, 50) + "...");
+    //     // Generate a test JWT token for testing
+    //     String testToken = generateTestToken();
+    //     log.info("Generated test token: {}", testToken.substring(0, 50) + "...");
 
-        UUID tenantId = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
+    //     UUID tenantId = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
 
-        try {
-            List<BuildingDto> buildings = getAllBuildings(tenantId, testToken).collectList().block();
-            log.info("Buildings found: {}", buildings.size());
-            buildings.forEach(building -> log.info("Building: {} - {}", building.getCode(), building.getName()));
-        } catch (Exception e) {
-            log.error("Error testing WebClient: {}", e.getMessage());
-        }
-    }
+    //     try {
+    //         List<BuildingDto> buildings = getAllBuildings(tenantId, testToken).collectList().block();
+    //         log.info("Buildings found: {}", buildings.size());
+    //         buildings.forEach(building -> log.info("Building: {} - {}", building.getCode(), building.getName()));
+    //     } catch (Exception e) {
+    //         log.error("Error testing WebClient: {}", e.getMessage());
+    //     }
+    // }
 
     public Flux<BuildingDto> getAllBuildings(UUID tenantId, String token) {
         return webClient.get()

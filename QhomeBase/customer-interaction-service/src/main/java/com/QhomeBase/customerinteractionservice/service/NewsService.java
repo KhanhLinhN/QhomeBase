@@ -20,20 +20,21 @@ import java.util.stream.Collectors;
 
 @Service
 @Transactional
-@RequiredArgsConstructor
 @Slf4j
+@RequiredArgsConstructor
 public class NewsService {
 
     private final NewsRepository newsRepository;
     private final NewsNotificationService notificationService;
+    private final NotificationPushService notificationPushService;
     private final BaseServiceClient baseServiceClient;
 
     public NewsManagementResponse createNews(CreateNewsRequest request, Authentication authentication) {
         var principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
-        
+
         validateNewsScope(request.getScope(), request.getTargetRole(), request.getTargetBuildingId());
-        
+
         News news = News.builder()
                 .title(request.getTitle())
                 .summary(request.getSummary())
@@ -63,16 +64,17 @@ public class NewsService {
             }
         }
 
-
         News savedNews = newsRepository.save(news);
 
         WebSocketNewsMessage wsMessage = WebSocketNewsMessage.created(
-            savedNews.getId(),
-            savedNews.getTitle(),
-            savedNews.getSummary(),
-            savedNews.getCoverImageUrl()
-        );
+                savedNews.getId(),
+                savedNews.getTitle(),
+                savedNews.getSummary(),
+                savedNews.getCoverImageUrl());
         notificationService.notifyNewsCreated(wsMessage);
+        if (savedNews.isActive()) {
+            notificationPushService.sendNewsCreatedPush(savedNews);
+        }
 
         return toManagementResponse(savedNews);
     }
@@ -98,7 +100,8 @@ public class NewsService {
     }
 
     private List<NewsImageDto> toImageDtos(List<NewsImage> images) {
-        if (images == null) return List.of();
+        if (images == null)
+            return List.of();
         return images.stream()
                 .map(img -> NewsImageDto.builder()
                         .id(img.getId())
@@ -115,7 +118,7 @@ public class NewsService {
     public NewsManagementResponse updateNews(UUID newsId, UpdateNewsRequest request, Authentication auth) {
         var principal = (UserPrincipal) auth.getPrincipal();
         UUID userId = principal.uid();
-        
+
         News news = newsRepository.findById(newsId)
                 .orElseThrow(() -> new IllegalArgumentException("News not found with ID: " + newsId));
         if (request.getTitle() != null) {
@@ -145,7 +148,7 @@ public class NewsService {
         if (request.getScope() != null) {
             news.setScope(request.getScope());
             validateNewsScope(request.getScope(), request.getTargetRole(), request.getTargetBuildingId());
-            
+
             if (request.getScope() == NotificationScope.INTERNAL) {
                 news.setTargetRole(request.getTargetRole());
                 news.setTargetBuildingId(null);
@@ -156,7 +159,7 @@ public class NewsService {
         } else if (news.getScope() != null) {
             NotificationScope currentScope = news.getScope();
             validateNewsScope(currentScope, request.getTargetRole(), request.getTargetBuildingId());
-            
+
             if (currentScope == NotificationScope.INTERNAL && request.getTargetRole() != null) {
                 news.setTargetRole(request.getTargetRole());
             } else if (currentScope == NotificationScope.EXTERNAL && request.getTargetBuildingId() != null) {
@@ -166,30 +169,32 @@ public class NewsService {
         news.setUpdatedBy(userId);
 
         News updated = newsRepository.save(news);
-        
+
         WebSocketNewsMessage wsMessage = WebSocketNewsMessage.updated(
-            updated.getId(),
-            updated.getTitle(),
-            updated.getSummary(),
-            updated.getCoverImageUrl()
-        );
+                updated.getId(),
+                updated.getTitle(),
+                updated.getSummary(),
+                updated.getCoverImageUrl());
         notificationService.notifyNewsUpdated(wsMessage);
-        
+        if (updated.isActive()) {
+            notificationPushService.sendNewsUpdatedPush(updated);
+        }
+
         return toManagementResponse(updated);
     }
-    
+
     public NewsManagementResponse deleteNews(UUID newsId, UUID userId) {
         News news = newsRepository.findById(newsId)
                 .orElseThrow(() -> new IllegalArgumentException("News not found with ID: " + newsId));
 
         news.setStatus(NewsStatus.ARCHIVED);
         news.setUpdatedBy(userId);
-        
+
         News deleted = newsRepository.save(news);
-        
+
         WebSocketNewsMessage wsMessage = WebSocketNewsMessage.deleted(deleted.getId());
         notificationService.notifyNewsDeleted(wsMessage);
-        
+
         return toManagementResponse(deleted);
     }
 
@@ -226,8 +231,32 @@ public class NewsService {
                 .map(this::toDetailResponse)
                 .collect(Collectors.toList());
     }
-    
+
     private boolean shouldShowNewsToResident(News news, UUID residentId) {
+        if (!news.isActive()) {
+            return false;
+        }
+
+        NotificationScope scope = news.getScope();
+        if (scope == null) {
+            return true;
+        }
+
+        if (scope == NotificationScope.INTERNAL) {
+            return false;
+        }
+        if (scope == NotificationScope.EXTERNAL) {
+            if (news.getTargetBuildingId() == null) {
+                return true;
+            }
+
+            UUID residentBuildingId = getResidentBuildingId(residentId);
+            if (residentBuildingId == null) {
+                log.debug("Unable to resolve building for resident {} -> allow news {}", residentId, news.getId());
+                return true;
+            }
+            return residentBuildingId.equals(news.getTargetBuildingId());
+        }
         if (news.getScope() == null) {
             return true;
         }
@@ -240,11 +269,16 @@ public class NewsService {
             if (news.getTargetBuildingId() == null) {
                 return true;
             }
+
             UUID residentBuildingId = getResidentBuildingId(residentId);
-            return residentBuildingId != null && residentBuildingId.equals(news.getTargetBuildingId());
+            if (residentBuildingId == null) {
+                log.debug("Unable to resolve building for resident {} -> allow news {}", residentId, news.getId());
+                return true;
+            }
+            return residentBuildingId.equals(news.getTargetBuildingId());
         }
 
-        return false;
+        return true;
     }
 
     private UUID getResidentBuildingId(UUID residentId) {
@@ -287,7 +321,7 @@ public class NewsService {
         if (scope == null) {
             return;
         }
-        
+
         if (scope == NotificationScope.INTERNAL) {
             if (targetRole == null || targetRole.isBlank()) {
                 throw new IllegalArgumentException("INTERNAL news must have target_role (use 'ALL' for all roles)");
@@ -301,7 +335,6 @@ public class NewsService {
             }
         }
     }
-
 
     private NewsManagementResponse toManagementResponse(News news) {
         return NewsManagementResponse.builder()

@@ -61,6 +61,12 @@ public class User {
     
     @Column(nullable = false)
     private boolean active = true;
+
+    @Column(name = "reset_otp")
+    private String resetOtp;
+
+    @Column(name = "otp_expiry")
+    private LocalDateTime otpExpiry;
     
     @Column(name = "failed_attempts", nullable = false)
     private int failedLoginAttempts = 0;

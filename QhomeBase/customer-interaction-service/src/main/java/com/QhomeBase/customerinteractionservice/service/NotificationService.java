@@ -1,6 +1,10 @@
 package com.QhomeBase.customerinteractionservice.service;
 
-import com.QhomeBase.customerinteractionservice.dto.notification.*;
+import com.QhomeBase.customerinteractionservice.dto.notification.CreateNotificationRequest;
+import com.QhomeBase.customerinteractionservice.dto.notification.NotificationDetailResponse;
+import com.QhomeBase.customerinteractionservice.dto.notification.NotificationResponse;
+import com.QhomeBase.customerinteractionservice.dto.notification.NotificationWebSocketMessage;
+import com.QhomeBase.customerinteractionservice.dto.notification.UpdateNotificationRequest;
 import com.QhomeBase.customerinteractionservice.model.Notification;
 import com.QhomeBase.customerinteractionservice.model.NotificationScope;
 import com.QhomeBase.customerinteractionservice.repository.NotificationRepository;
@@ -23,6 +27,7 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final NotificationPushService notificationPushService;
 
     public NotificationResponse createNotification(CreateNotificationRequest request) {
         validateNotificationScope(request.getScope(), request.getTargetRole(), request.getTargetBuildingId());
@@ -44,6 +49,7 @@ public class NotificationService {
         Notification savedNotification = notificationRepository.save(notification);
 
         sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
+        notificationPushService.sendPushNotification(savedNotification);
 
         return toResponse(savedNotification);
     }
@@ -93,6 +99,7 @@ public class NotificationService {
         Notification updatedNotification = notificationRepository.save(notification);
 
         sendWebSocketNotification(updatedNotification, "NOTIFICATION_UPDATED");
+        notificationPushService.sendPushNotification(updatedNotification);
 
         return toResponse(updatedNotification);
     }
@@ -131,10 +138,20 @@ public class NotificationService {
         return toResponse(notification);
     }
 
+    public NotificationDetailResponse getNotificationDetailById(UUID id) {
+        Notification notification = notificationRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Notification not found with ID: " + id));
+        
+        if (notification.isDeleted()) {
+            throw new IllegalArgumentException("Notification not found with ID: " + id);
+        }
+        
+        return toDetailResponse(notification);
+    }
+
     public List<NotificationResponse> getNotificationsForResident(UUID residentId, UUID buildingId) {
-        List<Notification> notifications = notificationRepository.findByScopeAndBuildingId(
-                NotificationScope.EXTERNAL,
-                buildingId
+        List<Notification> notifications = notificationRepository.findByScopeOrderByCreatedAtDesc(
+                NotificationScope.EXTERNAL
         );
 
         return notifications.stream()
@@ -152,21 +169,6 @@ public class NotificationService {
         return notifications.stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
-    }
-
-    private boolean shouldShowNotificationToResident(Notification notification, UUID buildingId) {
-        if (notification.getScope() == NotificationScope.INTERNAL) {
-            return false;
-        }
-
-        if (notification.getScope() == NotificationScope.EXTERNAL) {
-            if (notification.getTargetBuildingId() == null) {
-                return true;
-            }
-            return buildingId != null && buildingId.equals(notification.getTargetBuildingId());
-        }
-
-        return false;
     }
 
     private void validateNotificationScope(NotificationScope scope, String targetRole, UUID targetBuildingId) {
@@ -206,19 +208,60 @@ public class NotificationService {
                 .build();
     }
 
+    private boolean shouldShowNotificationToResident(Notification notification, UUID buildingId) {
+        if (notification.getScope() == NotificationScope.INTERNAL) {
+            return false;
+        }
+
+        if (notification.getScope() == NotificationScope.EXTERNAL) {
+            if (notification.getTargetBuildingId() == null) {
+                return true;
+            }
+            return buildingId != null && buildingId.equals(notification.getTargetBuildingId());
+        }
+
+        return false;
+    }
+
+    private NotificationDetailResponse toDetailResponse(Notification notification) {
+        return NotificationDetailResponse.builder()
+                .type(notification.getType())
+                .title(notification.getTitle())
+                .message(notification.getMessage())
+                .scope(notification.getScope())
+                .targetBuildingId(notification.getTargetBuildingId())
+                .actionUrl(notification.getActionUrl())
+                .createdAt(notification.getCreatedAt())
+                .build();
+    }
+
     private void sendWebSocketNotification(Notification notification, String action) {
+        NotificationWebSocketMessage payload = NotificationWebSocketMessage.of(notification, action);
         try {
-            String destination = "/topic/notifications";
-            if (notification.getScope() == NotificationScope.EXTERNAL && notification.getTargetBuildingId() != null) {
-                destination = "/topic/notifications/building/" + notification.getTargetBuildingId();
-            } else if (notification.getScope() == NotificationScope.INTERNAL && notification.getTargetRole() != null) {
-                destination = "/topic/notifications/role/" + notification.getTargetRole();
+            // Gửi kênh tổng cho tất cả client quan tâm
+            messagingTemplate.convertAndSend("/topic/notifications", payload);
+            log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, "/topic/notifications", notification.getId());
+
+            if (notification.getScope() == NotificationScope.EXTERNAL) {
+                if (notification.getTargetBuildingId() != null) {
+                    String destination = "/topic/notifications/building/" + notification.getTargetBuildingId();
+                    messagingTemplate.convertAndSend(destination, payload);
+                    log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, destination, notification.getId());
+                } else {
+                    messagingTemplate.convertAndSend("/topic/notifications/external", payload);
+                    log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, "/topic/notifications/external", notification.getId());
+                }
+            } else if (notification.getScope() == NotificationScope.INTERNAL) {
+                if (notification.getTargetRole() != null && !notification.getTargetRole().isBlank()) {
+                    String destination = "/topic/notifications/role/" + notification.getTargetRole();
+                    messagingTemplate.convertAndSend(destination, payload);
+                    log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, destination, notification.getId());
+                } else {
+                    messagingTemplate.convertAndSend("/topic/notifications/internal", payload);
+                    log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, "/topic/notifications/internal", notification.getId());
+                }
             }
 
-            log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, destination, notification.getId());
-            
-
-            messagingTemplate.convertAndSend(destination, toResponse(notification));
             log.info("✅ Notification sent successfully via WebSocket");
         } catch (Exception e) {
             log.error("❌ Error sending WebSocket notification", e);

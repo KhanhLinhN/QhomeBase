@@ -24,4 +24,6 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
     
     @Query("SELECT i FROM Invoice i WHERE i.payerUnitId = :unitId AND i.cycleId = :cycleId")
     List<Invoice> findByPayerUnitIdAndCycleId(@Param("unitId") UUID unitId, @Param("cycleId") UUID cycleId);
+
+    Optional<Invoice> findByVnpTransactionRef(String vnpTransactionRef);
 }

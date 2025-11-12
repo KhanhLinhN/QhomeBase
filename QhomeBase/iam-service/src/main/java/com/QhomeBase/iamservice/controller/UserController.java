@@ -20,6 +20,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
@@ -209,16 +210,20 @@ public class UserController {
     
     @GetMapping("/{userId}/account-info")
     @PreAuthorize("@authz.canViewUser(#userId)")
+    @Transactional(readOnly = true)
     public ResponseEntity<UserAccountDto> getUserAccountInfo(@PathVariable UUID userId) {
         return userService.findUserWithRolesById(userId)
                 .map(user -> {
+                    // Force initialization of roles collection within transaction
+                    List<String> roleNames = user.getRoles().stream()
+                            .map(UserRole::getRoleName)
+                            .collect(Collectors.toList());
+                    
                     UserAccountDto accountDto = new UserAccountDto(
                             user.getId(),
                             user.getUsername(),
                             user.getEmail(),
-                            user.getRoles().stream()
-                                    .map(UserRole::getRoleName)
-                                    .collect(Collectors.toList()),
+                            roleNames,
                             user.isActive()
                     );
                     return ResponseEntity.ok(accountDto);

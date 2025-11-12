@@ -31,17 +31,23 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.time.*;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.Collections;
 
 @Service
 @RequiredArgsConstructor
+@SuppressWarnings({"NullAway", "DataFlowIssue"})
 public class ServiceBookingService {
 
     private final ServiceRepository serviceRepository;
@@ -52,6 +58,11 @@ public class ServiceBookingService {
     private final ServiceOptionRepository serviceOptionRepository;
     private final ServiceTicketRepository serviceTicketRepository;
     private final ServiceConfigService serviceConfigService;
+
+    private static final List<ServicePaymentStatus> UNPAID_STATUSES =
+            List.of(ServicePaymentStatus.UNPAID, ServicePaymentStatus.PENDING);
+    private static final List<ServicePaymentStatus> PAID_STATUSES =
+            List.of(ServicePaymentStatus.PAID);
     private UserPrincipal principal(Object authenticationPrincipal) {
         if (authenticationPrincipal instanceof UserPrincipal userPrincipal) {
             return userPrincipal;
@@ -59,9 +70,19 @@ public class ServiceBookingService {
         throw new IllegalStateException("Unsupported authentication principal");
     }
 
+    private UUID requireUserId(UserPrincipal principal) {
+        return Objects.requireNonNull(principal.uid(), "Authenticated user is missing an id");
+    }
+
     @Transactional
+    @SuppressWarnings({"NullAway", "DataFlowIssue"})
     public ServiceBookingDto createBooking(CreateServiceBookingRequest request, Object authenticationPrincipal) {
         UserPrincipal principal = principal(authenticationPrincipal);
+        UUID userId = requireUserId(principal);
+
+        if (serviceBookingRepository.existsByUserIdAndPaymentStatusIn(userId, UNPAID_STATUSES)) {
+            throw new IllegalStateException("Bạn đang có dịch vụ chưa được thanh toán. Vui lòng thanh toán hoặc hủy trước khi đặt lịch mới.");
+        }
 
         var service = serviceRepository.findById(request.getServiceId())
                 .orElseThrow(() -> new IllegalArgumentException("Service not found: " + request.getServiceId()));
@@ -93,11 +114,11 @@ public class ServiceBookingService {
 
         ServiceBooking booking = new ServiceBooking();
         booking.setService(service);
-        booking.setUserId(principal.uid());
-        booking.setBookingDate(bookingDate);
-        booking.setStartTime(startTime);
-        booking.setEndTime(endTime);
-        booking.setDurationHours(durationHours);
+        booking.setUserId(userId);
+        booking.setBookingDate(request.getBookingDate());
+        booking.setStartTime(request.getStartTime());
+        booking.setEndTime(request.getEndTime());
+        booking.setDurationHours(resolveDurationHours(request.getStartTime(), request.getEndTime(), request.getDurationHours()));
         booking.setNumberOfPeople(request.getNumberOfPeople());
         booking.setPurpose(trimToNull(request.getPurpose()));
         booking.setTermsAccepted(Boolean.TRUE.equals(request.getTermsAccepted()));
@@ -172,12 +193,14 @@ public class ServiceBookingService {
     }
 
     @Transactional(readOnly = true)
+    @SuppressWarnings({"NullAway", "DataFlowIssue"})
     public List<ServiceBookingDto> getMyBookings(Object authenticationPrincipal,
                                                 ServiceBookingStatus status,
                                                 LocalDate fromDate,
                                                 LocalDate toDate) {
         UserPrincipal principal = principal(authenticationPrincipal);
-        List<ServiceBooking> bookings = serviceBookingRepository.findAllByUserIdOrderByCreatedAtDesc(principal.uid());
+        UUID userId = requireUserId(principal);
+        List<ServiceBooking> bookings = serviceBookingRepository.findAllByUserIdOrderByCreatedAtDesc(userId);
         return bookings.stream()
                 .filter(booking -> matchesStatus(booking, status))
                 .filter(booking -> matchesDateRange(booking, fromDate, toDate))
@@ -186,9 +209,34 @@ public class ServiceBookingService {
     }
 
     @Transactional(readOnly = true)
+    @SuppressWarnings({"NullAway", "DataFlowIssue"})
+    public List<ServiceBookingDto> getMyUnpaidBookings(Object authenticationPrincipal) {
+        UserPrincipal principal = principal(authenticationPrincipal);
+        UUID userId = requireUserId(principal);
+        List<ServiceBooking> bookings = serviceBookingRepository
+                .findAllByUserIdAndPaymentStatusInOrderByCreatedAtDesc(userId, UNPAID_STATUSES);
+        return bookings.stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceBookingDto> getMyPaidBookings(Object authenticationPrincipal) {
+        UserPrincipal principal = principal(authenticationPrincipal);
+        UUID userId = requireUserId(principal);
+        List<ServiceBooking> bookings = serviceBookingRepository
+                .findAllByUserIdAndPaymentStatusInOrderByCreatedAtDesc(userId, PAID_STATUSES);
+        return bookings.stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    @SuppressWarnings({"NullAway", "DataFlowIssue"})
     public ServiceBookingDto getMyBooking(UUID bookingId, Object authenticationPrincipal) {
         UserPrincipal principal = principal(authenticationPrincipal);
-        ServiceBooking booking = serviceBookingRepository.findByIdAndUserId(bookingId, principal.uid())
+        UUID userId = requireUserId(principal);
+        ServiceBooking booking = serviceBookingRepository.findByIdAndUserId(bookingId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
         return toDto(booking);
     }
@@ -205,11 +253,13 @@ public class ServiceBookingService {
     }
 
     @Transactional
+    @SuppressWarnings({"NullAway", "DataFlowIssue"})
     public ServiceBookingDto cancelMyBooking(UUID bookingId,
                                              CancelServiceBookingRequest request,
                                              Object authenticationPrincipal) {
         UserPrincipal principal = principal(authenticationPrincipal);
-        ServiceBooking booking = serviceBookingRepository.findByIdAndUserId(bookingId, principal.uid())
+        UUID userId = requireUserId(principal);
+        ServiceBooking booking = serviceBookingRepository.findByIdAndUserId(bookingId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
 
         if (!canCancel(booking.getStatus())) {
@@ -442,6 +492,7 @@ public class ServiceBookingService {
         return toDto(booking);
     }
 
+    @SuppressWarnings({"NullAway", "DataFlowIssue"})
     private ServiceBooking loadBookingForMutation(UUID bookingId,
                                                   Object authenticationPrincipal,
                                                   boolean allowManageAny) {
@@ -450,7 +501,8 @@ public class ServiceBookingService {
                     .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
         }
         UserPrincipal principal = principal(authenticationPrincipal);
-        return serviceBookingRepository.findByIdAndUserId(bookingId, principal.uid())
+        UUID userId = requireUserId(principal);
+        return serviceBookingRepository.findByIdAndUserId(bookingId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
     }
 

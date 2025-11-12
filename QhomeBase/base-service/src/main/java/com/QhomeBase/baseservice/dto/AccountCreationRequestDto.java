@@ -3,6 +3,7 @@ package com.QhomeBase.baseservice.dto;
 import com.QhomeBase.baseservice.model.AccountCreationRequest;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record AccountCreationRequestDto(
@@ -26,7 +27,7 @@ public record AccountCreationRequestDto(
         UUID rejectedBy,
         String rejectedByName,
         String rejectionReason,
-        String proofOfRelationImageUrl,
+        List<String> proofOfRelationImageUrls,
         OffsetDateTime approvedAt,
         OffsetDateTime rejectedAt,
         OffsetDateTime createdAt
