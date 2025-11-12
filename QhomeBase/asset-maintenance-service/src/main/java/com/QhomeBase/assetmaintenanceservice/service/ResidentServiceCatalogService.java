@@ -5,7 +5,6 @@ import com.QhomeBase.assetmaintenanceservice.model.service.ServiceAvailability;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceCategory;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceCombo;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceOption;
-import com.QhomeBase.assetmaintenanceservice.model.service.ServiceOptionGroup;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceTicket;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceBooking;
 import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus;
@@ -121,11 +120,8 @@ public class ResidentServiceCatalogService {
                 .pricePerHour(service.getPricePerHour())
                 .pricePerSession(service.getPricePerSession())
                 .pricingType(service.getPricingType())
-                .bookingType(service.getBookingType())
                 .maxCapacity(service.getMaxCapacity())
                 .minDurationHours(service.getMinDurationHours())
-                .maxDurationHours(service.getMaxDurationHours())
-                .advanceBookingDays(service.getAdvanceBookingDays())
                 .rules(service.getRules())
                 .isActive(service.getIsActive())
                 .createdAt(service.getCreatedAt())
@@ -134,7 +130,6 @@ public class ResidentServiceCatalogService {
                 .availabilities(toAvailabilityDtos(service.getAvailabilities()))
                 .combos(toComboDtos(service.getCombos()))
                 .options(toOptionDtos(service.getOptions()))
-                .optionGroups(toOptionGroupDtos(service.getOptionGroups()))
                 .tickets(toTicketDtos(service.getTickets()))
                 .build();
     }
@@ -169,11 +164,8 @@ public class ResidentServiceCatalogService {
                 .pricePerHour(service.getPricePerHour())
                 .pricePerSession(service.getPricePerSession())
                 .pricingType(service.getPricingType())
-                .bookingType(service.getBookingType())
                 .maxCapacity(service.getMaxCapacity())
                 .minDurationHours(service.getMinDurationHours())
-                .maxDurationHours(service.getMaxDurationHours())
-                .advanceBookingDays(service.getAdvanceBookingDays())
                 .rules(service.getRules())
                 .categoryCode(category != null ? category.getCode() : null)
                 .categoryName(category != null ? category.getName() : null)
@@ -221,18 +213,6 @@ public class ResidentServiceCatalogService {
                 .sorted(Comparator.comparing(ServiceOption::getSortOrder, Comparator.nullsLast(Integer::compareTo))
                         .thenComparing(ServiceOption::getName, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .map(serviceConfigService::toOptionDto)
-                .collect(Collectors.toList());
-    }
-
-    private List<ServiceOptionGroupDto> toOptionGroupDtos(List<ServiceOptionGroup> groups) {
-        if (groups == null) {
-            return List.of();
-        }
-        return groups.stream()
-                .filter(group -> group != null && (group.getItems() != null && !group.getItems().isEmpty()))
-                .sorted(Comparator.comparing(ServiceOptionGroup::getSortOrder, Comparator.nullsLast(Integer::compareTo))
-                        .thenComparing(ServiceOptionGroup::getName, Comparator.nullsLast(String::compareToIgnoreCase)))
-                .map(serviceConfigService::toOptionGroupDto)
                 .collect(Collectors.toList());
     }
 

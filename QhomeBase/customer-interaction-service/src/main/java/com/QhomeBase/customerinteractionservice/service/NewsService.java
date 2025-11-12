@@ -21,6 +21,7 @@ import java.util.stream.Collectors;
 @Service
 @Transactional
 @Slf4j
+@RequiredArgsConstructor
 public class NewsService {
 
     private final NewsRepository newsRepository;

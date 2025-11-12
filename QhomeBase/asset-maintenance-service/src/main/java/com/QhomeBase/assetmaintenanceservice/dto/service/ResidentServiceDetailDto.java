@@ -1,6 +1,5 @@
 package com.QhomeBase.assetmaintenanceservice.dto.service;
 
-import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingType;
 import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServicePricingType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -27,11 +26,8 @@ public class ResidentServiceDetailDto {
     private BigDecimal pricePerHour;
     private BigDecimal pricePerSession;
     private ServicePricingType pricingType;
-    private ServiceBookingType bookingType;
     private Integer maxCapacity;
     private Integer minDurationHours;
-    private Integer maxDurationHours;
-    private Integer advanceBookingDays;
     private String rules;
     private Boolean isActive;
     private OffsetDateTime createdAt;
@@ -40,7 +36,6 @@ public class ResidentServiceDetailDto {
     private List<ServiceAvailabilityDto> availabilities;
     private List<ServiceComboDto> combos;
     private List<ServiceOptionDto> options;
-    private List<ServiceOptionGroupDto> optionGroups;
     private List<ServiceTicketDto> tickets;
 }
 
