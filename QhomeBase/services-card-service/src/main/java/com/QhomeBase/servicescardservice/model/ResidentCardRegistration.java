@@ -54,7 +54,7 @@ public class ResidentCardRegistration {
 
     @Column(name = "status", nullable = false)
     @Builder.Default
-    private String status = "PENDING";
+    private String status = "PENDING_APPROVAL";
 
     @Column(name = "payment_status", nullable = false)
     @Builder.Default
@@ -71,6 +71,18 @@ public class ResidentCardRegistration {
 
     @Column(name = "vnpay_transaction_ref")
     private String vnpayTransactionRef;
+
+    @Column(name = "admin_note")
+    private String adminNote;
+
+    @Column(name = "approved_by")
+    private UUID approvedBy;
+
+    @Column(name = "approved_at")
+    private OffsetDateTime approvedAt;
+
+    @Column(name = "rejection_reason")
+    private String rejectionReason;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

@@ -1,6 +1,7 @@
 package com.QhomeBase.servicescardservice.service;
 
 import com.QhomeBase.servicescardservice.config.VnpayProperties;
+import com.QhomeBase.servicescardservice.dto.CardRegistrationAdminDecisionRequest;
 import com.QhomeBase.servicescardservice.dto.ResidentCardRegistrationCreateDto;
 import com.QhomeBase.servicescardservice.dto.ResidentCardRegistrationDto;
 import com.QhomeBase.servicescardservice.model.ResidentCardRegistration;
@@ -18,6 +19,8 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -32,15 +35,18 @@ import java.util.concurrent.ConcurrentMap;
 public class ResidentCardRegistrationService {
 
     private static final BigDecimal REGISTRATION_FEE = BigDecimal.valueOf(30000);
+    private static final String STATUS_PENDING_APPROVAL = "PENDING_APPROVAL"; // waiting for admin after payment
     private static final String STATUS_READY_FOR_PAYMENT = "READY_FOR_PAYMENT";
     private static final String STATUS_PAYMENT_PENDING = "PAYMENT_PENDING";
     private static final String STATUS_COMPLETED = "COMPLETED";
+    private static final String STATUS_REJECTED = "REJECTED";
     private static final String PAYMENT_VNPAY = "VNPAY";
 
     private final ResidentCardRegistrationRepository repository;
     private final VnpayService vnpayService;
     private final VnpayProperties vnpayProperties;
     private final BillingClient billingClient;
+    private final NotificationClient notificationClient;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
     @Transactional
@@ -61,6 +67,12 @@ public class ResidentCardRegistrationService {
                 .status(STATUS_READY_FOR_PAYMENT)
                 .paymentStatus("UNPAID")
                 .paymentAmount(REGISTRATION_FEE)
+                .paymentGateway(null)
+                .vnpayTransactionRef(null)
+                .adminNote(null)
+                .rejectionReason(null)
+                .approvedAt(null)
+                .approvedBy(null)
                 .build();
 
         ResidentCardRegistration saved = Objects.requireNonNull(repository.save(registration),
@@ -76,6 +88,78 @@ public class ResidentCardRegistrationService {
         return initiatePayment(userId, created.id(), request);
     }
 
+    @Transactional(readOnly = true)
+    public List<ResidentCardRegistrationDto> getRegistrationsForAdmin(String status, String paymentStatus) {
+        List<ResidentCardRegistration> registrations = repository.findAllByOrderByCreatedAtDesc();
+        return registrations.stream()
+                .filter(reg -> !StringUtils.hasText(status) || status.equalsIgnoreCase(reg.getStatus()))
+                .filter(reg -> !StringUtils.hasText(paymentStatus) || paymentStatus.equalsIgnoreCase(reg.getPaymentStatus()))
+                .map(this::toDto)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ResidentCardRegistrationDto getRegistrationForAdmin(UUID registrationId) {
+        ResidentCardRegistration registration = repository.findById(registrationId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký thẻ cư dân"));
+        return toDto(registration);
+    }
+
+    @Transactional
+    public ResidentCardRegistrationDto processAdminDecision(UUID adminId,
+                                                            UUID registrationId,
+                                                            CardRegistrationAdminDecisionRequest request) {
+        ResidentCardRegistration registration = repository.findById(registrationId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký thẻ cư dân"));
+
+        if (STATUS_COMPLETED.equalsIgnoreCase(registration.getStatus())) {
+            throw new IllegalStateException("Đăng ký đã hoàn tất");
+        }
+        if (STATUS_PAYMENT_PENDING.equalsIgnoreCase(registration.getStatus())) {
+            throw new IllegalStateException("Đăng ký đang trong quá trình thanh toán");
+        }
+        if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
+            throw new IllegalStateException("Đăng ký đã bị từ chối");
+        }
+
+        String decision = request.decision() != null ? request.decision().trim().toUpperCase(Locale.ROOT) : "";
+        OffsetDateTime decisionTime = OffsetDateTime.now();
+        boolean approved = "APPROVE".equals(decision);
+        if (approved) {
+            if (!STATUS_PENDING_APPROVAL.equalsIgnoreCase(registration.getStatus())) {
+                throw new IllegalStateException("Đăng ký không ở trạng thái chờ duyệt");
+            }
+            if (!"PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
+                throw new IllegalStateException("Đăng ký chưa hoàn tất thanh toán");
+            }
+            registration.setStatus(STATUS_COMPLETED);
+            registration.setAdminNote(normalize(request.note()));
+            registration.setRejectionReason(null);
+            registration.setApprovedBy(adminId);
+            registration.setApprovedAt(decisionTime);
+        } else if ("REJECT".equals(decision)) {
+            if (!STATUS_PENDING_APPROVAL.equalsIgnoreCase(registration.getStatus())) {
+                throw new IllegalStateException("Đăng ký không ở trạng thái chờ duyệt");
+            }
+            if (!StringUtils.hasText(request.note())) {
+                throw new IllegalArgumentException("Lý do từ chối là bắt buộc");
+            }
+            String reason = normalize(request.note());
+            registration.setStatus(STATUS_REJECTED);
+            // Giữ thông tin thanh toán để xử lý đối soát/refund nếu cần
+            registration.setAdminNote(reason);
+            registration.setRejectionReason(reason);
+            registration.setApprovedBy(adminId);
+            registration.setApprovedAt(decisionTime);
+        } else {
+            throw new IllegalArgumentException("Quyết định không hợp lệ: " + request.decision());
+        }
+
+        ResidentCardRegistration saved = repository.save(registration);
+        notifyResidentDecision(saved, approved, request.note());
+        return toDto(saved);
+    }
+
     @Transactional
     public ResidentCardPaymentResponse initiatePayment(UUID userId,
                                                        UUID registrationId,
@@ -83,6 +167,13 @@ public class ResidentCardRegistrationService {
         ResidentCardRegistration registration = repository.findByIdAndUserId(registrationId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký thẻ cư dân"));
 
+        if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
+            throw new IllegalStateException("Đăng ký đã bị từ chối");
+        }
+        if (STATUS_PENDING_APPROVAL.equalsIgnoreCase(registration.getStatus())
+                && "UNPAID".equalsIgnoreCase(registration.getPaymentStatus())) {
+            registration.setStatus(STATUS_READY_FOR_PAYMENT);
+        }
         if (!Objects.equals(registration.getPaymentStatus(), "UNPAID")) {
             throw new IllegalStateException("Đăng ký đã thanh toán hoặc đang xử lý");
         }
@@ -157,7 +248,7 @@ public class ResidentCardRegistrationService {
 
         if (signatureValid && "00".equals(responseCode) && "00".equals(transactionStatus)) {
             registration.setPaymentStatus("PAID");
-            registration.setStatus(STATUS_COMPLETED);
+            registration.setStatus(STATUS_PENDING_APPROVAL);
             registration.setPaymentGateway(PAYMENT_VNPAY);
             OffsetDateTime payDate = parsePayDate(params.get("vnp_PayDate"));
             registration.setPaymentDate(payDate);
@@ -203,6 +294,31 @@ public class ResidentCardRegistrationService {
             return localDateTime.atZone(ZoneId.systemDefault()).toOffsetDateTime();
         } catch (Exception e) {
             return OffsetDateTime.now();
+        }
+    }
+
+    private void notifyResidentDecision(ResidentCardRegistration registration, boolean approved, String note) {
+        if (registration.getUserId() == null) {
+            return;
+        }
+        String title = approved ? "Thẻ cư dân đã được duyệt" : "Thẻ cư dân bị từ chối";
+        String body = approved
+                ? "Yêu cầu đăng ký thẻ cư dân của bạn đã được phê duyệt."
+                : ("Yêu cầu đăng ký thẻ cư dân bị từ chối"
+                + (StringUtils.hasText(note) ? (": " + note.trim()) : "."));
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("type", approved ? "RESIDENT_CARD_APPROVED" : "RESIDENT_CARD_REJECTED");
+        data.put("registrationId", registration.getId().toString());
+        data.put("status", registration.getStatus());
+        if (!approved && StringUtils.hasText(note)) {
+            data.put("reason", note.trim());
+        }
+
+        try {
+            notificationClient.sendResidentNotification(registration.getUserId(), title, body, data);
+        } catch (Exception ex) {
+            log.warn("⚠️ [ResidentCard] Không thể gửi thông báo cho cư dân {}: {}", registration.getUserId(), ex.getMessage());
         }
     }
 
@@ -266,6 +382,10 @@ public class ResidentCardRegistrationService {
                 entity.getPaymentDate(),
                 entity.getPaymentGateway(),
                 entity.getVnpayTransactionRef(),
+                entity.getAdminNote(),
+                entity.getApprovedBy(),
+                entity.getApprovedAt(),
+                entity.getRejectionReason(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
         );

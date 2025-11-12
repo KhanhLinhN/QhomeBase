@@ -24,6 +24,10 @@ public record RegisterServiceRequestDto(
         OffsetDateTime paymentDate,
         String paymentGateway,
         String vnpayTransactionRef,
+        String adminNote,
+        UUID approvedBy,
+        OffsetDateTime approvedAt,
+        String rejectionReason,
         List<RegisterServiceImageDto> images,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
