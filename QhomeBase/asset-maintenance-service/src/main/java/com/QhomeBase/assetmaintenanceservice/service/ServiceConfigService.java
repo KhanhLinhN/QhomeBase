@@ -1,5 +1,6 @@
 package com.QhomeBase.assetmaintenanceservice.service;
 
+import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServicePricingType;
 import com.QhomeBase.assetmaintenanceservice.repository.ServiceAvailabilityRepository;
 import org.springframework.data.util.Pair;
 import com.QhomeBase.assetmaintenanceservice.dto.service.*;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -47,9 +49,7 @@ public class ServiceConfigService {
         entity.setDescription(request.getDescription());
         entity.setLocation(StringUtils.hasText(request.getLocation()) ? request.getLocation().trim() : null);
         entity.setMapUrl(StringUtils.hasText(request.getMapUrl()) ? request.getMapUrl().trim() : null);
-        entity.setPricePerHour(request.getPricePerHour());
-        entity.setPricePerSession(request.getPricePerSession());
-        entity.setPricingType(request.getPricingType());
+        applyPricing(entity, request.getPricingType(), request.getPricePerHour(), request.getPricePerSession());
         entity.setMaxCapacity(request.getMaxCapacity());
         entity.setMinDurationHours(request.getMinDurationHours());
         entity.setRules(request.getRules());
@@ -199,11 +199,57 @@ public class ServiceConfigService {
         if (!StringUtils.hasText(request.getName())) {
             throw new IllegalArgumentException("Service name is required");
         }
-        if (request.getPricingType() == null) {
-            throw new IllegalArgumentException("Service pricing type is required");
-        }
         if (request.getCategoryId() == null) {
             throw new IllegalArgumentException("Service category ID is required");
+        }
+        ServicePricingType pricingType = request.getPricingType();
+        if (pricingType == null) {
+            throw new IllegalArgumentException("Service pricing type is required");
+        }
+        switch (pricingType) {
+            case HOURLY -> {
+                if (request.getPricePerHour() == null || request.getPricePerHour().compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new IllegalArgumentException("pricePerHour must be greater than 0 for HOURLY services");
+                }
+            }
+            case SESSION -> {
+                if (request.getPricePerSession() == null || request.getPricePerSession().compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new IllegalArgumentException("pricePerSession must be greater than 0 for SESSION services");
+                }
+            }
+            case FREE -> {
+                
+            }
+        }
+    }
+
+    private void applyPricing(com.QhomeBase.assetmaintenanceservice.model.service.Service entity,
+                              ServicePricingType pricingType,
+                              BigDecimal pricePerHour,
+                              BigDecimal pricePerSession) {
+        if (pricingType == null) {
+            entity.setPricingType(ServicePricingType.FREE);
+            entity.setPricePerHour(BigDecimal.ZERO);
+            entity.setPricePerSession(BigDecimal.ZERO);
+            return;
+        }
+
+        switch (pricingType) {
+            case HOURLY -> {
+                entity.setPricingType(ServicePricingType.HOURLY);
+                entity.setPricePerHour(pricePerHour);
+                entity.setPricePerSession(BigDecimal.ZERO);
+            }
+            case SESSION -> {
+                entity.setPricingType(ServicePricingType.SESSION);
+                entity.setPricePerSession(pricePerSession);
+                entity.setPricePerHour(BigDecimal.ZERO);
+            }
+            case FREE -> {
+                entity.setPricingType(ServicePricingType.FREE);
+                entity.setPricePerHour(BigDecimal.ZERO);
+                entity.setPricePerSession(BigDecimal.ZERO);
+            }
         }
     }
 
