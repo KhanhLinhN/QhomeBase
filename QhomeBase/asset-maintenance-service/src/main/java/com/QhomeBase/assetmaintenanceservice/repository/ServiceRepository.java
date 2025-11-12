@@ -13,4 +13,5 @@ public interface ServiceRepository extends JpaRepository<Service, UUID> {
     List<Service> findByCategoryIdAndIsActiveTrueOrderByNameAsc(UUID categoryId);
 
     List<Service> findByCategory_CodeIgnoreCaseAndIsActiveTrueOrderByNameAsc(String categoryCode);
+    List<Service> findAllByIsActive(Boolean isActive);
 }

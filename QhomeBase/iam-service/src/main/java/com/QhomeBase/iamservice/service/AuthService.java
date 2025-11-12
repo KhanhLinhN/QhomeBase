@@ -81,8 +81,8 @@ public class AuthService {
                 null,
                 roleNames,
                 userPermissions,
-                "base-service,finance-service,customer-service,iam-service"
-        );
+                "base-service,finance-service,customer-service,asset-maintenance-service,iam-service"
+        ).trim();
 
         return new LoginResponseDto(
                 accessToken,
@@ -157,7 +157,7 @@ public class AuthService {
                 null,
                 roleNames,
                 userPermissions,
-                "base-service,finance-service,customer-service,iam-service"
+                "base-service,finance-service,customer-service,asset-maintenance-service,iam-service"
         );
     }
 }

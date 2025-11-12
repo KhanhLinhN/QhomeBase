@@ -28,7 +28,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String auth = request.getHeader("Authorization");
         if (auth != null && auth.startsWith("Bearer ")) {
             try {
-                String token = auth.substring(7);
+                String token = auth.substring(7).trim();
+                if (token.regionMatches(true, 0, "Bearer", 0, 6)) {
+                    token = token.substring(6).trim();
+                }
+                token = token.replaceAll("[^A-Za-z0-9\\-_.]", "");
                 Claims claims = jwtVerifier.verify(token);
 
                 UUID uid = UUID.fromString(claims.get("uid", String.class));

@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -18,6 +19,12 @@ import java.util.UUID;
 public class ServiceController {
 
     private final ServiceConfigService serviceConfigService;
+
+    @GetMapping
+    @PreAuthorize("@authz.canViewServiceConfig()")
+    public ResponseEntity<List<ServiceDto>> getServices(@RequestParam(required = false) Boolean isActive) {
+        return ResponseEntity.ok(serviceConfigService.findAll(isActive));
+    }
 
     @PostMapping
     @PreAuthorize("@authz.canManageServiceConfig()")
@@ -31,6 +38,11 @@ public class ServiceController {
     public ResponseEntity<ServiceDto> getServiceById(@PathVariable UUID id) {
         ServiceDto service = serviceConfigService.findById(id);
         return ResponseEntity.ok(service);
+    }
+
+    @GetMapping("/public")
+    public ResponseEntity<List<ServiceDto>> getPublicServices(@RequestParam(required = false) Boolean isActive) {
+        return ResponseEntity.ok(serviceConfigService.findAll(isActive));
     }
 }
 

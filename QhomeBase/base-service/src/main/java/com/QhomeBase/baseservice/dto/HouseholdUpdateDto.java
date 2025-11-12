@@ -8,6 +8,7 @@ import java.util.UUID;
 public record HouseholdUpdateDto(
         UUID unitId,
         HouseholdKind kind,
+        UUID contractId,
         UUID primaryResidentId,
         LocalDate startDate,
         LocalDate endDate

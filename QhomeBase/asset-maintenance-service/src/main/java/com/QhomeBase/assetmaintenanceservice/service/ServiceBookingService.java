@@ -15,7 +15,6 @@ import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceBookingSlotDto;
 import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceBookingSlotRequest;
 import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceComboDto;
 import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceOptionDto;
-import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceOptionGroupDto;
 import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceTicketDto;
 import com.QhomeBase.assetmaintenanceservice.dto.service.UpdateServiceBookingItemRequest;
 import com.QhomeBase.assetmaintenanceservice.dto.service.UpdateServiceBookingSlotsRequest;
@@ -38,8 +37,8 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.time.*;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,11 +54,9 @@ public class ServiceBookingService {
     private final ServiceBookingRepository serviceBookingRepository;
     private final ServiceBookingItemRepository serviceBookingItemRepository;
     private final ServiceBookingSlotRepository serviceBookingSlotRepository;
-    private final ServiceAvailabilityRepository serviceAvailabilityRepository;
     private final ServiceComboRepository serviceComboRepository;
     private final ServiceOptionRepository serviceOptionRepository;
     private final ServiceTicketRepository serviceTicketRepository;
-    private final ServiceOptionGroupRepository serviceOptionGroupRepository;
     private final ServiceConfigService serviceConfigService;
 
     private static final List<ServicePaymentStatus> UNPAID_STATUSES =
@@ -90,6 +87,31 @@ public class ServiceBookingService {
         var service = serviceRepository.findById(request.getServiceId())
                 .orElseThrow(() -> new IllegalArgumentException("Service not found: " + request.getServiceId()));
 
+        ServiceBookingSlotRequest slotRequest = request.getSlot();
+
+        LocalDate bookingDate = request.getBookingDate();
+        LocalTime startTime = request.getStartTime();
+        LocalTime endTime = request.getEndTime();
+        if (slotRequest != null) {
+            if (bookingDate == null) {
+                bookingDate = slotRequest.getSlotDate();
+            }
+            if (startTime == null) {
+                startTime = slotRequest.getStartTime();
+            }
+            if (endTime == null) {
+                endTime = slotRequest.getEndTime();
+            }
+        }
+        if (bookingDate == null) {
+            throw new IllegalArgumentException("Booking date is required");
+        }
+        if (startTime == null || endTime == null) {
+            throw new IllegalArgumentException("Start time and end time are required");
+        }
+
+        BigDecimal durationHours = resolveDurationHours(startTime, endTime, request.getDurationHours());
+
         ServiceBooking booking = new ServiceBooking();
         booking.setService(service);
         booking.setUserId(userId);
@@ -107,13 +129,67 @@ public class ServiceBookingService {
             booking.getBookingItems().addAll(buildItems(booking, request.getItems()));
         }
 
-        booking.getBookingSlots().addAll(buildSlots(booking, request.getSlots(),
-                request.getBookingDate(), request.getStartTime(), request.getEndTime()));
+        booking.getBookingSlots().add(buildSlotFromRequest(booking, slotRequest,
+                bookingDate, startTime, endTime));
 
         booking.setTotalAmount(calculateTotalAmount(booking));
 
         ServiceBooking saved = serviceBookingRepository.save(booking);
         return toDto(saved);
+    }
+    public boolean validateBookingTime(CreateServiceBookingRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Create booking request must not be null");
+        }
+        UUID serviceId = request.getServiceId();
+        if (serviceId == null) {
+            throw new IllegalArgumentException("Service ID is required");
+        }
+
+        com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(serviceId)
+                .orElseThrow(() -> new IllegalArgumentException("Service not found: " + serviceId));
+
+        ServiceBookingSlotRequest slotRequest = request.getSlot();
+
+        LocalDate bookingDate = request.getBookingDate();
+        LocalTime startTime = request.getStartTime();
+        LocalTime endTime = request.getEndTime();
+        if (slotRequest != null) {
+            if (bookingDate == null) {
+                bookingDate = slotRequest.getSlotDate();
+            }
+            if (startTime == null) {
+                startTime = slotRequest.getStartTime();
+            }
+            if (endTime == null) {
+                endTime = slotRequest.getEndTime();
+            }
+        }
+
+        if (bookingDate == null) {
+            throw new IllegalArgumentException("Booking date is required");
+        }
+        if (startTime == null || endTime == null) {
+            throw new IllegalArgumentException("Start time and end time are required");
+        }
+        if (!endTime.isAfter(startTime)) {
+            return false;
+        }
+
+        BigDecimal calculatedDuration = resolveDurationHours(startTime, endTime, request.getDurationHours());
+        Integer minDurationHours = service.getMinDurationHours();
+        if (minDurationHours != null && calculatedDuration != null
+                && calculatedDuration.compareTo(BigDecimal.valueOf(minDurationHours)) < 0) {
+            return false;
+        }
+
+        try {
+            validateSlotBooking(serviceId, bookingDate, startTime, endTime, null);
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+
+        return true;
     }
 
     @Transactional(readOnly = true)
@@ -285,7 +361,7 @@ public class ServiceBookingService {
         ensurePending(booking);
 
         booking.getBookingSlots().clear();
-        booking.getBookingSlots().addAll(buildSlots(booking, request.getSlots(),
+        booking.getBookingSlots().add(buildSlotFromRequest(booking, request.getSlot(),
                 booking.getBookingDate(), booking.getStartTime(), booking.getEndTime()));
 
         return toDto(booking);
@@ -332,11 +408,6 @@ public class ServiceBookingService {
                 .map(serviceConfigService::toOptionDto)
                 .collect(Collectors.toList());
 
-        List<ServiceOptionGroupDto> optionGroups = service.getOptionGroups().stream()
-                .filter(Objects::nonNull)
-                .map(serviceConfigService::toOptionGroupDto)
-                .collect(Collectors.toList());
-
         List<ServiceTicketDto> tickets = service.getTickets().stream()
                 .filter(Objects::nonNull)
                 .filter(ticket -> Boolean.TRUE.equals(ticket.getIsActive()))
@@ -350,7 +421,6 @@ public class ServiceBookingService {
                 .pricingType(service.getPricingType())
                 .combos(combos)
                 .options(options)
-                .optionGroups(optionGroups)
                 .tickets(tickets)
                 .build();
     }
@@ -510,30 +580,36 @@ public class ServiceBookingService {
         item.setMetadata(request.getMetadata());
         return item;
     }
-    private List<ServiceBookingSlot> buildSlots(ServiceBooking booking,
-                                                List<ServiceBookingSlotRequest> requests,
-                                                LocalDate fallbackDate,
-                                                LocalTime fallbackStart,
-                                                LocalTime fallbackEnd) {
-        Map<Integer, List<ServiceAvailability>> availabilityCache = new HashMap<>();
-        List<ServiceBookingSlot> slots = new ArrayList<>();
-        if (requests == null || requests.isEmpty()) {
-            slots.add(buildSlot(booking, fallbackDate, fallbackStart, fallbackEnd, availabilityCache, slots));
-            return slots;
+    private ServiceBookingSlot buildSlotFromRequest(ServiceBooking booking,
+                                                    ServiceBookingSlotRequest request,
+                                                    LocalDate fallbackDate,
+                                                    LocalTime fallbackStart,
+                                                    LocalTime fallbackEnd) {
+        LocalDate slotDate = fallbackDate;
+        LocalTime slotStart = fallbackStart;
+        LocalTime slotEnd = fallbackEnd;
+
+        if (request != null) {
+            if (request.getSlotDate() != null) {
+                slotDate = request.getSlotDate();
+            }
+            if (request.getStartTime() != null) {
+                slotStart = request.getStartTime();
+            }
+            if (request.getEndTime() != null) {
+                slotEnd = request.getEndTime();
+            }
         }
-        for (ServiceBookingSlotRequest request : requests) {
-            slots.add(buildSlot(booking, request.getSlotDate(), request.getStartTime(), request.getEndTime(), availabilityCache, slots));
-        }
-        return slots;
+
+        return buildSlot(booking, slotDate, slotStart, slotEnd, booking.getId());
     }
 
     private ServiceBookingSlot buildSlot(ServiceBooking booking,
                                          LocalDate date,
                                          LocalTime start,
                                          LocalTime end,
-                                         Map<Integer, List<ServiceAvailability>> availabilityCache,
-                                         List<ServiceBookingSlot> existingSlots) {
-        validateSlot(booking, date, start, end, availabilityCache, existingSlots);
+                                         UUID currentBookingId) {
+        validateSlotBooking(booking.getService().getId(), date, start, end, currentBookingId);
         ServiceBookingSlot slot = new ServiceBookingSlot();
         slot.setBooking(booking);
         slot.setService(booking.getService());
@@ -599,12 +675,11 @@ public class ServiceBookingService {
     }
 
 
-    private void validateSlot(ServiceBooking booking,
-                              LocalDate date,
-                              LocalTime start,
-                              LocalTime end,
-                              Map<Integer, List<ServiceAvailability>> availabilityCache,
-                              List<ServiceBookingSlot> existingSlots) {
+    private void validateSlotBooking(UUID serviceId,
+                                     LocalDate date,
+                                     LocalTime start,
+                                     LocalTime end,
+                                     UUID bookingId) {
         if (date == null) {
             throw new IllegalArgumentException("Slot date is required");
         }
@@ -615,40 +690,6 @@ public class ServiceBookingService {
             throw new IllegalArgumentException("Slot end time must be after start time");
         }
 
-        UUID serviceId = booking.getService().getId();
-        ensureSlotWithinAvailability(serviceId, date, start, end, availabilityCache);
-        ensureSlotNotOverlapping(serviceId, date, start, end, booking.getId());
-        ensureNoInternalOverlap(date, start, end, existingSlots);
-    }
-
-    private void ensureSlotWithinAvailability(UUID serviceId,
-                                              LocalDate date,
-                                              LocalTime start,
-                                              LocalTime end,
-                                              Map<Integer, List<ServiceAvailability>> availabilityCache) {
-        int dayOfWeek = date.getDayOfWeek().getValue();
-        List<ServiceAvailability> availabilities = availabilityCache.computeIfAbsent(dayOfWeek,
-                key -> serviceAvailabilityRepository.findByServiceIdAndDayOfWeekAndIsAvailableTrueOrderByStartTimeAsc(serviceId, key));
-
-        if (availabilities.isEmpty()) {
-            throw new IllegalArgumentException("Service has no available slots configured for " + date.getDayOfWeek());
-        }
-
-        boolean matches = availabilities.stream()
-                .anyMatch(availability ->
-                        !start.isBefore(availability.getStartTime()) && !end.isAfter(availability.getEndTime()));
-
-        if (!matches) {
-            throw new IllegalArgumentException(String.format(
-                    "Requested slot %s %s-%s is outside service availability", date, start, end));
-        }
-    }
-
-    private void ensureSlotNotOverlapping(UUID serviceId,
-                                          LocalDate date,
-                                          LocalTime start,
-                                          LocalTime end,
-                                          UUID bookingId) {
         boolean overlap;
         if (bookingId == null) {
             overlap = serviceBookingSlotRepository
@@ -661,21 +702,6 @@ public class ServiceBookingService {
         if (overlap) {
             throw new IllegalArgumentException(String.format(
                     "Requested slot %s %s-%s is already booked for this service", date, start, end));
-        }
-    }
-
-    private void ensureNoInternalOverlap(LocalDate date,
-                                         LocalTime start,
-                                         LocalTime end,
-                                         List<ServiceBookingSlot> existingSlots) {
-        for (ServiceBookingSlot existing : existingSlots) {
-            if (existing.getSlotDate() != null && existing.getSlotDate().equals(date)) {
-                if (start.isBefore(existing.getEndTime()) && end.isAfter(existing.getStartTime())) {
-                    throw new IllegalArgumentException(String.format(
-                            "Requested slot %s %s-%s overlaps with another slot in this booking request (%s-%s)",
-                            date, start, end, existing.getStartTime(), existing.getEndTime()));
-                }
-            }
         }
     }
 
@@ -777,6 +803,7 @@ public class ServiceBookingService {
         return Collections.singletonMap("value", metadata);
     }
 
+
     private ServiceItemCatalog loadItemCatalog(ServiceBooking booking) {
         com.QhomeBase.assetmaintenanceservice.model.service.Service service = booking.getService();
         if (service == null || service.getId() == null) {
@@ -790,10 +817,8 @@ public class ServiceBookingService {
                 .collect(Collectors.toMap(ServiceOption::getId, option -> option));
         Map<UUID, ServiceTicket> tickets = serviceTicketRepository.findAllByServiceId(serviceId).stream()
                 .collect(Collectors.toMap(ServiceTicket::getId, ticket -> ticket));
-        Map<UUID, ServiceOptionGroup> optionGroups = serviceOptionGroupRepository.findAllByServiceId(serviceId).stream()
-                .collect(Collectors.toMap(ServiceOptionGroup::getId, group -> group));
 
-        return new ServiceItemCatalog(combos, options, tickets, optionGroups);
+        return new ServiceItemCatalog(combos, options, tickets);
     }
 
     private ItemSource resolveItemSource(UUID serviceId,
@@ -844,8 +869,7 @@ public class ServiceBookingService {
     private record ServiceItemCatalog(
             Map<UUID, ServiceCombo> combos,
             Map<UUID, ServiceOption> options,
-            Map<UUID, ServiceTicket> tickets,
-            Map<UUID, ServiceOptionGroup> optionGroups
+            Map<UUID, ServiceTicket> tickets
     ) {
     }
 

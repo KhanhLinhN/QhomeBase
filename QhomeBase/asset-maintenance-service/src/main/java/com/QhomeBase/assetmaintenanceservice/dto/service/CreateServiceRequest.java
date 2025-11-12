@@ -1,6 +1,5 @@
 package com.QhomeBase.assetmaintenanceservice.dto.service;
 
-import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingType;
 import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServicePricingType;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
@@ -51,22 +50,12 @@ public class CreateServiceRequest {
     @NotNull(message = "Pricing type is required")
     private ServicePricingType pricingType;
 
-    @NotNull(message = "Booking type is required")
-    private ServiceBookingType bookingType;
-
     @Min(value = 1, message = "Max capacity must be at least 1")
     @Max(value = 1000, message = "Max capacity must be <= 1000")
     private Integer maxCapacity;
 
     @Min(value = 1, message = "Min duration must be at least 1 hour")
     private Integer minDurationHours;
-
-    @Min(value = 1, message = "Max duration must be at least 1 hour")
-    private Integer maxDurationHours;
-
-    @Min(value = 0, message = "Advance booking days must be >= 0")
-    @Max(value = 365, message = "Advance booking days must be <= 365")
-    private Integer advanceBookingDays;
 
     private String rules;
 

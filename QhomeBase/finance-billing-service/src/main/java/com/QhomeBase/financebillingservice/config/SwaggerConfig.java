@@ -1,10 +1,12 @@
 package com.QhomeBase.financebillingservice.config;
 
+import io.swagger.v3.oas.models.ExternalDocumentation;
 import io.swagger.v3.oas.models.OpenAPI;
-import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.Contact;
+import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
 import io.swagger.v3.oas.models.servers.Server;
+import org.springdoc.core.models.GroupedOpenApi;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,18 +32,25 @@ public class SwaggerConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("Finance Billing Service API")
-                        .description("API for managing invoices, billing cycles, and parking fees")
+                        .description("API for managing invoices, billing cycles, and payments")
                         .version("1.0.0")
                         .contact(new Contact()
-                                .name("QhomeBase Team")
+                                .name("QhomeBase Finance Team")
                                 .email("support@qhomebase.com"))
                         .license(new License()
                                 .name("Apache 2.0")
                                 .url("https://www.apache.org/licenses/LICENSE-2.0.html")))
-                .servers(List.of(apiGatewayServer, localServer));
+                .servers(List.of(apiGatewayServer, localServer))
+                .externalDocs(new ExternalDocumentation()
+                        .description("QhomeBase API Portal")
+                        .url("https://docs.qhomebase.com"));
+    }
+
+    @Bean
+    public GroupedOpenApi billingApi() {
+        return GroupedOpenApi.builder()
+                .group("finance-billing")
+                .pathsToMatch("/api/**")
+                .build();
     }
 }
-
-
-
-

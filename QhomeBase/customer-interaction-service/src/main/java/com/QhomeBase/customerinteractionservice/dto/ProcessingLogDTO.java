@@ -13,12 +13,9 @@ import lombok.NoArgsConstructor;
 @Builder
 public class ProcessingLogDTO {
     UUID id;
-    String recordType;
     UUID recordId;
-    UUID staffInCharge;
     String content;
     String requestStatus;
-    String logType;
     String staffInChargeName;
     String staffInChargeEmail;
     String createdAt;

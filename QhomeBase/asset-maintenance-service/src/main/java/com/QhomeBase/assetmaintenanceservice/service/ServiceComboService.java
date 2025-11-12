@@ -8,7 +8,6 @@ import com.QhomeBase.assetmaintenanceservice.dto.service.UpdateServiceComboReque
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceCombo;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceComboItem;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceOption;
-import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingType;
 import com.QhomeBase.assetmaintenanceservice.repository.ServiceComboRepository;
 import com.QhomeBase.assetmaintenanceservice.repository.ServiceOptionRepository;
 import com.QhomeBase.assetmaintenanceservice.repository.ServiceRepository;
@@ -35,13 +34,15 @@ public class ServiceComboService {
     public List<ServiceComboDto> getCombos(UUID serviceId, Boolean isActive) {
         com.QhomeBase.assetmaintenanceservice.model.service.Service service = findServiceOrThrow(serviceId);
         return serviceComboRepository.findAllByServiceId(service.getId()).stream()
-                .filter(combo -> {
-                    if (isActive == null) {
-                        return true;
-                    }
-                    boolean comboActive = Boolean.TRUE.equals(combo.getIsActive());
-                    return Boolean.TRUE.equals(isActive) ? comboActive : !comboActive;
-                })
+                .filter(combo -> filterByActive(combo, isActive))
+                .map(serviceConfigService::toComboDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceComboDto> getAllCombos(Boolean isActive) {
+        return serviceComboRepository.findAll().stream()
+                .filter(combo -> filterByActive(combo, isActive))
                 .map(serviceConfigService::toComboDto)
                 .collect(Collectors.toList());
     }
@@ -53,10 +54,17 @@ public class ServiceComboService {
         return serviceConfigService.toComboDto(combo);
     }
 
+    private boolean filterByActive(ServiceCombo combo, Boolean isActive) {
+        if (isActive == null) {
+            return true;
+        }
+        boolean comboActive = Boolean.TRUE.equals(combo.getIsActive());
+        return Boolean.TRUE.equals(isActive) ? comboActive : !comboActive;
+    }
+
     @Transactional
     public ServiceComboDto createCombo(UUID serviceId, CreateServiceComboRequest request) {
         com.QhomeBase.assetmaintenanceservice.model.service.Service service = findServiceOrThrow(serviceId);
-        validateServiceSupportsCombo(service);
         validateComboCode(serviceId, request.getCode());
 
         ServiceCombo combo = new ServiceCombo();
@@ -193,10 +201,5 @@ public class ServiceComboService {
                 .orElseThrow(() -> new IllegalArgumentException("Service not found: " + serviceId));
     }
 
-    private void validateServiceSupportsCombo(com.QhomeBase.assetmaintenanceservice.model.service.Service service) {
-        if (service.getBookingType() != ServiceBookingType.COMBO_BASED) {
-            throw new IllegalArgumentException("Service booking type must be COMBO_BASED to use combos");
-        }
-    }
 }
 

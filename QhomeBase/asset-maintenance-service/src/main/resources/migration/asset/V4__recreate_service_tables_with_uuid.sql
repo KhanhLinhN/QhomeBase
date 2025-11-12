@@ -49,7 +49,6 @@ CREATE TABLE IF NOT EXISTS asset.service (
     max_capacity           INTEGER,
     min_duration_hours     INTEGER      NOT NULL DEFAULT 1,
     max_duration_hours     INTEGER,
-    advance_booking_days   INTEGER      NOT NULL DEFAULT 30,
     rules                  TEXT,
     is_active              BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at             TIMESTAMPTZ  NOT NULL DEFAULT NOW(),

@@ -7,8 +7,6 @@ import com.QhomeBase.assetmaintenanceservice.model.service.ServiceAvailability;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceCombo;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceComboItem;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceOption;
-import com.QhomeBase.assetmaintenanceservice.model.service.ServiceOptionGroup;
-import com.QhomeBase.assetmaintenanceservice.model.service.ServiceOptionGroupItem;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceTicket;
 import com.QhomeBase.assetmaintenanceservice.repository.ServiceCategoryRepository;
 import com.QhomeBase.assetmaintenanceservice.repository.ServiceRepository;
@@ -21,6 +19,7 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -51,11 +50,8 @@ public class ServiceConfigService {
         entity.setPricePerHour(request.getPricePerHour());
         entity.setPricePerSession(request.getPricePerSession());
         entity.setPricingType(request.getPricingType());
-        entity.setBookingType(request.getBookingType());
         entity.setMaxCapacity(request.getMaxCapacity());
         entity.setMinDurationHours(request.getMinDurationHours());
-        entity.setMaxDurationHours(request.getMaxDurationHours());
-        entity.setAdvanceBookingDays(request.getAdvanceBookingDays());
         entity.setRules(request.getRules());
         if (request.getIsActive() != null) {
             entity.setIsActive(request.getIsActive());
@@ -64,12 +60,55 @@ public class ServiceConfigService {
         var saved = serviceRepository.save(entity);
         return toDto(saved);
     }
+    public void resolveConfilctInCreateRequest(CreateServiceRequest request) {
+
+    }
 
     @Transactional(readOnly = true)
     public ServiceDto findById(java.util.UUID id) {
         return serviceRepository.findById(id)
                 .map(this::toDto)
                 .orElseThrow(() -> new IllegalArgumentException("Service not found: " + id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceDto> findAll(Boolean isActive) {
+        List<com.QhomeBase.assetmaintenanceservice.model.service.Service> services =
+                isActive == null ? serviceRepository.findAll() : serviceRepository.findAllByIsActive(isActive);
+
+        return services.stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparing(com.QhomeBase.assetmaintenanceservice.model.service.Service::getName,
+                        Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceComboDto> findAllCombos(Boolean isActive) {
+        return serviceRepository.findAll().stream()
+                .flatMap(service -> streamOf(service.getCombos()))
+                .map(this::mapCombo)
+                .filter(combo -> matchesActive(isActive, combo.getIsActive()))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceOptionDto> findAllOptions(Boolean isActive) {
+        return serviceRepository.findAll().stream()
+                .flatMap(service -> streamOf(service.getOptions()))
+                .map(this::toOptionDto)
+                .filter(option -> matchesActive(isActive, option.getIsActive()))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceTicketDto> findAllTickets(Boolean isActive) {
+        return serviceRepository.findAll().stream()
+                .flatMap(service -> streamOf(service.getTickets()))
+                .map(this::toTicketDto)
+                .filter(ticket -> matchesActive(isActive, ticket.getIsActive()))
+                .collect(Collectors.toList());
     }
     public void deactive(UUID serivceId) {
         com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(serivceId).orElseThrow(()
@@ -163,9 +202,6 @@ public class ServiceConfigService {
         if (request.getPricingType() == null) {
             throw new IllegalArgumentException("Service pricing type is required");
         }
-        if (request.getBookingType() == null) {
-            throw new IllegalArgumentException("Service booking type is required");
-        }
         if (request.getCategoryId() == null) {
             throw new IllegalArgumentException("Service category ID is required");
         }
@@ -188,11 +224,8 @@ public class ServiceConfigService {
                 .pricePerHour(service.getPricePerHour())
                 .pricePerSession(service.getPricePerSession())
                 .pricingType(service.getPricingType())
-                .bookingType(service.getBookingType())
                 .maxCapacity(service.getMaxCapacity())
                 .minDurationHours(service.getMinDurationHours())
-                .maxDurationHours(service.getMaxDurationHours())
-                .advanceBookingDays(service.getAdvanceBookingDays())
                 .rules(service.getRules())
                 .isActive(service.getIsActive())
                 .createdAt(service.getCreatedAt())
@@ -200,7 +233,6 @@ public class ServiceConfigService {
                 .availabilities(mapAvailabilities(service.getAvailabilities()))
                 .combos(mapCombos(service.getCombos()))
                 .options(mapOptions(service.getOptions()))
-                .optionGroups(mapOptionGroups(service.getOptionGroups()))
                 .tickets(mapTickets(service.getTickets()))
                 .build();
     }
@@ -324,52 +356,6 @@ public class ServiceConfigService {
                 .collect(Collectors.toList());
     }
 
-    public ServiceOptionGroupDto toOptionGroupDto(ServiceOptionGroup group) {
-        if (group == null) {
-            return null;
-        }
-        return ServiceOptionGroupDto.builder()
-                .id(group.getId())
-                .serviceId(group.getService() != null ? group.getService().getId() : null)
-                .code(group.getCode())
-                .name(group.getName())
-                .description(group.getDescription())
-                .minSelect(group.getMinSelect())
-                .maxSelect(group.getMaxSelect())
-                .isRequired(group.getIsRequired())
-                .sortOrder(group.getSortOrder())
-                .createdAt(group.getCreatedAt())
-                .updatedAt(group.getUpdatedAt())
-                .items(mapOptionGroupItems(group.getItems()))
-                .build();
-    }
-
-    private List<ServiceOptionGroupDto> mapOptionGroups(List<ServiceOptionGroup> groups) {
-        if (groups == null || groups.isEmpty()) {
-            return List.of();
-        }
-        return groups.stream()
-                .filter(Objects::nonNull)
-                .map(this::toOptionGroupDto)
-                .collect(Collectors.toList());
-    }
-
-    private List<ServiceOptionGroupItemDto> mapOptionGroupItems(List<ServiceOptionGroupItem> items) {
-        if (items == null || items.isEmpty()) {
-            return List.of();
-        }
-        return items.stream()
-                .filter(Objects::nonNull)
-                .map(item -> ServiceOptionGroupItemDto.builder()
-                        .id(item.getId())
-                        .groupId(item.getGroup() != null ? item.getGroup().getId() : null)
-                        .optionId(item.getOption() != null ? item.getOption().getId() : null)
-                        .sortOrder(item.getSortOrder())
-                        .createdAt(item.getCreatedAt())
-                        .build())
-                .collect(Collectors.toList());
-    }
-
     private List<ServiceTicketDto> mapTickets(List<ServiceTicket> tickets) {
         if (tickets == null || tickets.isEmpty()) {
             return List.of();
@@ -399,6 +385,21 @@ public class ServiceConfigService {
                 .createdAt(ticket.getCreatedAt())
                 .updatedAt(ticket.getUpdatedAt())
                 .build();
+    }
+
+    private boolean matchesActive(Boolean requested, Boolean actual) {
+        if (requested == null) {
+            return true;
+        }
+        boolean entityActive = Boolean.TRUE.equals(actual);
+        return Boolean.TRUE.equals(requested) ? entityActive : !entityActive;
+    }
+
+    private <T> Stream<T> streamOf(List<T> items) {
+        if (items == null) {
+            return Stream.empty();
+        }
+        return items.stream().filter(Objects::nonNull);
     }
 }
 

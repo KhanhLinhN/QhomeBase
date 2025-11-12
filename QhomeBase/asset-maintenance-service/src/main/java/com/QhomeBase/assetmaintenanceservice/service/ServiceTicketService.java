@@ -4,7 +4,6 @@ import com.QhomeBase.assetmaintenanceservice.dto.service.CreateServiceTicketRequ
 import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceTicketDto;
 import com.QhomeBase.assetmaintenanceservice.dto.service.UpdateServiceTicketRequest;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceTicket;
-import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingType;
 import com.QhomeBase.assetmaintenanceservice.repository.ServiceRepository;
 import com.QhomeBase.assetmaintenanceservice.repository.ServiceTicketRepository;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +36,14 @@ public class ServiceTicketService {
     }
 
     @Transactional(readOnly = true)
+    public List<ServiceTicketDto> getAllTickets(Boolean isActive) {
+        return serviceTicketRepository.findAll().stream()
+                .filter(ticket -> filterByActive(ticket, isActive))
+                .map(serviceConfigService::toTicketDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public ServiceTicketDto getTicket(UUID ticketId) {
         ServiceTicket ticket = serviceTicketRepository.findById(ticketId)
                 .orElseThrow(() -> new IllegalArgumentException("Service ticket not found: " + ticketId));
@@ -46,7 +53,6 @@ public class ServiceTicketService {
     @Transactional
     public ServiceTicketDto createTicket(UUID serviceId, CreateServiceTicketRequest request) {
         com.QhomeBase.assetmaintenanceservice.model.service.Service service = findServiceOrThrow(serviceId);
-        validateServiceSupportsTickets(service);
         validateTicketCode(serviceId, null, request.getCode());
 
         ServiceTicket ticket = new ServiceTicket();
@@ -114,13 +120,6 @@ public class ServiceTicketService {
         }
         boolean ticketActive = Boolean.TRUE.equals(ticket.getIsActive());
         return Boolean.TRUE.equals(isActive) ? ticketActive : !ticketActive;
-    }
-
-    private void validateServiceSupportsTickets(com.QhomeBase.assetmaintenanceservice.model.service.Service service) {
-        ServiceBookingType bookingType = service.getBookingType();
-        if (bookingType != null && bookingType != ServiceBookingType.TICKET_BASED) {
-            throw new IllegalArgumentException("Service booking type must be TICKET_BASED to configure tickets");
-        }
     }
 
     private void validateTicketCode(UUID serviceId, UUID ticketId, String code) {

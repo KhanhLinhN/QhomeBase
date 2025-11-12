@@ -34,3 +34,12 @@ ALTER TABLE IF EXISTS card.register_vehicle
 
 
 
+
+
+
+
+
+
+
+
+

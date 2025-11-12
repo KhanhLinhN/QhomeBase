@@ -19,7 +19,6 @@ public class RequestDTO {
     String title;
     String content;
     String status;
-    String priority;
     String createdAt;
     String updatedAt;
 }

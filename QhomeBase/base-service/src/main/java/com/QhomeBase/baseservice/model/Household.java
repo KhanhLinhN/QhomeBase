@@ -1,7 +1,19 @@
 package com.QhomeBase.baseservice.model;
 
-import jakarta.persistence.*;
-import lombok.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -24,7 +36,8 @@ public class Household {
     private UUID unitId;
     
     @Enumerated(EnumType.STRING)
-    @Column(name = "kind", nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "kind", nullable = false, columnDefinition = "household_kind")
     private HouseholdKind kind;
 
     @Column(name = "primary_resident_id")
@@ -36,6 +49,9 @@ public class Household {
     @Column(name = "end_date")
     private LocalDate endDate;
     
+    @Column(name = "contract_id")
+    private UUID contractId;
+
     @Column(name = "created_at", nullable = false)
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();

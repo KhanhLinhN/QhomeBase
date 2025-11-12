@@ -27,13 +27,10 @@ public class CreateServiceBookingRequest {
     @NotNull(message = "Booking date is required")
     private LocalDate bookingDate;
 
-    @NotNull(message = "Start time is required")
     private LocalTime startTime;
 
-    @NotNull(message = "End time is required")
     private LocalTime endTime;
 
-    @NotNull(message = "Duration hours is required")
     private BigDecimal durationHours;
 
     private Integer numberOfPeople;
@@ -50,7 +47,7 @@ public class CreateServiceBookingRequest {
     private List<CreateServiceBookingItemRequest> items;
 
     @Valid
-    private List<ServiceBookingSlotRequest> slots;
+    private ServiceBookingSlotRequest slot;
 
     @AssertTrue(message = "End time must be after start time")
     public boolean isValidRange() {
