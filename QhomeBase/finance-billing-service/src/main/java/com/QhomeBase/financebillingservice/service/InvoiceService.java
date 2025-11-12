@@ -270,16 +270,18 @@ public class InvoiceService {
         log.info("Invoice {} voided successfully", invoiceId);
     }
     
-    public List<InvoiceLineResponseDto> getMyInvoices(UUID userId, UUID unitFilter) {
+    public List<InvoiceLineResponseDto> getMyInvoices(UUID userId, UUID unitFilter, UUID cycleFilter) {
+        if (unitFilter == null) {
+            throw new IllegalArgumentException("unitId is required");
+        }
         UUID residentId = residentRepository.findResidentIdByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + userId));
         
         List<Invoice> invoices = invoiceRepository.findByPayerResidentId(residentId);
-        if (unitFilter != null) {
-            invoices = invoices.stream()
-                    .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
-                    .collect(Collectors.toList());
-        }
+        invoices = invoices.stream()
+                .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
+                .filter(invoice -> cycleFilter == null || cycleFilter.equals(invoice.getCycleId()))
+                .collect(Collectors.toList());
         List<InvoiceLineResponseDto> result = new ArrayList<>();
         
         for (Invoice invoice : invoices) {
@@ -402,16 +404,18 @@ public class InvoiceService {
         }
     }
 
-    public List<InvoiceCategoryResponseDto> getUnpaidInvoicesByCategory(UUID userId, UUID unitFilter) {
+    public List<InvoiceCategoryResponseDto> getUnpaidInvoicesByCategory(UUID userId, UUID unitFilter, UUID cycleFilter) {
+        if (unitFilter == null) {
+            throw new IllegalArgumentException("unitId is required");
+        }
         UUID residentId = residentRepository.findResidentIdByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + userId));
 
         List<Invoice> invoices = invoiceRepository.findByPayerResidentId(residentId);
-        if (unitFilter != null) {
-            invoices = invoices.stream()
-                    .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
-                    .collect(Collectors.toList());
-        }
+        invoices = invoices.stream()
+                .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
+                .filter(invoice -> cycleFilter == null || cycleFilter.equals(invoice.getCycleId()))
+                .collect(Collectors.toList());
         Map<String, List<InvoiceLineResponseDto>> grouped = new HashMap<>();
 
         for (Invoice invoice : invoices) {
@@ -455,18 +459,20 @@ public class InvoiceService {
         return response;
     }
 
-    public List<InvoiceCategoryResponseDto> getPaidInvoicesByCategory(UUID userId, UUID unitFilter) {
+    public List<InvoiceCategoryResponseDto> getPaidInvoicesByCategory(UUID userId, UUID unitFilter, UUID cycleFilter) {
+        if (unitFilter == null) {
+            throw new IllegalArgumentException("unitId is required");
+        }
         UUID residentId = residentRepository.findResidentIdByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + userId));
 
         List<Invoice> invoices = invoiceRepository.findByPayerResidentId(residentId);
         log.debug("🔍 [InvoiceService] Found {} invoices for resident {}", invoices.size(), residentId);
-        if (unitFilter != null) {
-            invoices = invoices.stream()
-                    .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
-                    .collect(Collectors.toList());
-            log.debug("🔍 [InvoiceService] After unit filter {} invoices remain for unit {}", invoices.size(), unitFilter);
-        }
+        invoices = invoices.stream()
+                .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
+                .filter(invoice -> cycleFilter == null || cycleFilter.equals(invoice.getCycleId()))
+                .collect(Collectors.toList());
+        log.debug("🔍 [InvoiceService] After unit/cycle filter {} invoices remain for unit {}", invoices.size(), unitFilter);
         Map<String, List<InvoiceLineResponseDto>> grouped = new HashMap<>();
 
         for (Invoice invoice : invoices) {

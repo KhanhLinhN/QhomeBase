@@ -120,7 +120,8 @@ public class InvoiceController {
     @GetMapping("/me")
     public ResponseEntity<?> getMyInvoices(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
-            @RequestParam(value = "unitId", required = false) UUID unitId) {
+            @RequestParam(value = "unitId") UUID unitId,
+            @RequestParam(value = "cycleId", required = false) UUID cycleId) {
         try {
             UUID userId = jwtUtil.getUserIdFromHeader(authHeader);
             if (userId == null) {
@@ -128,7 +129,7 @@ public class InvoiceController {
                         .body(Map.of("error", "Invalid or missing authentication token"));
             }
             
-            List<InvoiceLineResponseDto> invoices = invoiceService.getMyInvoices(userId, unitId);
+            List<InvoiceLineResponseDto> invoices = invoiceService.getMyInvoices(userId, unitId, cycleId);
             Map<String, Object> response = new HashMap<>();
             response.put("data", invoices);
             return ResponseEntity.ok(response);
@@ -144,7 +145,8 @@ public class InvoiceController {
     @GetMapping("/me/unpaid-by-category")
     public ResponseEntity<?> getMyUnpaidInvoicesByCategory(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
-            @RequestParam(value = "unitId", required = false) UUID unitId) {
+            @RequestParam(value = "unitId") UUID unitId,
+            @RequestParam(value = "cycleId", required = false) UUID cycleId) {
         try {
             UUID userId = jwtUtil.getUserIdFromHeader(authHeader);
             if (userId == null) {
@@ -152,7 +154,7 @@ public class InvoiceController {
                         .body(Map.of("error", "Invalid or missing authentication token"));
             }
 
-            List<InvoiceCategoryResponseDto> categories = invoiceService.getUnpaidInvoicesByCategory(userId, unitId);
+            List<InvoiceCategoryResponseDto> categories = invoiceService.getUnpaidInvoicesByCategory(userId, unitId, cycleId);
             Map<String, Object> response = new HashMap<>();
             response.put("data", categories);
             response.put("allPaid", categories.isEmpty());
@@ -172,7 +174,8 @@ public class InvoiceController {
     @GetMapping("/me/paid-by-category")
     public ResponseEntity<?> getMyPaidInvoicesByCategory(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
-            @RequestParam(value = "unitId", required = false) UUID unitId) {
+            @RequestParam(value = "unitId") UUID unitId,
+            @RequestParam(value = "cycleId", required = false) UUID cycleId) {
         try {
             UUID userId = jwtUtil.getUserIdFromHeader(authHeader);
             if (userId == null) {
@@ -180,7 +183,7 @@ public class InvoiceController {
                         .body(Map.of("error", "Invalid or missing authentication token"));
             }
 
-            List<InvoiceCategoryResponseDto> categories = invoiceService.getPaidInvoicesByCategory(userId, unitId);
+            List<InvoiceCategoryResponseDto> categories = invoiceService.getPaidInvoicesByCategory(userId, unitId, cycleId);
             Map<String, Object> response = new HashMap<>();
             response.put("data", categories);
             response.put("hasPaid", !categories.isEmpty());
