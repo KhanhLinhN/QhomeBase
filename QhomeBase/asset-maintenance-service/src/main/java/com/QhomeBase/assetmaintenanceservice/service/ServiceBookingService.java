@@ -21,6 +21,7 @@ import com.QhomeBase.assetmaintenanceservice.dto.service.UpdateServiceBookingSlo
 import com.QhomeBase.assetmaintenanceservice.model.service.*;
 import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus;
 import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServicePaymentStatus;
+import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServicePricingType;
 import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingItemType;
 import com.QhomeBase.assetmaintenanceservice.repository.*;
 import com.QhomeBase.assetmaintenanceservice.security.UserPrincipal;
@@ -35,9 +36,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.time.*;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -92,17 +91,25 @@ public class ServiceBookingService {
         LocalDate bookingDate = request.getBookingDate();
         LocalTime startTime = request.getStartTime();
         LocalTime endTime = request.getEndTime();
-        if (slotRequest != null) {
-            if (bookingDate == null) {
+        ServicePricingType pricingType = service.getPricingType() != null ? service.getPricingType() : ServicePricingType.FREE;
+
+        boolean allowCustomSlot = pricingType == ServicePricingType.HOURLY || pricingType == ServicePricingType.FREE;
+        if (!allowCustomSlot && slotRequest != null) {
+            throw new IllegalArgumentException("Custom slot is only supported for hourly services");
+        }
+
+        if (allowCustomSlot && slotRequest != null) {
+            if (bookingDate == null && slotRequest.getSlotDate() != null) {
                 bookingDate = slotRequest.getSlotDate();
             }
-            if (startTime == null) {
+            if (startTime == null && slotRequest.getStartTime() != null) {
                 startTime = slotRequest.getStartTime();
             }
-            if (endTime == null) {
+            if (endTime == null && slotRequest.getEndTime() != null) {
                 endTime = slotRequest.getEndTime();
             }
         }
+
         if (bookingDate == null) {
             throw new IllegalArgumentException("Booking date is required");
         }
@@ -112,13 +119,17 @@ public class ServiceBookingService {
 
         BigDecimal durationHours = resolveDurationHours(startTime, endTime, request.getDurationHours());
 
+        if (pricingType == ServicePricingType.SESSION) {
+            validateSlotWithinAvailability(service, bookingDate, startTime, endTime);
+        }
+
         ServiceBooking booking = new ServiceBooking();
         booking.setService(service);
         booking.setUserId(userId);
-        booking.setBookingDate(request.getBookingDate());
-        booking.setStartTime(request.getStartTime());
-        booking.setEndTime(request.getEndTime());
-        booking.setDurationHours(resolveDurationHours(request.getStartTime(), request.getEndTime(), request.getDurationHours()));
+        booking.setBookingDate(bookingDate);
+        booking.setStartTime(startTime);
+        booking.setEndTime(endTime);
+        booking.setDurationHours(durationHours);
         booking.setNumberOfPeople(request.getNumberOfPeople());
         booking.setPurpose(trimToNull(request.getPurpose()));
         booking.setTermsAccepted(Boolean.TRUE.equals(request.getTermsAccepted()));
@@ -129,8 +140,12 @@ public class ServiceBookingService {
             booking.getBookingItems().addAll(buildItems(booking, request.getItems()));
         }
 
-        booking.getBookingSlots().add(buildSlotFromRequest(booking, slotRequest,
-                bookingDate, startTime, endTime));
+        if (allowCustomSlot) {
+            booking.getBookingSlots().add(buildSlotFromRequest(booking, slotRequest,
+                    bookingDate, startTime, endTime));
+        } else {
+            booking.getBookingSlots().add(buildSlot(booking, bookingDate, startTime, endTime, booking.getId()));
+        }
 
         booking.setTotalAmount(calculateTotalAmount(booking));
 
@@ -359,6 +374,11 @@ public class ServiceBookingService {
                                                 boolean allowManageAny) {
         ServiceBooking booking = loadBookingForMutation(bookingId, authenticationPrincipal, allowManageAny);
         ensurePending(booking);
+
+        if (booking.getService() != null
+                && booking.getService().getPricingType() == ServicePricingType.SESSION) {
+            throw new IllegalStateException("Cannot update slots manually for session-based services");
+        }
 
         booking.getBookingSlots().clear();
         booking.getBookingSlots().add(buildSlotFromRequest(booking, request.getSlot(),
@@ -609,10 +629,14 @@ public class ServiceBookingService {
                                          LocalTime start,
                                          LocalTime end,
                                          UUID currentBookingId) {
-        validateSlotBooking(booking.getService().getId(), date, start, end, currentBookingId);
+        com.QhomeBase.assetmaintenanceservice.model.service.Service service = booking.getService();
+        validateSlotBooking(service.getId(), date, start, end, currentBookingId);
+        if (service.getPricingType() == ServicePricingType.SESSION) {
+            validateSlotWithinAvailability(service, date, start, end);
+        }
         ServiceBookingSlot slot = new ServiceBookingSlot();
         slot.setBooking(booking);
-        slot.setService(booking.getService());
+        slot.setService(service);
         slot.setSlotDate(date);
         slot.setStartTime(start);
         slot.setEndTime(end);
@@ -705,6 +729,61 @@ public class ServiceBookingService {
         }
     }
 
+    private void validateSlotWithinAvailability(com.QhomeBase.assetmaintenanceservice.model.service.Service service,
+                                                LocalDate date,
+                                                LocalTime start,
+                                                LocalTime end) {
+        List<ServiceAvailability> availabilities = service.getAvailabilities();
+        if (availabilities == null || availabilities.isEmpty()) {
+            throw new IllegalStateException("Service does not have configured availability to support session bookings");
+        }
+        int dayOfWeek = date.getDayOfWeek().getValue();
+        boolean match = availabilities.stream()
+                .filter(av -> Boolean.TRUE.equals(av.getIsAvailable()))
+                .filter(av -> av.getDayOfWeek() != null && av.getDayOfWeek() == dayOfWeek)
+                .anyMatch(av -> !av.getStartTime().isAfter(start) && !av.getEndTime().isBefore(end));
+        if (!match) {
+            throw new IllegalArgumentException("Selected slot is outside the service availability for the chosen date");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceBookingSlotDto> getServiceSlots(UUID serviceId,
+                                                       LocalDate fromDate,
+                                                       LocalDate toDate) {
+        ensureServiceExists(serviceId);
+
+        if (fromDate != null && toDate != null && toDate.isBefore(fromDate)) {
+            throw new IllegalArgumentException("toDate must be on or after fromDate");
+        }
+
+        List<ServiceBookingSlot> slots;
+        if (fromDate != null && toDate != null) {
+            slots = serviceBookingSlotRepository
+                    .findAllByServiceIdAndSlotDateBetweenOrderBySlotDateAscStartTimeAsc(serviceId, fromDate, toDate);
+        } else if (fromDate != null) {
+            slots = serviceBookingSlotRepository
+                    .findAllByServiceIdAndSlotDateBetweenOrderBySlotDateAscStartTimeAsc(serviceId, fromDate, fromDate);
+        } else if (toDate != null) {
+            slots = serviceBookingSlotRepository
+                    .findAllByServiceIdAndSlotDateBetweenOrderBySlotDateAscStartTimeAsc(serviceId, toDate, toDate);
+        } else {
+            slots = serviceBookingSlotRepository.findAllByServiceIdOrderBySlotDateAscStartTimeAsc(serviceId);
+        }
+        return toSlotDtos(slots);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ServiceBookingSlotDto> getServiceSlotsByDate(UUID serviceId, LocalDate date) {
+        if (date == null) {
+            throw new IllegalArgumentException("date is required");
+        }
+        ensureServiceExists(serviceId);
+        List<ServiceBookingSlot> slots = serviceBookingSlotRepository
+                .findAllByServiceIdAndSlotDateOrderByStartTimeAsc(serviceId, date);
+        return toSlotDtos(slots);
+    }
+
     private ServiceBookingDto toDto(ServiceBooking booking) {
         if (booking == null) {
             return null;
@@ -738,6 +817,11 @@ public class ServiceBookingService {
                 .bookingItems(toItemDtos(booking.getBookingItems()))
                 .bookingSlots(toSlotDtos(booking.getBookingSlots()))
                 .build();
+    }
+
+    private void ensureServiceExists(UUID serviceId) {
+        serviceRepository.findById(serviceId)
+                .orElseThrow(() -> new IllegalArgumentException("Service not found: " + serviceId));
     }
 
     private List<ServiceBookingItemDto> toItemDtos(List<ServiceBookingItem> items) {

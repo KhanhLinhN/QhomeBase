@@ -42,6 +42,25 @@ public class ServiceBookingController {
         return ResponseEntity.ok(bookingService.getBookingCatalog(serviceId));
     }
 
+    @GetMapping("/services/{serviceId}/slots")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<ServiceBookingSlotDto>> getServiceSlots(
+            @PathVariable UUID serviceId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate
+    ) {
+        return ResponseEntity.ok(bookingService.getServiceSlots(serviceId, fromDate, toDate));
+    }
+
+    @GetMapping("/services/{serviceId}/slots/{date}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<ServiceBookingSlotDto>> getServiceSlotsByDate(
+            @PathVariable UUID serviceId,
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
+    ) {
+        return ResponseEntity.ok(bookingService.getServiceSlotsByDate(serviceId, date));
+    }
+
     @PostMapping("/bookings")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ServiceBookingDto> createBooking(@Valid @RequestBody CreateServiceBookingRequest request,

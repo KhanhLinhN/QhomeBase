@@ -474,6 +474,95 @@
 			"name": "3. Resident Booking Flow",
 			"item": [
 				{
+					"name": "Get Service Slots (Resident)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{resident_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{asset_service_url}}/api/asset-maintenance/services/{{service_id}}/slots?fromDate={{current_date}}&toDate={{current_date}}",
+							"host": [
+								"{{asset_service_url}}"
+							],
+							"path": [
+								"api",
+								"asset-maintenance",
+								"services",
+								"{{service_id}}",
+								"slots"
+							],
+							"query": [
+								{
+									"key": "fromDate",
+									"value": "{{current_date}}"
+								},
+								{
+									"key": "toDate",
+									"value": "{{current_date}}"
+								}
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Service slots loaded\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "Get Service Slots By Date (Resident)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{resident_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{asset_service_url}}/api/asset-maintenance/services/{{service_id}}/slots/{{current_date}}",
+							"host": [
+								"{{asset_service_url}}"
+							],
+							"path": [
+								"api",
+								"asset-maintenance",
+								"services",
+								"{{service_id}}",
+								"slots",
+								"{{current_date}}"
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Service slots for date loaded\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
 					"name": "Get Booking Catalog (Resident)",
 					"request": {
 						"method": "GET",
