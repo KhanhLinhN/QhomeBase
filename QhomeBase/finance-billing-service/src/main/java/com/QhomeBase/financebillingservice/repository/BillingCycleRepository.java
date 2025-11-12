@@ -29,4 +29,11 @@ public interface BillingCycleRepository extends JpaRepository<BillingCycle, UUID
         """)
     List<BillingCycle> findListByTime(@Param("periodFrom") LocalDate periodFrom,
                                       @Param("periodTo") LocalDate periodTo);
+
+    @Query("""
+        select b
+        from BillingCycle b
+        where b.externalCycleId = :externalCycleId
+        """)
+    List<BillingCycle> findByExternalCycleId(@Param("externalCycleId") UUID externalCycleId);
 }

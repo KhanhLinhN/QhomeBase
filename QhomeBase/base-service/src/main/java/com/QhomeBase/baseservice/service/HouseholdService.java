@@ -73,7 +73,12 @@ public class HouseholdService {
                     .orElseThrow(() -> new IllegalArgumentException("Primary resident not found"));
         }
 
-        ContractSummary resolvedContract = resolveContractForHousehold(householdCreateDto.unitId(), householdCreateDto.kind(), householdCreateDto.contractId());
+        ContractSummary resolvedContract = resolveContractForHousehold(
+                householdCreateDto.unitId(),
+                householdCreateDto.kind(),
+                householdCreateDto.contractId(),
+                householdCreateDto.startDate()
+        );
         UUID contractId = resolvedContract != null ? resolvedContract.id() : householdCreateDto.contractId();
 
         if (resolvedContract == null && householdCreateDto.kind() == HouseholdKind.OWNER) {
@@ -142,7 +147,14 @@ public class HouseholdService {
         }
 
         if (updateDto.contractId() != null) {
-            ContractSummary resolvedContract = resolveContractById(updateDto.contractId(), household.getUnitId());
+            LocalDate effectiveStartDate = updateDto.startDate() != null
+                    ? updateDto.startDate()
+                    : household.getStartDate();
+            ContractSummary resolvedContract = resolveContractById(
+                    updateDto.contractId(),
+                    household.getUnitId(),
+                    effectiveStartDate
+            );
             if (resolvedContract == null) {
                 throw new IllegalArgumentException("Contract not found or invalid for this unit");
             }
@@ -241,28 +253,33 @@ public class HouseholdService {
         );
     }
 
-    private ContractSummary resolveContractForHousehold(UUID unitId, HouseholdKind kind, UUID contractId) {
+    private ContractSummary resolveContractForHousehold(
+            UUID unitId,
+            HouseholdKind kind,
+            UUID contractId,
+            LocalDate householdStartDate
+    ) {
         if (kind != HouseholdKind.OWNER) {
             return null;
         }
 
         if (contractId != null) {
-            return resolveContractById(contractId, unitId);
+            return resolveContractById(contractId, unitId, householdStartDate);
         }
 
         return contractClient.findFirstActiveContract(unitId)
                 .orElseThrow(() -> new IllegalArgumentException("No active contract found for unit " + unitId));
     }
 
-    private ContractSummary resolveContractById(UUID contractId, UUID expectedUnitId) {
+    private ContractSummary resolveContractById(UUID contractId, UUID expectedUnitId, LocalDate householdStartDate) {
         ContractDetailDto contract = contractClient.getContractById(contractId)
                 .filter(dto -> dto.unitId() != null && dto.unitId().equals(expectedUnitId))
                 .orElseThrow(() -> new IllegalArgumentException("Contract " + contractId + " not found for unit " + expectedUnitId));
 
-        LocalDate today = LocalDate.now();
-        boolean isActive = isContractActiveOn(contract, today);
+        LocalDate referenceDate = householdStartDate != null ? householdStartDate : LocalDate.now();
+        boolean isActive = isContractActiveOn(contract, referenceDate);
         boolean isPending = contract.status() != null && contract.status().equalsIgnoreCase("PENDING");
-        boolean dateValid = contract.startDate() == null || !today.isBefore(contract.startDate());
+        boolean dateValid = contract.startDate() == null || !referenceDate.isBefore(contract.startDate());
 
         if (!isActive && !(isPending && dateValid)) {
             throw new IllegalArgumentException("Contract " + contractId + " is not active for unit " + expectedUnitId);

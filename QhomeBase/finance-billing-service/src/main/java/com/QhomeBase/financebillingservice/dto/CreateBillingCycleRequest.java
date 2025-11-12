@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -16,6 +17,7 @@ public class CreateBillingCycleRequest {
     private LocalDate periodFrom;
     private LocalDate periodTo;
     private String status;
+    private UUID externalCycleId;
 }
 
 

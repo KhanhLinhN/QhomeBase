@@ -18,4 +18,5 @@ public class BillingCycleDto {
     private LocalDate periodFrom;
     private LocalDate periodTo;
     private String status;
+    private UUID externalCycleId;
 }

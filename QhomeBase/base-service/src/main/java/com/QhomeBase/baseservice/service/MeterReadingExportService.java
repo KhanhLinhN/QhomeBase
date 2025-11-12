@@ -29,6 +29,7 @@ public class MeterReadingExportService {
     public MeterReadingImportResponse exportReadingsByCycle(UUID cycleId) {
         log.info("Exporting readings for cycle: {}", cycleId);
         List<MeterReading> readings = meterReadingRepository.findByCycleId(cycleId);
+        log.info("Found {} readings linked to cycle {} via column or assignment", readings.size(), cycleId);
         
         if (readings.isEmpty()) {
             log.warn("No readings found for cycle: {}. Checking all readings...", cycleId);
@@ -51,7 +52,20 @@ public class MeterReadingExportService {
                     .build();
         }
         
-        log.info("Found {} readings for cycle: {}", readings.size(), cycleId);
+        long mismatchedCycleCount = readings.stream()
+                .filter(r -> r.getAssignment() != null && r.getAssignment().getCycle() != null)
+                .filter(r -> !cycleId.equals(r.getAssignment().getCycle().getId()))
+                .count();
+        if (mismatchedCycleCount > 0) {
+            log.warn("Detected {} readings whose assignment.cycle != requested cycle {}", mismatchedCycleCount, cycleId);
+            readings.stream()
+                    .filter(r -> r.getAssignment() != null && r.getAssignment().getCycle() != null)
+                    .filter(r -> !cycleId.equals(r.getAssignment().getCycle().getId()))
+                    .limit(20)
+                    .forEach(r -> log.warn("Reading {} -> assignment {} cycle {}", r.getId(),
+                            r.getAssignment().getId(), r.getAssignment().getCycle().getId()));
+        }
+        log.info("Proceeding with {} readings for cycle {}", readings.size(), cycleId);
 
         List<BillingImportedReadingDto> billingReadings = convertToBillingReadings(readings);
         MeterReadingImportResponse response = financeBillingClient.importMeterReadingsSync(billingReadings);
@@ -84,6 +98,12 @@ public class MeterReadingExportService {
                 log.warn("Skipping reading {} - missing assignment/cycle", reading.getId());
                 continue;
             }
+            if (!cycleId.equals(reading.getCycleId())) {
+                log.warn("Reading {} cycle mismatch: column={} assignment.cycle={}", reading.getId(),
+                        reading.getCycleId(), cycleId);
+            }
+            log.debug("Preparing billing reading {} unit {} assignment {} cycle {}", reading.getId(),
+                    unitId, reading.getAssignment() != null ? reading.getAssignment().getId() : null, cycleId);
             String serviceCode = reading.getMeter().getService() != null 
                     ? reading.getMeter().getService().getCode() 
                     : null;
