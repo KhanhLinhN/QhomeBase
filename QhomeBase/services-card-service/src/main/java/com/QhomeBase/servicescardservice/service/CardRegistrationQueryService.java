@@ -111,6 +111,7 @@ public class CardRegistrationQueryService {
                 entity.getUpdatedAt(),
                 firstNonBlank(entity.getFullName(), "Đăng ký thẻ cư dân"),
                 firstNonBlank(entity.getApartmentNumber(), entity.getCitizenId()),
+                entity.getApartmentNumber(),
                 entity.getBuildingName(),
                 entity.getNote()
         );
@@ -132,6 +133,7 @@ public class CardRegistrationQueryService {
                 entity.getUpdatedAt(),
                 firstNonBlank(entity.getFullName(), "Đăng ký thẻ thang máy"),
                 firstNonBlank(entity.getApartmentNumber(), entity.getCitizenId()),
+                entity.getApartmentNumber(),
                 entity.getBuildingName(),
                 entity.getNote()
         );
@@ -154,6 +156,7 @@ public class CardRegistrationQueryService {
                 entity.getUpdatedAt(),
                 firstNonBlank(entity.getLicensePlate(), "Đăng ký thẻ xe"),
                 firstNonBlank(entity.getVehicleType(), entity.getBuildingName()),
+                entity.getApartmentNumber(),
                 entity.getBuildingName(),
                 entity.getNote()
         );

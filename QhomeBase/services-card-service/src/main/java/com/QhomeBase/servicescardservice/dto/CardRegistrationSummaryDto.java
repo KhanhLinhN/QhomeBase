@@ -19,6 +19,7 @@ public record CardRegistrationSummaryDto(
         OffsetDateTime updatedAt,
         String displayName,
         String reference,
+        String apartmentNumber,
         String buildingName,
         String note
 ) {

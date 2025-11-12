@@ -19,7 +19,6 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -35,7 +34,7 @@ import java.util.concurrent.ConcurrentMap;
 public class ElevatorCardRegistrationService {
 
     private static final BigDecimal REGISTRATION_FEE = BigDecimal.valueOf(30000);
-    private static final String STATUS_PENDING_APPROVAL = "PENDING_APPROVAL"; // waiting for admin after successful payment
+    private static final String STATUS_PENDING_REVIEW = "PENDING";
     private static final String STATUS_READY_FOR_PAYMENT = "READY_FOR_PAYMENT";
     private static final String STATUS_PAYMENT_PENDING = "PAYMENT_PENDING";
     private static final String STATUS_COMPLETED = "COMPLETED";
@@ -46,7 +45,7 @@ public class ElevatorCardRegistrationService {
     private final VnpayService vnpayService;
     private final VnpayProperties vnpayProperties;
     private final BillingClient billingClient;
-    private final NotificationClient notificationClient;
+    private final ResidentUnitLookupService residentUnitLookupService;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
     @Transactional
@@ -76,11 +75,10 @@ public class ElevatorCardRegistrationService {
                 .approvedBy(null)
                 .build();
 
+        applyResolvedAddress(registration, dto.residentId(), dto.unitId(), dto.fullName(), dto.apartmentNumber(), dto.buildingName());
+
         @SuppressWarnings("NullAway")
         ElevatorCardRegistration saved = repository.save(registration);
-        if (saved == null) {
-            throw new IllegalStateException("Không thể tạo đăng ký thang máy mới");
-        }
         return toDto(saved);
     }
 
@@ -113,55 +111,7 @@ public class ElevatorCardRegistrationService {
     public ElevatorCardRegistrationDto processAdminDecision(UUID adminId,
                                                             UUID registrationId,
                                                             CardRegistrationAdminDecisionRequest request) {
-        ElevatorCardRegistration registration = repository.findById(registrationId)
-                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký thang máy"));
-
-        if (STATUS_COMPLETED.equalsIgnoreCase(registration.getStatus())) {
-            throw new IllegalStateException("Đăng ký đã hoàn tất");
-        }
-        if (STATUS_PAYMENT_PENDING.equalsIgnoreCase(registration.getStatus())) {
-            throw new IllegalStateException("Đăng ký đang trong quá trình thanh toán");
-        }
-        if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
-            throw new IllegalStateException("Đăng ký đã bị từ chối");
-        }
-
-        String decision = request.decision() != null ? request.decision().trim().toUpperCase(Locale.ROOT) : "";
-        OffsetDateTime decisionTime = OffsetDateTime.now();
-        boolean approved = "APPROVE".equals(decision);
-        if (approved) {
-            if (!STATUS_PENDING_APPROVAL.equalsIgnoreCase(registration.getStatus())) {
-                throw new IllegalStateException("Đăng ký không ở trạng thái chờ duyệt");
-            }
-            if (!"PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
-                throw new IllegalStateException("Đăng ký chưa hoàn tất thanh toán");
-            }
-            registration.setStatus(STATUS_COMPLETED);
-            registration.setAdminNote(normalize(request.note()));
-            registration.setRejectionReason(null);
-            registration.setApprovedBy(adminId);
-            registration.setApprovedAt(decisionTime);
-        } else if ("REJECT".equals(decision)) {
-            if (!STATUS_PENDING_APPROVAL.equalsIgnoreCase(registration.getStatus())) {
-                throw new IllegalStateException("Đăng ký không ở trạng thái chờ duyệt");
-            }
-            if (!StringUtils.hasText(request.note())) {
-                throw new IllegalArgumentException("Lý do từ chối là bắt buộc");
-            }
-            String reason = normalize(request.note());
-            registration.setStatus(STATUS_REJECTED);
-            // Giữ nguyên thông tin thanh toán để phục vụ đối soát/refund (nếu cần)
-            registration.setAdminNote(reason);
-            registration.setRejectionReason(reason);
-            registration.setApprovedBy(adminId);
-            registration.setApprovedAt(decisionTime);
-        } else {
-            throw new IllegalArgumentException("Quyết định không hợp lệ: " + request.decision());
-        }
-
-        ElevatorCardRegistration saved = repository.save(registration);
-        notifyResidentDecision(saved, approved, request.note());
-        return toDto(saved);
+        throw new IllegalStateException("Nghiệp vụ phê duyệt thẻ thang máy đã bị vô hiệu hóa");
     }
 
     @Transactional
@@ -174,10 +124,6 @@ public class ElevatorCardRegistrationService {
 
         if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
             throw new IllegalStateException("Đăng ký đã bị từ chối");
-        }
-        if (STATUS_PENDING_APPROVAL.equalsIgnoreCase(registration.getStatus())
-                && "UNPAID".equalsIgnoreCase(registration.getPaymentStatus())) {
-            registration.setStatus(STATUS_READY_FOR_PAYMENT);
         }
         if (!Objects.equals(registration.getPaymentStatus(), "UNPAID")) {
             throw new IllegalStateException("Đăng ký đã thanh toán hoặc đang xử lý");
@@ -256,7 +202,15 @@ public class ElevatorCardRegistrationService {
 
         if (signatureValid && "00".equals(responseCode) && "00".equals(transactionStatus)) {
             registration.setPaymentStatus("PAID");
-            registration.setStatus(STATUS_PENDING_APPROVAL);
+            applyResolvedAddress(
+                    registration,
+                    registration.getResidentId(),
+                    registration.getUnitId(),
+                    registration.getFullName(),
+                    registration.getApartmentNumber(),
+                    registration.getBuildingName()
+            );
+            registration.setStatus(STATUS_PENDING_REVIEW);
             registration.setPaymentGateway(PAYMENT_VNPAY);
             OffsetDateTime payDate = parsePayDate(params.get("vnp_PayDate"));
             registration.setPaymentDate(payDate);
@@ -292,6 +246,29 @@ public class ElevatorCardRegistrationService {
         return new ElevatorCardPaymentResult(registration.getId(), false, responseCode, signatureValid);
     }
 
+    private void applyResolvedAddress(ElevatorCardRegistration registration,
+                                      UUID residentId,
+                                      UUID unitId,
+                                      String fallbackFullName,
+                                      String fallbackApartment,
+                                      String fallbackBuilding) {
+        residentUnitLookupService.resolveByResident(residentId, unitId).ifPresentOrElse(info -> {
+            if (StringUtils.hasText(info.residentFullName())) {
+                registration.setFullName(normalize(info.residentFullName()));
+            } else {
+                registration.setFullName(normalize(fallbackFullName));
+            }
+            String apartment = info.apartmentNumber() != null ? info.apartmentNumber() : fallbackApartment;
+            String building = info.buildingName() != null ? info.buildingName() : fallbackBuilding;
+            registration.setApartmentNumber(normalize(apartment));
+            registration.setBuildingName(normalize(building));
+        }, () -> {
+            registration.setFullName(normalize(fallbackFullName));
+            registration.setApartmentNumber(normalize(fallbackApartment));
+            registration.setBuildingName(normalize(fallbackBuilding));
+        });
+    }
+
     private OffsetDateTime parsePayDate(String payDate) {
         if (!StringUtils.hasText(payDate)) {
             return OffsetDateTime.now();
@@ -305,40 +282,15 @@ public class ElevatorCardRegistrationService {
         }
     }
 
-    private void notifyResidentDecision(ElevatorCardRegistration registration, boolean approved, String note) {
-        if (registration.getUserId() == null) {
-            return;
-        }
-        String title = approved ? "Thẻ thang máy đã được duyệt" : "Thẻ thang máy bị từ chối";
-        String body = approved
-                ? "Yêu cầu đăng ký thẻ thang máy của bạn đã được phê duyệt."
-                : ("Yêu cầu đăng ký thẻ thang máy bị từ chối"
-                + (StringUtils.hasText(note) ? (": " + note.trim()) : "."));
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("type", approved ? "ELEVATOR_CARD_APPROVED" : "ELEVATOR_CARD_REJECTED");
-        data.put("registrationId", registration.getId().toString());
-        data.put("status", registration.getStatus());
-        if (!approved && StringUtils.hasText(note)) {
-            data.put("reason", note.trim());
-        }
-
-        try {
-            notificationClient.sendResidentNotification(registration.getUserId(), title, body, data);
-        } catch (Exception ex) {
-            log.warn("⚠️ [ElevatorCard] Không thể gửi thông báo cho cư dân {}: {}", registration.getUserId(), ex.getMessage());
-        }
-    }
-
     private void validatePayload(ElevatorCardRegistrationCreateDto dto) {
+        if (dto.unitId() == null) {
+            throw new IllegalArgumentException("Căn hộ là bắt buộc");
+        }
+        if (dto.residentId() == null) {
+            throw new IllegalArgumentException("Cư dân là bắt buộc");
+        }
         if (!StringUtils.hasText(dto.fullName())) {
             throw new IllegalArgumentException("Họ và tên là bắt buộc");
-        }
-        if (!StringUtils.hasText(dto.apartmentNumber())) {
-            throw new IllegalArgumentException("Số căn hộ là bắt buộc");
-        }
-        if (!StringUtils.hasText(dto.buildingName())) {
-            throw new IllegalArgumentException("Tòa nhà là bắt buộc");
         }
     }
 
