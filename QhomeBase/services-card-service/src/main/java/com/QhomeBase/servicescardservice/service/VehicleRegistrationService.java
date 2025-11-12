@@ -7,6 +7,7 @@ import com.QhomeBase.servicescardservice.model.RegisterServiceImage;
 import com.QhomeBase.servicescardservice.model.RegisterServiceRequest;
 import com.QhomeBase.servicescardservice.repository.RegisterServiceImageRepository;
 import com.QhomeBase.servicescardservice.repository.RegisterServiceRequestRepository;
+import com.QhomeBase.servicescardservice.config.VnpayProperties;
 import com.QhomeBase.servicescardservice.service.vnpay.VnpayService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +52,7 @@ public class VehicleRegistrationService {
     private final RegisterServiceRequestRepository requestRepository;
     private final RegisterServiceImageRepository imageRepository;
     private final VnpayService vnpayService;
+    private final VnpayProperties vnpayProperties;
     private final BillingClient billingClient;
     private final ResidentUnitLookupService residentUnitLookupService;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
@@ -201,9 +203,14 @@ public class VehicleRegistrationService {
 
         String clientIp = resolveClientIp(request);
         String orderInfo = "Thanh toán đăng ký xe " + (saved.getLicensePlate() != null ? saved.getLicensePlate() : saved.getId());
-        String paymentUrl = vnpayService.createPaymentUrl(orderId, orderInfo, REGISTRATION_FEE, clientIp);
+        String returnUrl = vnpayProperties.getReturnUrl();
+        var paymentResult = vnpayService.createPaymentUrlWithRef(orderId, orderInfo, REGISTRATION_FEE, clientIp, returnUrl);
+        
+        // Save transaction reference to database for fallback lookup
+        saved.setVnpayTransactionRef(paymentResult.transactionRef());
+        requestRepository.save(saved);
 
-        return new VehicleRegistrationPaymentResponse(saved.getId(), paymentUrl);
+        return new VehicleRegistrationPaymentResponse(saved.getId(), paymentResult.paymentUrl());
     }
 
     @Transactional
@@ -259,19 +266,54 @@ public class VehicleRegistrationService {
 
     @Transactional
     public VehicleRegistrationPaymentResult handleVnpayCallback(Map<String, String> params) {
+        if (params == null || params.isEmpty()) {
+            throw new IllegalArgumentException("Missing callback data from VNPAY");
+        }
+
         String txnRef = params.get("vnp_TxnRef");
         if (txnRef == null || !txnRef.contains("_")) {
-            throw new IllegalArgumentException("Mã giao dịch không hợp lệ");
+            throw new IllegalArgumentException("Invalid transaction reference");
         }
 
-        Long orderId = Long.parseLong(txnRef.split("_")[0]);
+        Long orderId;
+        try {
+            orderId = Long.parseLong(txnRef.split("_")[0]);
+        } catch (NumberFormatException e) {
+            log.error("❌ [VehicleRegistration] Cannot parse orderId from txnRef: {}", txnRef);
+            throw new IllegalArgumentException("Invalid transaction reference format");
+        }
+
         UUID registrationId = orderIdToRegistrationId.get(orderId);
-        if (registrationId == null) {
-            throw new IllegalArgumentException("Không tìm thấy đăng ký tương ứng với orderId: " + orderId);
+        RegisterServiceRequest registration = null;
+
+        // Try to find registration by orderId map first
+        if (registrationId != null) {
+            var optional = requestRepository.findById(registrationId);
+            if (optional.isPresent()) {
+                registration = optional.get();
+                log.info("✅ [VehicleRegistration] Found registration by orderId map: registrationId={}, orderId={}", 
+                        registrationId, orderId);
+            }
         }
 
-        RegisterServiceRequest registration = requestRepository.findById(registrationId)
-                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký"));
+        // Fallback: try to find by transaction reference
+        if (registration == null) {
+            var optionalByTxnRef = requestRepository.findByVnpayTransactionRef(txnRef);
+            if (optionalByTxnRef.isPresent()) {
+                registration = optionalByTxnRef.get();
+                log.info("✅ [VehicleRegistration] Found registration by txnRef: registrationId={}, txnRef={}", 
+                        registration.getId(), txnRef);
+            }
+        }
+
+        // If still not found, throw exception with orderId for debugging
+        if (registration == null) {
+            log.error("❌ [VehicleRegistration] Cannot find registration: orderId={}, txnRef={}, mapSize={}", 
+                    orderId, txnRef, orderIdToRegistrationId.size());
+            throw new IllegalArgumentException(
+                    String.format("Registration not found for orderId: %d, txnRef: %s", orderId, txnRef)
+            );
+        }
 
         boolean signatureValid = vnpayService.validateReturn(params);
         String responseCode = params.get("vnp_ResponseCode");

@@ -36,4 +36,8 @@ public interface RegisterServiceRequestRepository extends JpaRepository<Register
             WHERE r.id = :id
             """)
     Optional<RegisterServiceRequest> findByIdWithImages(@Param("id") UUID id);
+
+    Optional<RegisterServiceRequest> findByVnpayTransactionRef(String vnpayTransactionRef);
+
+    List<RegisterServiceRequest> findAllByOrderByCreatedAtDesc();
 }

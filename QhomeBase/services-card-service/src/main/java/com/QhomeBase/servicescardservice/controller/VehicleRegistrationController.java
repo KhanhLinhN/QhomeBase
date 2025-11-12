@@ -243,7 +243,13 @@ public class VehicleRegistrationController {
         try {
             result = registrationService.handleVnpayCallback(params);
         } catch (Exception e) {
-            String fallback = "qhomeapp://vnpay-registration-result?success=false&message=" + e.getMessage();
+            log.error("❌ [VehicleRegistration] Lỗi xử lý callback redirect", e);
+            // URL encode message to avoid Unicode characters in HTTP header
+            String encodedMessage = java.net.URLEncoder.encode(
+                    e.getMessage() != null ? e.getMessage() : "Unknown error",
+                    java.nio.charset.StandardCharsets.UTF_8
+            );
+            String fallback = "qhomeapp://vnpay-registration-result?success=false&message=" + encodedMessage;
             response.sendRedirect(fallback);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("success", false, "message", e.getMessage()));
@@ -251,9 +257,12 @@ public class VehicleRegistrationController {
 
         Map<String, Object> body = buildVnpayResponse(result, params);
         String registrationId = result.registrationId() != null ? result.registrationId().toString() : "";
+        String responseCode = result.responseCode() != null 
+                ? java.net.URLEncoder.encode(result.responseCode(), java.nio.charset.StandardCharsets.UTF_8)
+                : "";
         String redirectUrl = new StringBuilder("qhomeapp://vnpay-registration-result")
                 .append("?registrationId=").append(registrationId)
-                .append("&responseCode=").append(result.responseCode() != null ? result.responseCode() : "")
+                .append("&responseCode=").append(responseCode)
                 .append("&success=").append(result.success())
                 .toString();
         response.sendRedirect(redirectUrl);

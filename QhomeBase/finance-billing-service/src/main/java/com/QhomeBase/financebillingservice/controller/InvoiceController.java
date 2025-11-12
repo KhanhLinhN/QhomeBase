@@ -100,6 +100,20 @@ public class InvoiceController {
                     .body(Map.of("error", e.getMessage()));
         }
     }
+
+    @PostMapping("/resident-card-payment")
+    public ResponseEntity<?> recordResidentCardPayment(@RequestBody ResidentCardPaymentRequest request) {
+        try {
+            InvoiceDto invoice = invoiceService.recordResidentCardPayment(request);
+            return ResponseEntity.ok(invoice);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
     
     @PutMapping("/{id}/status")
     public ResponseEntity<InvoiceDto> updateInvoiceStatus(

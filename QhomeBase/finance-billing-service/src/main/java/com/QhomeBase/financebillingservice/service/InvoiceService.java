@@ -855,5 +855,81 @@ public class InvoiceService {
         }
         return builder.toString();
     }
+
+    @Transactional
+    public InvoiceDto recordResidentCardPayment(ResidentCardPaymentRequest request) {
+        if (request.getUserId() == null) {
+            throw new IllegalArgumentException("Missing userId");
+        }
+
+        UUID residentId = residentRepository.findResidentIdByUserId(request.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + request.getUserId()));
+
+        BigDecimal amount = Optional.ofNullable(request.getAmount())
+                .filter(a -> a.compareTo(BigDecimal.ZERO) > 0)
+                .orElse(BigDecimal.valueOf(30000));
+
+        OffsetDateTime payDate = Optional.ofNullable(request.getPaymentDate())
+                .orElse(OffsetDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh")));
+        LocalDate serviceDate = payDate.toLocalDate();
+
+        String description = buildResidentCardDescription(request);
+
+        CreateInvoiceRequest createRequest = CreateInvoiceRequest.builder()
+                .dueDate(serviceDate)
+                .currency("VND")
+                .billToName(request.getFullName())
+                .payerUnitId(request.getUnitId())
+                .payerResidentId(residentId)
+                .lines(List.of(CreateInvoiceLineRequest.builder()
+                        .serviceDate(serviceDate)
+                        .description(description)
+                        .quantity(BigDecimal.ONE)
+                        .unit("lần")
+                        .unitPrice(amount)
+                        .taxRate(BigDecimal.ZERO)
+                        .serviceCode("RESIDENT_CARD")
+                        .externalRefType("RESIDENT_CARD")
+                        .externalRefId(request.getRegistrationId())
+                        .build()))
+                .build();
+
+        InvoiceDto created = createInvoice(createRequest);
+
+        Invoice invoice = invoiceRepository.findById(created.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Invoice not found: " + created.getId()));
+
+        invoice.setStatus(InvoiceStatus.PAID);
+        invoice.setPaymentGateway("VNPAY");
+        invoice.setPaidAt(payDate);
+        invoice.setVnpTransactionRef(request.getTransactionRef());
+        invoice.setVnpTransactionNo(request.getTransactionNo());
+        invoice.setVnpBankCode(request.getBankCode());
+        invoice.setVnpCardType(request.getCardType());
+        invoice.setVnpResponseCode(request.getResponseCode());
+        invoiceRepository.save(invoice);
+
+        Map<String, String> params = new HashMap<>();
+        if (request.getTransactionRef() != null) {
+            params.put("vnp_TxnRef", request.getTransactionRef());
+        }
+        notifyPaymentSuccess(invoice, params);
+
+        return toDto(invoice);
+    }
+
+    private String buildResidentCardDescription(ResidentCardPaymentRequest request) {
+        StringBuilder builder = new StringBuilder("Đăng ký thẻ cư dân");
+        if (request.getApartmentNumber() != null && !request.getApartmentNumber().isBlank()) {
+            builder.append(" - Căn ").append(request.getApartmentNumber());
+        }
+        if (request.getBuildingName() != null && !request.getBuildingName().isBlank()) {
+            builder.append(" (").append(request.getBuildingName()).append(")");
+        }
+        if (request.getFullName() != null && !request.getFullName().isBlank()) {
+            builder.append(" - ").append(request.getFullName());
+        }
+        return builder.toString();
+    }
 }
 

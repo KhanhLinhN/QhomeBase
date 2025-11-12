@@ -1,0 +1,86 @@
+spring:
+  cloud:
+    gateway:
+      routes:
+        # Services Card Service Routes (priority - match first)
+        - id: services-card-resident-card
+          uri: ${services-card.service.url:http://localhost:8083}
+          predicates:
+            - Path=/api/resident-card/**
+          filters:
+            - StripPrefix=0
+        - id: services-card-elevator-card
+          uri: ${services-card.service.url:http://localhost:8083}
+          predicates:
+            - Path=/api/elevator-card/**
+          filters:
+            - StripPrefix=0
+        - id: services-card-register-service
+          uri: ${services-card.service.url:http://localhost:8083}
+          predicates:
+            - Path=/api/register-service/**
+          filters:
+            - StripPrefix=0
+        - id: services-card-registrations
+          uri: ${services-card.service.url:http://localhost:8083}
+          predicates:
+            - Path=/api/card-registrations/**
+          filters:
+            - StripPrefix=0
+        # Base Service Routes (catch-all for /api/**)
+        - id: base-service
+          uri: ${base.service.url:http://localhost:8081}
+          predicates:
+            - Path=/api/**
+          filters:
+            - StripPrefix=0
+        # Data Docs Service Routes
+        - id: data-docs-service
+          uri: ${data-docs.service.url:http://localhost:8082}
+          predicates:
+            - Path=/api/data-docs/**
+          filters:
+            - StripPrefix=0
+        # Asset Maintenance Service Routes
+        - id: asset-maintenance-service
+          uri: ${asset-maintenance.service.url:http://localhost:8084}
+          predicates:
+            - Path=/api/asset-maintenance/**
+          filters:
+            - StripPrefix=0
+        # Finance Billing Service Routes
+        - id: finance-billing-service
+          uri: ${finance-billing.service.url:http://localhost:8085}
+          predicates:
+            - Path=/api/invoices/**,/api/billing/**
+          filters:
+            - StripPrefix=0
+        # Customer Interaction Service Routes
+        - id: customer-interaction-service
+          uri: ${customer-interaction.service.url:http://localhost:8086}
+          predicates:
+            - Path=/api/customer-interaction/**
+          filters:
+            - StripPrefix=0
+        # Staff Work Service Routes
+        - id: staff-work-service
+          uri: ${staff-work.service.url:http://localhost:8087}
+          predicates:
+            - Path=/api/staff-work/**
+          filters:
+            - StripPrefix=0
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - PATCH
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
+

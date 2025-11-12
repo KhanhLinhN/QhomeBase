@@ -75,7 +75,21 @@ public class ElevatorCardRegistrationService {
                 .approvedBy(null)
                 .build();
 
-        applyResolvedAddress(registration, dto.residentId(), dto.unitId(), dto.fullName(), dto.apartmentNumber(), dto.buildingName());
+        try {
+            applyResolvedAddress(registration, dto.residentId(), dto.unitId(), dto.fullName(), dto.apartmentNumber(), dto.buildingName());
+        } catch (Exception e) {
+            log.warn("⚠️ [ElevatorCard] Không thể resolve địa chỉ từ database, sử dụng giá trị từ form: {}", e.getMessage());
+            // Fallback to form values if lookup fails
+            if (!StringUtils.hasText(registration.getFullName())) {
+                registration.setFullName(normalize(dto.fullName()));
+            }
+            if (!StringUtils.hasText(registration.getApartmentNumber())) {
+                registration.setApartmentNumber(normalize(dto.apartmentNumber()));
+            }
+            if (!StringUtils.hasText(registration.getBuildingName())) {
+                registration.setBuildingName(normalize(dto.buildingName()));
+            }
+        }
 
         @SuppressWarnings("NullAway")
         ElevatorCardRegistration saved = repository.save(registration);
@@ -146,9 +160,13 @@ public class ElevatorCardRegistrationService {
         String returnUrl = StringUtils.hasText(vnpayProperties.getElevatorReturnUrl())
                 ? vnpayProperties.getElevatorReturnUrl()
                 : vnpayProperties.getReturnUrl();
-        String paymentUrl = vnpayService.createPaymentUrl(orderId, orderInfo, REGISTRATION_FEE, clientIp, returnUrl);
+        var paymentResult = vnpayService.createPaymentUrlWithRef(orderId, orderInfo, REGISTRATION_FEE, clientIp, returnUrl);
+        
+        // Save transaction reference to database for fallback lookup
+        saved.setVnpayTransactionRef(paymentResult.transactionRef());
+        repository.save(saved);
 
-        return new ElevatorCardPaymentResponse(saved.getId(), paymentUrl);
+        return new ElevatorCardPaymentResponse(saved.getId(), paymentResult.paymentUrl());
     }
 
     @Transactional(readOnly = true)
@@ -171,27 +189,52 @@ public class ElevatorCardRegistrationService {
     @Transactional
     public ElevatorCardPaymentResult handleVnpayCallback(Map<String, String> params) {
         if (params == null || params.isEmpty()) {
-            throw new IllegalArgumentException("Thiếu dữ liệu callback từ VNPAY");
+            throw new IllegalArgumentException("Missing callback data from VNPAY");
         }
 
         String txnRef = params.get("vnp_TxnRef");
         if (txnRef == null || !txnRef.contains("_")) {
-            throw new IllegalArgumentException("Mã giao dịch không hợp lệ");
+            throw new IllegalArgumentException("Invalid transaction reference");
         }
 
-        Long orderId = Long.parseLong(txnRef.split("_")[0]);
-        UUID registrationId = orderIdToRegistrationId.get(orderId);
+        Long orderId;
+        try {
+            orderId = Long.parseLong(txnRef.split("_")[0]);
+        } catch (NumberFormatException e) {
+            log.error("❌ [ElevatorCard] Cannot parse orderId from txnRef: {}", txnRef);
+            throw new IllegalArgumentException("Invalid transaction reference format");
+        }
 
+        UUID registrationId = orderIdToRegistrationId.get(orderId);
         ElevatorCardRegistration registration = null;
+
+        // Try to find registration by orderId map first
         if (registrationId != null) {
             var optional = repository.findById(registrationId);
             if (optional.isPresent()) {
                 registration = optional.get();
+                log.info("✅ [ElevatorCard] Found registration by orderId map: registrationId={}, orderId={}", 
+                        registrationId, orderId);
             }
         }
+
+        // Fallback: try to find by transaction reference
         if (registration == null) {
-            registration = repository.findByVnpayTransactionRef(txnRef)
-                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký tương ứng với giao dịch"));
+            var optionalByTxnRef = repository.findByVnpayTransactionRef(txnRef);
+            if (optionalByTxnRef.isPresent()) {
+                registration = optionalByTxnRef.get();
+                log.info("✅ [ElevatorCard] Found registration by txnRef: registrationId={}, txnRef={}", 
+                        registration.getId(), txnRef);
+            }
+        }
+
+        // If still not found, throw exception with orderId for debugging
+        if (registration == null) {
+            log.error("❌ [ElevatorCard] Cannot find registration: orderId={}, txnRef={}, mapSize={}", 
+                    orderId, txnRef, orderIdToRegistrationId.size());
+            throw new IllegalArgumentException(
+                    String.format("Registration not found for orderId: %d, txnRef: %s", orderId, txnRef)
+            );
         }
 
         boolean signatureValid = vnpayService.validateReturn(params);
@@ -202,14 +245,18 @@ public class ElevatorCardRegistrationService {
 
         if (signatureValid && "00".equals(responseCode) && "00".equals(transactionStatus)) {
             registration.setPaymentStatus("PAID");
-            applyResolvedAddress(
-                    registration,
-                    registration.getResidentId(),
-                    registration.getUnitId(),
-                    registration.getFullName(),
-                    registration.getApartmentNumber(),
-                    registration.getBuildingName()
-            );
+            try {
+                applyResolvedAddress(
+                        registration,
+                        registration.getResidentId(),
+                        registration.getUnitId(),
+                        registration.getFullName(),
+                        registration.getApartmentNumber(),
+                        registration.getBuildingName()
+                );
+            } catch (Exception e) {
+                log.warn("⚠️ [ElevatorCard] Không thể resolve địa chỉ sau thanh toán, giữ nguyên giá trị hiện tại: {}", e.getMessage());
+            }
             registration.setStatus(STATUS_PENDING_REVIEW);
             registration.setPaymentGateway(PAYMENT_VNPAY);
             OffsetDateTime payDate = parsePayDate(params.get("vnp_PayDate"));
