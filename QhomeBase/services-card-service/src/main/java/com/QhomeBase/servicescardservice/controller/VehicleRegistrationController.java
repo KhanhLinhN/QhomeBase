@@ -121,6 +121,26 @@ public class VehicleRegistrationController {
         }
     }
 
+    @GetMapping("/admin/vehicle-registrations")
+    public ResponseEntity<?> getRegistrationsForAdmin(@RequestParam(name = "status", required = false) String status,
+                                                      @RequestParam(name = "paymentStatus", required = false) String paymentStatus) {
+        try {
+            return ResponseEntity.ok(
+                    registrationService.getRegistrationsForAdmin(
+                            status != null && !status.isBlank() ? status.trim() : null,
+                            paymentStatus != null && !paymentStatus.isBlank() ? paymentStatus.trim() : null
+                    )
+            );
+        } catch (IllegalArgumentException e) {
+            log.warn("❌ [VehicleRegistration] Tham số không hợp lệ khi tải danh sách admin: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            log.error("❌ [VehicleRegistration] Lỗi lấy danh sách đăng ký cho admin", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Không thể lấy danh sách đăng ký"));
+        }
+    }
+
     @DeleteMapping("/{registrationId}/cancel")
     public ResponseEntity<?> cancelRegistration(@PathVariable String registrationId,
                                                 @RequestHeader HttpHeaders headers) {

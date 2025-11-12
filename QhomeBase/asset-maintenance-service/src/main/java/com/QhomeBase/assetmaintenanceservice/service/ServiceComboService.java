@@ -7,15 +7,14 @@ import com.QhomeBase.assetmaintenanceservice.dto.service.UpdateServiceComboItems
 import com.QhomeBase.assetmaintenanceservice.dto.service.UpdateServiceComboRequest;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceCombo;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceComboItem;
-import com.QhomeBase.assetmaintenanceservice.model.service.ServiceOption;
 import com.QhomeBase.assetmaintenanceservice.repository.ServiceComboRepository;
-import com.QhomeBase.assetmaintenanceservice.repository.ServiceOptionRepository;
 import com.QhomeBase.assetmaintenanceservice.repository.ServiceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -27,7 +26,6 @@ public class ServiceComboService {
 
     private final ServiceRepository serviceRepository;
     private final ServiceComboRepository serviceComboRepository;
-    private final ServiceOptionRepository serviceOptionRepository;
     private final ServiceConfigService serviceConfigService;
 
     @Transactional(readOnly = true)
@@ -161,40 +159,35 @@ public class ServiceComboService {
 
     private List<ServiceComboItem> buildComboItems(ServiceCombo combo,
                                                    List<ServiceComboItemRequest> requests) {
-        return requests.stream()
+        List<ServiceComboItem> items = requests.stream()
                 .map(request -> buildComboItem(combo, request))
                 .collect(Collectors.toList());
+
+        int nextSort = 0;
+        for (ServiceComboItem item : items) {
+            if (item.getSortOrder() == null) {
+                item.setSortOrder(nextSort);
+            }
+            nextSort = Math.max(nextSort, item.getSortOrder() + 1);
+        }
+        return items;
     }
 
     private ServiceComboItem buildComboItem(ServiceCombo combo, ServiceComboItemRequest request) {
-        if (request.getIncludedServiceId() == null && request.getOptionId() == null) {
-            throw new IllegalArgumentException("Combo item must reference either a service or an option");
+        if (!StringUtils.hasText(request.getItemName())) {
+            throw new IllegalArgumentException("Combo item name is required");
         }
         ServiceComboItem item = new ServiceComboItem();
         item.setCombo(combo);
-        if (request.getIncludedServiceId() != null) {
-            com.QhomeBase.assetmaintenanceservice.model.service.Service includedService = serviceRepository.findById(request.getIncludedServiceId())
-                    .orElseThrow(() -> new IllegalArgumentException("Included service not found: " + request.getIncludedServiceId()));
-            item.setIncludedService(includedService);
-        }
-        if (request.getOptionId() != null) {
-            ServiceOption option = serviceOptionRepository.findById(request.getOptionId())
-                    .orElseThrow(() -> new IllegalArgumentException("Service option not found: " + request.getOptionId()));
-            item.setOption(option);
-        }
+        item.setItemName(request.getItemName().trim());
+        item.setItemDescription(request.getItemDescription());
+        item.setItemPrice(request.getItemPrice() != null ? request.getItemPrice() : BigDecimal.ZERO);
+        item.setItemDurationMinutes(request.getItemDurationMinutes());
         item.setQuantity(request.getQuantity() != null ? request.getQuantity() : 1);
         item.setNote(request.getNote());
-        item.setSortOrder(getLastestOrderOfCombo(combo));
+        item.setSortOrder(request.getSortOrder());
         return item;
     }
-    public int getLastestOrderOfCombo(ServiceCombo combo) {
-        List<ServiceComboItem> serviceComboItemList = combo.getItems();
-        int maxSortOrder = serviceComboItemList.stream().sorted(Comparator.comparing(ServiceComboItem::getSortOrder)).findFirst()
-                .map(ServiceComboItem::getSortOrder).orElse(0);
-        return maxSortOrder;
-
-    }
-
 
     private com.QhomeBase.assetmaintenanceservice.model.service.Service findServiceOrThrow(UUID serviceId) {
         return serviceRepository.findById(serviceId)

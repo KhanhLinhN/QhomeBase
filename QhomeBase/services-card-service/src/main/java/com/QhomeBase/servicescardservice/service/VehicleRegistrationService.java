@@ -202,6 +202,17 @@ public class VehicleRegistrationService {
         return toDto(registration);
     }
 
+    @Transactional(readOnly = true)
+    public List<RegisterServiceRequestDto> getRegistrationsForAdmin(String status, String paymentStatus) {
+        List<RegisterServiceRequest> registrations =
+                requestRepository.findAllByServiceTypeWithImages(SERVICE_TYPE);
+        return registrations.stream()
+                .filter(reg -> status == null || status.equalsIgnoreCase(reg.getStatus()))
+                .filter(reg -> paymentStatus == null || paymentStatus.equalsIgnoreCase(reg.getPaymentStatus()))
+                .map(this::toDto)
+                .toList();
+    }
+
     @Transactional
     public void cancelRegistration(UUID userId, UUID registrationId) {
         RegisterServiceRequest registration = requestRepository.findByIdAndUserId(registrationId, userId)
