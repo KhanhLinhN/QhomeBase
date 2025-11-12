@@ -111,14 +111,22 @@ public class UnitService {
     }
     
     public String getPrefix(UUID buildingId) {
+        var building = buildingRepository.findById(buildingId)
+                .orElseThrow(() -> new IllegalArgumentException("Building not found: " + buildingId));
+
+        String code = building.getCode();
+        String extracted = extractAlphabeticPrefix(code);
+        if (!extracted.isEmpty()) {
+            return extracted;
+        }
+
         var buildings = buildingRepository.findAllByOrderByCodeAsc();
-        int index = 0;
         for (int i = 0; i < buildings.size(); i++) {
             if (buildings.get(i).getId().equals(buildingId)) {
-                index = i;
+                return alphabeticFromIndex(i);
             }
         }
-        return String.valueOf((char) ('A' + index));
+        return "A";
     }
 
     public String nextSequence(UUID buildingId, int floorNumber) {
@@ -164,6 +172,37 @@ public class UnitService {
         }
         
         return cleanSequence.toString();
+    }
+
+    private String extractAlphabeticPrefix(String code) {
+        if (code == null) {
+            return "";
+        }
+        String normalized = code.trim().toUpperCase();
+        if (normalized.isEmpty()) {
+            return "";
+        }
+        StringBuilder letters = new StringBuilder();
+        for (int i = 0; i < normalized.length(); i++) {
+            char ch = normalized.charAt(i);
+            if (ch >= 'A' && ch <= 'Z') {
+                letters.append(ch);
+            } else {
+                break;
+            }
+        }
+        return letters.toString();
+    }
+
+    private String alphabeticFromIndex(int index) {
+        int value = index;
+        StringBuilder sb = new StringBuilder();
+        do {
+            int remainder = value % 26;
+            sb.insert(0, (char) ('A' + remainder));
+            value = (value / 26) - 1;
+        } while (value >= 0);
+        return sb.toString();
     }
 
     public String generateNextCode(UUID buildingId, int floorNumber) {

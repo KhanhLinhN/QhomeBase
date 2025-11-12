@@ -117,12 +117,14 @@ public class ServiceConfigService {
         serviceRepository.save(service);
 
     }
+    @Transactional(readOnly = true)
     public List<ServiceAvailabilityDto> findAvailability(UUID serivceId) {
         com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(serivceId).orElseThrow(()
                 -> new IllegalArgumentException("Service not found: " + serivceId));
         List<ServiceAvailability> serviceAvailability = service.getAvailabilities();
         return mapAvailabilities(serviceAvailability);
     }
+    @Transactional
     public List<ServiceAvailabilityDto> addAvailability(UUID serivceId, ServiceAvailabilityRequest request) {
         com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(serivceId).orElseThrow(()
                 -> new IllegalArgumentException("Service not found: " + serivceId));
@@ -142,8 +144,6 @@ public class ServiceConfigService {
         service.setAvailabilities(serviceAvailability);
         serviceRepository.save(service);
         return mapAvailabilities(serviceAvailability);
-
-
     }
     public boolean validateNewAvailability(UUID serivceId, ServiceAvailabilityRequest request) {
         com.QhomeBase.assetmaintenanceservice.model.service.Service services = serviceRepository.findById(serivceId).orElseThrow(()
@@ -176,16 +176,23 @@ public class ServiceConfigService {
         }
         return true;
     }
-    public void deleteAvailability(UUID serivceId, UUID availabilityId) {
-        if (!serviceAvailabilityRepository.findById(availabilityId).isPresent()) {
-            throw new IllegalArgumentException("Service not found: " + availabilityId);
+    @Transactional
+    public List<ServiceAvailabilityDto> deleteAvailability(UUID serivceId, UUID availabilityId) {
+        ServiceAvailability availability = serviceAvailabilityRepository.findById(availabilityId)
+                .orElseThrow(() -> new IllegalArgumentException("Availability not found: " + availabilityId));
+
+        if (availability.getService() == null || !availability.getService().getId().equals(serivceId)) {
+            throw new IllegalArgumentException("Availability does not belong to service: " + serivceId);
         }
-        com.QhomeBase.assetmaintenanceservice.model.service.Service services = serviceRepository.findById(serivceId).orElseThrow(()
-                -> new IllegalArgumentException("Service not found: " + serivceId));
-        List<ServiceAvailability> serviceAvailability = services.getAvailabilities();
-        ServiceAvailability u = serviceAvailability.stream().filter(serviceAvailability1 -> serviceAvailability1.getId().equals(availabilityId)).findFirst().orElse(null);
-        serviceAvailability.remove(u);
-        serviceRepository.save(services);
+
+        com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(serivceId)
+                .orElseThrow(() -> new IllegalArgumentException("Service not found: " + serivceId));
+
+        serviceAvailabilityRepository.delete(availability);
+        service.getAvailabilities().removeIf(av -> av.getId().equals(availabilityId));
+        serviceRepository.save(service);
+
+        return mapAvailabilities(service.getAvailabilities());
     }
 
 
