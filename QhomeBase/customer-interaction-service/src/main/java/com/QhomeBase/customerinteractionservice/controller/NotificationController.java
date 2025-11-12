@@ -59,7 +59,6 @@ public class NotificationController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("@authz.canViewNotifications()")
     public ResponseEntity<NotificationResponse> getNotificationById(@PathVariable("id") UUID id) {
         NotificationResponse response = notificationService.getNotificationById(id);
         return ResponseEntity.ok(response);

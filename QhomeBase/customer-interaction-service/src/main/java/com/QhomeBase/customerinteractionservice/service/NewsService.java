@@ -1,5 +1,9 @@
 package com.QhomeBase.customerinteractionservice.service;
 
+import com.QhomeBase.customerinteractionservice.client.BaseServiceClient;
+import com.QhomeBase.customerinteractionservice.client.dto.HouseholdDto;
+import com.QhomeBase.customerinteractionservice.client.dto.HouseholdMemberDto;
+import com.QhomeBase.customerinteractionservice.client.dto.UnitDto;
 import com.QhomeBase.customerinteractionservice.dto.news.*;
 import com.QhomeBase.customerinteractionservice.model.*;
 import com.QhomeBase.customerinteractionservice.repository.NewsRepository;
@@ -22,6 +26,7 @@ public class NewsService {
 
     private final NewsRepository newsRepository;
     private final NewsNotificationService notificationService;
+    private final BaseServiceClient baseServiceClient;
 
     public NewsManagementResponse createNews(CreateNewsRequest request, Authentication authentication) {
         var principal = (UserPrincipal) authentication.getPrincipal();
@@ -226,11 +231,11 @@ public class NewsService {
         if (news.getScope() == null) {
             return true;
         }
-        
+
         if (news.getScope() == NotificationScope.INTERNAL) {
             return false;
         }
-        
+
         if (news.getScope() == NotificationScope.EXTERNAL) {
             if (news.getTargetBuildingId() == null) {
                 return true;
@@ -238,19 +243,46 @@ public class NewsService {
             UUID residentBuildingId = getResidentBuildingId(residentId);
             return residentBuildingId != null && residentBuildingId.equals(news.getTargetBuildingId());
         }
-        
+
         return false;
     }
-    
+
     private UUID getResidentBuildingId(UUID residentId) {
-        try {
+        if (residentId == null) {
             return null;
+        }
+        try {
+            List<HouseholdMemberDto> members = baseServiceClient.getActiveHouseholdMembersByResident(residentId);
+            if (members == null || members.isEmpty()) {
+                return null;
+            }
+
+            HouseholdMemberDto prioritizedMember = members.stream()
+                    .filter(member -> Boolean.TRUE.equals(member.isPrimary()))
+                    .findFirst()
+                    .orElse(members.get(0));
+
+            if (prioritizedMember.householdId() == null) {
+                return null;
+            }
+
+            HouseholdDto household = baseServiceClient.getHouseholdById(prioritizedMember.householdId());
+            if (household == null || household.unitId() == null) {
+                return null;
+            }
+
+            UnitDto unit = baseServiceClient.getUnitById(household.unitId());
+            if (unit == null) {
+                return null;
+            }
+
+            return unit.buildingId();
         } catch (Exception e) {
-            log.warn("Failed to get buildingId for residentId: {}", residentId, e);
+            log.warn("Failed to resolve building for resident {}: {}", residentId, e.getMessage());
             return null;
         }
     }
-    
+
     private void validateNewsScope(NotificationScope scope, String targetRole, UUID targetBuildingId) {
         if (scope == null) {
             return;

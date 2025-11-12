@@ -49,6 +49,9 @@ public class Household {
     @Column(name = "end_date")
     private LocalDate endDate;
     
+    @Column(name = "contract_id")
+    private UUID contractId;
+
     @Column(name = "created_at", nullable = false)
     @Builder.Default
     private OffsetDateTime createdAt = OffsetDateTime.now();

@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/households")
+@RequestMapping("/api/units")
 @CrossOrigin(origins = "*", maxAge = 3600)
 @RequiredArgsConstructor
 @Slf4j
@@ -24,10 +24,10 @@ public class AccountProvideController {
 
     private final AccountProvideService accountProvideService;
 
-    @PostMapping("/{householdId}/primary-resident/provision")
+    @PostMapping("/{unitId}/primary-resident/provision")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PrimaryResidentProvisionResponse> provisionPrimaryResident(
-            @PathVariable UUID householdId,
+            @PathVariable UUID unitId,
             @Valid @RequestBody PrimaryResidentProvisionRequest request,
             Authentication authentication
     ) {
@@ -36,16 +36,16 @@ public class AccountProvideController {
             UserPrincipal principal = principalObj instanceof UserPrincipal ? (UserPrincipal) principalObj : null;
             String token = principal != null ? principal.token() : null;
             PrimaryResidentProvisionResponse response = accountProvideService.provisionPrimaryResident(
-                    householdId,
+                    unitId,
                     request,
                     token
             );
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (IllegalArgumentException | IllegalStateException e) {
-            log.warn("Failed to provision primary resident for household {}: {}", householdId, e.getMessage());
+            log.warn("Failed to provision primary resident for unit {}: {}", unitId, e.getMessage());
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
-            log.error("Unexpected error while provisioning primary resident for household {}", householdId, e);
+            log.error("Unexpected error while provisioning primary resident for unit {}", unitId, e);
             return ResponseEntity.internalServerError().build();
         }
     }

@@ -38,11 +38,65 @@ public class BuildingService {
     }
 
     private String generateNextCode() {
-        List<Building> Buildings = respo.findAllByOrderByCodeAsc();
-        
-        // Generate code: B01, B02, B03, etc.
-        int nextIndex = Buildings.size() + 1;
-        return "B" + String.format("%02d", nextIndex);
+        List<Building> buildings = respo.findAllByOrderByCodeAsc();
+
+        int maxIndex = -1;
+        for (Building building : buildings) {
+            String code = building.getCode();
+            if (code == null || code.isBlank()) {
+                continue;
+            }
+            int idx = parseAlphabeticCode(code);
+            if (idx > maxIndex) {
+                maxIndex = idx;
+            }
+        }
+
+        return buildAlphabeticCode(maxIndex + 1);
+    }
+
+    private int parseAlphabeticCode(String code) {
+        if (code == null) {
+            return -1;
+        }
+
+        String normalized = code.trim().toUpperCase();
+        if (normalized.isEmpty()) {
+            return -1;
+        }
+
+        StringBuilder letters = new StringBuilder();
+        for (int i = 0; i < normalized.length(); i++) {
+            char ch = normalized.charAt(i);
+            if (ch >= 'A' && ch <= 'Z') {
+                letters.append(ch);
+            } else {
+                // stop at first non-letter so codes like "B01" still count as "B"
+                break;
+            }
+        }
+
+        if (letters.length() == 0) {
+            return -1;
+        }
+
+        int value = 0;
+        for (int i = 0; i < letters.length(); i++) {
+            char ch = letters.charAt(i);
+            value = value * 26 + (ch - 'A' + 1);
+        }
+        return value - 1;
+    }
+
+    private String buildAlphabeticCode(int index) {
+        int value = index;
+        StringBuilder sb = new StringBuilder();
+        do {
+            int remainder = value % 26;
+            sb.insert(0, (char) ('A' + remainder));
+            value = (value / 26) - 1;
+        } while (value >= 0);
+        return sb.toString();
     }
 
     public BuildingDto toDto(Building building) {

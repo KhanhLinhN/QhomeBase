@@ -26,19 +26,21 @@ public class HouseholdController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<HouseholdDto> createHousehold(@Valid @RequestBody HouseholdCreateDto createDto) {
+    public ResponseEntity<?> createHousehold(@Valid @RequestBody HouseholdCreateDto createDto) {
         try {
             HouseholdDto result = householdService.createHousehold(createDto);
             return ResponseEntity.status(HttpStatus.CREATED).body(result);
         } catch (IllegalArgumentException e) {
             log.warn("Failed to create household: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse(e.getMessage()));
         }
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<HouseholdDto> updateHousehold(
+    public ResponseEntity<?> updateHousehold(
             @PathVariable UUID id,
             @Valid @RequestBody HouseholdUpdateDto updateDto) {
         try {
@@ -46,7 +48,9 @@ public class HouseholdController {
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             log.warn("Failed to update household {}: {}", id, e.getMessage());
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse(e.getMessage()));
         }
     }
 
@@ -97,5 +101,7 @@ public class HouseholdController {
             return ResponseEntity.badRequest().build();
         }
     }
+
+    private record ErrorResponse(String message) {}
 }
 

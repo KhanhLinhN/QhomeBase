@@ -1,14 +1,18 @@
 package com.QhomeBase.baseservice.service;
 
+import com.QhomeBase.baseservice.client.ContractClient;
+import com.QhomeBase.baseservice.dto.ContractSummary;
 import com.QhomeBase.baseservice.dto.CreateResidentAccountDto;
 import com.QhomeBase.baseservice.dto.PrimaryResidentProvisionRequest;
 import com.QhomeBase.baseservice.dto.PrimaryResidentProvisionResponse;
 import com.QhomeBase.baseservice.dto.ResidentAccountDto;
 import com.QhomeBase.baseservice.model.Household;
 import com.QhomeBase.baseservice.model.HouseholdMember;
+import com.QhomeBase.baseservice.model.HouseholdKind;
 import com.QhomeBase.baseservice.model.Resident;
 import com.QhomeBase.baseservice.repository.HouseholdMemberRepository;
 import com.QhomeBase.baseservice.repository.HouseholdRepository;
+import com.QhomeBase.baseservice.repository.UnitRepository;
 import com.QhomeBase.baseservice.repository.ResidentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,16 +31,18 @@ public class AccountProvideService {
     private final ResidentRepository residentRepository;
     private final HouseholdRepository householdRepository;
     private final HouseholdMemberRepository householdMemberRepository;
+    private final UnitRepository unitRepository;
     private final ResidentAccountService residentAccountService;
+    private final ContractClient contractClient;
 
     @Transactional
     public PrimaryResidentProvisionResponse provisionPrimaryResident(
-            UUID householdId,
+            UUID unitId,
             PrimaryResidentProvisionRequest request,
             String token
     ) {
-        Household household = householdRepository.findById(householdId)
-                .orElseThrow(() -> new IllegalArgumentException("Household not found"));
+        HouseholdProvisionContext context = ensureActiveHousehold(unitId);
+        Household household = context.household();
 
         if (household.getPrimaryResidentId() != null) {
             throw new IllegalStateException("Household already has a primary resident");
@@ -55,43 +61,106 @@ public class AccountProvideService {
             builder.status(request.resident().status());
         }
 
-        Resident resident = builder.build();
+        try {
+            Resident resident = builder.build();
 
-        resident = residentRepository.save(resident);
+            resident = residentRepository.save(resident);
 
-        household.setPrimaryResidentId(resident.getId());
-        household.setUpdatedAt(OffsetDateTime.now());
-        householdRepository.save(household);
+            household.setPrimaryResidentId(resident.getId());
+            household.setUpdatedAt(OffsetDateTime.now());
+            householdRepository.save(household);
 
-        HouseholdMember householdMember = HouseholdMember.builder()
-                .householdId(householdId)
-                .residentId(resident.getId())
-                .relation(resolveRelation(request))
-                .isPrimary(true)
-                .joinedAt(LocalDate.now())
+            HouseholdMember householdMember = HouseholdMember.builder()
+                    .householdId(household.getId())
+                    .residentId(resident.getId())
+                    .relation(resolveRelation(request))
+                    .isPrimary(true)
+                    .joinedAt(LocalDate.now())
+                    .build();
+
+            householdMember = householdMemberRepository.save(householdMember);
+
+            CreateResidentAccountDto accountRequest = request.account();
+            if (accountRequest == null) {
+                accountRequest = new CreateResidentAccountDto(null, null, true);
+            }
+
+            ResidentAccountDto account = residentAccountService.createAccountForResidentAsAdmin(
+                    resident.getId(),
+                    accountRequest,
+                    token
+            );
+
+            log.info("Provisioned primary resident {} for household {} (unit {})", resident.getId(), household.getId(), unitId);
+
+            return new PrimaryResidentProvisionResponse(
+                    resident.getId(),
+                    householdMember.getId(),
+                    account
+            );
+        } catch (RuntimeException ex) {
+            rollbackHouseholdIfNeeded(context);
+            throw ex;
+        }
+    }
+
+    private HouseholdProvisionContext ensureActiveHousehold(UUID unitId) {
+        return householdRepository.findCurrentHouseholdByUnitId(unitId)
+                .map(existing -> {
+                    ensureHouseholdHasContract(existing);
+                    return new HouseholdProvisionContext(existing, false);
+                })
+                .orElseGet(() -> createHouseholdForProvision(unitId));
+    }
+
+    private void rollbackHouseholdIfNeeded(HouseholdProvisionContext context) {
+        if (context.createdForProvision()) {
+            householdRepository.delete(context.household());
+            log.info("Deleted temporary household {} after provisioning failure", context.household().getId());
+        }
+    }
+
+    private HouseholdProvisionContext createHouseholdForProvision(UUID unitId) {
+        unitRepository.findById(unitId)
+                .orElseThrow(() -> new IllegalArgumentException("Unit not found"));
+
+        ContractSummary contract = contractClient.findFirstActiveContract(unitId)
+                .orElseThrow(() -> new IllegalStateException("Unit has no active contract. Cannot provision primary resident."));
+
+        LocalDate startDate = contract.startDate() != null ? contract.startDate() : LocalDate.now();
+
+        Household newHousehold = Household.builder()
+                .unitId(unitId)
+                .kind(HouseholdKind.OWNER)
+                .startDate(startDate)
+                .endDate(contract.endDate())
+                .contractId(contract.id())
                 .build();
 
-        householdMember = householdMemberRepository.save(householdMember);
-
-        CreateResidentAccountDto accountRequest = request.account();
-        if (accountRequest == null) {
-            accountRequest = new CreateResidentAccountDto(null, null, true);
-        }
-
-        ResidentAccountDto account = residentAccountService.createAccountForResidentAsAdmin(
-                resident.getId(),
-                accountRequest,
-                token
-        );
-
-        log.info("Provisioned primary resident {} for household {}", resident.getId(), householdId);
-
-        return new PrimaryResidentProvisionResponse(
-                resident.getId(),
-                householdMember.getId(),
-                account
-        );
+        Household saved = householdRepository.save(newHousehold);
+        log.info("Created household {} for unit {} (contract {}) during primary resident provisioning", saved.getId(), unitId, contract.id());
+        return new HouseholdProvisionContext(saved, true);
     }
+
+    private void ensureHouseholdHasContract(Household household) {
+        if (household.getContractId() != null) {
+            return;
+        }
+        contractClient.findFirstActiveContract(household.getUnitId())
+                .ifPresent(contract -> {
+                    household.setContractId(contract.id());
+                    if (household.getStartDate() == null) {
+                        household.setStartDate(contract.startDate() != null ? contract.startDate() : LocalDate.now());
+                    }
+                    if (household.getEndDate() == null && contract.endDate() != null) {
+                        household.setEndDate(contract.endDate());
+                    }
+                    householdRepository.save(household);
+                    log.info("Linked household {} with active contract {}", household.getId(), contract.id());
+                });
+    }
+
+    private record HouseholdProvisionContext(Household household, boolean createdForProvision) {}
 
     private void validateUniqueContact(PrimaryResidentProvisionRequest request) {
         String phone = request.resident().phone();

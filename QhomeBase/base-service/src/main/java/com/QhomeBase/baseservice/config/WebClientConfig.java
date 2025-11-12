@@ -29,6 +29,15 @@ public class WebClientConfig {
                 .build();
     }
 
+    @Bean
+    public WebClient contractWebClient(@Value("${contract.service.url:http://localhost:8082}") String contractServiceUrl) {
+        return WebClient.builder()
+                .baseUrl(contractServiceUrl)
+                .defaultHeader("Content-Type", "application/json")
+                .filter(addJwtTokenFilter())
+                .build();
+    }
+
 
     private ExchangeFilterFunction addJwtTokenFilter() {
         return ExchangeFilterFunction.ofRequestProcessor(clientRequest -> {

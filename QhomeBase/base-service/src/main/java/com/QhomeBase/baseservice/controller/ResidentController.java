@@ -156,6 +156,19 @@ public class ResidentController {
         }
     }
 
+    @GetMapping("/me/basic")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<ResidentDto> getMyResidentBasic(Authentication authentication) {
+        try {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            ResidentDto resident = residentService.getByUserId(principal.uid());
+            return ResponseEntity.ok(resident);
+        } catch (IllegalArgumentException e) {
+            log.warn("Resident not found for current user: {}", e.getMessage());
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     @PostMapping("/staff/sync")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ResidentDto> syncStaffResident(@Valid @RequestBody StaffResidentSyncRequest request) {

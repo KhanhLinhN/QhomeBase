@@ -12,6 +12,8 @@ public record HouseholdCreateDto(
         
         @NotNull(message = "Household kind is required")
         HouseholdKind kind,
+
+        UUID contractId,
         
         UUID primaryResidentId,
         

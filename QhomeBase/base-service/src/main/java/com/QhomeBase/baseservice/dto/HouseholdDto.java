@@ -15,6 +15,11 @@ public record HouseholdDto(
         String primaryResidentName,
         LocalDate startDate,
         LocalDate endDate,
+        UUID contractId,
+        String contractNumber,
+        LocalDate contractStartDate,
+        LocalDate contractEndDate,
+        String contractStatus,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {}

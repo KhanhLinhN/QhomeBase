@@ -15,6 +15,12 @@
     <name>Asset Maintenance Service</name>
     <description>Asset Maintenance Service for Qhome Base</description>
 
+    <properties>
+        <flyway.url>jdbc:postgresql://localhost:5432/qhome_base_db?currentSchema=asset</flyway.url>
+        <flyway.user>postgres</flyway.user>
+        <flyway.password>postgres</flyway.password>
+    </properties>
+
     <dependencies>
         <!-- Spring Boot Starters -->
         <dependency>
@@ -135,6 +141,28 @@
                             <artifactId>lombok</artifactId>
                         </exclude>
                     </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-maven-plugin</artifactId>
+                <version>11.7.2</version>
+                <configuration>
+                    <url>${flyway.url}</url>
+                    <user>${flyway.user}</user>
+                    <password>${flyway.password}</password>
+                    <schemas>
+                        <schema>asset</schema>
+                        <schema>data</schema>
+                        <schema>public</schema>
+                    </schemas>
+                    <locations>
+                        <location>classpath:migration/asset</location>
+                    </locations>
+                    <baselineOnMigrate>true</baselineOnMigrate>
+                    <placeholders>
+                        <placeholder key="assetSchema" value="asset"/>
+                    </placeholders>
                 </configuration>
             </plugin>
         </plugins>

@@ -2,6 +2,7 @@ package com.QhomeBase.customerinteractionservice.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -38,6 +39,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/news/*/read").permitAll()
                         .requestMatchers("/api/news/unread/count").permitAll()
                         .requestMatchers("/api/notifications/resident").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/notifications/*").permitAll()
                         .requestMatchers("/api/customer-interaction/**").permitAll()
                         .anyRequest().authenticated()
                 )
