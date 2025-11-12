@@ -1,6 +1,8 @@
 package com.QhomeBase.assetmaintenanceservice.controller;
 
 import com.QhomeBase.assetmaintenanceservice.dto.service.CreateServiceRequest;
+import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceAvailabilityDto;
+import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceAvailabilityRequest;
 import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceDto;
 import com.QhomeBase.assetmaintenanceservice.service.ServiceConfigService;
 import jakarta.validation.Valid;
@@ -38,6 +40,26 @@ public class ServiceController {
     public ResponseEntity<ServiceDto> getServiceById(@PathVariable UUID id) {
         ServiceDto service = serviceConfigService.findById(id);
         return ResponseEntity.ok(service);
+    }
+
+    @GetMapping("/{id}/availabilities")
+    @PreAuthorize("@authz.canViewServiceConfig()")
+    public ResponseEntity<List<ServiceAvailabilityDto>> getServiceAvailabilities(@PathVariable UUID id) {
+        return ResponseEntity.ok(serviceConfigService.findAvailability(id));
+    }
+
+    @PostMapping("/{id}/availabilities")
+    @PreAuthorize("@authz.canManageServiceConfig()")
+    public ResponseEntity<List<ServiceAvailabilityDto>> addAvailability(@PathVariable UUID id,
+                                                                        @Valid @RequestBody ServiceAvailabilityRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(serviceConfigService.addAvailability(id, request));
+    }
+
+    @DeleteMapping("/{id}/availabilities/{availabilityId}")
+    @PreAuthorize("@authz.canManageServiceConfig()")
+    public ResponseEntity<List<ServiceAvailabilityDto>> deleteAvailability(@PathVariable UUID id,
+                                                                           @PathVariable UUID availabilityId) {
+        return ResponseEntity.ok(serviceConfigService.deleteAvailability(id, availabilityId));
     }
 
     @GetMapping("/public")
