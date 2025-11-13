@@ -191,7 +191,7 @@ public class VehicleRegistrationService {
             throw new IllegalStateException("Đăng ký đã thanh toán hoặc đang xử lý");
         }
         registration.setStatus(STATUS_PAYMENT_PENDING);
-        registration.setPaymentStatus("PAYMENT_PENDING");
+        registration.setPaymentStatus("PAYMENT_APPROVAL");
         registration.setPaymentGateway(PAYMENT_VNPAY);
         RegisterServiceRequest saved = requestRepository.save(registration);
 

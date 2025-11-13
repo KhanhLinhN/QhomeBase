@@ -6,6 +6,8 @@ import com.QhomeBase.iamservice.dto.LoginResponseDto;
 import com.QhomeBase.iamservice.dto.OtpVerificationRequestDto;
 import com.QhomeBase.iamservice.dto.PasswordResetConfirmRequestDto;
 import com.QhomeBase.iamservice.dto.PasswordResetRequestDto;
+import com.QhomeBase.iamservice.exception.OtpExpiredException;
+import com.QhomeBase.iamservice.exception.OtpInvalidException;
 import com.QhomeBase.iamservice.service.AuthService;
 import com.QhomeBase.iamservice.service.PasswordResetService;
 import org.slf4j.Logger;
@@ -53,11 +55,19 @@ public class AuthController {
 
     @PostMapping("/verify-otp")
     public ResponseEntity<?> verifyOtp(@Valid @RequestBody OtpVerificationRequestDto request) {
-        boolean valid = passwordResetService.verifyOtp(request.email(), request.otp());
-        if (!valid) {
-            return ResponseEntity.badRequest().body(Map.of("message", "Invalid or expired OTP"));
+        try {
+            passwordResetService.verifyOtp(request.email(), request.otp());
+            return ResponseEntity.ok(Map.of("message", "OTP đã được xác thực thành công"));
+        } catch (OtpExpiredException e) {
+            log.warn("OTP expired for email={}", request.email());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (OtpInvalidException e) {
+            log.warn("Invalid OTP for email={}", request.email());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error verifying OTP for email={}", request.email(), e);
+            return ResponseEntity.badRequest().body(Map.of("message", "Mã OTP không hợp lệ. Vui lòng thử lại."));
         }
-        return ResponseEntity.ok(Map.of("message", "OTP valid"));
     }
 
     @PostMapping("/confirm-reset")
@@ -65,9 +75,18 @@ public class AuthController {
         try {
             passwordResetService.resetPassword(request.email(), request.otp(), request.newPassword());
             return ResponseEntity.ok(Map.of("message", "Password updated successfully"));
+        } catch (OtpExpiredException e) {
+            log.warn("OTP expired for password reset email={}", request.email());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (OtpInvalidException e) {
+            log.warn("Invalid OTP for password reset email={}", request.email());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         } catch (IllegalArgumentException ex) {
             log.warn("Password reset failed for email={} reason={}", request.email(), ex.getMessage());
             return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error resetting password for email={}", request.email(), e);
+            return ResponseEntity.badRequest().body(Map.of("message", "Có lỗi xảy ra. Vui lòng thử lại."));
         }
     }
 

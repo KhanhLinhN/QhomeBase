@@ -1,5 +1,7 @@
 package com.QhomeBase.iamservice.service;
 
+import com.QhomeBase.iamservice.exception.OtpExpiredException;
+import com.QhomeBase.iamservice.exception.OtpInvalidException;
 import com.QhomeBase.iamservice.model.User;
 import com.QhomeBase.iamservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +27,7 @@ public class PasswordResetService {
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
 
-    private static final Duration OTP_EXPIRY = Duration.ofMinutes(10);
+    private static final Duration OTP_EXPIRY = Duration.ofMinutes(1);
     private static final int OTP_MAX_REQUESTS = 3;
     private static final int OTP_LENGTH = 6;
     private static final String OTP_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -36,6 +38,21 @@ public class PasswordResetService {
 
     private final Map<String, Integer> otpRequestCount = new ConcurrentHashMap<>();
     private final Map<String, LocalDateTime> otpRequestTimes = new ConcurrentHashMap<>();
+    private final Map<String, VerifiedOtp> verifiedOtps = new ConcurrentHashMap<>();
+    
+    private static class VerifiedOtp {
+        final String otp;
+        final LocalDateTime verifiedAt;
+        
+        VerifiedOtp(String otp, LocalDateTime verifiedAt) {
+            this.otp = otp;
+            this.verifiedAt = verifiedAt;
+        }
+        
+        boolean isValid(LocalDateTime now, Duration expiry) {
+            return verifiedAt.plus(expiry).isAfter(now);
+        }
+    }
 
     @Transactional
     public void requestPasswordReset(String email) {
@@ -50,6 +67,8 @@ public class PasswordResetService {
         if (!canRequestOtp(email)) {
             throw new IllegalStateException("Too many OTP requests. Try again later.");
         }
+
+        verifiedOtps.remove(email.toLowerCase());
 
         User user = userOpt.get();
         String otp = generateOtp();
@@ -67,25 +86,73 @@ public class PasswordResetService {
         trackOtpRequest(email);
     }
 
-    public boolean verifyOtp(String email, String otp) {
+    @Transactional
+    public void verifyOtp(String email, String otp) {
         Optional<User> userOpt = userRepository.findByEmail(email);
 
         if (userOpt.isEmpty()) {
-            return false;
+            throw new OtpInvalidException("Mã OTP không hợp lệ. Vui lòng thử lại.");
         }
 
         User user = userOpt.get();
-        return isOtpValid(user, otp);
+        
+        // Check if OTP exists
+        if (user.getResetOtp() == null || user.getOtpExpiry() == null) {
+            throw new OtpInvalidException("Mã OTP không hợp lệ. Vui lòng thử lại.");
+        }
+        
+        // Check if OTP has expired
+        if (user.getOtpExpiry().isBefore(LocalDateTime.now())) {
+            throw new OtpExpiredException("Mã OTP đã hết hạn. Vui lòng yêu cầu mã OTP mới.");
+        }
+        
+        // Check if OTP matches
+        if (!user.getResetOtp().equalsIgnoreCase(otp)) {
+            throw new OtpInvalidException("Mã OTP không đúng. Vui lòng kiểm tra lại và thử lại.");
+        }
+        
+        // OTP is valid - mark it as verified and invalidate the OTP in database
+        verifiedOtps.put(email.toLowerCase(), new VerifiedOtp(otp, LocalDateTime.now()));
+        user.setResetOtp(null);
+        user.setOtpExpiry(null);
+        userRepository.save(user);
+        
+        log.info("OTP verified and invalidated for user {}", email);
     }
 
     @Transactional
     public void resetPassword(String email, String otp, String newPassword) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("Invalid or expired OTP"));
+                .orElseThrow(() -> new OtpInvalidException("Mã OTP không hợp lệ. Vui lòng thử lại."));
 
-        if (!isOtpValid(user, otp)) {
-            throw new IllegalArgumentException("Invalid or expired OTP");
+        String emailKey = email.toLowerCase();
+        VerifiedOtp verifiedOtp = verifiedOtps.get(emailKey);
+        
+        if (verifiedOtp == null || !verifiedOtp.isValid(LocalDateTime.now(), OTP_EXPIRY)) {
+            // OTP was not verified or verification has expired
+            if (verifiedOtp != null) {
+                verifiedOtps.remove(emailKey);
+                throw new OtpExpiredException("Phiên xác thực OTP đã hết hạn. Vui lòng xác thực lại mã OTP.");
+            }
+            // If OTP was not verified, check if it's still valid in database
+            // This allows direct reset password flow (though not recommended)
+            try {
+                validateOtpForReset(user, otp);
+                // If validation passes, mark as verified for consistency
+                verifiedOtps.put(emailKey, new VerifiedOtp(otp, LocalDateTime.now()));
+                verifiedOtp = verifiedOtps.get(emailKey);
+            } catch (OtpExpiredException | OtpInvalidException e) {
+                throw e;
+            }
         }
+
+        // Verify OTP matches the verified OTP
+        if (!verifiedOtp.otp.equalsIgnoreCase(otp)) {
+            throw new OtpInvalidException("Mã OTP không đúng. Vui lòng kiểm tra lại và thử lại.");
+        }
+        
+        // Remove verified OTP from cache after successful validation
+        verifiedOtps.remove(emailKey);
 
         if (!isStrongPassword(newPassword)) {
             throw new IllegalArgumentException("Password must contain uppercase, lowercase, number, and special character");
@@ -133,6 +200,20 @@ public class PasswordResetService {
         }
 
         return user.getResetOtp().equalsIgnoreCase(otp);
+    }
+    
+    private void validateOtpForReset(User user, String otp) {
+        if (user.getResetOtp() == null || user.getOtpExpiry() == null) {
+            throw new OtpInvalidException("Mã OTP không hợp lệ. Vui lòng thử lại.");
+        }
+        
+        if (user.getOtpExpiry().isBefore(LocalDateTime.now())) {
+            throw new OtpExpiredException("Mã OTP đã hết hạn. Vui lòng yêu cầu mã OTP mới.");
+        }
+        
+        if (!user.getResetOtp().equalsIgnoreCase(otp)) {
+            throw new OtpInvalidException("Mã OTP không đúng. Vui lòng kiểm tra lại và thử lại.");
+        }
     }
 
     private boolean isStrongPassword(String password) {
