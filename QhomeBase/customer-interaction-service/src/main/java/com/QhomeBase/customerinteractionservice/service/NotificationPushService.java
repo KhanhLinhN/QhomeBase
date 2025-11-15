@@ -3,27 +3,45 @@ package com.QhomeBase.customerinteractionservice.service;
 import com.QhomeBase.customerinteractionservice.model.News;
 import com.QhomeBase.customerinteractionservice.model.Notification;
 import com.QhomeBase.customerinteractionservice.model.NotificationScope;
+import com.google.firebase.messaging.AndroidConfig;
+import com.google.firebase.messaging.AndroidNotification;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.MulticastMessage;
 import com.google.firebase.messaging.SendResponse;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class NotificationPushService {
 
     private static final int FCM_MAX_TOKENS_PER_REQUEST = 500;
 
+    @Nullable
     private final FirebaseMessaging firebaseMessaging;
     private final NotificationDeviceTokenService deviceTokenService;
+    
+    public NotificationPushService(@Nullable FirebaseMessaging firebaseMessaging, NotificationDeviceTokenService deviceTokenService) {
+        this.firebaseMessaging = firebaseMessaging;
+        this.deviceTokenService = deviceTokenService;
+        if (firebaseMessaging == null) {
+            log.warn("⚠️ FirebaseMessaging is null - Push notifications will be disabled. Please fix Firebase service account key.");
+        }
+    }
+    
+    private boolean isFirebaseEnabled() {
+        return firebaseMessaging != null;
+    }
 
     public void sendPushNotification(Notification notification) {
+        if (!isFirebaseEnabled()) {
+            log.warn("⚠️ Firebase not initialized. Push notification skipped for notification ID: {}", notification.getId());
+            return;
+        }
         Map<String, String> dataPayload = buildDataPayload(notification);
         sendMulticast(
                 Optional.ofNullable(notification.getTitle()).orElse("Thông báo mới"),
@@ -59,6 +77,10 @@ public class NotificationPushService {
     }
 
     public void sendNewsCreatedPush(News news) {
+        if (!isFirebaseEnabled()) {
+            log.warn("⚠️ Firebase not initialized. Push notification skipped for news ID: {}", news != null ? news.getId() : "null");
+            return;
+        }
         if (news == null || !news.isActive()) {
             return;
         }
@@ -66,6 +88,10 @@ public class NotificationPushService {
     }
 
     public void sendNewsUpdatedPush(News news) {
+        if (!isFirebaseEnabled()) {
+            log.warn("⚠️ Firebase not initialized. Push notification skipped for news ID: {}", news != null ? news.getId() : "null");
+            return;
+        }
         if (news == null || !news.isActive()) {
             return;
         }
@@ -102,6 +128,11 @@ public class NotificationPushService {
                                NotificationScope scope,
                                UUID targetBuildingId,
                                String targetRole) {
+        if (!isFirebaseEnabled()) {
+            log.warn("⚠️ Firebase not initialized. Cannot send push notification.");
+            return;
+        }
+        
         List<String> tokens = deviceTokenService.resolveTokens(scope, targetBuildingId, targetRole);
         if (tokens.isEmpty()) {
             log.info("ℹ️ No device tokens found for push scope={} building={}", scope, targetBuildingId);
@@ -123,8 +154,20 @@ public class NotificationPushService {
             int end = Math.min(i + FCM_MAX_TOKENS_PER_REQUEST, tokens.size());
             List<String> batch = tokens.subList(i, end);
 
+            // Android config với priority HIGH để hiển thị khi app ở background
+            AndroidConfig androidConfig = AndroidConfig.builder()
+                    .setPriority(AndroidConfig.Priority.HIGH)
+                    .setNotification(AndroidNotification.builder()
+                            .setChannelId("qhome_resident_channel")
+                            .setSound("default")
+                            .setTitle(title)
+                            .setBody(body)
+                            .build())
+                    .build();
+
             MulticastMessage message = MulticastMessage.builder()
                     .setNotification(firebaseNotification)
+                    .setAndroidConfig(androidConfig)
                     .putAllData(dataPayload)
                     .addAllTokens(batch)
                     .build();

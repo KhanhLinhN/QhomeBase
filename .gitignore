@@ -19,6 +19,12 @@
 *.class
 
 # Cấu hình bảo mật (Ngăn chặn rò rỉ khóa Service Account)
-# Tên file service account Firebase
-# Thay thế tên file bên dưới bằng tên chính xác của file Service Account JSON
-qhomeapp-firebase-adminsdk-fbsvc-5aeda99ea7.json
+# Ignore tất cả các file Firebase service account JSON
+**/qhomeapp-firebase-adminsdk-*.json
+**/*firebase*service*account*.json
+**/*-firebase-adminsdk-*.json
+# Pattern cụ thể cho customer-interaction-service
+QhomeBase/customer-interaction-service/src/main/resources/qhomeapp-firebase-adminsdk-*.json
+# Các file service account khác
+**/service-account*.json
+**/firebase-*.json
