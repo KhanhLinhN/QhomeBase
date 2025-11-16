@@ -67,25 +67,48 @@ public class VehicleRegistrationService {
 
     public List<String> storeImages(List<MultipartFile> files) throws IOException {
         if (files == null || files.isEmpty()) {
+            log.warn("⚠️ [VehicleRegistration] storeImages: Danh sách file rỗng");
             return List.of();
         }
         if (files.size() > MAX_IMAGES) {
             throw new IllegalArgumentException("Chỉ được tải tối đa " + MAX_IMAGES + " ảnh");
         }
+        
+        log.info("📤 [VehicleRegistration] storeImages: Bắt đầu lưu {} file", files.size());
         Path uploadDir = ensureUploadDir();
+        log.debug("📁 [VehicleRegistration] Upload directory: {}", uploadDir.toAbsolutePath());
+        
         List<String> urls = new ArrayList<>();
-        for (MultipartFile file : files) {
-            String originalFilename = StringUtils.cleanPath(Objects.requireNonNull(file.getOriginalFilename()));
-            String extension = "";
-            int dot = originalFilename.lastIndexOf('.');
-            if (dot >= 0) {
-                extension = originalFilename.substring(dot);
+        for (int i = 0; i < files.size(); i++) {
+            MultipartFile file = files.get(i);
+            try {
+                String originalFilename = StringUtils.cleanPath(Objects.requireNonNull(file.getOriginalFilename()));
+                log.debug("📄 [VehicleRegistration] Đang xử lý file {}/{}: {} ({} bytes)", 
+                    i + 1, files.size(), originalFilename, file.getSize());
+                
+                String extension = "";
+                int dot = originalFilename.lastIndexOf('.');
+                if (dot >= 0) {
+                    extension = originalFilename.substring(dot);
+                }
+                String filename = UUID.randomUUID() + extension;
+                Path target = uploadDir.resolve(filename);
+                
+                long startTime = System.currentTimeMillis();
+                Files.copy(file.getInputStream(), target);
+                long duration = System.currentTimeMillis() - startTime;
+                log.debug("✅ [VehicleRegistration] Đã lưu file {} trong {}ms: {}", 
+                    i + 1, duration, filename);
+                
+                urls.add("/uploads/vehicle/" + filename);
+            } catch (IOException e) {
+                log.error("❌ [VehicleRegistration] Lỗi khi lưu file {}/{}: {}", 
+                    i + 1, files.size(), file.getOriginalFilename(), e);
+                throw new IOException("Không thể lưu file \"" + file.getOriginalFilename() + "\": " + e.getMessage(), e);
             }
-            String filename = UUID.randomUUID() + extension;
-            Path target = uploadDir.resolve(filename);
-            Files.copy(file.getInputStream(), target);
-            urls.add("/uploads/vehicle/" + filename);
         }
+        
+        log.info("✅ [VehicleRegistration] storeImages: Đã lưu thành công {} file", urls.size());
         return urls;
     }
 

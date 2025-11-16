@@ -3,6 +3,7 @@ package com.QhomeBase.servicescardservice.repository;
 import com.QhomeBase.servicescardservice.model.ResidentCardRegistration;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,4 +22,6 @@ public interface ResidentCardRegistrationRepository extends JpaRepository<Reside
     List<ResidentCardRegistration> findByUserIdAndUnitId(UUID userId, UUID unitId);
 
     List<ResidentCardRegistration> findAllByOrderByCreatedAtDesc();
+
+    List<ResidentCardRegistration> findByPaymentStatusAndUpdatedAtBefore(String paymentStatus, OffsetDateTime updatedAtBefore);
 }

@@ -21,7 +21,8 @@ public record CardRegistrationSummaryDto(
         String reference,
         String apartmentNumber,
         String buildingName,
-        String note
+        String note,
+        OffsetDateTime approvedAt
 ) {
 }
 

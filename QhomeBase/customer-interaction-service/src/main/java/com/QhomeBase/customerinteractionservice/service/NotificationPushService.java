@@ -53,6 +53,87 @@ public class NotificationPushService {
         );
     }
 
+    public void sendPushNotificationToResident(UUID residentId, String title, String body, Map<String, String> dataPayload) {
+        if (!isFirebaseEnabled()) {
+            log.warn("⚠️ Firebase not initialized. Push notification skipped for residentId: {}", residentId);
+            return;
+        }
+        if (residentId == null) {
+            log.warn("⚠️ residentId is null, skip push notification");
+            return;
+        }
+        
+        List<String> tokens = deviceTokenService.resolveTokensForResident(residentId);
+        if (tokens.isEmpty()) {
+            log.info("ℹ️ No device tokens found for residentId: {}", residentId);
+            return;
+        }
+
+        log.info("🔔 Sending FCM push to {} tokens for residentId: {}", tokens.size(), residentId);
+
+        com.google.firebase.messaging.Notification firebaseNotification =
+                com.google.firebase.messaging.Notification.builder()
+                        .setTitle(title)
+                        .setBody(body)
+                        .build();
+
+        List<String> invalidTokens = new ArrayList<>();
+
+        for (int i = 0; i < tokens.size(); i += FCM_MAX_TOKENS_PER_REQUEST) {
+            int end = Math.min(i + FCM_MAX_TOKENS_PER_REQUEST, tokens.size());
+            List<String> batch = tokens.subList(i, end);
+
+            AndroidConfig androidConfig = AndroidConfig.builder()
+                    .setPriority(AndroidConfig.Priority.HIGH)
+                    .setNotification(AndroidNotification.builder()
+                            .setChannelId("qhome_resident_channel")
+                            .setSound("default")
+                            .setTitle(title)
+                            .setBody(body)
+                            .build())
+                    .build();
+
+            MulticastMessage message = MulticastMessage.builder()
+                    .setNotification(firebaseNotification)
+                    .setAndroidConfig(androidConfig)
+                    .putAllData(dataPayload != null ? dataPayload : new HashMap<>())
+                    .addAllTokens(batch)
+                    .build();
+
+            try {
+                var response = firebaseMessaging.sendEachForMulticast(message);
+                log.info("✅ FCM send result: success={}, failure={} for batch {} (residentId: {})",
+                        response.getSuccessCount(), response.getFailureCount(), (i / FCM_MAX_TOKENS_PER_REQUEST) + 1, residentId);
+
+                List<SendResponse> sendResponses = response.getResponses();
+                for (int j = 0; j < sendResponses.size(); j++) {
+                    SendResponse sendResponse = sendResponses.get(j);
+                    if (!sendResponse.isSuccessful()) {
+                        String errorCode = Optional.ofNullable(sendResponse.getException())
+                                .map(ex -> ex.getMessagingErrorCode() != null
+                                        ? ex.getMessagingErrorCode().name()
+                                        : ex.getMessage())
+                                .orElse("UNKNOWN");
+
+                        log.warn("⚠️ Failed to send token {} due to {} (residentId: {})",
+                                batch.get(j), errorCode, residentId);
+
+                        if ("UNREGISTERED".equalsIgnoreCase(errorCode)
+                                || "INVALID_ARGUMENT".equalsIgnoreCase(errorCode)) {
+                            invalidTokens.add(batch.get(j));
+                        }
+                    }
+                }
+            } catch (FirebaseMessagingException e) {
+                log.error("❌ Error sending FCM notification batch for residentId: {}", residentId, e);
+            }
+        }
+
+        if (!invalidTokens.isEmpty()) {
+            deviceTokenService.markTokensAsInvalid(invalidTokens);
+        }
+    }
+
     private Map<String, String> buildDataPayload(Notification notification) {
         Map<String, String> data = new HashMap<>();
         data.put("notificationId", notification.getId().toString());

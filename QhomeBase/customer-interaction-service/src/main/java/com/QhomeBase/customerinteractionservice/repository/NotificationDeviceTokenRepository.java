@@ -35,6 +35,13 @@ public interface NotificationDeviceTokenRepository extends JpaRepository<Notific
             """)
     List<NotificationDeviceToken> findForRole(@Param("role") String role);
 
+    @Query("""
+            select t from NotificationDeviceToken t
+            where t.disabled = false
+            and t.residentId = :residentId
+            """)
+    List<NotificationDeviceToken> findForResident(@Param("residentId") UUID residentId);
+
     @Modifying
     @Query("""
             update NotificationDeviceToken t

@@ -3,6 +3,7 @@ package com.QhomeBase.servicescardservice.repository;
 import com.QhomeBase.servicescardservice.model.ElevatorCardRegistration;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,4 +22,6 @@ public interface ElevatorCardRegistrationRepository extends JpaRepository<Elevat
     List<ElevatorCardRegistration> findByUserIdAndUnitId(UUID userId, UUID unitId);
 
     List<ElevatorCardRegistration> findAllByOrderByCreatedAtDesc();
+
+    List<ElevatorCardRegistration> findByPaymentStatusAndUpdatedAtBefore(String paymentStatus, OffsetDateTime updatedAtBefore);
 }

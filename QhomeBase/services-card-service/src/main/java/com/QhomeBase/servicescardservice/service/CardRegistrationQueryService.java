@@ -113,7 +113,8 @@ public class CardRegistrationQueryService {
                 firstNonBlank(entity.getApartmentNumber(), entity.getCitizenId()),
                 entity.getApartmentNumber(),
                 entity.getBuildingName(),
-                entity.getNote()
+                entity.getNote(),
+                entity.getApprovedAt()
         );
     }
 
@@ -135,7 +136,8 @@ public class CardRegistrationQueryService {
                 firstNonBlank(entity.getApartmentNumber(), entity.getCitizenId()),
                 entity.getApartmentNumber(),
                 entity.getBuildingName(),
-                entity.getNote()
+                entity.getNote(),
+                entity.getApprovedAt()
         );
     }
 
@@ -158,7 +160,8 @@ public class CardRegistrationQueryService {
                 firstNonBlank(entity.getVehicleType(), entity.getBuildingName()),
                 entity.getApartmentNumber(),
                 entity.getBuildingName(),
-                entity.getNote()
+                entity.getNote(),
+                entity.getApprovedAt()
         );
     }
 

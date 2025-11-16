@@ -41,7 +41,11 @@ public class ResidentRepository {
     public Optional<ResidentContact> findContactByResidentId(UUID residentId) {
         try {
             Query query = entityManager.createNativeQuery(
-                    "SELECT full_name, email FROM data.residents WHERE id = :residentId LIMIT 1"
+                    "SELECT r.full_name, COALESCE(u.email, r.email) AS email " +
+                    "FROM data.residents r " +
+                    "LEFT JOIN iam.users u ON u.id = r.user_id " +
+                    "WHERE r.id = :residentId " +
+                    "LIMIT 1"
             );
             query.setParameter("residentId", residentId);
 

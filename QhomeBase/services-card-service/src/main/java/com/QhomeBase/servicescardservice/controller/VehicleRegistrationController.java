@@ -38,15 +38,47 @@ public class VehicleRegistrationController {
 
     @PostMapping("/upload-images")
     public ResponseEntity<?> uploadImages(@RequestParam("files") List<MultipartFile> files) {
+        log.info("📤 [VehicleRegistration] Nhận request upload {} ảnh", files != null ? files.size() : 0);
+        
+        if (files == null || files.isEmpty()) {
+            log.warn("⚠️ [VehicleRegistration] Không có file nào được gửi");
+            return ResponseEntity.badRequest().body(Map.of("message", "Vui lòng chọn ít nhất một ảnh"));
+        }
+        
+        // Validate file sizes before processing
+        long maxFileSize = 10 * 1024 * 1024; // 10MB
+        for (MultipartFile file : files) {
+            if (file.isEmpty()) {
+                log.warn("⚠️ [VehicleRegistration] File rỗng: {}", file.getOriginalFilename());
+                return ResponseEntity.badRequest().body(Map.of("message", 
+                    "File \"" + file.getOriginalFilename() + "\" rỗng"));
+            }
+            if (file.getSize() > maxFileSize) {
+                log.warn("⚠️ [VehicleRegistration] File quá lớn: {} ({} bytes)", 
+                    file.getOriginalFilename(), file.getSize());
+                return ResponseEntity.badRequest().body(Map.of("message", 
+                    "File \"" + file.getOriginalFilename() + "\" quá lớn (tối đa 10MB)"));
+            }
+        }
+        
         try {
+            log.info("✅ [VehicleRegistration] Bắt đầu xử lý upload {} ảnh", files.size());
+            long startTime = System.currentTimeMillis();
             List<String> urls = registrationService.storeImages(files);
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("✅ [VehicleRegistration] Upload thành công {} ảnh trong {}ms", urls.size(), duration);
             return ResponseEntity.ok(Map.of("imageUrls", urls));
         } catch (IllegalArgumentException e) {
+            log.warn("⚠️ [VehicleRegistration] Validation error: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         } catch (IOException e) {
             log.error("❌ [VehicleRegistration] Lỗi upload ảnh", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Không thể tải ảnh, vui lòng thử lại"));
+                    .body(Map.of("message", "Không thể tải ảnh, vui lòng thử lại: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("❌ [VehicleRegistration] Lỗi không mong đợi khi upload ảnh", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Lỗi server khi xử lý upload: " + e.getMessage()));
         }
     }
 
