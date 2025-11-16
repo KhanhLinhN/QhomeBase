@@ -27,6 +27,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -55,6 +56,7 @@ public class VehicleRegistrationService {
     private final VnpayProperties vnpayProperties;
     private final BillingClient billingClient;
     private final ResidentUnitLookupService residentUnitLookupService;
+    private final NotificationClient notificationClient;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
     private Path ensureUploadDir() throws IOException {
@@ -278,13 +280,101 @@ public class VehicleRegistrationService {
     }
 
     @Transactional
-    public RegisterServiceRequestDto approveRegistration(UUID registrationId, UUID adminId, String adminNote) {
-        throw new IllegalStateException("Nghiệp vụ phê duyệt đã bị vô hiệu hóa");
+    public RegisterServiceRequestDto approveRegistration(UUID registrationId, UUID adminId, String adminNote, String issueMessage) {
+        RegisterServiceRequest registration = requestRepository.findById(registrationId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
+
+        if (!STATUS_PENDING_REVIEW.equalsIgnoreCase(registration.getStatus()) 
+                && !STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(registration.getStatus())) {
+            throw new IllegalStateException("Đăng ký không ở trạng thái chờ duyệt. Trạng thái hiện tại: " + registration.getStatus());
+        }
+
+        OffsetDateTime now = OffsetDateTime.now(ZoneId.of("UTC"));
+        registration.setStatus("APPROVED");
+        registration.setApprovedBy(adminId);
+        registration.setApprovedAt(now);
+        registration.setAdminNote(adminNote);
+        registration.setUpdatedAt(now);
+
+        RegisterServiceRequest saved = requestRepository.save(registration);
+
+        // Send notification to resident
+        sendVehicleCardApprovalNotification(saved, issueMessage);
+
+        log.info("✅ [VehicleRegistration] Admin {} đã approve đăng ký {}", adminId, registrationId);
+        return toDto(saved);
+    }
+
+    private void sendVehicleCardApprovalNotification(RegisterServiceRequest registration, String issueMessage) {
+        try {
+            // Resolve residentId from userId and unitId
+            UUID residentId = residentUnitLookupService.resolveByUser(registration.getUserId(), registration.getUnitId())
+                    .map(ResidentUnitLookupService.AddressInfo::residentId)
+                    .orElse(null);
+
+            if (residentId == null) {
+                log.warn("⚠️ [VehicleRegistration] Không thể tìm thấy residentId cho userId={}, unitId={}, bỏ qua notification", 
+                        registration.getUserId(), registration.getUnitId());
+                return;
+            }
+
+            // Resolve buildingId from unitId if needed
+            // Note: AddressInfo doesn't have buildingId, so we pass null and let the notification service handle it
+            UUID buildingId = null;
+
+            String title = "Thẻ xe đã được duyệt";
+            String message = issueMessage != null && !issueMessage.isBlank() 
+                    ? issueMessage 
+                    : String.format("Thẻ xe %s của bạn đã được duyệt. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", 
+                            registration.getLicensePlate() != null ? registration.getLicensePlate() : "");
+
+            Map<String, String> data = new HashMap<>();
+            data.put("cardType", "VEHICLE_CARD");
+            data.put("registrationId", registration.getId().toString());
+            if (registration.getLicensePlate() != null) {
+                data.put("licensePlate", registration.getLicensePlate());
+            }
+            if (registration.getApartmentNumber() != null) {
+                data.put("apartmentNumber", registration.getApartmentNumber());
+            }
+
+            notificationClient.sendResidentNotification(
+                    residentId,
+                    buildingId,
+                    "CARD_APPROVED",
+                    title,
+                    message,
+                    registration.getId(),
+                    "VEHICLE_CARD_REGISTRATION",
+                    data
+            );
+
+            log.info("✅ [VehicleRegistration] Đã gửi notification approval cho residentId: {}", residentId);
+        } catch (Exception e) {
+            log.error("❌ [VehicleRegistration] Không thể gửi notification approval cho registrationId: {}", 
+                    registration.getId(), e);
+        }
     }
 
     @Transactional
     public RegisterServiceRequestDto rejectRegistration(UUID registrationId, UUID adminId, String reason) {
-        throw new IllegalStateException("Nghiệp vụ phê duyệt đã bị vô hiệu hóa");
+        RegisterServiceRequest registration = requestRepository.findById(registrationId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
+
+        if ("REJECTED".equalsIgnoreCase(registration.getStatus())) {
+            throw new IllegalStateException("Đăng ký đã bị từ chối");
+        }
+
+        OffsetDateTime now = OffsetDateTime.now(ZoneId.of("UTC"));
+        registration.setStatus("REJECTED");
+        registration.setAdminNote(reason);
+        registration.setRejectionReason(reason);
+        registration.setUpdatedAt(now);
+
+        RegisterServiceRequest saved = requestRepository.save(registration);
+
+        log.info("✅ [VehicleRegistration] Admin {} đã reject đăng ký {}", adminId, registrationId);
+        return toDto(saved);
     }
 
     @Transactional

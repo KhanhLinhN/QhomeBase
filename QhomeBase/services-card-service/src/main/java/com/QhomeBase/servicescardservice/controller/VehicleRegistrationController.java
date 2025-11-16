@@ -203,8 +203,9 @@ public class VehicleRegistrationController {
         }
         try {
             UUID regUuid = UUID.fromString(registrationId);
-            RegisterServiceRequestDto dto = registrationService.approveRegistration(regUuid, adminId,
-                    request != null ? request.getNote() : null);
+            String adminNote = request != null ? request.getNote() : null;
+            String issueMessage = request != null ? request.getIssueMessage() : null;
+            RegisterServiceRequestDto dto = registrationService.approveRegistration(regUuid, adminId, adminNote, issueMessage);
             return ResponseEntity.ok(toResponse(dto));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
@@ -224,8 +225,8 @@ public class VehicleRegistrationController {
         }
         try {
             UUID regUuid = UUID.fromString(registrationId);
-            RegisterServiceRequestDto dto = registrationService.rejectRegistration(regUuid, adminId,
-                    request != null ? request.getNote() : null);
+            String reason = request != null ? request.getNote() : null;
+            RegisterServiceRequestDto dto = registrationService.rejectRegistration(regUuid, adminId, reason);
             return ResponseEntity.ok(toResponse(dto));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
@@ -332,6 +333,10 @@ public class VehicleRegistrationController {
         body.put("paymentDate", dto.paymentDate());
         body.put("paymentGateway", dto.paymentGateway());
         body.put("vnpayTransactionRef", dto.vnpayTransactionRef());
+        body.put("adminNote", dto.adminNote());
+        body.put("approvedBy", dto.approvedBy() != null ? dto.approvedBy().toString() : null);
+        body.put("approvedAt", dto.approvedAt());
+        body.put("rejectionReason", dto.rejectionReason());
         body.put("createdAt", dto.createdAt());
         body.put("updatedAt", dto.updatedAt());
         body.put("imageUrls", dto.images() != null
