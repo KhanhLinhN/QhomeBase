@@ -9,10 +9,13 @@ import com.QhomeBase.baseservice.repository.ReadingCycleRepository;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -20,21 +23,23 @@ import java.util.stream.Collectors;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@Slf4j
 public class ReadingCycleService {
+    private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
+
     private final ReadingCycleRepository readingCycleRepository;
 
     public ReadingCycleDto createCycle(ReadingCycleCreateReq req, Authentication authentication) {
         var principal = (UserPrincipal) authentication.getPrincipal();
         UUID createdBy = principal.uid();
 
-        if (req.periodFrom().isAfter(req.periodTo())) {
-            throw new IllegalArgumentException("Period from must be before period to");
-        }
+        YearMonth targetMonth = validateMonthlyWindow(req.periodFrom(), req.periodTo());
+        ensureCycleDoesNotExist(targetMonth);
 
         ReadingCycle cycle = ReadingCycle.builder()
-                .name(req.name())
-                .periodFrom(req.periodFrom())
-                .periodTo(req.periodTo())
+                .name(buildCycleName(targetMonth))
+                .periodFrom(targetMonth.atDay(1))
+                .periodTo(targetMonth.atEndOfMonth())
                 .status(ReadingCycleStatus.OPEN)
                 .description(req.description())
                 .createdBy(createdBy)
@@ -75,8 +80,6 @@ public class ReadingCycleService {
     }
 
     public ReadingCycleDto updateCycle(UUID cycleId, ReadingCycleUpdateReq req, Authentication authentication) {
-        var principal = (UserPrincipal) authentication.getPrincipal();
-
         ReadingCycle existing = readingCycleRepository.findById(cycleId)
                 .orElseThrow(() -> new IllegalArgumentException("Reading cycle not found with id: " + cycleId));
 
@@ -93,13 +96,31 @@ public class ReadingCycleService {
     }
 
     public ReadingCycleDto changeCycleStatus(UUID cycleId, ReadingCycleStatus newStatus) {
+        log.debug("Changing cycle {} status to {}", cycleId, newStatus);
+        
         ReadingCycle existing = readingCycleRepository.findById(cycleId)
-                .orElseThrow(() -> new IllegalArgumentException("Reading cycle not found with id: " + cycleId));
+                .orElseThrow(() -> {
+                    log.warn("Reading cycle not found with id: {}", cycleId);
+                    return new IllegalArgumentException("Reading cycle not found with id: " + cycleId);
+                });
 
-        validateStatusTransition(existing.getStatus(), newStatus);
+        log.debug("Current cycle status: {}, requested status: {}", existing.getStatus(), newStatus);
+        
+        try {
+            validateStatusTransition(existing.getStatus(), newStatus);
+        } catch (IllegalStateException | IllegalArgumentException ex) {
+            log.warn("Status transition validation failed for cycle {}: {} -> {}: {}", 
+                    cycleId, existing.getStatus(), newStatus, ex.getMessage());
+            throw ex;
+        }
+        
+        ReadingCycleStatus oldStatus = existing.getStatus();
         existing.setStatus(newStatus);
-
         ReadingCycle saved = readingCycleRepository.save(existing);
+        
+        log.info("Successfully changed cycle {} status from {} to {}", 
+                cycleId, oldStatus, newStatus);
+        
         return toDto(saved);
     }
 
@@ -114,12 +135,31 @@ public class ReadingCycleService {
         readingCycleRepository.delete(cycle);
     }
 
-    private void validateStatusTransition(ReadingCycleStatus current, ReadingCycleStatus next) {
-        if (current == ReadingCycleStatus.CLOSED) {
-            throw new IllegalStateException("Cannot change status of a closed cycle");
-        }
+    public ReadingCycle ensureMonthlyCycle(YearMonth month) {
+        String cycleName = buildCycleName(month);
+        return readingCycleRepository.findByName(cycleName)
+                .orElseGet(() -> {
+                    ReadingCycle cycle = ReadingCycle.builder()
+                            .name(cycleName)
+                            .periodFrom(month.atDay(1))
+                            .periodTo(month.atEndOfMonth())
+                            .status(ReadingCycleStatus.OPEN)
+                            .description("Auto-generated cycle for " + cycleName)
+                            .build();
+                    ReadingCycle saved = readingCycleRepository.save(cycle);
+                    log.info("Auto-created reading cycle {}", cycleName);
+                    return saved;
+                });
+    }
 
+    private void validateStatusTransition(ReadingCycleStatus current, ReadingCycleStatus next) {
+        if (current == null || next == null) {
+            throw new IllegalArgumentException("Status cannot be null");
+        }
+        
         switch (current) {
+            case CLOSED:
+                throw new IllegalStateException("Cannot change status of a closed cycle");
             case OPEN:
                 if (next != ReadingCycleStatus.IN_PROGRESS && next != ReadingCycleStatus.CLOSED) {
                     throw new IllegalStateException("OPEN cycle can only transition to IN_PROGRESS or CLOSED");
@@ -135,6 +175,8 @@ public class ReadingCycleService {
                     throw new IllegalStateException("COMPLETED cycle can only transition to CLOSED");
                 }
                 break;
+            default:
+                throw new IllegalStateException("Unknown current status: " + current);
         }
     }
 
@@ -150,5 +192,36 @@ public class ReadingCycleService {
                 cycle.getCreatedAt(),
                 cycle.getUpdatedAt()
         );
+    }
+
+    private YearMonth validateMonthlyWindow(LocalDate from, LocalDate to) {
+        if (from == null || to == null) {
+            throw new IllegalArgumentException("Period from/to cannot be null");
+        }
+        if (from.isAfter(to)) {
+            throw new IllegalArgumentException("Period from must be before period to");
+        }
+
+        YearMonth yearMonth = YearMonth.from(from);
+        if (!from.equals(yearMonth.atDay(1)) || !to.equals(yearMonth.atEndOfMonth())) {
+            throw new IllegalArgumentException("Reading cycles must align to a full calendar month");
+        }
+        return yearMonth;
+    }
+
+    private void ensureCycleDoesNotExist(YearMonth month) {
+        String cycleName = buildCycleName(month);
+        readingCycleRepository.findByName(cycleName).ifPresent(existing -> {
+            throw new IllegalStateException("Reading cycle already exists for " + cycleName);
+        });
+        List<ReadingCycle> overlaps = readingCycleRepository.findOverlappingCycles(
+                month.atDay(1), month.atEndOfMonth());
+        if (!overlaps.isEmpty()) {
+            throw new IllegalStateException("Reading cycle overlaps with an existing period");
+        }
+    }
+
+    private String buildCycleName(YearMonth month) {
+        return month.format(MONTH_FORMATTER);
     }
 }

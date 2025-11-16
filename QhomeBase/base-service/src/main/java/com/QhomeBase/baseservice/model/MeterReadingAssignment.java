@@ -50,6 +50,9 @@ public class MeterReadingAssignment {
     @Column(name = "end_date")
     private LocalDate endDate;
 
+    @Column(name = "reminder_last_sent_date")
+    private LocalDate reminderLastSentDate;
+
     @Column(name = "completed_at")
     private OffsetDateTime completedAt;
 

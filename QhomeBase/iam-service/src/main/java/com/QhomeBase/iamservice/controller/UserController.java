@@ -2,6 +2,7 @@ package com.QhomeBase.iamservice.controller;
 
 import com.QhomeBase.iamservice.client.BaseServiceClient;
 import com.QhomeBase.iamservice.dto.CreateUserForResidentDto;
+import com.QhomeBase.iamservice.dto.StaffImportResponse;
 import com.QhomeBase.iamservice.dto.UserAccountDto;
 import com.QhomeBase.iamservice.dto.UserInfoDto;
 import com.QhomeBase.iamservice.model.User;
@@ -9,6 +10,7 @@ import com.QhomeBase.iamservice.model.UserRole;
 import com.QhomeBase.iamservice.repository.RolePermissionRepository;
 import com.QhomeBase.iamservice.repository.UserRepository;
 import com.QhomeBase.iamservice.service.UserService;
+import com.QhomeBase.iamservice.service.imports.StaffImportService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -16,12 +18,15 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -39,6 +44,7 @@ public class UserController {
     private final UserRepository userRepository;
     private final RolePermissionRepository rolePermissionRepository;
     private final UserService userService;
+    private final StaffImportService staffImportService;
     private final BaseServiceClient baseServiceClient;
 
     @GetMapping("/{userId}")
@@ -327,6 +333,31 @@ public class UserController {
                 .map(this::toAccountDto)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(staff);
+    }
+
+    @PostMapping(value = "/staff/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("@authz.canCreateUser()")
+    public ResponseEntity<StaffImportResponse> importStaffAccounts(@RequestParam("file") MultipartFile file) {
+        try {
+            StaffImportResponse response = staffImportService.importStaffAccounts(file);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to import staff accounts: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Unexpected error when importing staff accounts", e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/staff/import/template")
+    @PreAuthorize("@authz.canViewAllUsers()")
+    public ResponseEntity<byte[]> downloadStaffImportTemplate() {
+        byte[] data = staffImportService.generateTemplateWorkbook();
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"staff_import_template.xlsx\"")
+                .body(data);
     }
 
     @GetMapping("/residents")

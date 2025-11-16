@@ -5,3 +5,7 @@ SET service_type = 'VEHICLE_REGISTRATION'
 WHERE service_type = 'VEHICLE';
 
 
+
+
+
+

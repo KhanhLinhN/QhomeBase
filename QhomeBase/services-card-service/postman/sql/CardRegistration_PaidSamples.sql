@@ -157,3 +157,7 @@ INSERT INTO card.register_vehicle (
 );
 
 
+
+
+
+
