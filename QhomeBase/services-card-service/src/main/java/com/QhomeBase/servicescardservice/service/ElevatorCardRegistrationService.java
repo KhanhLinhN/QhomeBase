@@ -19,6 +19,7 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -46,6 +47,7 @@ public class ElevatorCardRegistrationService {
     private final VnpayProperties vnpayProperties;
     private final BillingClient billingClient;
     private final ResidentUnitLookupService residentUnitLookupService;
+    private final NotificationClient notificationClient;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
     @Transactional
@@ -125,7 +127,104 @@ public class ElevatorCardRegistrationService {
     public ElevatorCardRegistrationDto processAdminDecision(UUID adminId,
                                                             UUID registrationId,
                                                             CardRegistrationAdminDecisionRequest request) {
-        throw new IllegalStateException("Nghiệp vụ phê duyệt thẻ thang máy đã bị vô hiệu hóa");
+        ElevatorCardRegistration registration = repository.findById(registrationId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký thẻ thang máy"));
+
+        String decision = request.decision();
+        if (decision == null || decision.isBlank()) {
+            throw new IllegalArgumentException("Decision is required");
+        }
+
+        OffsetDateTime now = OffsetDateTime.now(ZoneId.of("UTC"));
+
+        if ("APPROVE".equalsIgnoreCase(decision) || "APPROVED".equalsIgnoreCase(decision)) {
+            // Approve logic
+            if (!STATUS_PENDING_REVIEW.equalsIgnoreCase(registration.getStatus()) 
+                    && !STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(registration.getStatus())) {
+                throw new IllegalStateException("Đăng ký không ở trạng thái chờ duyệt. Trạng thái hiện tại: " + registration.getStatus());
+            }
+
+            registration.setStatus("APPROVED");
+            registration.setApprovedBy(adminId);
+            registration.setApprovedAt(now);
+            registration.setAdminNote(request.note());
+            registration.setUpdatedAt(now);
+
+            ElevatorCardRegistration saved = repository.save(registration);
+
+            // Send notification to resident
+            sendElevatorCardApprovalNotification(saved, request.issueMessage());
+
+            log.info("✅ [ElevatorCard] Admin {} đã approve đăng ký {}", adminId, registrationId);
+            return toDto(saved);
+        } else if ("REJECT".equalsIgnoreCase(decision) || "REJECTED".equalsIgnoreCase(decision)) {
+            // Reject logic
+            if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
+                throw new IllegalStateException("Đăng ký đã bị từ chối");
+            }
+
+            registration.setStatus(STATUS_REJECTED);
+            registration.setAdminNote(request.note());
+            registration.setRejectionReason(request.note());
+            registration.setUpdatedAt(now);
+
+            ElevatorCardRegistration saved = repository.save(registration);
+
+            log.info("✅ [ElevatorCard] Admin {} đã reject đăng ký {}", adminId, registrationId);
+            return toDto(saved);
+        } else {
+            throw new IllegalArgumentException("Invalid decision: " + decision + ". Must be APPROVE or REJECT");
+        }
+    }
+
+    private void sendElevatorCardApprovalNotification(ElevatorCardRegistration registration, String issueMessage) {
+        try {
+            UUID residentId = registration.getResidentId();
+            if (residentId == null) {
+                log.warn("⚠️ [ElevatorCard] residentId là null, không thể gửi notification cho registrationId: {}", 
+                        registration.getId());
+                return;
+            }
+
+            // Resolve buildingId from unitId if needed
+            UUID buildingId = null;
+            if (registration.getUnitId() != null) {
+                // Note: AddressInfo doesn't have buildingId, so we pass null and let the notification service handle it
+                buildingId = null;
+            }
+
+            String title = "Thẻ thang máy đã được duyệt";
+            String message = issueMessage != null && !issueMessage.isBlank() 
+                    ? issueMessage 
+                    : String.format("Thẻ thang máy của bạn đã được duyệt. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", 
+                            registration.getApartmentNumber() != null ? registration.getApartmentNumber() : "");
+
+            Map<String, String> data = new HashMap<>();
+            data.put("cardType", "ELEVATOR_CARD");
+            data.put("registrationId", registration.getId().toString());
+            if (registration.getApartmentNumber() != null) {
+                data.put("apartmentNumber", registration.getApartmentNumber());
+            }
+            if (registration.getFullName() != null) {
+                data.put("fullName", registration.getFullName());
+            }
+
+            notificationClient.sendResidentNotification(
+                    residentId,
+                    buildingId,
+                    "CARD_APPROVED",
+                    title,
+                    message,
+                    registration.getId(),
+                    "ELEVATOR_CARD_REGISTRATION",
+                    data
+            );
+
+            log.info("✅ [ElevatorCard] Đã gửi notification approval cho residentId: {}", residentId);
+        } catch (Exception e) {
+            log.error("❌ [ElevatorCard] Không thể gửi notification approval cho registrationId: {}", 
+                    registration.getId(), e);
+        }
     }
 
     @Transactional
