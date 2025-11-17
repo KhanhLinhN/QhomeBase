@@ -4,7 +4,6 @@ import com.QhomeBase.baseservice.dto.BuildingCreateReq;
 import com.QhomeBase.baseservice.dto.imports.BuildingImportResponse;
 import com.QhomeBase.baseservice.dto.imports.BuildingImportRowResult;
 import com.QhomeBase.baseservice.model.Building;
-import com.QhomeBase.baseservice.model.imports.BuildingImportRow;
 import com.QhomeBase.baseservice.repository.BuildingRepository;
 import com.QhomeBase.baseservice.service.BuildingService;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +17,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -48,7 +46,6 @@ public class BuildingImportService {
 
             response.setTotalRows(sheet.getLastRowNum());
             Row header = sheet.getRow(0);
-            int idxCode = findColumnIndex(header, "code");
             int idxName = findColumnIndex(header, "name");
             int idxAddress = findColumnIndex(header, "address");
             if (idxName < 0) {
@@ -58,28 +55,19 @@ public class BuildingImportService {
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row r = sheet.getRow(i);
                 if (r == null) continue;
-                int excelRow = i + 1;
-                String code = readString(r, idxCode);
+                int excelRow = i;
                 String name = readString(r, idxName);
                 String address = readString(r, idxAddress);
 
                 try {
-                    if (name == null || name.isBlank()) {
-                        throw new IllegalArgumentException("Tên building trống");
-                    }
-                    Building saved;
-                    if (code != null && !code.isBlank()) {
-                        Building b = Building.builder()
-                                .code(code.trim())
-                                .name(name.trim())
-                                .address(address)
-                                .createdBy(createdBy != null ? createdBy : "import")
-                                .build();
-                        saved = buildingRepository.save(b);
-                    } else {
-                        var dto = buildingService.createBuilding(new BuildingCreateReq(name, address), createdBy != null ? createdBy : "import");
-                        saved = buildingRepository.getBuildingById(dto.id());
-                    }
+                    String trimmedName = name != null ? name.trim() : null;
+                    String trimmedAddress = address != null ? address.trim() : null;
+                    
+                    validateBuildingName(trimmedName, excelRow);
+                    validateBuildingAddress(trimmedAddress, excelRow);
+                    
+                    var dto = buildingService.createBuilding(new BuildingCreateReq(trimmedName, trimmedAddress), createdBy != null ? createdBy : "import");
+                    Building saved = buildingRepository.getBuildingById(dto.id());
 
                     response.getRows().add(BuildingImportRowResult.builder()
                             .rowNumber(excelRow)
@@ -110,21 +98,18 @@ public class BuildingImportService {
         try (XSSFWorkbook wb = new XSSFWorkbook(); ByteArrayOutputStream bos = new ByteArrayOutputStream()) {
             Sheet sh = wb.createSheet("buildings");
             Row header = sh.createRow(0);
-            header.createCell(0).setCellValue("code");
-            header.createCell(1).setCellValue("name");
-            header.createCell(2).setCellValue("address");
+            header.createCell(0).setCellValue("name");
+            header.createCell(1).setCellValue("address");
 
             Row sample1 = sh.createRow(1);
-            sample1.createCell(0).setCellValue("A");
-            sample1.createCell(1).setCellValue("Tòa A");
-            sample1.createCell(2).setCellValue("123 Đường ABC, Quận 1");
+            sample1.createCell(0).setCellValue("Tòa A");
+            sample1.createCell(1).setCellValue("123 Đường ABC, Quận 1");
 
             Row sample2 = sh.createRow(2);
-            sample2.createCell(0).setCellValue("");
-            sample2.createCell(1).setCellValue("Tòa B");
-            sample2.createCell(2).setCellValue("456 Đường DEF, Quận 2");
+            sample2.createCell(0).setCellValue("Tòa B");
+            sample2.createCell(1).setCellValue("456 Đường DEF, Quận 2");
 
-            for (int c = 0; c <= 2; c++) sh.autoSizeColumn(c);
+            for (int c = 0; c <= 1; c++) sh.autoSizeColumn(c);
             wb.write(bos);
             return bos.toByteArray();
         } catch (IOException e) {
@@ -154,6 +139,32 @@ public class BuildingImportService {
         c.setCellType(CellType.STRING);
         String v = c.getStringCellValue();
         return v != null ? v.trim() : null;
+    }
+
+    private void validateBuildingName(String name, int rowNumber) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Tên building (row " + rowNumber + ") không được để trống");
+        }
+        
+        if (name.length() > 255) {
+            throw new IllegalArgumentException("Tên building (row " + rowNumber + ") không được vượt quá 255 ký tự");
+        }
+        
+        if (name.length() < 2) {
+            throw new IllegalArgumentException("Tên building (row " + rowNumber + ") phải có ít nhất 2 ký tự");
+        }
+    }
+
+    private void validateBuildingAddress(String address, int rowNumber) {
+        if (address != null && !address.isBlank()) {
+            if (address.length() > 500) {
+                throw new IllegalArgumentException("Địa chỉ (row " + rowNumber + ") không được vượt quá 500 ký tự");
+            }
+            
+            if (address.length() < 5) {
+                throw new IllegalArgumentException("Địa chỉ (row " + rowNumber + ") phải có ít nhất 5 ký tự");
+            }
+        }
     }
 }
 
