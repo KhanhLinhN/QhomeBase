@@ -15,8 +15,9 @@
 **/target/
 # Loại trừ tất cả các thư mục 'build' ở mọi cấp độ
 **/build/
-# Loại trừ tất cả các file .class (Java compiled files)
+# Loại trừ tất cả các file .class (Java compiled files) ở mọi cấp độ
 *.class
+**/*.class
 
 # Cấu hình bảo mật (Ngăn chặn rò rỉ khóa Service Account)
 # Ignore tất cả các file Firebase service account JSON
@@ -28,3 +29,4 @@ QhomeBase/customer-interaction-service/src/main/resources/qhomeapp-firebase-admi
 # Các file service account khác
 **/service-account*.json
 **/firebase-*.json
+QhomeBase/iam-service/target/classes/com/QhomeBase/iamservice/service/UserService.class
