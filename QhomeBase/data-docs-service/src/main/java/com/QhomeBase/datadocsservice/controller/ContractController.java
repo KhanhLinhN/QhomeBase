@@ -2,6 +2,8 @@ package com.QhomeBase.datadocsservice.controller;
 
 import com.QhomeBase.datadocsservice.dto.*;
 import com.QhomeBase.datadocsservice.service.ContractService;
+import com.QhomeBase.datadocsservice.service.PdfFieldMapper;
+import com.QhomeBase.datadocsservice.service.PdfFormFillService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,7 +18,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Map;
 import java.io.IOException;
+import java.io.File;
+import java.io.InputStream;
+import java.io.ByteArrayInputStream;
 import java.util.List;
 import java.util.UUID;
 
@@ -28,6 +34,7 @@ import java.util.UUID;
 public class ContractController {
 
     private final ContractService contractService;
+    private final PdfFormFillService pdfFormFillService;
 
     @PostMapping
     @Operation(summary = "Create contract", description = "Create a new contract")
@@ -208,6 +215,92 @@ public class ContractController {
         
         ContractFileDto fileDto = contractService.setPrimaryFile(contractId, fileId);
         return ResponseEntity.ok(fileDto);
+    }
+
+    // ===== Export contract to PDF and store as contract file =====
+    @PostMapping("/{contractId}/export-pdf")
+    @Operation(summary = "Export contract PDF from template and store as contract file")
+    public ResponseEntity<?> exportContractPdf(
+            @PathVariable UUID contractId,
+            @RequestParam(defaultValue = "templates/contract_template.pdf") String templatePath,
+            @RequestParam(defaultValue = "contract.pdf") String filename,
+            @RequestParam(defaultValue = "true") boolean flatten,
+            @RequestParam(value = "uploadedBy", required = false) UUID uploadedBy,
+            @RequestBody(required = false) BuyerRequest buyer
+    ) {
+        if (uploadedBy == null) uploadedBy = UUID.randomUUID();
+        log.info("[ExportPDF] contractId={}, templatePath={}, filename={}, flatten={}",
+                contractId, templatePath, filename, flatten);
+        try {
+            // 1) Load contract
+            ContractDto contract = contractService.getContractById(contractId);
+
+            // 2) Map fields for PDF
+            PdfFieldMapper.BuyerInfo buyerInfo = buyer == null ? null : new PdfFieldMapper.BuyerInfo(
+                    buyer.name(), buyer.idNo(), buyer.idDate(), buyer.idPlace(),
+                    buyer.residence(), buyer.address(), buyer.phone(), buyer.fax(),
+                    buyer.bankAcc(), buyer.bankName(), buyer.taxCode()
+            );
+            Map<String, String> fields = PdfFieldMapper.mapFromContract(contract, buyerInfo);
+
+            // 3) Fill PDF
+            byte[] pdfBytes = pdfFormFillService.fillTemplate(templatePath, fields, flatten);
+
+            // 4) Store as contract file
+            MultipartFile file = new InMemoryMultipartFile(filename, filename, "application/pdf", pdfBytes);
+            ContractFileDto fileDto = contractService.uploadContractFile(contractId, file, uploadedBy, false);
+            log.info("[ExportPDF] Exported and stored file {}", fileDto.getFileName());
+            return ResponseEntity.status(HttpStatus.CREATED).body(fileDto);
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            log.error("[ExportPDF] Bad request: {}", ex.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(new ErrorResponse(HttpStatus.BAD_REQUEST.value(), ex.getMessage()));
+        } catch (Exception ex) {
+            log.error("[ExportPDF] Unexpected error", ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Unexpected error"));
+        }
+    }
+
+    public record BuyerRequest(
+            String name,
+            String idNo,
+            String idDate,
+            String idPlace,
+            String residence,
+            String address,
+            String phone,
+            String fax,
+            String bankAcc,
+            String bankName,
+            String taxCode
+    ) {}
+
+    static class InMemoryMultipartFile implements MultipartFile {
+        private final String name;
+        private final String originalFilename;
+        private final String contentType;
+        private final byte[] content;
+
+        InMemoryMultipartFile(String name, String originalFilename, String contentType, byte[] content) {
+            this.name = name;
+            this.originalFilename = originalFilename;
+            this.contentType = contentType;
+            this.content = content != null ? content : new byte[0];
+        }
+
+        @Override public String getName() { return name; }
+        @Override public String getOriginalFilename() { return originalFilename; }
+        @Override public String getContentType() { return contentType; }
+        @Override public boolean isEmpty() { return content.length == 0; }
+        @Override public long getSize() { return content.length; }
+        @Override public byte[] getBytes() { return content.clone(); }
+        @Override public InputStream getInputStream() { return new ByteArrayInputStream(content); }
+        @Override public void transferTo(File dest) throws IOException {
+            java.nio.file.Files.write(dest.toPath(), content);
+        }
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

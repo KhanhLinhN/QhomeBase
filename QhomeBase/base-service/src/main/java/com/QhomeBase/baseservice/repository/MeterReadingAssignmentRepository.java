@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -45,6 +46,22 @@ public interface MeterReadingAssignmentRepository extends JpaRepository<MeterRea
     List<MeterReadingAssignment> findByAssignedToAndCycleId(
         @Param("staffId") UUID staffId,
         @Param("cycleId") UUID cycleId
+    );
+
+    @Query("""
+            SELECT DISTINCT a FROM MeterReadingAssignment a
+            LEFT JOIN FETCH a.cycle c
+            LEFT JOIN FETCH a.building b
+            WHERE a.status IN :statuses
+              AND a.endDate IS NOT NULL
+              AND a.endDate BETWEEN :from AND :to
+              AND (a.reminderLastSentDate IS NULL OR a.reminderLastSentDate < :today)
+            """)
+    List<MeterReadingAssignment> findAssignmentsNeedingReminder(
+            @Param("statuses") List<MeterReadingAssignmentStatus> statuses,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            @Param("today") LocalDate today
     );
 
 }

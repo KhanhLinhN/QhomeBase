@@ -1,0 +1,628 @@
+{
+  "info": {
+    "_postman_id": "8c0d2f43-0a0a-4fd8-9f25-6e4f5055a1f0",
+    "name": "QHome Card Registration Admin",
+    "description": "Collection for testing vehicle, elevator card, and resident card registration services.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "description": "Login helpers to fetch IAM tokens for admin and resident flows.",
+      "item": [
+        {
+          "name": "Login as Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{iamServiceUrl}}/api/auth/login",
+              "host": [
+                "{{iamServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Admin login succeeded\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (!json || !json.accessToken) {",
+                  "    throw new Error(\"accessToken not present in login response\");",
+                  "}",
+                  "pm.environment.set(\"admin_token\", json.accessToken);",
+                  "pm.environment.set(\"adminToken\", json.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login as Resident",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{residentUsername}}\",\n  \"password\": \"{{residentPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{iamServiceUrl}}/api/auth/login",
+              "host": [
+                "{{iamServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Resident login succeeded\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (!json || !json.accessToken) {",
+                  "    throw new Error(\"accessToken not present in login response\");",
+                  "}",
+                  "pm.environment.set(\"resident_token\", json.accessToken);",
+                  "pm.environment.set(\"residentToken\", json.accessToken);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Vehicle Registration",
+      "description": "Admin APIs for vehicle registrations.",
+      "item": [
+        {
+          "name": "List Vehicle Registrations (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/register-service/admin/vehicle-registrations",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register-service",
+                "admin",
+                "vehicle-registrations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Vehicle Registration Detail (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/register-service/admin/vehicle-registrations/{{vehicleRegistrationId}}",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register-service",
+                "admin",
+                "vehicle-registrations",
+                "{{vehicleRegistrationId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Approve Vehicle Registration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Đã kiểm tra. Cho phép thanh toán.\"\n}"
+            },
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/register-service/admin/vehicle-registrations/{{vehicleRegistrationId}}/approve",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register-service",
+                "admin",
+                "vehicle-registrations",
+                "{{vehicleRegistrationId}}",
+                "approve"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reject Vehicle Registration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Thông tin xe không hợp lệ.\"\n}"
+            },
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/register-service/admin/vehicle-registrations/{{vehicleRegistrationId}}/reject",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register-service",
+                "admin",
+                "vehicle-registrations",
+                "{{vehicleRegistrationId}}",
+                "reject"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Elevator Card Registration",
+      "description": "Resident flows and admin decisions for elevator cards.",
+      "item": [
+        {
+          "name": "Create Elevator Card Registration & Payment URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{resident_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"unitId\": \"{{unitId}}\",\n  \"residentId\": \"{{residentId}}\",\n  \"requestType\": \"NEW_CARD\",\n  \"fullName\": \"Nguyễn Văn A\",\n  \"apartmentNumber\": \"A-12-05\",\n  \"buildingName\": \"Block A\",\n  \"citizenId\": \"012345678901\",\n  \"phoneNumber\": \"0909000999\",\n  \"note\": \"Đăng ký thẻ thang máy mới\"\n}"
+            },
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/elevator-card/vnpay-url",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "elevator-card",
+                "vnpay-url"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Elevator Card Registrations (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/elevator-card/admin/registrations",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "elevator-card",
+                "admin",
+                "registrations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Elevator Card Registration Detail (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/elevator-card/admin/registrations/{{elevatorRegistrationId}}",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "elevator-card",
+                "admin",
+                "registrations",
+                "{{elevatorRegistrationId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Approve Elevator Card Registration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"APPROVE\",\n  \"note\": \"Thông tin hợp lệ, phê duyệt.\"\n}"
+            },
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/elevator-card/admin/registrations/{{elevatorRegistrationId}}/decision",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "elevator-card",
+                "admin",
+                "registrations",
+                "{{elevatorRegistrationId}}",
+                "decision"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reject Elevator Card Registration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"REJECT\",\n  \"note\": \"Ảnh xác minh không rõ.\"\n}"
+            },
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/elevator-card/admin/registrations/{{elevatorRegistrationId}}/decision",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "elevator-card",
+                "admin",
+                "registrations",
+                "{{elevatorRegistrationId}}",
+                "decision"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Resident Card Registration",
+      "description": "Resident flows and admin decisions for resident access cards.",
+      "item": [
+        {
+          "name": "Create Resident Card Registration & Payment URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{resident_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"unitId\": \"{{unitId}}\",\n  \"residentId\": \"{{residentId}}\",\n  \"requestType\": \"NEW_CARD\",\n  \"fullName\": \"Nguyễn Văn A\",\n  \"apartmentNumber\": \"A-12-05\",\n  \"buildingName\": \"Block A\",\n  \"citizenId\": \"012345678901\",\n  \"phoneNumber\": \"0909000999\",\n  \"note\": \"Đăng ký thẻ cư dân mới\"\n}"
+            },
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/resident-card/vnpay-url",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resident-card",
+                "vnpay-url"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Resident Card Registrations (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/resident-card/admin/registrations",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resident-card",
+                "admin",
+                "registrations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Resident Card Registration Detail (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/resident-card/admin/registrations/{{residentRegistrationId}}",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resident-card",
+                "admin",
+                "registrations",
+                "{{residentRegistrationId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Approve Resident Card Registration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"APPROVE\",\n  \"note\": \"Phê duyệt phát hành thẻ cư dân.\"\n}"
+            },
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/resident-card/admin/registrations/{{residentRegistrationId}}/decision",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resident-card",
+                "admin",
+                "registrations",
+                "{{residentRegistrationId}}",
+                "decision"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reject Resident Card Registration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"REJECT\",\n  \"note\": \"Thông tin cư trú chưa được xác minh.\"\n}"
+            },
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/resident-card/admin/registrations/{{residentRegistrationId}}/decision",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resident-card",
+                "admin",
+                "registrations",
+                "{{residentRegistrationId}}",
+                "decision"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "cardServiceBaseUrl",
+      "value": "http://localhost:8083"
+    },
+    {
+      "key": "iamServiceUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "adminUsername",
+      "value": "admin_test"
+    },
+    {
+      "key": "adminPassword",
+      "value": "admin123"
+    },
+    {
+      "key": "residentUsername",
+      "value": "resident_test"
+    },
+    {
+      "key": "residentPassword",
+      "value": "resident123"
+    },
+    {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
+      "key": "resident_token",
+      "value": ""
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "residentToken",
+      "value": ""
+    },
+    {
+      "key": "vehicleRegistrationId",
+      "value": ""
+    },
+    {
+      "key": "elevatorRegistrationId",
+      "value": ""
+    },
+    {
+      "key": "residentRegistrationId",
+      "value": ""
+    },
+    {
+      "key": "unitId",
+      "value": ""
+    },
+    {
+      "key": "residentId",
+      "value": ""
+    }
+  ]
+}
+
