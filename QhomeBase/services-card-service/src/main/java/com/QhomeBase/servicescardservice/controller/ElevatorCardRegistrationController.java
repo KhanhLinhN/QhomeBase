@@ -43,11 +43,12 @@ public class ElevatorCardRegistrationController {
                     .body(Map.of("message", "Unauthorized"));
         }
         try {
+            // Default status = "PENDING" if not provided (vì Flutter luôn gửi PENDING)
+            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : "PENDING";
+            String finalPaymentStatus = (paymentStatus != null && !paymentStatus.isBlank()) ? paymentStatus.trim() : null;
+            
             return ResponseEntity.ok(
-                    registrationService.getRegistrationsForAdmin(
-                            status != null && !status.isBlank() ? status.trim() : null,
-                            paymentStatus != null && !paymentStatus.isBlank() ? paymentStatus.trim() : null
-                    )
+                    registrationService.getRegistrationsForAdmin(finalStatus, finalPaymentStatus)
             );
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));

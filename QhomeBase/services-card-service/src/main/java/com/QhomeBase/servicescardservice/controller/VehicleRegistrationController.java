@@ -159,11 +159,12 @@ public class VehicleRegistrationController {
     public ResponseEntity<?> getRegistrationsForAdmin(@RequestParam(name = "status", required = false) String status,
                                                       @RequestParam(name = "paymentStatus", required = false) String paymentStatus) {
         try {
+            // Default status = "PENDING" if not provided (vì Flutter luôn gửi PENDING)
+            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : "PENDING";
+            String finalPaymentStatus = (paymentStatus != null && !paymentStatus.isBlank()) ? paymentStatus.trim() : null;
+            
             return ResponseEntity.ok(
-                    registrationService.getRegistrationsForAdmin(
-                            status != null && !status.isBlank() ? status.trim() : null,
-                            paymentStatus != null && !paymentStatus.isBlank() ? paymentStatus.trim() : null
-                    )
+                    registrationService.getRegistrationsForAdmin(finalStatus, finalPaymentStatus)
             );
         } catch (IllegalArgumentException e) {
             log.warn("❌ [VehicleRegistration] Tham số không hợp lệ khi tải danh sách admin: {}", e.getMessage());
