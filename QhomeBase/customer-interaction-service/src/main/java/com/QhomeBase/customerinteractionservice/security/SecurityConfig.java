@@ -41,6 +41,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/notifications/resident").permitAll()
                         .requestMatchers("/api/notifications/{id}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/notifications/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/notifications/internal").permitAll()
                         .requestMatchers("/api/customer-interaction/**").permitAll()
                         .anyRequest().authenticated()
                 )

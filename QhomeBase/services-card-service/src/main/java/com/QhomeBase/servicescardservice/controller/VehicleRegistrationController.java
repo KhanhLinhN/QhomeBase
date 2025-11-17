@@ -38,15 +38,47 @@ public class VehicleRegistrationController {
 
     @PostMapping("/upload-images")
     public ResponseEntity<?> uploadImages(@RequestParam("files") List<MultipartFile> files) {
+        log.info("📤 [VehicleRegistration] Nhận request upload {} ảnh", files != null ? files.size() : 0);
+        
+        if (files == null || files.isEmpty()) {
+            log.warn("⚠️ [VehicleRegistration] Không có file nào được gửi");
+            return ResponseEntity.badRequest().body(Map.of("message", "Vui lòng chọn ít nhất một ảnh"));
+        }
+        
+        // Validate file sizes before processing
+        long maxFileSize = 10 * 1024 * 1024; // 10MB
+        for (MultipartFile file : files) {
+            if (file.isEmpty()) {
+                log.warn("⚠️ [VehicleRegistration] File rỗng: {}", file.getOriginalFilename());
+                return ResponseEntity.badRequest().body(Map.of("message", 
+                    "File \"" + file.getOriginalFilename() + "\" rỗng"));
+            }
+            if (file.getSize() > maxFileSize) {
+                log.warn("⚠️ [VehicleRegistration] File quá lớn: {} ({} bytes)", 
+                    file.getOriginalFilename(), file.getSize());
+                return ResponseEntity.badRequest().body(Map.of("message", 
+                    "File \"" + file.getOriginalFilename() + "\" quá lớn (tối đa 10MB)"));
+            }
+        }
+        
         try {
+            log.info("✅ [VehicleRegistration] Bắt đầu xử lý upload {} ảnh", files.size());
+            long startTime = System.currentTimeMillis();
             List<String> urls = registrationService.storeImages(files);
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("✅ [VehicleRegistration] Upload thành công {} ảnh trong {}ms", urls.size(), duration);
             return ResponseEntity.ok(Map.of("imageUrls", urls));
         } catch (IllegalArgumentException e) {
+            log.warn("⚠️ [VehicleRegistration] Validation error: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         } catch (IOException e) {
             log.error("❌ [VehicleRegistration] Lỗi upload ảnh", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Không thể tải ảnh, vui lòng thử lại"));
+                    .body(Map.of("message", "Không thể tải ảnh, vui lòng thử lại: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("❌ [VehicleRegistration] Lỗi không mong đợi khi upload ảnh", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Lỗi server khi xử lý upload: " + e.getMessage()));
         }
     }
 
@@ -127,11 +159,12 @@ public class VehicleRegistrationController {
     public ResponseEntity<?> getRegistrationsForAdmin(@RequestParam(name = "status", required = false) String status,
                                                       @RequestParam(name = "paymentStatus", required = false) String paymentStatus) {
         try {
+            // Default status = "PENDING" if not provided (vì Flutter luôn gửi PENDING)
+            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : "PENDING";
+            String finalPaymentStatus = (paymentStatus != null && !paymentStatus.isBlank()) ? paymentStatus.trim() : null;
+            
             return ResponseEntity.ok(
-                    registrationService.getRegistrationsForAdmin(
-                            status != null && !status.isBlank() ? status.trim() : null,
-                            paymentStatus != null && !paymentStatus.isBlank() ? paymentStatus.trim() : null
-                    )
+                    registrationService.getRegistrationsForAdmin(finalStatus, finalPaymentStatus)
             );
         } catch (IllegalArgumentException e) {
             log.warn("❌ [VehicleRegistration] Tham số không hợp lệ khi tải danh sách admin: {}", e.getMessage());
@@ -171,8 +204,9 @@ public class VehicleRegistrationController {
         }
         try {
             UUID regUuid = UUID.fromString(registrationId);
-            RegisterServiceRequestDto dto = registrationService.approveRegistration(regUuid, adminId,
-                    request != null ? request.getNote() : null);
+            String adminNote = request != null ? request.getNote() : null;
+            String issueMessage = request != null ? request.getIssueMessage() : null;
+            RegisterServiceRequestDto dto = registrationService.approveRegistration(regUuid, adminId, adminNote, issueMessage);
             return ResponseEntity.ok(toResponse(dto));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
@@ -192,8 +226,8 @@ public class VehicleRegistrationController {
         }
         try {
             UUID regUuid = UUID.fromString(registrationId);
-            RegisterServiceRequestDto dto = registrationService.rejectRegistration(regUuid, adminId,
-                    request != null ? request.getNote() : null);
+            String reason = request != null ? request.getNote() : null;
+            RegisterServiceRequestDto dto = registrationService.rejectRegistration(regUuid, adminId, reason);
             return ResponseEntity.ok(toResponse(dto));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
@@ -243,7 +277,13 @@ public class VehicleRegistrationController {
         try {
             result = registrationService.handleVnpayCallback(params);
         } catch (Exception e) {
-            String fallback = "qhomeapp://vnpay-registration-result?success=false&message=" + e.getMessage();
+            log.error("❌ [VehicleRegistration] Lỗi xử lý callback redirect", e);
+            // URL encode message to avoid Unicode characters in HTTP header
+            String encodedMessage = java.net.URLEncoder.encode(
+                    e.getMessage() != null ? e.getMessage() : "Unknown error",
+                    java.nio.charset.StandardCharsets.UTF_8
+            );
+            String fallback = "qhomeapp://vnpay-registration-result?success=false&message=" + encodedMessage;
             response.sendRedirect(fallback);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("success", false, "message", e.getMessage()));
@@ -251,9 +291,12 @@ public class VehicleRegistrationController {
 
         Map<String, Object> body = buildVnpayResponse(result, params);
         String registrationId = result.registrationId() != null ? result.registrationId().toString() : "";
+        String responseCode = result.responseCode() != null 
+                ? java.net.URLEncoder.encode(result.responseCode(), java.nio.charset.StandardCharsets.UTF_8)
+                : "";
         String redirectUrl = new StringBuilder("qhomeapp://vnpay-registration-result")
                 .append("?registrationId=").append(registrationId)
-                .append("&responseCode=").append(result.responseCode() != null ? result.responseCode() : "")
+                .append("&responseCode=").append(responseCode)
                 .append("&success=").append(result.success())
                 .toString();
         response.sendRedirect(redirectUrl);
@@ -291,6 +334,10 @@ public class VehicleRegistrationController {
         body.put("paymentDate", dto.paymentDate());
         body.put("paymentGateway", dto.paymentGateway());
         body.put("vnpayTransactionRef", dto.vnpayTransactionRef());
+        body.put("adminNote", dto.adminNote());
+        body.put("approvedBy", dto.approvedBy() != null ? dto.approvedBy().toString() : null);
+        body.put("approvedAt", dto.approvedAt());
+        body.put("rejectionReason", dto.rejectionReason());
         body.put("createdAt", dto.createdAt());
         body.put("updatedAt", dto.updatedAt());
         body.put("imageUrls", dto.images() != null

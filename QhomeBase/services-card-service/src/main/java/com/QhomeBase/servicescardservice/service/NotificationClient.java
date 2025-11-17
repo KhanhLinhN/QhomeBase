@@ -13,6 +13,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -23,7 +24,7 @@ public class NotificationClient {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    @Value("${services.notification.base-url:http://localhost:8084}")
+    @Value("${services.notification.base-url:http://localhost:8086}")
     private String notificationServiceBaseUrl;
 
     public void sendNotification(Map<String, Object> payload) {
@@ -46,6 +47,8 @@ public class NotificationClient {
 
             if (!response.getStatusCode().is2xxSuccessful()) {
                 log.warn("❌ [NotificationClient] Failed to push notification: status={}", response.getStatusCode());
+            } else {
+                log.info("✅ [NotificationClient] Notification sent successfully");
             }
         } catch (Exception ex) {
             log.error("❌ [NotificationClient] Error sending notification", ex);
@@ -53,24 +56,37 @@ public class NotificationClient {
     }
 
     public void sendResidentNotification(UUID residentId,
+                                         UUID buildingId,
+                                         String type,
                                          String title,
-                                         String body,
-                                         Map<String, Object> data) {
+                                         String message,
+                                         UUID referenceId,
+                                         String referenceType,
+                                         Map<String, String> data) {
         if (residentId == null) {
             log.warn("⚠️ [NotificationClient] residentId null, skip push");
             return;
         }
-        sendNotification(Map.of(
-                "target", Map.of(
-                        "type", "RESIDENT",
-                        "residentId", residentId.toString()
-                ),
-                "message", Map.of(
-                        "title", title,
-                        "body", body,
-                        "data", data
-                )
-        ));
+        
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("residentId", residentId.toString());
+        if (buildingId != null) {
+            payload.put("buildingId", buildingId.toString());
+        }
+        payload.put("type", type != null ? type : "SYSTEM");
+        payload.put("title", title);
+        payload.put("message", message);
+        if (referenceId != null) {
+            payload.put("referenceId", referenceId.toString());
+        }
+        if (referenceType != null) {
+            payload.put("referenceType", referenceType);
+        }
+        if (data != null && !data.isEmpty()) {
+            payload.put("data", data);
+        }
+        
+        sendNotification(payload);
     }
 }
 

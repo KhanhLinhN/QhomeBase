@@ -15,7 +15,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -28,6 +30,7 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final NotificationPushService notificationPushService;
+    private final NotificationDeviceTokenService deviceTokenService;
 
     public NotificationResponse createNotification(CreateNotificationRequest request) {
         validateNotificationScope(request.getScope(), request.getTargetRole(), request.getTargetBuildingId());
@@ -265,6 +268,75 @@ public class NotificationService {
             log.info("✅ Notification sent successfully via WebSocket");
         } catch (Exception e) {
             log.error("❌ Error sending WebSocket notification", e);
+        }
+    }
+
+    public void createInternalNotification(com.QhomeBase.customerinteractionservice.dto.notification.InternalNotificationRequest request) {
+        // If residentId is provided, send directly to that resident
+        if (request.getResidentId() != null) {
+            Map<String, String> dataPayload = new HashMap<>();
+            dataPayload.put("type", request.getType() != null ? request.getType().name() : "SYSTEM");
+            if (request.getReferenceId() != null) {
+                dataPayload.put("referenceId", request.getReferenceId().toString());
+            }
+            if (request.getReferenceType() != null) {
+                dataPayload.put("referenceType", request.getReferenceType());
+            }
+            if (request.getData() != null) {
+                dataPayload.putAll(request.getData());
+            }
+
+            // Send push notification directly to resident
+            notificationPushService.sendPushNotificationToResident(
+                    request.getResidentId(),
+                    request.getTitle(),
+                    request.getMessage(),
+                    dataPayload
+            );
+
+            // Also save to DB with scope EXTERNAL and targetBuildingId if provided
+            NotificationScope scope = NotificationScope.EXTERNAL;
+            
+            Notification notification = Notification.builder()
+                    .type(request.getType())
+                    .title(request.getTitle())
+                    .message(request.getMessage())
+                    .scope(scope)
+                    .targetBuildingId(request.getBuildingId())
+                    .targetRole(null)
+                    .referenceId(request.getReferenceId())
+                    .referenceType(request.getReferenceType())
+                    .actionUrl(request.getActionUrl())
+                    .iconUrl(request.getIconUrl())
+                    .build();
+
+            Notification savedNotification = notificationRepository.save(notification);
+            
+            // Send WebSocket notification for real-time update when app is open
+            sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
+            
+            log.info("✅ Created internal notification for residentId: {} | Notification ID: {}", 
+                    request.getResidentId(), savedNotification.getId());
+        } else {
+            // Fallback to regular notification creation
+            CreateNotificationRequest createRequest = CreateNotificationRequest.builder()
+                    .type(request.getType())
+                    .title(request.getTitle())
+                    .message(request.getMessage())
+                    .scope(request.getBuildingId() != null 
+                            ? NotificationScope.EXTERNAL 
+                            : (request.getTargetRole() != null 
+                                    ? NotificationScope.INTERNAL 
+                                    : NotificationScope.EXTERNAL))
+                    .targetBuildingId(request.getBuildingId())
+                    .targetRole(request.getTargetRole())
+                    .referenceId(request.getReferenceId())
+                    .referenceType(request.getReferenceType())
+                    .actionUrl(request.getActionUrl())
+                    .iconUrl(request.getIconUrl())
+                    .build();
+            
+            createNotification(createRequest);
         }
     }
 }

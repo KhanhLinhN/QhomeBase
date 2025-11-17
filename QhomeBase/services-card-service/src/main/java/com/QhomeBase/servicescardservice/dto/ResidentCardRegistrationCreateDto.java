@@ -14,10 +14,8 @@ public record ResidentCardRegistrationCreateDto(
 
         String fullName,
 
-        @NotNull(message = "Apartment number is required")
         String apartmentNumber,
 
-        @NotNull(message = "Building name is required")
         String buildingName,
 
         String citizenId,

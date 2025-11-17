@@ -270,16 +270,18 @@ public class InvoiceService {
         log.info("Invoice {} voided successfully", invoiceId);
     }
     
-    public List<InvoiceLineResponseDto> getMyInvoices(UUID userId, UUID unitFilter) {
+    public List<InvoiceLineResponseDto> getMyInvoices(UUID userId, UUID unitFilter, UUID cycleFilter) {
+        if (unitFilter == null) {
+            throw new IllegalArgumentException("unitId is required");
+        }
         UUID residentId = residentRepository.findResidentIdByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + userId));
         
         List<Invoice> invoices = invoiceRepository.findByPayerResidentId(residentId);
-        if (unitFilter != null) {
-            invoices = invoices.stream()
-                    .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
-                    .collect(Collectors.toList());
-        }
+        invoices = invoices.stream()
+                .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
+                .filter(invoice -> cycleFilter == null || cycleFilter.equals(invoice.getCycleId()))
+                .collect(Collectors.toList());
         List<InvoiceLineResponseDto> result = new ArrayList<>();
         
         for (Invoice invoice : invoices) {
@@ -402,16 +404,18 @@ public class InvoiceService {
         }
     }
 
-    public List<InvoiceCategoryResponseDto> getUnpaidInvoicesByCategory(UUID userId, UUID unitFilter) {
+    public List<InvoiceCategoryResponseDto> getUnpaidInvoicesByCategory(UUID userId, UUID unitFilter, UUID cycleFilter) {
+        if (unitFilter == null) {
+            throw new IllegalArgumentException("unitId is required");
+        }
         UUID residentId = residentRepository.findResidentIdByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + userId));
 
         List<Invoice> invoices = invoiceRepository.findByPayerResidentId(residentId);
-        if (unitFilter != null) {
-            invoices = invoices.stream()
-                    .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
-                    .collect(Collectors.toList());
-        }
+        invoices = invoices.stream()
+                .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
+                .filter(invoice -> cycleFilter == null || cycleFilter.equals(invoice.getCycleId()))
+                .collect(Collectors.toList());
         Map<String, List<InvoiceLineResponseDto>> grouped = new HashMap<>();
 
         for (Invoice invoice : invoices) {
@@ -455,18 +459,20 @@ public class InvoiceService {
         return response;
     }
 
-    public List<InvoiceCategoryResponseDto> getPaidInvoicesByCategory(UUID userId, UUID unitFilter) {
+    public List<InvoiceCategoryResponseDto> getPaidInvoicesByCategory(UUID userId, UUID unitFilter, UUID cycleFilter) {
+        if (unitFilter == null) {
+            throw new IllegalArgumentException("unitId is required");
+        }
         UUID residentId = residentRepository.findResidentIdByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + userId));
 
         List<Invoice> invoices = invoiceRepository.findByPayerResidentId(residentId);
         log.debug("🔍 [InvoiceService] Found {} invoices for resident {}", invoices.size(), residentId);
-        if (unitFilter != null) {
-            invoices = invoices.stream()
-                    .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
-                    .collect(Collectors.toList());
-            log.debug("🔍 [InvoiceService] After unit filter {} invoices remain for unit {}", invoices.size(), unitFilter);
-        }
+        invoices = invoices.stream()
+                .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
+                .filter(invoice -> cycleFilter == null || cycleFilter.equals(invoice.getCycleId()))
+                .collect(Collectors.toList());
+        log.debug("🔍 [InvoiceService] After unit/cycle filter {} invoices remain for unit {}", invoices.size(), unitFilter);
         Map<String, List<InvoiceLineResponseDto>> grouped = new HashMap<>();
 
         for (Invoice invoice : invoices) {
@@ -838,6 +844,82 @@ public class InvoiceService {
 
     private String buildElevatorCardDescription(ElevatorCardPaymentRequest request) {
         StringBuilder builder = new StringBuilder("Đăng ký thẻ thang máy");
+        if (request.getApartmentNumber() != null && !request.getApartmentNumber().isBlank()) {
+            builder.append(" - Căn ").append(request.getApartmentNumber());
+        }
+        if (request.getBuildingName() != null && !request.getBuildingName().isBlank()) {
+            builder.append(" (").append(request.getBuildingName()).append(")");
+        }
+        if (request.getFullName() != null && !request.getFullName().isBlank()) {
+            builder.append(" - ").append(request.getFullName());
+        }
+        return builder.toString();
+    }
+
+    @Transactional
+    public InvoiceDto recordResidentCardPayment(ResidentCardPaymentRequest request) {
+        if (request.getUserId() == null) {
+            throw new IllegalArgumentException("Missing userId");
+        }
+
+        UUID residentId = residentRepository.findResidentIdByUserId(request.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + request.getUserId()));
+
+        BigDecimal amount = Optional.ofNullable(request.getAmount())
+                .filter(a -> a.compareTo(BigDecimal.ZERO) > 0)
+                .orElse(BigDecimal.valueOf(30000));
+
+        OffsetDateTime payDate = Optional.ofNullable(request.getPaymentDate())
+                .orElse(OffsetDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh")));
+        LocalDate serviceDate = payDate.toLocalDate();
+
+        String description = buildResidentCardDescription(request);
+
+        CreateInvoiceRequest createRequest = CreateInvoiceRequest.builder()
+                .dueDate(serviceDate)
+                .currency("VND")
+                .billToName(request.getFullName())
+                .payerUnitId(request.getUnitId())
+                .payerResidentId(residentId)
+                .lines(List.of(CreateInvoiceLineRequest.builder()
+                        .serviceDate(serviceDate)
+                        .description(description)
+                        .quantity(BigDecimal.ONE)
+                        .unit("lần")
+                        .unitPrice(amount)
+                        .taxRate(BigDecimal.ZERO)
+                        .serviceCode("RESIDENT_CARD")
+                        .externalRefType("RESIDENT_CARD")
+                        .externalRefId(request.getRegistrationId())
+                        .build()))
+                .build();
+
+        InvoiceDto created = createInvoice(createRequest);
+
+        Invoice invoice = invoiceRepository.findById(created.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Invoice not found: " + created.getId()));
+
+        invoice.setStatus(InvoiceStatus.PAID);
+        invoice.setPaymentGateway("VNPAY");
+        invoice.setPaidAt(payDate);
+        invoice.setVnpTransactionRef(request.getTransactionRef());
+        invoice.setVnpTransactionNo(request.getTransactionNo());
+        invoice.setVnpBankCode(request.getBankCode());
+        invoice.setVnpCardType(request.getCardType());
+        invoice.setVnpResponseCode(request.getResponseCode());
+        invoiceRepository.save(invoice);
+
+        Map<String, String> params = new HashMap<>();
+        if (request.getTransactionRef() != null) {
+            params.put("vnp_TxnRef", request.getTransactionRef());
+        }
+        notifyPaymentSuccess(invoice, params);
+
+        return toDto(invoice);
+    }
+
+    private String buildResidentCardDescription(ResidentCardPaymentRequest request) {
+        StringBuilder builder = new StringBuilder("Đăng ký thẻ cư dân");
         if (request.getApartmentNumber() != null && !request.getApartmentNumber().isBlank()) {
             builder.append(" - Căn ").append(request.getApartmentNumber());
         }

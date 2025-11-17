@@ -43,11 +43,12 @@ public class ResidentCardRegistrationController {
                     .body(Map.of("message", "Unauthorized"));
         }
         try {
+            // Default status = "PENDING" if not provided (vì Flutter luôn gửi PENDING)
+            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : "PENDING";
+            String finalPaymentStatus = (paymentStatus != null && !paymentStatus.isBlank()) ? paymentStatus.trim() : null;
+            
             return ResponseEntity.ok(
-                    registrationService.getRegistrationsForAdmin(
-                            status != null && !status.isBlank() ? status.trim() : null,
-                            paymentStatus != null && !paymentStatus.isBlank() ? paymentStatus.trim() : null
-                    )
+                    registrationService.getRegistrationsForAdmin(finalStatus, finalPaymentStatus)
             );
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
@@ -99,23 +100,29 @@ public class ResidentCardRegistrationController {
     public ResponseEntity<?> createRegistrationAndPay(@RequestBody ResidentCardRegistrationCreateDto dto,
                                                       @RequestHeader HttpHeaders headers,
                                                       HttpServletRequest request) {
+        log.info("📥 [ResidentCard] Nhận request tạo đăng ký và thanh toán: unitId={}, residentId={}", 
+                dto.unitId(), dto.residentId());
         UUID userId = jwtUtil.getUserIdFromHeaders(headers);
         if (userId == null) {
+            log.warn("⚠️ [ResidentCard] Unauthorized: không tìm thấy userId trong headers");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("message", "Unauthorized"));
         }
+        log.info("✅ [ResidentCard] UserId: {}", userId);
         try {
             ResidentCardPaymentResponse response = registrationService.createAndInitiatePayment(userId, dto, request);
             Map<String, Object> body = new HashMap<>();
             body.put("registrationId", response.registrationId() != null ? response.registrationId().toString() : null);
             body.put("paymentUrl", response.paymentUrl());
+            log.info("✅ [ResidentCard] Tạo đăng ký thành công: registrationId={}", response.registrationId());
             return ResponseEntity.ok(body);
         } catch (IllegalArgumentException | IllegalStateException e) {
+            log.warn("⚠️ [ResidentCard] Lỗi validation/state: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
             log.error("❌ [ResidentCard] Lỗi tạo đăng ký", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Không thể khởi tạo đăng ký thẻ cư dân"));
+                    .body(Map.of("message", "Không thể khởi tạo đăng ký thẻ cư dân: " + e.getMessage()));
         }
     }
 
@@ -178,7 +185,13 @@ public class ResidentCardRegistrationController {
         try {
             result = registrationService.handleVnpayCallback(params);
         } catch (Exception e) {
-            String fallback = "qhomeapp://vnpay-resident-card-result?success=false&message=" + e.getMessage();
+            log.error("❌ [ResidentCard] Lỗi xử lý callback redirect", e);
+            // URL encode message to avoid Unicode characters in HTTP header
+            String encodedMessage = java.net.URLEncoder.encode(
+                    e.getMessage() != null ? e.getMessage() : "Unknown error",
+                    java.nio.charset.StandardCharsets.UTF_8
+            );
+            String fallback = "qhomeapp://vnpay-resident-card-result?success=false&message=" + encodedMessage;
             response.sendRedirect(fallback);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("success", false, "message", e.getMessage()));
@@ -186,9 +199,12 @@ public class ResidentCardRegistrationController {
 
         Map<String, Object> body = buildVnpayResponse(result, params);
         String registrationId = result.registrationId() != null ? result.registrationId().toString() : "";
+        String responseCode = result.responseCode() != null 
+                ? java.net.URLEncoder.encode(result.responseCode(), java.nio.charset.StandardCharsets.UTF_8)
+                : "";
         String redirectUrl = new StringBuilder("qhomeapp://vnpay-resident-card-result")
                 .append("?registrationId=").append(registrationId)
-                .append("&responseCode=").append(result.responseCode() != null ? result.responseCode() : "")
+                .append("&responseCode=").append(responseCode)
                 .append("&success=").append(result.success())
                 .toString();
         response.sendRedirect(redirectUrl);

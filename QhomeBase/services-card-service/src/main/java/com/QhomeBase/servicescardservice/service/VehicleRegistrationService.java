@@ -7,6 +7,7 @@ import com.QhomeBase.servicescardservice.model.RegisterServiceImage;
 import com.QhomeBase.servicescardservice.model.RegisterServiceRequest;
 import com.QhomeBase.servicescardservice.repository.RegisterServiceImageRepository;
 import com.QhomeBase.servicescardservice.repository.RegisterServiceRequestRepository;
+import com.QhomeBase.servicescardservice.config.VnpayProperties;
 import com.QhomeBase.servicescardservice.service.vnpay.VnpayService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -44,17 +45,17 @@ public class VehicleRegistrationService {
     private static final BigDecimal REGISTRATION_FEE = BigDecimal.valueOf(30000);
     private static final int MAX_IMAGES = 6;
     private static final String SERVICE_TYPE = "VEHICLE_REGISTRATION";
-    private static final String STATUS_REVIEW_PENDING = "REVIEW_PENDING";
     private static final String STATUS_READY_FOR_PAYMENT = "READY_FOR_PAYMENT";
     private static final String STATUS_PAYMENT_PENDING = "PAYMENT_PENDING";
-    private static final String STATUS_COMPLETED = "COMPLETED";
-    private static final String STATUS_REJECTED = "REJECTED";
+    private static final String STATUS_PENDING_REVIEW = "PENDING";
     private static final String PAYMENT_VNPAY = "VNPAY";
 
     private final RegisterServiceRequestRepository requestRepository;
     private final RegisterServiceImageRepository imageRepository;
     private final VnpayService vnpayService;
+    private final VnpayProperties vnpayProperties;
     private final BillingClient billingClient;
+    private final ResidentUnitLookupService residentUnitLookupService;
     private final NotificationClient notificationClient;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
@@ -68,25 +69,48 @@ public class VehicleRegistrationService {
 
     public List<String> storeImages(List<MultipartFile> files) throws IOException {
         if (files == null || files.isEmpty()) {
+            log.warn("⚠️ [VehicleRegistration] storeImages: Danh sách file rỗng");
             return List.of();
         }
         if (files.size() > MAX_IMAGES) {
             throw new IllegalArgumentException("Chỉ được tải tối đa " + MAX_IMAGES + " ảnh");
         }
+        
+        log.info("📤 [VehicleRegistration] storeImages: Bắt đầu lưu {} file", files.size());
         Path uploadDir = ensureUploadDir();
+        log.debug("📁 [VehicleRegistration] Upload directory: {}", uploadDir.toAbsolutePath());
+        
         List<String> urls = new ArrayList<>();
-        for (MultipartFile file : files) {
-            String originalFilename = StringUtils.cleanPath(Objects.requireNonNull(file.getOriginalFilename()));
-            String extension = "";
-            int dot = originalFilename.lastIndexOf('.');
-            if (dot >= 0) {
-                extension = originalFilename.substring(dot);
+        for (int i = 0; i < files.size(); i++) {
+            MultipartFile file = files.get(i);
+            try {
+                String originalFilename = StringUtils.cleanPath(Objects.requireNonNull(file.getOriginalFilename()));
+                log.debug("📄 [VehicleRegistration] Đang xử lý file {}/{}: {} ({} bytes)", 
+                    i + 1, files.size(), originalFilename, file.getSize());
+                
+                String extension = "";
+                int dot = originalFilename.lastIndexOf('.');
+                if (dot >= 0) {
+                    extension = originalFilename.substring(dot);
+                }
+                String filename = UUID.randomUUID() + extension;
+                Path target = uploadDir.resolve(filename);
+                
+                long startTime = System.currentTimeMillis();
+                Files.copy(file.getInputStream(), target);
+                long duration = System.currentTimeMillis() - startTime;
+                log.debug("✅ [VehicleRegistration] Đã lưu file {} trong {}ms: {}", 
+                    i + 1, duration, filename);
+                
+                urls.add("/uploads/vehicle/" + filename);
+            } catch (IOException e) {
+                log.error("❌ [VehicleRegistration] Lỗi khi lưu file {}/{}: {}", 
+                    i + 1, files.size(), file.getOriginalFilename(), e);
+                throw new IOException("Không thể lưu file \"" + file.getOriginalFilename() + "\": " + e.getMessage(), e);
             }
-            String filename = UUID.randomUUID() + extension;
-            Path target = uploadDir.resolve(filename);
-            Files.copy(file.getInputStream(), target);
-            urls.add("/uploads/vehicle/" + filename);
         }
+        
+        log.info("✅ [VehicleRegistration] storeImages: Đã lưu thành công {} file", urls.size());
         return urls;
     }
 
@@ -107,10 +131,18 @@ public class VehicleRegistrationService {
                 .vehicleColor(normalize(dto.vehicleColor()))
                 .apartmentNumber(normalize(dto.apartmentNumber()))
                 .buildingName(normalize(dto.buildingName()))
-                .status(STATUS_REVIEW_PENDING)
+                .status(STATUS_READY_FOR_PAYMENT)
                 .paymentStatus("UNPAID")
                 .paymentAmount(REGISTRATION_FEE)
                 .build();
+
+        applyResolvedAddressForUser(
+                request,
+                userId,
+                dto.unitId(),
+                dto.apartmentNumber() != null ? dto.apartmentNumber() : request.getApartmentNumber(),
+                dto.buildingName() != null ? dto.buildingName() : request.getBuildingName()
+        );
 
         if (dto.imageUrls() != null) {
             dto.imageUrls().stream()
@@ -122,8 +154,7 @@ public class VehicleRegistrationService {
                     .forEach(request::addImage);
         }
 
-        RegisterServiceRequest saved = Objects.requireNonNull(requestRepository.save(request),
-                "Không thể tạo đăng ký xe mới");
+        RegisterServiceRequest saved = requestRepository.save(request);
         return toDto(saved);
     }
 
@@ -146,13 +177,19 @@ public class VehicleRegistrationService {
         request.setLicensePlate(normalize(dto.licensePlate()));
         request.setVehicleBrand(normalize(dto.vehicleBrand()));
         request.setVehicleColor(normalize(dto.vehicleColor()));
-        request.setApartmentNumber(normalize(dto.apartmentNumber()));
-        request.setBuildingName(normalize(dto.buildingName()));
-        request.setStatus(STATUS_REVIEW_PENDING);
+        request.setStatus(STATUS_READY_FOR_PAYMENT);
         request.setAdminNote(null);
         request.setApprovedAt(null);
         request.setApprovedBy(null);
         request.setRejectionReason(null);
+
+        applyResolvedAddressForUser(
+                request,
+                userId,
+                dto.unitId(),
+                dto.apartmentNumber(),
+                dto.buildingName()
+        );
 
         imageRepository.deleteByRegisterServiceRequestId(request.getId());
         request.getImages().clear();
@@ -178,12 +215,8 @@ public class VehicleRegistrationService {
         if (!Objects.equals(registration.getPaymentStatus(), "UNPAID")) {
             throw new IllegalStateException("Đăng ký đã thanh toán hoặc đang xử lý");
         }
-        if (!Objects.equals(registration.getStatus(), STATUS_READY_FOR_PAYMENT)) {
-            throw new IllegalStateException("Đăng ký chưa được duyệt. Vui lòng chờ quản trị viên phê duyệt");
-        }
-
         registration.setStatus(STATUS_PAYMENT_PENDING);
-        registration.setPaymentStatus("PAYMENT_PENDING");
+        registration.setPaymentStatus("PAYMENT_APPROVAL");
         registration.setPaymentGateway(PAYMENT_VNPAY);
         RegisterServiceRequest saved = requestRepository.save(registration);
 
@@ -195,9 +228,14 @@ public class VehicleRegistrationService {
 
         String clientIp = resolveClientIp(request);
         String orderInfo = "Thanh toán đăng ký xe " + (saved.getLicensePlate() != null ? saved.getLicensePlate() : saved.getId());
-        String paymentUrl = vnpayService.createPaymentUrl(orderId, orderInfo, REGISTRATION_FEE, clientIp);
+        String returnUrl = vnpayProperties.getReturnUrl();
+        var paymentResult = vnpayService.createPaymentUrlWithRef(orderId, orderInfo, REGISTRATION_FEE, clientIp, returnUrl);
+        
+        // Save transaction reference to database for fallback lookup
+        saved.setVnpayTransactionRef(paymentResult.transactionRef());
+        requestRepository.save(saved);
 
-        return new VehicleRegistrationPaymentResponse(saved.getId(), paymentUrl);
+        return new VehicleRegistrationPaymentResponse(saved.getId(), paymentResult.paymentUrl());
     }
 
     @Transactional
@@ -242,25 +280,80 @@ public class VehicleRegistrationService {
     }
 
     @Transactional
-    public RegisterServiceRequestDto approveRegistration(UUID registrationId, UUID adminId, String adminNote) {
+    public RegisterServiceRequestDto approveRegistration(UUID registrationId, UUID adminId, String adminNote, String issueMessage) {
         RegisterServiceRequest registration = requestRepository.findById(registrationId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
 
-        if (STATUS_COMPLETED.equalsIgnoreCase(registration.getStatus())) {
-            throw new IllegalStateException("Đăng ký đã được hoàn tất");
-        }
-        if (STATUS_PAYMENT_PENDING.equalsIgnoreCase(registration.getStatus())) {
-            throw new IllegalStateException("Đăng ký đang xử lý thanh toán");
+        if (!STATUS_PENDING_REVIEW.equalsIgnoreCase(registration.getStatus()) 
+                && !STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(registration.getStatus())) {
+            throw new IllegalStateException("Đăng ký không ở trạng thái chờ duyệt. Trạng thái hiện tại: " + registration.getStatus());
         }
 
-        registration.setStatus(STATUS_READY_FOR_PAYMENT);
-        registration.setAdminNote(adminNote);
+        OffsetDateTime now = OffsetDateTime.now(ZoneId.of("UTC"));
+        registration.setStatus("APPROVED");
         registration.setApprovedBy(adminId);
-        registration.setApprovedAt(OffsetDateTime.now());
-        registration.setRejectionReason(null);
+        registration.setApprovedAt(now);
+        registration.setAdminNote(adminNote);
+        registration.setUpdatedAt(now);
+
         RegisterServiceRequest saved = requestRepository.save(registration);
-        notifyResidentDecision(saved, true, adminNote);
+
+        // Send notification to resident
+        sendVehicleCardApprovalNotification(saved, issueMessage);
+
+        log.info("✅ [VehicleRegistration] Admin {} đã approve đăng ký {}", adminId, registrationId);
         return toDto(saved);
+    }
+
+    private void sendVehicleCardApprovalNotification(RegisterServiceRequest registration, String issueMessage) {
+        try {
+            // Resolve residentId from userId and unitId
+            UUID residentId = residentUnitLookupService.resolveByUser(registration.getUserId(), registration.getUnitId())
+                    .map(ResidentUnitLookupService.AddressInfo::residentId)
+                    .orElse(null);
+
+            if (residentId == null) {
+                log.warn("⚠️ [VehicleRegistration] Không thể tìm thấy residentId cho userId={}, unitId={}, bỏ qua notification", 
+                        registration.getUserId(), registration.getUnitId());
+                return;
+            }
+
+            // Resolve buildingId from unitId if needed
+            // Note: AddressInfo doesn't have buildingId, so we pass null and let the notification service handle it
+            UUID buildingId = null;
+
+            String title = "Thẻ xe đã được duyệt";
+            String message = issueMessage != null && !issueMessage.isBlank() 
+                    ? issueMessage 
+                    : String.format("Thẻ xe %s của bạn đã được duyệt. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", 
+                            registration.getLicensePlate() != null ? registration.getLicensePlate() : "");
+
+            Map<String, String> data = new HashMap<>();
+            data.put("cardType", "VEHICLE_CARD");
+            data.put("registrationId", registration.getId().toString());
+            if (registration.getLicensePlate() != null) {
+                data.put("licensePlate", registration.getLicensePlate());
+            }
+            if (registration.getApartmentNumber() != null) {
+                data.put("apartmentNumber", registration.getApartmentNumber());
+            }
+
+            notificationClient.sendResidentNotification(
+                    residentId,
+                    buildingId,
+                    "CARD_APPROVED",
+                    title,
+                    message,
+                    registration.getId(),
+                    "VEHICLE_CARD_REGISTRATION",
+                    data
+            );
+
+            log.info("✅ [VehicleRegistration] Đã gửi notification approval cho residentId: {}", residentId);
+        } catch (Exception e) {
+            log.error("❌ [VehicleRegistration] Không thể gửi notification approval cho registrationId: {}", 
+                    registration.getId(), e);
+        }
     }
 
     @Transactional
@@ -268,39 +361,72 @@ public class VehicleRegistrationService {
         RegisterServiceRequest registration = requestRepository.findById(registrationId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
 
-        if (STATUS_COMPLETED.equalsIgnoreCase(registration.getStatus())) {
-            throw new IllegalStateException("Đăng ký đã được hoàn tất");
-        }
-        if (STATUS_PAYMENT_PENDING.equalsIgnoreCase(registration.getStatus())) {
-            throw new IllegalStateException("Đăng ký đang xử lý thanh toán");
+        if ("REJECTED".equalsIgnoreCase(registration.getStatus())) {
+            throw new IllegalStateException("Đăng ký đã bị từ chối");
         }
 
-        registration.setStatus(STATUS_REJECTED);
+        OffsetDateTime now = OffsetDateTime.now(ZoneId.of("UTC"));
+        registration.setStatus("REJECTED");
         registration.setAdminNote(reason);
         registration.setRejectionReason(reason);
-        registration.setApprovedBy(adminId);
-        registration.setApprovedAt(OffsetDateTime.now());
-        registration.setPaymentStatus("UNPAID");
+        registration.setUpdatedAt(now);
+
         RegisterServiceRequest saved = requestRepository.save(registration);
-        notifyResidentDecision(saved, false, reason);
+
+        log.info("✅ [VehicleRegistration] Admin {} đã reject đăng ký {}", adminId, registrationId);
         return toDto(saved);
     }
 
     @Transactional
     public VehicleRegistrationPaymentResult handleVnpayCallback(Map<String, String> params) {
+        if (params == null || params.isEmpty()) {
+            throw new IllegalArgumentException("Missing callback data from VNPAY");
+        }
+
         String txnRef = params.get("vnp_TxnRef");
         if (txnRef == null || !txnRef.contains("_")) {
-            throw new IllegalArgumentException("Mã giao dịch không hợp lệ");
+            throw new IllegalArgumentException("Invalid transaction reference");
         }
 
-        Long orderId = Long.parseLong(txnRef.split("_")[0]);
+        Long orderId;
+        try {
+            orderId = Long.parseLong(txnRef.split("_")[0]);
+        } catch (NumberFormatException e) {
+            log.error("❌ [VehicleRegistration] Cannot parse orderId from txnRef: {}", txnRef);
+            throw new IllegalArgumentException("Invalid transaction reference format");
+        }
+
         UUID registrationId = orderIdToRegistrationId.get(orderId);
-        if (registrationId == null) {
-            throw new IllegalArgumentException("Không tìm thấy đăng ký tương ứng với orderId: " + orderId);
+        RegisterServiceRequest registration = null;
+
+        // Try to find registration by orderId map first
+        if (registrationId != null) {
+            var optional = requestRepository.findById(registrationId);
+            if (optional.isPresent()) {
+                registration = optional.get();
+                log.info("✅ [VehicleRegistration] Found registration by orderId map: registrationId={}, orderId={}", 
+                        registrationId, orderId);
+            }
         }
 
-        RegisterServiceRequest registration = requestRepository.findById(registrationId)
-                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký"));
+        // Fallback: try to find by transaction reference
+        if (registration == null) {
+            var optionalByTxnRef = requestRepository.findByVnpayTransactionRef(txnRef);
+            if (optionalByTxnRef.isPresent()) {
+                registration = optionalByTxnRef.get();
+                log.info("✅ [VehicleRegistration] Found registration by txnRef: registrationId={}, txnRef={}", 
+                        registration.getId(), txnRef);
+            }
+        }
+
+        // If still not found, throw exception with orderId for debugging
+        if (registration == null) {
+            log.error("❌ [VehicleRegistration] Cannot find registration: orderId={}, txnRef={}, mapSize={}", 
+                    orderId, txnRef, orderIdToRegistrationId.size());
+            throw new IllegalArgumentException(
+                    String.format("Registration not found for orderId: %d, txnRef: %s", orderId, txnRef)
+            );
+        }
 
         boolean signatureValid = vnpayService.validateReturn(params);
         String responseCode = params.get("vnp_ResponseCode");
@@ -310,7 +436,14 @@ public class VehicleRegistrationService {
 
         if (signatureValid && "00".equals(responseCode) && "00".equals(transactionStatus)) {
             registration.setPaymentStatus("PAID");
-            registration.setStatus(STATUS_COMPLETED);
+            applyResolvedAddressForUser(
+                    registration,
+                    registration.getUserId(),
+                    registration.getUnitId(),
+                    registration.getApartmentNumber(),
+                    registration.getBuildingName()
+            );
+            registration.setStatus(STATUS_PENDING_REVIEW);
             registration.setPaymentGateway(PAYMENT_VNPAY);
             OffsetDateTime payDate = parsePayDate(params.get("vnp_PayDate"));
             registration.setPaymentDate(payDate);
@@ -346,6 +479,22 @@ public class VehicleRegistrationService {
         return new VehicleRegistrationPaymentResult(registrationId, false, responseCode, signatureValid);
     }
 
+    private void applyResolvedAddressForUser(RegisterServiceRequest request,
+                                             UUID userId,
+                                             UUID unitId,
+                                             String fallbackApartment,
+                                             String fallbackBuilding) {
+        residentUnitLookupService.resolveByUser(userId, unitId).ifPresentOrElse(info -> {
+            String resolvedApartment = info.apartmentNumber();
+            String resolvedBuilding = info.buildingName();
+            request.setApartmentNumber(normalize(resolvedApartment != null ? resolvedApartment : fallbackApartment));
+            request.setBuildingName(normalize(resolvedBuilding != null ? resolvedBuilding : fallbackBuilding));
+        }, () -> {
+            request.setApartmentNumber(normalize(fallbackApartment));
+            request.setBuildingName(normalize(fallbackBuilding));
+        });
+    }
+
     private OffsetDateTime parsePayDate(String payDate) {
         if (payDate == null || payDate.isBlank()) {
             return OffsetDateTime.now();
@@ -359,32 +508,10 @@ public class VehicleRegistrationService {
         }
     }
 
-    private void notifyResidentDecision(RegisterServiceRequest request, boolean approved, String note) {
-        if (request.getUserId() == null) {
-            return;
-        }
-        String title = approved ? "Đăng ký thẻ xe đã được duyệt" : "Đăng ký thẻ xe bị từ chối";
-        String body = approved
-                ? "Yêu cầu của bạn đã được duyệt. Vui lòng tiếp tục thanh toán nếu chưa hoàn tất."
-                : ("Yêu cầu của bạn đã bị từ chối"
-                + (StringUtils.hasText(note) ? (": " + note.trim()) : "."));
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("type", approved ? "VEHICLE_REGISTRATION_APPROVED" : "VEHICLE_REGISTRATION_REJECTED");
-        data.put("registrationId", request.getId().toString());
-        data.put("status", request.getStatus());
-        if (StringUtils.hasText(note) && !approved) {
-            data.put("reason", note.trim());
-        }
-
-        try {
-            notificationClient.sendResidentNotification(request.getUserId(), title, body, data);
-        } catch (Exception e) {
-            log.warn("⚠️ [VehicleRegistration] Failed to notify resident {}: {}", request.getUserId(), e.getMessage());
-        }
-    }
-
     private void validatePayload(RegisterServiceRequestCreateDto dto) {
+        if (dto.unitId() == null) {
+            throw new IllegalArgumentException("Căn hộ là bắt buộc");
+        }
         if (dto.imageUrls() != null && dto.imageUrls().size() > MAX_IMAGES) {
             throw new IllegalArgumentException("Chỉ được chọn tối đa " + MAX_IMAGES + " ảnh");
         }
@@ -393,12 +520,6 @@ public class VehicleRegistrationService {
         }
         if (dto.vehicleType() == null || dto.vehicleType().isBlank()) {
             throw new IllegalArgumentException("Loại phương tiện là bắt buộc");
-        }
-        if (dto.apartmentNumber() == null || dto.apartmentNumber().isBlank()) {
-            throw new IllegalArgumentException("Số căn hộ là bắt buộc");
-        }
-        if (dto.buildingName() == null || dto.buildingName().isBlank()) {
-            throw new IllegalArgumentException("Tòa nhà là bắt buộc");
         }
     }
 

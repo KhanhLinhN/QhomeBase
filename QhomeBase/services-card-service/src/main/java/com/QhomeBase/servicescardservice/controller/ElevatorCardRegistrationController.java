@@ -43,11 +43,12 @@ public class ElevatorCardRegistrationController {
                     .body(Map.of("message", "Unauthorized"));
         }
         try {
+            // Default status = "PENDING" if not provided (vì Flutter luôn gửi PENDING)
+            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : "PENDING";
+            String finalPaymentStatus = (paymentStatus != null && !paymentStatus.isBlank()) ? paymentStatus.trim() : null;
+            
             return ResponseEntity.ok(
-                    registrationService.getRegistrationsForAdmin(
-                            status != null && !status.isBlank() ? status.trim() : null,
-                            paymentStatus != null && !paymentStatus.isBlank() ? paymentStatus.trim() : null
-                    )
+                    registrationService.getRegistrationsForAdmin(finalStatus, finalPaymentStatus)
             );
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
@@ -178,7 +179,13 @@ public class ElevatorCardRegistrationController {
         try {
             result = registrationService.handleVnpayCallback(params);
         } catch (Exception e) {
-            String fallback = "qhomeapp://vnpay-elevator-card-result?success=false&message=" + e.getMessage();
+            log.error("❌ [ElevatorCard] Lỗi xử lý callback redirect", e);
+            // URL encode message to avoid Unicode characters in HTTP header
+            String encodedMessage = java.net.URLEncoder.encode(
+                    e.getMessage() != null ? e.getMessage() : "Unknown error",
+                    java.nio.charset.StandardCharsets.UTF_8
+            );
+            String fallback = "qhomeapp://vnpay-elevator-card-result?success=false&message=" + encodedMessage;
             response.sendRedirect(fallback);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("success", false, "message", e.getMessage()));
@@ -186,9 +193,12 @@ public class ElevatorCardRegistrationController {
 
         Map<String, Object> body = buildVnpayResponse(result, params);
         String registrationId = result.registrationId() != null ? result.registrationId().toString() : "";
+        String responseCode = result.responseCode() != null 
+                ? java.net.URLEncoder.encode(result.responseCode(), java.nio.charset.StandardCharsets.UTF_8)
+                : "";
         String redirectUrl = new StringBuilder("qhomeapp://vnpay-elevator-card-result")
                 .append("?registrationId=").append(registrationId)
-                .append("&responseCode=").append(result.responseCode() != null ? result.responseCode() : "")
+                .append("&responseCode=").append(responseCode)
                 .append("&success=").append(result.success())
                 .toString();
         response.sendRedirect(redirectUrl);

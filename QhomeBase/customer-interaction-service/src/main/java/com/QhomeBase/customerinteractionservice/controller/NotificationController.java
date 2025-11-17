@@ -115,6 +115,14 @@ public class NotificationController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/internal")
+    public ResponseEntity<Void> createInternalNotification(
+            @Valid @RequestBody com.QhomeBase.customerinteractionservice.dto.notification.InternalNotificationRequest request) {
+        
+        notificationService.createInternalNotification(request);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
         return ResponseEntity

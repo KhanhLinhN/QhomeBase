@@ -47,3 +47,11 @@ dist/
 **/generated-sources/
 **/generated-test-sources/
 
+# Firebase Service Account Keys (Security - Do not commit)
+# Ignore tất cả các file Firebase service account JSON
+**/*firebase*service*account*.json
+**/qhomeapp-firebase-adminsdk-*.json
+**/*-firebase-adminsdk-*.json
+**/service-account*.json
+**/firebase-*.json
+

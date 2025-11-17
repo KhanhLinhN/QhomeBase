@@ -6,5 +6,6 @@ public enum NotificationType {
     BILL,
     CONTRACT,
     METER_READING,
-    SYSTEM
+    SYSTEM,
+    CARD_APPROVED
 }

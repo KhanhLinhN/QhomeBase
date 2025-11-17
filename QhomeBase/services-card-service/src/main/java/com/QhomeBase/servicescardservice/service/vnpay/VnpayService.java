@@ -23,10 +23,14 @@ public class VnpayService {
     private final VnpayProperties properties;
 
     public String createPaymentUrl(Long orderId, String orderInfo, BigDecimal amountVnd, String clientIp) {
-        return createPaymentUrl(orderId, orderInfo, amountVnd, clientIp, properties.getReturnUrl());
+        return createPaymentUrlWithRef(orderId, orderInfo, amountVnd, clientIp, properties.getReturnUrl()).paymentUrl();
     }
 
     public String createPaymentUrl(Long orderId, String orderInfo, BigDecimal amountVnd, String clientIp, String returnUrl) {
+        return createPaymentUrlWithRef(orderId, orderInfo, amountVnd, clientIp, returnUrl).paymentUrl();
+    }
+
+    public VnpayPaymentResult createPaymentUrlWithRef(Long orderId, String orderInfo, BigDecimal amountVnd, String clientIp, String returnUrl) {
         try {
             long amount = amountVnd.multiply(BigDecimal.valueOf(100)).longValue();
 
@@ -52,7 +56,7 @@ public class VnpayService {
 
             String paymentUrl = properties.getVnpUrl() + "?" + query + "&vnp_SecureHash=" + secureHash;
             log.info("💳 [VNPAY] Tạo payment URL: orderId={}, amount={}, ip={}, txnRef={}", orderId, amountVnd, clientIp, txnRef);
-            return paymentUrl;
+            return new VnpayPaymentResult(paymentUrl, txnRef);
         } catch (Exception e) {
             log.error("❌ [VNPAY] Lỗi khi tạo URL thanh toán", e);
             throw new RuntimeException("Không thể tạo URL thanh toán VNPAY", e);

@@ -108,5 +108,17 @@ public class NotificationDeviceTokenService {
                 .distinct()
                 .collect(Collectors.toList());
     }
+
+    public List<String> resolveTokensForResident(UUID residentId) {
+        if (residentId == null) {
+            return new ArrayList<>();
+        }
+        List<NotificationDeviceToken> tokens = repository.findForResident(residentId);
+        return tokens.stream()
+                .filter(token -> !token.isDisabled())
+                .map(NotificationDeviceToken::getToken)
+                .distinct()
+                .collect(Collectors.toList());
+    }
 }
 
