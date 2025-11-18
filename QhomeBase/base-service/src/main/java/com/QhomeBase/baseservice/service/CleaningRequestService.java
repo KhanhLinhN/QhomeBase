@@ -1,5 +1,6 @@
 package com.QhomeBase.baseservice.service;
 
+import com.QhomeBase.baseservice.dto.AdminServiceRequestActionDto;
 import com.QhomeBase.baseservice.dto.CleaningRequestDto;
 import com.QhomeBase.baseservice.dto.CreateCleaningRequestDto;
 import com.QhomeBase.baseservice.model.CleaningRequest;
@@ -20,8 +21,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -47,6 +47,7 @@ public class CleaningRequestService {
     private final ResidentRepository residentRepository;
     private final HouseholdRepository householdRepository;
     private final HouseholdMemberRepository householdMemberRepository;
+    private final NotificationClient notificationClient;
 
     @SuppressWarnings("null")
     public CleaningRequestDto create(UUID userId, CreateCleaningRequestDto dto) {
@@ -102,6 +103,25 @@ public class CleaningRequestService {
         return toDto(saved);
     }
 
+    @SuppressWarnings("null")
+    public List<CleaningRequestDto> getMyRequests(UUID userId) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        List<CleaningRequest> requests = cleaningRequestRepository
+                .findByResidentIdOrderByCreatedAtDesc(resident.getId());
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    public List<CleaningRequestDto> getPendingRequests() {
+        List<CleaningRequest> requests = cleaningRequestRepository
+                .findByStatusOrderByCreatedAtAsc("PENDING");
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
     private boolean isResidentInHousehold(Resident resident, Household household) {
         if (resident == null || household == null) {
             return false;
@@ -135,6 +155,62 @@ public class CleaningRequestService {
                 entity.getStatus(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
+        );
+    }
+
+    @SuppressWarnings("null")
+    public CleaningRequestDto approveRequest(UUID adminId, UUID requestId, AdminServiceRequestActionDto dto) {
+        CleaningRequest request = cleaningRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Cleaning request not found"));
+
+        if (!"PENDING".equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Only pending requests can be approved");
+        }
+
+        request.setStatus("APPROVED");
+        CleaningRequest saved = cleaningRequestRepository.save(request);
+        notifyCleaningApproval(saved, dto != null ? dto.note() : null);
+        return toDto(saved);
+    }
+
+    private void notifyCleaningApproval(CleaningRequest request, String note) {
+        if (request.getResidentId() == null) {
+            log.warn("⚠️ [CleaningRequest] Missing residentId for request {}", request.getId());
+            return;
+        }
+
+        Unit unit = null;
+        UUID unitId = request.getUnitId();
+        if (unitId != null) {
+            unit = unitRepository.findById(unitId).orElse(null);
+        }
+
+        String message = "Yêu cầu dọn dẹp \"" + request.getCleaningType() + "\" đã được duyệt.";
+        if (note != null && !note.isBlank()) {
+            message += " " + note.trim();
+        } else {
+            message += " Nhân viên sẽ liên hệ để sắp xếp lịch phù hợp.";
+        }
+
+        Map<String, String> data = new HashMap<>();
+        data.put("entity", "CLEANING_REQUEST");
+        data.put("requestId", request.getId().toString());
+        data.put("status", request.getStatus());
+        data.put("location", request.getLocation());
+
+        UUID buildingId = (unit != null && unit.getBuilding() != null)
+                ? unit.getBuilding().getId()
+                : null;
+
+        notificationClient.sendResidentNotification(
+                request.getResidentId(),
+                buildingId,
+                "REQUEST",
+                "Yêu cầu dọn dẹp đã được duyệt",
+                message,
+                request.getId(),
+                "CLEANING_REQUEST",
+                data
         );
     }
 }
