@@ -212,8 +212,13 @@ public class VehicleRegistrationService {
         RegisterServiceRequest registration = requestRepository.findByIdAndUserId(registrationId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
 
-        if (!Objects.equals(registration.getPaymentStatus(), "UNPAID")) {
-            throw new IllegalStateException("Đăng ký đã thanh toán hoặc đang xử lý");
+        // Cho phép tiếp tục thanh toán nếu payment_status là UNPAID hoặc PAYMENT_PENDING/PAYMENT_APPROVAL
+        // (PAYMENT_PENDING/PAYMENT_APPROVAL có thể xảy ra khi user chưa hoàn tất thanh toán trong 10 phút)
+        String paymentStatus = registration.getPaymentStatus();
+        if (!Objects.equals(paymentStatus, "UNPAID") && 
+            !Objects.equals(paymentStatus, "PAYMENT_PENDING") && 
+            !Objects.equals(paymentStatus, "PAYMENT_APPROVAL")) {
+            throw new IllegalStateException("Đăng ký đã thanh toán hoặc không thể tiếp tục thanh toán");
         }
         registration.setStatus(STATUS_PAYMENT_PENDING);
         registration.setPaymentStatus("PAYMENT_APPROVAL");

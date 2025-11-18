@@ -120,6 +120,77 @@ public class ElevatorCardRegistrationController {
         }
     }
 
+    @PostMapping("/{registrationId}/resume-payment")
+    public ResponseEntity<?> resumePayment(@PathVariable String registrationId,
+                                          @RequestHeader HttpHeaders headers,
+                                          HttpServletRequest request) {
+        UUID userId = jwtUtil.getUserIdFromHeaders(headers);
+        if (userId == null) {
+            log.warn("⚠️ [ElevatorCard] Unauthorized request to resumePayment");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        
+        try {
+            UUID regUuid = UUID.fromString(registrationId);
+            log.debug("🔍 [ElevatorCard] resumePayment request: registrationId={}, userId={}", regUuid, userId);
+            
+            ElevatorCardPaymentResponse response = registrationService.initiatePayment(userId, regUuid, request);
+            Map<String, Object> body = new HashMap<>();
+            body.put("registrationId", response.registrationId() != null ? response.registrationId().toString() : null);
+            body.put("paymentUrl", response.paymentUrl());
+            
+            log.info("✅ [ElevatorCard] resumePayment success: registrationId={}", regUuid);
+            return ResponseEntity.ok(body);
+        } catch (IllegalArgumentException e) {
+            log.warn("⚠️ [ElevatorCard] Invalid argument: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (IllegalStateException e) {
+            log.warn("⚠️ [ElevatorCard] IllegalStateException: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            log.error("❌ [ElevatorCard] Lỗi tiếp tục thanh toán", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Không thể tiếp tục thanh toán: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/max-cards")
+    public ResponseEntity<?> getMaxCardsForUnit(@RequestParam UUID unitId,
+                                                @RequestHeader HttpHeaders headers) {
+        UUID userId = jwtUtil.getUserIdFromHeaders(headers);
+        if (userId == null) {
+            log.warn("⚠️ [ElevatorCard] Unauthorized request to getMaxCardsForUnit");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        
+        if (unitId == null) {
+            log.warn("⚠️ [ElevatorCard] getMaxCardsForUnit called with null unitId");
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", "unitId không được để trống"));
+        }
+        
+        log.debug("🔍 [ElevatorCard] getMaxCardsForUnit request: unitId={}, userId={}", unitId, userId);
+        
+        try {
+            Map<String, Object> result = registrationService.getMaxCardsForUnit(unitId);
+            log.info("✅ [ElevatorCard] getMaxCardsForUnit success: {}", result);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            log.warn("⚠️ [ElevatorCard] Invalid argument: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (IllegalStateException e) {
+            log.error("❌ [ElevatorCard] IllegalStateException khi lấy số lượng thẻ tối đa: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            log.error("❌ [ElevatorCard] Lỗi không mong đợi khi lấy số lượng thẻ tối đa", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Không thể lấy số lượng thẻ tối đa: " + e.getMessage()));
+        }
+    }
+
     @GetMapping("/{registrationId}")
     public ResponseEntity<?> getRegistration(@PathVariable String registrationId,
                                              @RequestHeader HttpHeaders headers) {

@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 import jakarta.persistence.criteria.Predicate;
 
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,12 @@ public class requestService {
     private final processingLogRepository processingLogRepository;
     private final BaseServiceClient baseServiceClient;
     private static final int PAGE_SIZE = 5;
+
+    @Value("${request.rate-limit.max-per-hour:5}")
+    private int maxRequestsPerHour;
+
+    @Value("${request.rate-limit.max-per-day:10}")
+    private int maxRequestsPerDay;
 
     public requestService(requestRepository requestRepository,
                           processingLogRepository processingLogRepository,
@@ -139,6 +146,9 @@ public class requestService {
             throw new IllegalArgumentException("Resident information could not be resolved for user: " + userId);
         }
 
+        // Kiểm tra rate limit: số lượng request trong 1 giờ và 24 giờ
+        validateRequestRateLimit(resident.id());
+
         Request entity = new Request();
         entity.setId(dto.getId());
         entity.setRequestCode(dto.getRequestCode() != null ? dto.getRequestCode() : generateRequestCode());
@@ -147,7 +157,10 @@ public class requestService {
         entity.setImagePath(dto.getImagePath());
         entity.setTitle(dto.getTitle());
         entity.setContent(dto.getContent());
-        entity.setStatus(StringUtils.hasText(dto.getStatus()) ? dto.getStatus() : "Pending");
+        // Đảm bảo status mặc định là "Pending" (PENDING) khi tạo request
+        entity.setStatus(StringUtils.hasText(dto.getStatus()) 
+                ? (dto.getStatus().equalsIgnoreCase("PENDING") ? "Pending" : dto.getStatus())
+                : "Pending");
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         entity.setCreatedAt(now);
         entity.setUpdatedAt(now);
@@ -162,6 +175,37 @@ public class requestService {
         newLog.setCreatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
         processingLogRepository.save(newLog);
         return this.mapToDto(savedRequest);
+    }
+
+    private void validateRequestRateLimit(UUID residentId) {
+        LocalDateTime now = LocalDateTime.now();
+        
+        // Kiểm tra số lượng request trong 1 giờ qua
+        LocalDateTime oneHourAgo = now.minusHours(1);
+        long requestsInLastHour = requestRepository.countRequestsByResidentSince(residentId, oneHourAgo);
+        
+        if (requestsInLastHour >= maxRequestsPerHour) {
+            throw new IllegalStateException(
+                String.format("Bạn đã tạo quá nhiều yêu cầu. Vui lòng đợi 60 phút trước khi tạo yêu cầu mới. " +
+                            "(Giới hạn: %d yêu cầu/giờ. Bạn đã tạo %d yêu cầu trong giờ qua)", 
+                            maxRequestsPerHour, requestsInLastHour)
+            );
+        }
+
+        // Kiểm tra số lượng request trong 24 giờ qua
+        LocalDateTime oneDayAgo = now.minusDays(1);
+        long requestsInLastDay = requestRepository.countRequestsByResidentSince(residentId, oneDayAgo);
+        
+        if (requestsInLastDay >= maxRequestsPerDay) {
+            throw new IllegalStateException(
+                String.format("Bạn đã đạt giới hạn số lượng yêu cầu trong ngày. Vui lòng thử lại sau. " +
+                            "(Giới hạn: %d yêu cầu/ngày. Bạn đã tạo %d yêu cầu trong 24 giờ qua)", 
+                            maxRequestsPerDay, requestsInLastDay)
+            );
+        }
+
+        log.debug("✅ [Request Rate Limit] Resident {}: {} requests/hour, {} requests/day", 
+                residentId, requestsInLastHour, requestsInLastDay);
     }
 
     private UUID extractUserId(Authentication authentication) {

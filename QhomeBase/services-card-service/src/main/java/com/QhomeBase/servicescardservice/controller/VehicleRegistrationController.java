@@ -106,6 +106,41 @@ public class VehicleRegistrationController {
         }
     }
 
+    @PostMapping("/{registrationId}/resume-payment")
+    public ResponseEntity<?> resumePayment(@PathVariable String registrationId,
+                                          @RequestHeader HttpHeaders headers,
+                                          HttpServletRequest request) {
+        UUID userId = jwtUtil.getUserIdFromHeaders(headers);
+        if (userId == null) {
+            log.warn("⚠️ [VehicleRegistration] Unauthorized request to resumePayment");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        
+        try {
+            UUID registrationUuid = UUID.fromString(registrationId);
+            log.debug("🔍 [VehicleRegistration] resumePayment request: registrationId={}, userId={}", registrationUuid, userId);
+            
+            VehicleRegistrationPaymentResponse response = registrationService.initiatePayment(userId, registrationUuid, request);
+            Map<String, Object> body = new HashMap<>();
+            body.put("registrationId", response.registrationId().toString());
+            body.put("paymentUrl", response.paymentUrl());
+            
+            log.info("✅ [VehicleRegistration] resumePayment success: registrationId={}", registrationUuid);
+            return ResponseEntity.ok(body);
+        } catch (IllegalArgumentException e) {
+            log.warn("⚠️ [VehicleRegistration] Invalid argument: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (IllegalStateException e) {
+            log.warn("⚠️ [VehicleRegistration] IllegalStateException: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            log.error("❌ [VehicleRegistration] Lỗi tiếp tục thanh toán", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Không thể tiếp tục thanh toán: " + e.getMessage()));
+        }
+    }
+
     @PostMapping("/{registrationId}/vnpay-url")
     public ResponseEntity<?> initiatePayment(@PathVariable String registrationId,
                                              @RequestBody(required = false) RegisterServiceRequestCreateDto dto,

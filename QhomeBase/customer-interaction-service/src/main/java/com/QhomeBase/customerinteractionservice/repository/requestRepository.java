@@ -25,4 +25,12 @@ public interface requestRepository extends JpaRepository<Request, UUID>, JpaSpec
             @Param("dateTo") String dateTo
     );
 
+    @Query(value = "SELECT COUNT(r) FROM cs_service.requests r " +
+            "WHERE r.resident_id = :residentId " +
+            "AND r.created_at >= :since", nativeQuery = true)
+    long countRequestsByResidentSince(
+            @Param("residentId") UUID residentId,
+            @Param("since") java.time.LocalDateTime since
+    );
+
 }
