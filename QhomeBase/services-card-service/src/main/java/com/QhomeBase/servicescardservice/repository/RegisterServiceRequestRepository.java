@@ -43,4 +43,6 @@ public interface RegisterServiceRequestRepository extends JpaRepository<Register
     List<RegisterServiceRequest> findAllByOrderByCreatedAtDesc();
 
     List<RegisterServiceRequest> findByPaymentStatusAndUpdatedAtBefore(String paymentStatus, OffsetDateTime updatedAtBefore);
+
+    List<RegisterServiceRequest> findByStatusAndUpdatedAtBefore(String status, OffsetDateTime updatedAtBefore);
 }

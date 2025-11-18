@@ -27,12 +27,14 @@ public interface ResidentCardRegistrationRepository extends JpaRepository<Reside
 
     List<ResidentCardRegistration> findByPaymentStatusAndUpdatedAtBefore(String paymentStatus, OffsetDateTime updatedAtBefore);
 
+    List<ResidentCardRegistration> findByStatusAndUpdatedAtBefore(String status, OffsetDateTime updatedAtBefore);
+
     /**
      * Kiểm tra xem đã có thẻ cư dân với CCCD này chưa (không tính các trạng thái REJECTED)
      */
     @Query("SELECT COUNT(r) > 0 FROM ResidentCardRegistration r " +
            "WHERE r.citizenId = :citizenId " +
-           "AND r.status != 'REJECTED' " +
+           "AND r.status NOT IN ('REJECTED', 'CANCELLED') " +
            "AND r.citizenId IS NOT NULL")
     boolean existsByCitizenId(@Param("citizenId") String citizenId);
 

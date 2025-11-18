@@ -27,6 +27,8 @@ public interface ElevatorCardRegistrationRepository extends JpaRepository<Elevat
 
     List<ElevatorCardRegistration> findByPaymentStatusAndUpdatedAtBefore(String paymentStatus, OffsetDateTime updatedAtBefore);
 
+    List<ElevatorCardRegistration> findByStatusAndUpdatedAtBefore(String status, OffsetDateTime updatedAtBefore);
+
     /**
      * Đếm số thẻ thang máy đã đăng ký cho unit (đã thanh toán thành công)
      * Chỉ đếm các registration đã được thanh toán (PAID) hoặc đã được approve (APPROVED)

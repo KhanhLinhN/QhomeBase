@@ -225,6 +225,9 @@ public class ResidentCardRegistrationService {
         if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
             throw new IllegalStateException("Đăng ký đã bị từ chối");
         }
+        if ("CANCELLED".equalsIgnoreCase(registration.getStatus())) {
+            throw new IllegalStateException("Đăng ký này đã bị hủy do không thanh toán. Vui lòng tạo đăng ký mới.");
+        }
         // Cho phép tiếp tục thanh toán nếu payment_status là UNPAID hoặc PAYMENT_PENDING
         // (PAYMENT_PENDING có thể xảy ra khi user chưa hoàn tất thanh toán trong 10 phút)
         String paymentStatus = registration.getPaymentStatus();
