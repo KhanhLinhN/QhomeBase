@@ -95,15 +95,16 @@ public class StaffImportService {
                     continue;
                 }
                 processedRows++;
-                int excelRowNumber = i + 1;
+                int excelRowNumber = i;
 
                 String username = getCellString(row, COL_USERNAME);
                 String email = getCellString(row, COL_EMAIL);
                 List<String> roleNames = extractRoleNames(getCellString(row, COL_ROLE));
+                String activeRaw = getCellString(row, COL_ACTIVE);
                 Boolean active = getCellBoolean(row, COL_ACTIVE);
 
                 try {
-                    StaffImportRow parsedRow = buildImportRow(excelRowNumber, username, email, roleNames, active);
+                    StaffImportRow parsedRow = buildImportRow(excelRowNumber, username, email, roleNames, active, activeRaw);
                     User created = userService.createStaffAccount(
                             parsedRow.getUsername(),
                             parsedRow.getEmail(),
@@ -148,19 +149,24 @@ public class StaffImportService {
                                           String username,
                                           String email,
                                           List<String> roleNames,
-                                          Boolean active) {
+                                          Boolean active,
+                                          String activeRaw) {
         if (!StringUtils.hasText(username)) {
             throw new IllegalArgumentException("Username (row " + rowNumber + ") không được để trống");
         }
+        String trimmedUsername = username.trim();
+        validateUsername(trimmedUsername, rowNumber);
+        
         if (!StringUtils.hasText(email)) {
             throw new IllegalArgumentException("Email (row " + rowNumber + ") không được để trống");
         }
+        String trimmedEmail = email.trim();
+        validateEmail(trimmedEmail, rowNumber);
+        
         if (roleNames.isEmpty()) {
             throw new IllegalArgumentException("Role (row " + rowNumber + ") không được để trống");
         }
-        if (active == null) {
-            throw new IllegalArgumentException("Trạng thái 'active' không được phép rỗng (null)");
-        }
+        validateActive(active, activeRaw, rowNumber);
         List<UserRole> roles = roleNames.stream()
                 .map(roleName -> {
                     try {
@@ -173,11 +179,94 @@ public class StaffImportService {
 
         return StaffImportRow.builder()
                 .rowNumber(rowNumber)
-                .username(username.trim())
-                .email(email.trim())
+                .username(trimmedUsername)
+                .email(trimmedEmail)
                 .roles(roles)
                 .active(active)
                 .build();
+    }
+
+    private void validateUsername(String username, int rowNumber) {
+        final int MIN_LENGTH = 6;
+        final int MAX_LENGTH = 16;
+        
+        if (username.length() < MIN_LENGTH || username.length() > MAX_LENGTH) {
+            throw new IllegalArgumentException(
+                    String.format("Username (row %d) phải có độ dài từ %d đến %d ký tự", rowNumber, MIN_LENGTH, MAX_LENGTH)
+            );
+        }
+        
+        if (username.contains(" ")) {
+            throw new IllegalArgumentException(
+                    String.format("Username (row %d) không được chứa khoảng trắng", rowNumber)
+            );
+        }
+        
+        if (!username.matches("^[a-zA-Z].*")) {
+            throw new IllegalArgumentException(
+                    String.format("Username (row %d) phải bắt đầu bằng chữ cái (a-z, A-Z)", rowNumber)
+            );
+        }
+        
+        if (username.matches(".*[._]$")) {
+            throw new IllegalArgumentException(
+                    String.format("Username (row %d) không được kết thúc bằng ký tự đặc biệt (., _)", rowNumber)
+            );
+        }
+        
+        if (!username.matches("^[a-zA-Z0-9._]+$")) {
+            throw new IllegalArgumentException(
+                    String.format("Username (row %d) chỉ được chứa chữ cái (a-z, A-Z), số (0-9), dấu gạch dưới (_) và dấu chấm (.)", rowNumber)
+            );
+        }
+        
+        if (username.contains("..")) {
+            throw new IllegalArgumentException(
+                    String.format("Username (row %d) không được chứa nhiều dấu chấm liên tiếp", rowNumber)
+            );
+        }
+        
+        String forbiddenChars = "&=+<>?/\\|{}[]()*^$#@!%~`";
+        for (char c : forbiddenChars.toCharArray()) {
+            if (username.indexOf(c) >= 0) {
+                throw new IllegalArgumentException(
+                        String.format("Username (row %d) không được chứa ký tự bị cấm: %s", rowNumber, c)
+                );
+            }
+        }
+    }
+
+    private void validateEmail(String email, int rowNumber) {
+        if (email == null || email.isEmpty()) {
+            throw new IllegalArgumentException("Email (row " + rowNumber + ") không được để trống");
+        }
+        
+        String emailPattern = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$";
+        if (!email.matches(emailPattern)) {
+            throw new IllegalArgumentException(
+                    String.format("Email (row %d) không đúng định dạng. Ví dụ: user@example.com", rowNumber)
+            );
+        }
+        
+        if (email.length() > 255) {
+            throw new IllegalArgumentException(
+                    String.format("Email (row %d) không được vượt quá 255 ký tự", rowNumber)
+            );
+        }
+    }
+
+    private void validateActive(Boolean active, String activeRaw, int rowNumber) {
+        if (active == null) {
+            if (activeRaw == null || activeRaw.trim().isEmpty()) {
+                throw new IllegalArgumentException(
+                        String.format("Cột 'active' (row %d) không được để trống. Chỉ chấp nhận: true, false, 1, 0, yes, no, y, n", rowNumber)
+                );
+            } else {
+                throw new IllegalArgumentException(
+                        String.format("Cột 'active' (row %d) có giá trị không hợp lệ: '%s'. Chỉ chấp nhận: true, false, 1, 0, yes, no, y, n", rowNumber, activeRaw.trim())
+                );
+            }
+        }
     }
 
     private String getCellString(Row row, int colIndex) {

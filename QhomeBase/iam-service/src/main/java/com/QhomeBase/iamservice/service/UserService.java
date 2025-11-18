@@ -160,23 +160,35 @@ public class UserService {
 
     @Transactional
     public User createStaffAccount(String username, String email, List<UserRole> roles, boolean active) {
+        if (!StringUtils.hasText(username)) {
+            throw new IllegalArgumentException("Username cannot be empty");
+        }
+        String trimmedUsername = username.trim();
+        validateUsername(trimmedUsername);
+        
+        if (!StringUtils.hasText(email)) {
+            throw new IllegalArgumentException("Email cannot be empty");
+        }
+        String trimmedEmail = email.trim();
+        validateEmail(trimmedEmail);
+        
         if (roles == null || roles.isEmpty()) {
             throw new IllegalArgumentException("Staff account requires at least one role");
         }
         if (roles.stream().anyMatch(role -> role == UserRole.RESIDENT || role == UserRole.UNIT_OWNER)) {
             throw new IllegalArgumentException("Staff account cannot include resident or unit owner roles");
         }
-        if (userRepository.findByUsername(username).isPresent()) {
-            throw new IllegalArgumentException("Username already exists: " + username);
+        if (userRepository.findByUsername(trimmedUsername).isPresent()) {
+            throw new IllegalArgumentException("Username already exists: " + trimmedUsername);
         }
-        if (userRepository.findByEmail(email).isPresent()) {
-            throw new IllegalArgumentException("Email already exists: " + email);
+        if (userRepository.findByEmail(trimmedEmail).isPresent()) {
+            throw new IllegalArgumentException("Email already exists: " + trimmedEmail);
         }
         String rawPassword = generateRandomPassword(12);
         String encodedPassword = passwordEncoder.encode(rawPassword);
         User user = User.builder()
-                .username(username)
-                .email(email)
+                .username(trimmedUsername)
+                .email(trimmedEmail)
                 .passwordHash(encodedPassword)
                 .active(active)
                 .build();
@@ -184,9 +196,9 @@ public class UserService {
         User saved = userRepository.save(user);
         log.info("Created staff user account {} with roles {}", saved.getId(), roles);
         try {
-            emailService.sendStaffAccountCredentials(email, username, rawPassword);
+            emailService.sendStaffAccountCredentials(trimmedEmail, trimmedUsername, rawPassword);
         } catch (MailException mailException) {
-            log.error("Failed to send credentials email to {} for staff account {}", email, saved.getId(), mailException);
+            log.error("Failed to send credentials email to {} for staff account {}", trimmedEmail, saved.getId(), mailException);
         }
         return initializeRoles(saved);
     }
@@ -206,21 +218,25 @@ public class UserService {
         }
 
         if (username != null && !username.isBlank() && !username.equalsIgnoreCase(user.getUsername())) {
-            userRepository.findByUsername(username).ifPresent(existing -> {
+            String trimmedUsername = username.trim();
+            validateUsername(trimmedUsername);
+            userRepository.findByUsername(trimmedUsername).ifPresent(existing -> {
                 if (!existing.getId().equals(userId)) {
-                    throw new IllegalArgumentException("Username already exists: " + username);
+                    throw new IllegalArgumentException("Username already exists: " + trimmedUsername);
                 }
             });
-            user.setUsername(username);
+            user.setUsername(trimmedUsername);
         }
 
         if (email != null && !email.isBlank() && !email.equalsIgnoreCase(user.getEmail())) {
-            userRepository.findByEmail(email).ifPresent(existing -> {
+            String trimmedEmail = email.trim();
+            validateEmail(trimmedEmail);
+            userRepository.findByEmail(trimmedEmail).ifPresent(existing -> {
                 if (!existing.getId().equals(userId)) {
-                    throw new IllegalArgumentException("Email already exists: " + email);
+                    throw new IllegalArgumentException("Email already exists: " + trimmedEmail);
                 }
             });
-            user.setEmail(email);
+            user.setEmail(trimmedEmail);
         }
 
         if (active != null) {
@@ -269,6 +285,59 @@ public class UserService {
                 || role == UserRole.ACCOUNTANT
                 || role == UserRole.TECHNICIAN
                 || role == UserRole.SUPPORTER;
+    }
+
+    private void validateUsername(String username) {
+        final int MIN_LENGTH = 6;
+        final int MAX_LENGTH = 16;
+        
+        if (username.length() < MIN_LENGTH || username.length() > MAX_LENGTH) {
+            throw new IllegalArgumentException(
+                    String.format("Username phải có độ dài từ %d đến %d ký tự", MIN_LENGTH, MAX_LENGTH)
+            );
+        }
+        
+        if (username.contains(" ")) {
+            throw new IllegalArgumentException("Username không được chứa khoảng trắng");
+        }
+        
+        if (!username.matches("^[a-zA-Z].*")) {
+            throw new IllegalArgumentException("Username phải bắt đầu bằng chữ cái (a-z, A-Z)");
+        }
+        
+        if (username.matches(".*[._]$")) {
+            throw new IllegalArgumentException("Username không được kết thúc bằng ký tự đặc biệt (., _)");
+        }
+        
+        if (!username.matches("^[a-zA-Z0-9._]+$")) {
+            throw new IllegalArgumentException("Username chỉ được chứa chữ cái (a-z, A-Z), số (0-9), dấu gạch dưới (_) và dấu chấm (.)");
+        }
+        
+        if (username.contains("..")) {
+            throw new IllegalArgumentException("Username không được chứa nhiều dấu chấm liên tiếp");
+        }
+        
+        String forbiddenChars = "&=+<>?/\\|{}[]()*^$#@!%~`";
+        for (char c : forbiddenChars.toCharArray()) {
+            if (username.indexOf(c) >= 0) {
+                throw new IllegalArgumentException("Username không được chứa ký tự bị cấm: " + c);
+            }
+        }
+    }
+
+    private void validateEmail(String email) {
+        if (email == null || email.isEmpty()) {
+            throw new IllegalArgumentException("Email cannot be empty");
+        }
+        
+        String emailPattern = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$";
+        if (!email.matches(emailPattern)) {
+            throw new IllegalArgumentException("Email không đúng định dạng. Ví dụ: user@example.com");
+        }
+        
+        if (email.length() > 255) {
+            throw new IllegalArgumentException("Email không được vượt quá 255 ký tự");
+        }
     }
 }
 

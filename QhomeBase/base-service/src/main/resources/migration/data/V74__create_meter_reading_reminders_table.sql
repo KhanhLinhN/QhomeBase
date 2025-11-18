@@ -17,3 +17,6 @@ COMMENT ON TABLE data.meter_reading_reminders IS 'Lưu các thông báo nhắc n
 COMMENT ON COLUMN data.meter_reading_reminders.type IS 'Loại nhắc nhở (VD: METER_READING_ASSIGNMENT_REMINDER)';
 
 
+
+
+
