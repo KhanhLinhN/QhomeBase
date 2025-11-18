@@ -48,6 +48,7 @@ public class VehicleRegistrationService {
     private static final String STATUS_READY_FOR_PAYMENT = "READY_FOR_PAYMENT";
     private static final String STATUS_PAYMENT_PENDING = "PAYMENT_PENDING";
     private static final String STATUS_PENDING_REVIEW = "PENDING";
+    private static final String STATUS_CANCELLED = "CANCELLED";
     private static final String PAYMENT_VNPAY = "VNPAY";
 
     private final RegisterServiceRequestRepository requestRepository;
@@ -278,10 +279,13 @@ public class VehicleRegistrationService {
     public void cancelRegistration(UUID userId, UUID registrationId) {
         RegisterServiceRequest registration = requestRepository.findByIdAndUserId(registrationId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
-        if (Objects.equals(registration.getPaymentStatus(), "PAID")) {
-            throw new IllegalStateException("Không thể hủy đăng ký đã thanh toán");
+        if (STATUS_CANCELLED.equalsIgnoreCase(registration.getStatus())) {
+            return;
         }
-        requestRepository.delete(registration);
+        registration.setStatus(STATUS_CANCELLED);
+        registration.setUpdatedAt(OffsetDateTime.now());
+        requestRepository.save(registration);
+        log.info("✅ [VehicleRegistration] User {} đã hủy đăng ký {}", userId, registrationId);
     }
 
     @Transactional

@@ -9,6 +9,7 @@ public record ElevatorCardRegistrationCreateDto(
         String phoneNumber,
         String note,
         UUID unitId,
-        UUID residentId
+        UUID residentId,
+        String requestType
 ) {}
 

@@ -41,6 +41,7 @@ public class ResidentCardRegistrationService {
     private static final String STATUS_PAYMENT_PENDING = "PAYMENT_PENDING";
     private static final String STATUS_PENDING_REVIEW = "PENDING";
     private static final String STATUS_REJECTED = "REJECTED";
+    private static final String STATUS_CANCELLED = "CANCELLED";
     private static final String PAYMENT_VNPAY = "VNPAY";
 
     private final ResidentCardRegistrationRepository repository;
@@ -268,10 +269,13 @@ public class ResidentCardRegistrationService {
     public void cancelRegistration(UUID userId, UUID registrationId) {
         ResidentCardRegistration registration = repository.findByIdAndUserId(registrationId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký thẻ cư dân"));
-        if ("PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
-            throw new IllegalStateException("Không thể hủy đăng ký đã thanh toán");
+        if (STATUS_CANCELLED.equalsIgnoreCase(registration.getStatus())) {
+            return;
         }
-        repository.delete(registration);
+        registration.setStatus(STATUS_CANCELLED);
+        registration.setUpdatedAt(OffsetDateTime.now());
+        repository.save(registration);
+        log.info("✅ [ResidentCard] User {} đã hủy đăng ký {}", userId, registrationId);
     }
 
     @Transactional
