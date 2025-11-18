@@ -33,10 +33,10 @@ public interface ElevatorCardRegistrationRepository extends JpaRepository<Elevat
      * Không đếm các registration chưa thanh toán (UNPAID, PAYMENT_PENDING) hoặc bị reject (REJECTED)
      * Dùng cho hiển thị số thẻ đã thanh toán thành công
      */
-    @Query(value = "SELECT COUNT(*) FROM card.elevator_card_registration e " +
-            "WHERE e.unit_id = :unitId " +
-            "AND e.status != 'REJECTED' " +
-            "AND (e.payment_status = 'PAID' OR e.status = 'APPROVED')", nativeQuery = true)
+    @Query("SELECT COUNT(e) FROM ElevatorCardRegistration e " +
+           "WHERE e.unitId = :unitId " +
+           "AND e.status != 'REJECTED' " +
+           "AND (e.paymentStatus = 'PAID' OR e.status = 'APPROVED')")
     long countElevatorCardsByUnitId(@Param("unitId") UUID unitId);
 
     /**
@@ -44,9 +44,9 @@ public interface ElevatorCardRegistrationRepository extends JpaRepository<Elevat
      * Đếm TẤT CẢ các registration trừ REJECTED và CANCELLED
      * Dùng cho validation khi đăng ký thẻ mới để đảm bảo không vượt quá giới hạn
      */
-    @Query(value = "SELECT COUNT(*) FROM card.elevator_card_registration e " +
-            "WHERE e.unit_id = :unitId " +
-            "AND e.status != 'REJECTED' " +
-            "AND e.status != 'CANCELLED'", nativeQuery = true)
-    long countAllElevatorCardsByUnitId(@Param("unitId") UUID unitId);
+    @Query("SELECT COUNT(e) FROM ElevatorCardRegistration e " +
+           "WHERE e.unitId = :unitId " +
+           "AND e.status NOT IN :excludedStatuses")
+    long countAllElevatorCardsByUnitId(@Param("unitId") UUID unitId, 
+                                       @Param("excludedStatuses") List<String> excludedStatuses);
 }

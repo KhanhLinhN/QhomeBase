@@ -458,7 +458,7 @@ public class ResidentCardRegistrationService {
         // Đếm TẤT CẢ các registration trừ REJECTED và CANCELLED
         // Logic: Nếu đã đăng ký đủ số lượng thẻ (kể cả chưa thanh toán), không cho phép đăng ký thêm
         // Chỉ khi một thẻ bị hủy (CANCELLED) hoặc từ chối (REJECTED) thì mới có thể đăng ký thêm
-        long registeredCards = repository.countAllResidentCardsByUnitId(unitId);
+        long registeredCards = repository.countAllResidentCardsByUnitId(unitId, List.of("REJECTED", "CANCELLED"));
         
         if (registeredCards >= numberOfResidents) {
             throw new IllegalStateException(
@@ -533,6 +533,7 @@ public class ResidentCardRegistrationService {
             
             log.debug("🔍 [ResidentCard] Đang lấy danh sách thành viên trong căn hộ unitId: {}", unitId);
             
+            // Query để lấy danh sách thành viên và check xem họ đã có thẻ được approve chưa
             List<Map<String, Object>> members = jdbcTemplate.query("""
                     SELECT DISTINCT
                         r.id AS resident_id,
@@ -540,7 +541,17 @@ public class ResidentCardRegistrationService {
                         r.national_id AS citizen_id,
                         r.phone AS phone_number,
                         r.email AS email,
-                        r.dob AS date_of_birth
+                        r.dob AS date_of_birth,
+                        CASE 
+                            WHEN EXISTS (
+                                SELECT 1 FROM card.resident_card_registration rcr
+                                WHERE rcr.citizen_id = r.national_id
+                                  AND rcr.status != 'REJECTED'
+                                  AND rcr.status != 'CANCELLED'
+                                  AND (rcr.payment_status = 'PAID' OR rcr.status = 'APPROVED')
+                            ) THEN true
+                            ELSE false
+                        END AS has_approved_card
                     FROM data.household_members hm
                     JOIN data.households h ON h.id = hm.household_id
                     JOIN data.residents r ON r.id = hm.resident_id
@@ -557,6 +568,7 @@ public class ResidentCardRegistrationService {
                 member.put("email", rs.getString("email"));
                 member.put("dateOfBirth", rs.getDate("date_of_birth") != null 
                     ? rs.getDate("date_of_birth").toString() : null);
+                member.put("hasApprovedCard", rs.getBoolean("has_approved_card"));
                 return member;
             });
             

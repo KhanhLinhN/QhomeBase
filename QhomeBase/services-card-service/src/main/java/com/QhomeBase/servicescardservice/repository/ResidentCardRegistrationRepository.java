@@ -30,10 +30,10 @@ public interface ResidentCardRegistrationRepository extends JpaRepository<Reside
     /**
      * Kiểm tra xem đã có thẻ cư dân với CCCD này chưa (không tính các trạng thái REJECTED)
      */
-    @Query(value = "SELECT COUNT(*) > 0 FROM card.resident_card_registration r " +
-            "WHERE r.citizen_id = :citizenId " +
-            "AND r.status != 'REJECTED' " +
-            "AND r.citizen_id IS NOT NULL", nativeQuery = true)
+    @Query("SELECT COUNT(r) > 0 FROM ResidentCardRegistration r " +
+           "WHERE r.citizenId = :citizenId " +
+           "AND r.status != 'REJECTED' " +
+           "AND r.citizenId IS NOT NULL")
     boolean existsByCitizenId(@Param("citizenId") String citizenId);
 
     /**
@@ -41,9 +41,9 @@ public interface ResidentCardRegistrationRepository extends JpaRepository<Reside
      * Đếm TẤT CẢ các registration trừ REJECTED và CANCELLED
      * Dùng cho validation khi đăng ký thẻ mới để đảm bảo không vượt quá giới hạn
      */
-    @Query(value = "SELECT COUNT(*) FROM card.resident_card_registration r " +
-            "WHERE r.unit_id = :unitId " +
-            "AND r.status != 'REJECTED' " +
-            "AND r.status != 'CANCELLED'", nativeQuery = true)
-    long countAllResidentCardsByUnitId(@Param("unitId") UUID unitId);
+    @Query("SELECT COUNT(r) FROM ResidentCardRegistration r " +
+           "WHERE r.unitId = :unitId " +
+           "AND r.status NOT IN :excludedStatuses")
+    long countAllResidentCardsByUnitId(@Param("unitId") UUID unitId, 
+                                       @Param("excludedStatuses") List<String> excludedStatuses);
 }

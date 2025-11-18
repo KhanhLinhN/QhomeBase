@@ -63,8 +63,8 @@ public class ElevatorCardRegistrationService {
                 .userId(userId)
                 .unitId(dto.unitId())
                 .residentId(dto.residentId())
-                .requestType(resolveRequestType(dto.requestType()))
-                .fullName(normalize(dto.fullName()))
+                .requestType("NEW_CARD") // Mặc định là NEW_CARD, không cần user nhập
+                .fullName(null) // Sẽ được lấy từ user context
                 .apartmentNumber(normalize(dto.apartmentNumber()))
                 .buildingName(normalize(dto.buildingName()))
                 .citizenId(null) // Không lưu CCCD cho thẻ thang máy, validate theo số người trong căn hộ
@@ -82,18 +82,27 @@ public class ElevatorCardRegistrationService {
                 .build();
 
         try {
-            applyResolvedAddress(registration, dto.residentId(), dto.unitId(), dto.fullName(), dto.apartmentNumber(), dto.buildingName());
+            // Tự động lấy thông tin từ user context (fullName, apartmentNumber, buildingName)
+            applyResolvedAddress(registration, dto.residentId(), dto.unitId(), null, dto.apartmentNumber(), dto.buildingName());
+            // Đảm bảo fullName luôn được set từ user context
+            if (!StringUtils.hasText(registration.getFullName())) {
+                log.warn("⚠️ [ElevatorCard] Không thể lấy fullName từ user context cho residentId: {}", dto.residentId());
+                throw new IllegalStateException("Không thể lấy thông tin người dùng. Vui lòng thử lại sau.");
+            }
+        } catch (IllegalStateException e) {
+            throw e; // Re-throw IllegalStateException
         } catch (Exception e) {
             log.warn("⚠️ [ElevatorCard] Không thể resolve địa chỉ từ database, sử dụng giá trị từ form: {}", e.getMessage());
             // Fallback to form values if lookup fails
-            if (!StringUtils.hasText(registration.getFullName())) {
-                registration.setFullName(normalize(dto.fullName()));
-            }
             if (!StringUtils.hasText(registration.getApartmentNumber())) {
                 registration.setApartmentNumber(normalize(dto.apartmentNumber()));
             }
             if (!StringUtils.hasText(registration.getBuildingName())) {
                 registration.setBuildingName(normalize(dto.buildingName()));
+            }
+            // Nếu không lấy được fullName từ user context, throw error
+            if (!StringUtils.hasText(registration.getFullName())) {
+                throw new IllegalStateException("Không thể lấy thông tin người dùng. Vui lòng thử lại sau.");
             }
         }
 
@@ -124,6 +133,7 @@ public class ElevatorCardRegistrationService {
         log.debug("🔍 [ElevatorCard] getMaxCardsForUnit được gọi với unitId: {}", unitId);
         
         long maxCards = countHouseholdMembersByUnit(unitId);
+        // Đếm các thẻ đã thanh toán thành công (PAID) hoặc đã được approve (APPROVED)
         long registeredCards = repository.countElevatorCardsByUnitId(unitId);
         long remainingSlots = Math.max(0, maxCards - registeredCards);
         
@@ -472,9 +482,7 @@ public class ElevatorCardRegistrationService {
         if (dto.residentId() == null) {
             throw new IllegalArgumentException("Cư dân là bắt buộc");
         }
-        if (!StringUtils.hasText(dto.fullName())) {
-            throw new IllegalArgumentException("Họ và tên là bắt buộc");
-        }
+        // fullName sẽ được tự động lấy từ user context, không cần validate
         
         // Validate resident thuộc unit (căn hộ) đó
         validateResidentBelongsToUnit(dto.residentId(), dto.unitId());
@@ -536,7 +544,7 @@ public class ElevatorCardRegistrationService {
         // Đếm TẤT CẢ các registration trừ REJECTED và CANCELLED
         // Logic: Nếu đã đăng ký đủ số lượng thẻ (kể cả chưa thanh toán), không cho phép đăng ký thêm
         // Chỉ khi một thẻ bị hủy (CANCELLED) hoặc từ chối (REJECTED) thì mới có thể đăng ký thêm
-        long registeredCards = repository.countAllElevatorCardsByUnitId(unitId);
+        long registeredCards = repository.countAllElevatorCardsByUnitId(unitId, List.of("REJECTED", "CANCELLED"));
         
         if (registeredCards >= numberOfResidents) {
             throw new IllegalStateException(
