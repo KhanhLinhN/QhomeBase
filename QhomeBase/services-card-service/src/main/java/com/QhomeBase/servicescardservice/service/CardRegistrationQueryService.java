@@ -15,6 +15,7 @@ import org.springframework.util.CollectionUtils;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -64,28 +65,34 @@ public class CardRegistrationQueryService {
 
     private List<ResidentCardRegistration> fetchResidentCards(UUID userId, UUID residentId, UUID unitId) {
         if (unitId != null) {
-            return residentCardRepository.findByResidentIdAndUnitId(residentId, unitId);
+            return residentCardRepository.findByUnitId(unitId);
         }
-        List<ResidentCardRegistration> cards = residentCardRepository.findByResidentId(residentId);
-        if (CollectionUtils.isEmpty(cards)) {
-            if (userId != null) {
-                return residentCardRepository.findByUserId(userId);
+        if (residentId != null) {
+            List<ResidentCardRegistration> cards = residentCardRepository.findByResidentId(residentId);
+            if (!CollectionUtils.isEmpty(cards)) {
+                return cards;
             }
         }
-        return cards;
+        if (userId != null) {
+            return residentCardRepository.findByUserId(userId);
+        }
+        return Collections.emptyList();
     }
 
     private List<ElevatorCardRegistration> fetchElevatorCards(UUID userId, UUID residentId, UUID unitId) {
         if (unitId != null) {
-            return elevatorCardRepository.findByResidentIdAndUnitId(residentId, unitId);
+            return elevatorCardRepository.findByUnitId(unitId);
         }
-        List<ElevatorCardRegistration> cards = elevatorCardRepository.findByResidentId(residentId);
-        if (CollectionUtils.isEmpty(cards)) {
-            if (userId != null) {
-                return elevatorCardRepository.findByUserId(userId);
+        if (residentId != null) {
+            List<ElevatorCardRegistration> cards = elevatorCardRepository.findByResidentId(residentId);
+            if (!CollectionUtils.isEmpty(cards)) {
+                return cards;
             }
         }
-        return cards;
+        if (userId != null) {
+            return elevatorCardRepository.findByUserId(userId);
+        }
+        return Collections.emptyList();
     }
 
     private List<RegisterServiceRequest> fetchVehicleCards(UUID userId, UUID unitId) {

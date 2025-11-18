@@ -548,16 +548,13 @@ public class ElevatorCardRegistrationService {
         UnitCapacityInfo capacityInfo = resolveUnitCapacity(unitId);
         long numberOfResidents = capacityInfo.maxResidents();
         
-        // Đếm số thẻ thang máy đã đăng ký cho căn hộ này (bao gồm cả chưa thanh toán)
-        // Đếm TẤT CẢ các registration trừ REJECTED và CANCELLED
-        // Logic: Nếu đã đăng ký đủ số lượng thẻ (kể cả chưa thanh toán), không cho phép đăng ký thêm
-        // Chỉ khi một thẻ bị hủy (CANCELLED) hoặc từ chối (REJECTED) thì mới có thể đăng ký thêm
-        long registeredCards = repository.countAllElevatorCardsByUnitId(unitId, List.of("REJECTED", "CANCELLED"));
+        // Đếm số thẻ đã thanh toán (bao gồm cả đang chờ duyệt) hoặc đã được duyệt
+        long registeredCards = repository.countElevatorCardsByUnitId(unitId);
         
         if (registeredCards >= numberOfResidents) {
             throw new IllegalStateException(
                 String.format("Căn hộ này chỉ được phép đăng ký tối đa %d thẻ thang máy (theo số người trong căn hộ). " +
-                            "Hiện tại đã đăng ký %d thẻ (bao gồm cả các thẻ chưa thanh toán). " +
+                            "Hiện tại đã có %d thẻ đã thanh toán (bao gồm thẻ chờ duyệt và đã duyệt). " +
                             "Vui lòng thanh toán hoặc hủy các thẻ đã đăng ký trước khi đăng ký thẻ mới.",
                             numberOfResidents, registeredCards)
             );

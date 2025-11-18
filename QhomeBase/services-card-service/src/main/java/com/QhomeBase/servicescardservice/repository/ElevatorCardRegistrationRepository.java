@@ -19,6 +19,8 @@ public interface ElevatorCardRegistrationRepository extends JpaRepository<Elevat
 
     List<ElevatorCardRegistration> findByResidentIdAndUnitId(UUID residentId, UUID unitId);
 
+    List<ElevatorCardRegistration> findByUnitId(UUID unitId);
+
     List<ElevatorCardRegistration> findByUserId(UUID userId);
 
     List<ElevatorCardRegistration> findByUserIdAndUnitId(UUID userId, UUID unitId);
@@ -37,8 +39,13 @@ public interface ElevatorCardRegistrationRepository extends JpaRepository<Elevat
      */
     @Query("SELECT COUNT(e) FROM ElevatorCardRegistration e " +
            "WHERE e.unitId = :unitId " +
-           "AND e.status != 'REJECTED' " +
-           "AND (e.paymentStatus = 'PAID' OR e.status = 'APPROVED')")
+           "AND e.status NOT IN ('REJECTED', 'CANCELLED') " +
+           "AND ( " +
+           "       e.status IN ('APPROVED','ACTIVE','COMPLETED','ISSUED') " +
+           "    OR (e.status IN ('PENDING','REVIEW_PENDING','PROCESSING','IN_PROGRESS','READY_FOR_PAYMENT','PAYMENT_PENDING') " +
+           "        AND e.paymentStatus = 'PAID') " +
+           "    OR (e.paymentStatus = 'PAID' AND e.status IS NULL) " +
+           "    )")
     long countElevatorCardsByUnitId(@Param("unitId") UUID unitId);
 
     /**

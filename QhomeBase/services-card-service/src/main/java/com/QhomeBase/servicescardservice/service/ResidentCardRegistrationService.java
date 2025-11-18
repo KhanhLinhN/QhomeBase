@@ -553,12 +553,19 @@ public class ResidentCardRegistrationService {
                             WHEN EXISTS (
                                 SELECT 1 FROM card.resident_card_registration rcr
                                 WHERE rcr.citizen_id = r.national_id
-                                  AND rcr.status != 'REJECTED'
-                                  AND rcr.status != 'CANCELLED'
-                                  AND (rcr.payment_status = 'PAID' OR rcr.status = 'APPROVED')
+                                  AND rcr.status IN ('APPROVED', 'ACTIVE', 'ISSUED', 'COMPLETED')
                             ) THEN true
                             ELSE false
-                        END AS has_approved_card
+                        END AS has_approved_card,
+                        CASE
+                            WHEN EXISTS (
+                                SELECT 1 FROM card.resident_card_registration rcr
+                                WHERE rcr.citizen_id = r.national_id
+                                  AND rcr.status IN ('PENDING', 'REVIEW_PENDING', 'PROCESSING', 'IN_PROGRESS')
+                                  AND rcr.payment_status = 'PAID'
+                            ) THEN true
+                            ELSE false
+                        END AS waiting_for_approval
                     FROM data.household_members hm
                     JOIN data.households h ON h.id = hm.household_id
                     JOIN data.residents r ON r.id = hm.resident_id
@@ -576,6 +583,7 @@ public class ResidentCardRegistrationService {
                 member.put("dateOfBirth", rs.getDate("date_of_birth") != null 
                     ? rs.getDate("date_of_birth").toString() : null);
                 member.put("hasApprovedCard", rs.getBoolean("has_approved_card"));
+                member.put("waitingForApproval", rs.getBoolean("waiting_for_approval"));
                 return member;
             });
             
