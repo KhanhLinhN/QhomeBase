@@ -11,5 +11,6 @@ import java.util.UUID;
 public interface MaintenanceRequestRepository extends JpaRepository<MaintenanceRequest, UUID> {
     List<MaintenanceRequest> findByResidentIdOrderByCreatedAtDesc(UUID residentId);
     List<MaintenanceRequest> findByStatusOrderByCreatedAtAsc(String status);
+    boolean existsByResidentIdAndStatusIgnoreCase(UUID residentId, String status);
 }
 

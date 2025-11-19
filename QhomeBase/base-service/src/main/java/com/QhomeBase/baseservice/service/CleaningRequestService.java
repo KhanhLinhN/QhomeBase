@@ -32,6 +32,10 @@ import java.util.UUID;
 @Transactional
 public class CleaningRequestService {
 
+    private static final String STATUS_PENDING = "PENDING";
+    private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
+    private static final String STATUS_DONE = "DONE";
+
     private static final Map<String, BigDecimal> DEFAULT_DURATIONS = Map.of(
             "Dọn dẹp cơ bản", BigDecimal.valueOf(1),
             "Dọn dẹp tổng thể", BigDecimal.valueOf(2),
@@ -64,6 +68,8 @@ public class CleaningRequestService {
             throw new IllegalArgumentException("You are not associated with this unit");
         }
 
+        ensureNoActiveRequest(resident.getId());
+
         String normalizedType = dto.cleaningType().trim();
         BigDecimal duration = DEFAULT_DURATIONS.getOrDefault(
                 normalizedType,
@@ -95,7 +101,7 @@ public class CleaningRequestService {
                 .contactPhone(contactPhone)
                 .extraServices(dto.extraServices())
                 .paymentMethod(StringUtils.hasText(dto.paymentMethod()) ? dto.paymentMethod().trim() : null)
-                .status("PENDING")
+                .status(STATUS_PENDING)
                 .build();
 
         CleaningRequest saved = cleaningRequestRepository.save(request);
@@ -116,7 +122,7 @@ public class CleaningRequestService {
 
     public List<CleaningRequestDto> getPendingRequests() {
         List<CleaningRequest> requests = cleaningRequestRepository
-                .findByStatusOrderByCreatedAtAsc("PENDING");
+                .findByStatusOrderByCreatedAtAsc(STATUS_PENDING);
         return requests.stream()
                 .map(this::toDto)
                 .toList();
@@ -163,17 +169,85 @@ public class CleaningRequestService {
         CleaningRequest request = cleaningRequestRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Cleaning request not found"));
 
-        if (!"PENDING".equalsIgnoreCase(request.getStatus())) {
-            throw new IllegalStateException("Only pending requests can be approved");
+        if (!STATUS_PENDING.equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Only pending requests can be moved to in-progress");
         }
 
-        request.setStatus("APPROVED");
+        request.setStatus(STATUS_IN_PROGRESS);
         CleaningRequest saved = cleaningRequestRepository.save(request);
-        notifyCleaningApproval(saved, dto != null ? dto.note() : null);
+        notifyCleaningInProgress(saved, dto != null ? dto.note() : null);
         return toDto(saved);
     }
 
-    private void notifyCleaningApproval(CleaningRequest request, String note) {
+    @SuppressWarnings("null")
+    public CleaningRequestDto completeRequest(UUID staffId, UUID requestId, AdminServiceRequestActionDto dto) {
+        CleaningRequest request = cleaningRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Cleaning request not found"));
+
+        if (!STATUS_IN_PROGRESS.equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Only in-progress requests can be marked done");
+        }
+
+        request.setStatus(STATUS_DONE);
+        CleaningRequest saved = cleaningRequestRepository.save(request);
+        notifyCleaningCompleted(saved, dto != null ? dto.note() : null);
+        return toDto(saved);
+    }
+
+    private void ensureNoActiveRequest(UUID residentId) {
+        if (residentId == null) {
+            return;
+        }
+        boolean hasPending = cleaningRequestRepository
+                .existsByResidentIdAndStatusIgnoreCase(residentId, STATUS_PENDING);
+        boolean hasInProgress = cleaningRequestRepository
+                .existsByResidentIdAndStatusIgnoreCase(residentId, STATUS_IN_PROGRESS);
+        if (hasPending || hasInProgress) {
+            throw new IllegalStateException(
+                    "Bạn đang có yêu cầu dọn dẹp chưa hoàn tất. Vui lòng chờ đơn hiện tại sang trạng thái DONE trước khi tạo thêm.");
+        }
+    }
+
+    private void notifyCleaningInProgress(CleaningRequest request, String note) {
+        StringBuilder body = new StringBuilder("Yêu cầu dọn dẹp \"")
+                .append(request.getCleaningType())
+                .append("\" đang được xử lý.");
+        if (note != null && !note.isBlank()) {
+            body.append(' ').append(note.trim());
+        } else {
+            body.append(" Nhân viên sẽ liên hệ để sắp xếp lịch phù hợp.");
+        }
+
+        sendCleaningNotification(
+                request,
+                "Yêu cầu dọn dẹp đang xử lý",
+                body.toString(),
+                STATUS_IN_PROGRESS
+        );
+    }
+
+    private void notifyCleaningCompleted(CleaningRequest request, String note) {
+        StringBuilder body = new StringBuilder("Yêu cầu dọn dẹp \"")
+                .append(request.getCleaningType())
+                .append("\" đã hoàn tất.");
+        if (note != null && !note.isBlank()) {
+            body.append(' ').append(note.trim());
+        }
+
+        sendCleaningNotification(
+                request,
+                "Yêu cầu dọn dẹp đã hoàn tất",
+                body.toString(),
+                STATUS_DONE
+        );
+    }
+
+    private void sendCleaningNotification(
+            CleaningRequest request,
+            String title,
+            String body,
+            String status
+    ) {
         if (request.getResidentId() == null) {
             log.warn("⚠️ [CleaningRequest] Missing residentId for request {}", request.getId());
             return;
@@ -185,17 +259,10 @@ public class CleaningRequestService {
             unit = unitRepository.findById(unitId).orElse(null);
         }
 
-        String message = "Yêu cầu dọn dẹp \"" + request.getCleaningType() + "\" đã được duyệt.";
-        if (note != null && !note.isBlank()) {
-            message += " " + note.trim();
-        } else {
-            message += " Nhân viên sẽ liên hệ để sắp xếp lịch phù hợp.";
-        }
-
         Map<String, String> data = new HashMap<>();
         data.put("entity", "CLEANING_REQUEST");
         data.put("requestId", request.getId().toString());
-        data.put("status", request.getStatus());
+        data.put("status", status);
         data.put("location", request.getLocation());
 
         UUID buildingId = (unit != null && unit.getBuilding() != null)
@@ -206,8 +273,8 @@ public class CleaningRequestService {
                 request.getResidentId(),
                 buildingId,
                 "REQUEST",
-                "Yêu cầu dọn dẹp đã được duyệt",
-                message,
+                title,
+                body,
                 request.getId(),
                 "CLEANING_REQUEST",
                 data

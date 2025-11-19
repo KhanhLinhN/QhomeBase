@@ -11,5 +11,6 @@ import java.util.UUID;
 public interface CleaningRequestRepository extends JpaRepository<CleaningRequest, UUID> {
     List<CleaningRequest> findByResidentIdOrderByCreatedAtDesc(UUID residentId);
     List<CleaningRequest> findByStatusOrderByCreatedAtAsc(String status);
+    boolean existsByResidentIdAndStatusIgnoreCase(UUID residentId, String status);
 }
 

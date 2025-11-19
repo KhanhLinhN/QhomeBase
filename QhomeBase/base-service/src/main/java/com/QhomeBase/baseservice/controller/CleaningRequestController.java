@@ -32,7 +32,7 @@ public class CleaningRequestController {
         try {
             CleaningRequestDto created = cleaningRequestService.create(principal.uid(), requestDto);
             return ResponseEntity.ok(created);
-        } catch (IllegalArgumentException ex) {
+        } catch (IllegalArgumentException | IllegalStateException ex) {
             log.warn("Failed to create cleaning request: {}", ex.getMessage());
             return ResponseEntity.badRequest().body(java.util.Map.of("message", ex.getMessage()));
         }
@@ -59,6 +59,20 @@ public class CleaningRequestController {
             @PathVariable UUID requestId,
             @RequestBody(required = false) AdminServiceRequestActionDto request) {
         CleaningRequestDto dto = cleaningRequestService.approveRequest(
+                principal.uid(),
+                requestId,
+                request
+        );
+        return ResponseEntity.ok(dto);
+    }
+
+    @PatchMapping("/admin/{requestId}/complete")
+    @PreAuthorize("@authz.canManageServiceRequests()")
+    public ResponseEntity<CleaningRequestDto> completeCleaningRequest(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID requestId,
+            @RequestBody(required = false) AdminServiceRequestActionDto request) {
+        CleaningRequestDto dto = cleaningRequestService.completeRequest(
                 principal.uid(),
                 requestId,
                 request

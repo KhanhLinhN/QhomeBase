@@ -32,7 +32,7 @@ public class MaintenanceRequestController {
         try {
             MaintenanceRequestDto created = maintenanceRequestService.create(principal.uid(), requestDto);
             return ResponseEntity.ok(created);
-        } catch (IllegalArgumentException ex) {
+        } catch (IllegalArgumentException | IllegalStateException ex) {
             log.warn("Failed to create maintenance request: {}", ex.getMessage());
             return ResponseEntity.badRequest().body(java.util.Map.of("message", ex.getMessage()));
         }
@@ -59,6 +59,20 @@ public class MaintenanceRequestController {
             @PathVariable UUID requestId,
             @RequestBody(required = false) AdminServiceRequestActionDto request) {
         MaintenanceRequestDto dto = maintenanceRequestService.approveRequest(
+                principal.uid(),
+                requestId,
+                request
+        );
+        return ResponseEntity.ok(dto);
+    }
+
+    @PatchMapping("/admin/{requestId}/complete")
+    @PreAuthorize("@authz.canManageServiceRequests()")
+    public ResponseEntity<MaintenanceRequestDto> completeMaintenanceRequest(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID requestId,
+            @RequestBody(required = false) AdminServiceRequestActionDto request) {
+        MaintenanceRequestDto dto = maintenanceRequestService.completeRequest(
                 principal.uid(),
                 requestId,
                 request
