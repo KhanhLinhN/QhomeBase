@@ -11,7 +11,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -27,6 +29,7 @@ public class ResidentAccountService {
     private final UnitRepository unitRepository;
     private final IamClientService iamClientService;
     private final AccountCreationRequestRepository accountCreationRequestRepository;
+    private final NotificationClient notificationClient;
     
     public boolean canCreateAccountForUnit(UUID unitId, UUID requesterUserId) {
         Household household = householdRepository.findCurrentHouseholdByUnitId(unitId)
@@ -391,6 +394,12 @@ public class ResidentAccountService {
 
                 log.info("Approved and created account for resident {}: userId={}, username={}", 
                         request.getResidentId(), account.userId(), account.username());
+
+                notifyAccountRequestStatus(
+                        request,
+                        "Yêu cầu tạo tài khoản đã được duyệt",
+                        "Ban quản trị đã tạo tài khoản cho thành viên của bạn."
+                );
             } catch (Exception e) {
                 log.error("Failed to create account after approval for resident {}: {}", 
                         request.getResidentId(), e.getMessage(), e);
@@ -399,6 +408,12 @@ public class ResidentAccountService {
                 request.setRejectionReason("Failed to create account: " + e.getMessage());
                 request.setRejectedAt(OffsetDateTime.now());
                 accountCreationRequestRepository.save(request);
+
+                notifyAccountRequestStatus(
+                        request,
+                        "Yêu cầu tạo tài khoản chưa được xử lý",
+                        "Hệ thống chưa thể tạo tài khoản. Vui lòng liên hệ ban quản trị để được hỗ trợ."
+                );
                 throw new RuntimeException("Failed to create account after approval: " + e.getMessage(), e);
             }
         } else {
@@ -409,6 +424,14 @@ public class ResidentAccountService {
 
             accountCreationRequestRepository.save(request);
             log.info("Rejected account request {} by admin {}", requestId, adminUserId);
+
+            notifyAccountRequestStatus(
+                    request,
+                    "Yêu cầu tạo tài khoản bị từ chối",
+                    rejectionReason != null && !rejectionReason.isBlank()
+                            ? rejectionReason
+                            : "Ban quản trị đã từ chối yêu cầu tạo tài khoản cho thành viên."
+            );
         }
 
         return mapToDto(request);
@@ -526,6 +549,74 @@ public class ResidentAccountService {
         Integer bedrooms = unit.getBedrooms();
         int effectiveBedrooms = (bedrooms == null || bedrooms <= 0) ? 1 : bedrooms;
         return Math.max(1, effectiveBedrooms) * 2;
+    }
+
+    private void notifyAccountRequestStatus(AccountCreationRequest request, String title, String message) {
+        try {
+            Resident requester = residentRepository.findByUserId(request.getRequestedBy()).orElse(null);
+            if (requester == null || requester.getId() == null) {
+                log.warn("⚠️ [ResidentAccountService] Cannot notify requester {}, resident not found", request.getRequestedBy());
+                return;
+            }
+
+            UUID residentId = requester.getId();
+            UUID buildingId = null;
+            UUID unitId = null;
+            String unitCode = null;
+
+            if (request.getResidentId() != null) {
+                List<HouseholdMember> members = householdMemberRepository.findActiveMembersByResidentId(request.getResidentId());
+                if (!members.isEmpty()) {
+                    Household household = householdRepository.findById(members.get(0).getHouseholdId()).orElse(null);
+                    if (household != null && household.getUnitId() != null) {
+                        Unit unit = unitRepository.findById(household.getUnitId()).orElse(null);
+                        if (unit != null) {
+                            unitId = unit.getId();
+                            unitCode = unit.getCode();
+                            if (unit.getBuilding() != null) {
+                                buildingId = unit.getBuilding().getId();
+                            }
+                        }
+                    }
+                }
+            }
+
+            Resident targetResident = request.getResidentId() != null
+                    ? residentRepository.findById(request.getResidentId()).orElse(null)
+                    : null;
+
+            Map<String, String> data = new HashMap<>();
+            data.put("requestId", request.getId().toString());
+            data.put("status", request.getStatus().name());
+            if (unitId != null) {
+                data.put("unitId", unitId.toString());
+            }
+            if (unitCode != null) {
+                data.put("unitCode", unitCode);
+            }
+            if (targetResident != null && targetResident.getFullName() != null) {
+                data.put("memberName", targetResident.getFullName());
+            }
+            if (request.getUsername() != null) {
+                data.put("username", request.getUsername());
+            }
+            if (request.getRejectionReason() != null) {
+                data.put("reason", request.getRejectionReason());
+            }
+
+            notificationClient.sendResidentNotification(
+                    residentId,
+                    buildingId,
+                    "REQUEST",
+                    title,
+                    message,
+                    request.getId(),
+                    "ACCOUNT_CREATION_REQUEST",
+                    data
+            );
+        } catch (Exception ex) {
+            log.warn("⚠️ [ResidentAccountService] Failed to dispatch account request notification {}: {}", request.getId(), ex.getMessage());
+        }
     }
 
     @Transactional(readOnly = true)
