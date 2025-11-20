@@ -264,18 +264,22 @@ public class ResidentAccountService {
         }
 
         boolean hasPermission = false;
+        Household targetHousehold = null;
         for (HouseholdMember member : residentMembers) {
             Household household = householdRepository.findById(member.getHouseholdId())
                     .orElse(null);
             if (household != null && canCreateAccountForUnit(household.getUnitId(), requesterUserId)) {
                 hasPermission = true;
+                targetHousehold = household;
                 break;
             }
         }
 
-        if (!hasPermission) {
+        if (!hasPermission || targetHousehold == null) {
             throw new IllegalArgumentException("You don't have permission to create account request for this resident");
         }
+
+        ensureAccountCapacityAvailable(targetHousehold);
 
         String username = null;
         String password = null;
@@ -321,6 +325,30 @@ public class ResidentAccountService {
         log.info("Created account request for resident {} by user {}", request.residentId(), requesterUserId);
 
         return mapToDto(savedRequest);
+    }
+
+    @Transactional
+    public AccountCreationRequestDto cancelAccountRequest(UUID requestId, UUID requesterUserId) {
+        AccountCreationRequest request = accountCreationRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy yêu cầu tạo tài khoản"));
+
+        if (!requesterUserId.equals(request.getRequestedBy())) {
+            throw new IllegalArgumentException("Bạn không có quyền hủy yêu cầu này");
+        }
+
+        if (request.getStatus() != AccountCreationRequest.RequestStatus.PENDING) {
+            throw new IllegalArgumentException("Chỉ có thể hủy các yêu cầu đang chờ duyệt");
+        }
+
+        request.setStatus(AccountCreationRequest.RequestStatus.CANCELLED);
+        request.setRejectedBy(requesterUserId);
+        request.setRejectedAt(OffsetDateTime.now());
+        request.setRejectionReason("Cư dân đã hủy yêu cầu");
+
+        AccountCreationRequest saved = accountCreationRequestRepository.save(request);
+        log.info("Resident {} cancelled account creation request {}", requesterUserId, requestId);
+
+        return mapToDto(saved);
     }
 
     @Transactional
@@ -469,6 +497,35 @@ public class ResidentAccountService {
                 request.getRejectedAt(),
                 request.getCreatedAt()
         );
+    }
+
+    private void ensureAccountCapacityAvailable(Household household) {
+        if (household.getUnitId() == null) {
+            throw new IllegalArgumentException("Household is missing unit information");
+        }
+
+        Unit unit = unitRepository.findById(household.getUnitId())
+                .orElseThrow(() -> new IllegalArgumentException("Unit not found for this household"));
+
+        int capacity = calculateCapacity(unit);
+        long activeAccounts = householdMemberRepository.countActiveMembersWithAccount(household.getId());
+        long pendingAccountRequests = accountCreationRequestRepository.countPendingByHouseholdId(household.getId());
+
+        if (activeAccounts + pendingAccountRequests >= capacity) {
+            String unitLabel = unit.getCode() != null ? unit.getCode() : "Căn hộ";
+            throw new IllegalArgumentException(String.format(
+                    "%s đã đạt giới hạn %d tài khoản thành viên (bao gồm các yêu cầu chờ duyệt). "
+                            + "Vui lòng hủy bớt yêu cầu hoặc xóa tài khoản trước khi đăng ký thêm.",
+                    unitLabel,
+                    capacity
+            ));
+        }
+    }
+
+    private int calculateCapacity(Unit unit) {
+        Integer bedrooms = unit.getBedrooms();
+        int effectiveBedrooms = (bedrooms == null || bedrooms <= 0) ? 1 : bedrooms;
+        return Math.max(1, effectiveBedrooms) * 2;
     }
 
     @Transactional(readOnly = true)

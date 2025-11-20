@@ -15,6 +15,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -27,7 +28,7 @@ public class HouseholdMemberRequestController {
 
     @PostMapping
     @PreAuthorize("hasRole('RESIDENT')")
-    public ResponseEntity<HouseholdMemberRequestDto> createRequest(
+    public ResponseEntity<?> createRequest(
             @Valid @RequestBody HouseholdMemberRequestCreateDto createDto,
             Authentication authentication
     ) {
@@ -37,7 +38,7 @@ public class HouseholdMemberRequestController {
             return ResponseEntity.status(HttpStatus.CREATED).body(dto);
         } catch (IllegalArgumentException e) {
             log.warn("Failed to create household member request: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
     }
 
@@ -49,6 +50,22 @@ public class HouseholdMemberRequestController {
         return ResponseEntity.ok(requests);
     }
 
+    @PatchMapping("/{id}/cancel")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<?> cancelMyRequest(
+            @PathVariable UUID id,
+            Authentication authentication
+    ) {
+        try {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            HouseholdMemberRequestDto dto = requestService.cancelRequest(id, principal.uid());
+            return ResponseEntity.ok(dto);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to cancel household member request {}: {}", id, e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
     @GetMapping("/pending")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<HouseholdMemberRequestDto>> getPendingRequests() {
@@ -58,7 +75,7 @@ public class HouseholdMemberRequestController {
 
     @PostMapping("/{id}/decision")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<HouseholdMemberRequestDto> decideRequest(
+    public ResponseEntity<?> decideRequest(
             @PathVariable UUID id,
             @Valid @RequestBody HouseholdMemberRequestDecisionDto decisionDto,
             Authentication authentication
@@ -69,7 +86,7 @@ public class HouseholdMemberRequestController {
             return ResponseEntity.ok(dto);
         } catch (IllegalArgumentException e) {
             log.warn("Failed to process household member request {}: {}", id, e.getMessage());
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
     }
 }

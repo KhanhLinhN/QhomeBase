@@ -24,5 +24,12 @@ public interface AccountCreationRequestRepository extends JpaRepository<AccountC
 
     @Query("SELECT r FROM AccountCreationRequest r WHERE r.status = 'PENDING' ORDER BY r.createdAt DESC")
     List<AccountCreationRequest> findAllPendingRequests();
+
+    @Query("SELECT COUNT(r) FROM AccountCreationRequest r " +
+            "JOIN HouseholdMember hm ON hm.residentId = r.residentId " +
+            "WHERE hm.householdId = :householdId " +
+            "AND (hm.leftAt IS NULL OR hm.leftAt >= CURRENT_DATE) " +
+            "AND r.status = 'PENDING'")
+    long countPendingByHouseholdId(@Param("householdId") UUID householdId);
 }
 

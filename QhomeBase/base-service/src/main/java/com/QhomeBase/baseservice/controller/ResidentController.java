@@ -84,6 +84,26 @@ public class ResidentController {
                     .body(Map.of("message", e.getMessage()));
         }
     }
+
+    @PatchMapping("/account-requests/{requestId}/cancel")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<?> cancelMyAccountRequest(
+            @PathVariable UUID requestId,
+            Authentication authentication) {
+        try {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID requesterUserId = principal.uid();
+
+            AccountCreationRequestDto dto = residentAccountService
+                    .cancelAccountRequest(requestId, requesterUserId);
+
+            return ResponseEntity.ok(dto);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to cancel account request {}: {}", requestId, e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
     
     @GetMapping("/{residentId}/account")
     @PreAuthorize("hasRole('RESIDENT')")

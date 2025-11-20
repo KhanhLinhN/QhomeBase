@@ -29,6 +29,9 @@ public interface ResidentRepository extends JpaRepository<Resident, UUID> {
     boolean existsByPhone(String phone);
     
     boolean existsByEmail(String email);
+
+    @Query("SELECT CASE WHEN COUNT(r) > 0 THEN true ELSE false END FROM Resident r WHERE LOWER(r.email) = LOWER(:email)")
+    boolean existsByEmailIgnoreCase(@Param("email") String email);
     
     boolean existsByNationalId(String nationalId);
     

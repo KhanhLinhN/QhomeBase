@@ -4,10 +4,12 @@ import com.QhomeBase.baseservice.dto.HouseholdMemberCreateDto;
 import com.QhomeBase.baseservice.dto.HouseholdMemberRequestCreateDto;
 import com.QhomeBase.baseservice.dto.HouseholdMemberRequestDecisionDto;
 import com.QhomeBase.baseservice.dto.HouseholdMemberRequestDto;
+import com.QhomeBase.baseservice.dto.ResidentAccountDto;
 import com.QhomeBase.baseservice.model.Household;
 import com.QhomeBase.baseservice.model.HouseholdMemberRequest;
 import com.QhomeBase.baseservice.model.HouseholdMemberRequest.RequestStatus;
 import com.QhomeBase.baseservice.model.Resident;
+import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.repository.HouseholdMemberRepository;
 import com.QhomeBase.baseservice.repository.HouseholdMemberRequestRepository;
 import com.QhomeBase.baseservice.repository.HouseholdRepository;
@@ -18,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -34,6 +37,7 @@ public class HouseholdMemberRequestService {
     private final HouseholdMemberRepository householdMemberRepository;
     private final HouseHoldMemberService houseHoldMemberService;
     private final UnitRepository unitRepository;
+    private final IamClientService iamClientService;
 
     @Transactional
     public HouseholdMemberRequestDto createRequest(HouseholdMemberRequestCreateDto createDto, UserPrincipal principal) {
@@ -46,6 +50,10 @@ public class HouseholdMemberRequestService {
         if (!isPrimaryResident(household, requesterResident.getId())) {
             throw new IllegalArgumentException("Only the primary resident can submit membership requests");
         }
+
+        validateEmailUniqueness(createDto, requesterResident, principal);
+        validateNationalIdUniqueness(createDto);
+        validatePhoneUniqueness(createDto);
 
         UUID resolvedResidentId = resolveExistingResident(createDto);
 
@@ -72,6 +80,8 @@ public class HouseholdMemberRequestService {
                 throw new IllegalArgumentException("There is already a pending request for this resident");
             });
         }
+
+        ensureHouseholdHasCapacity(household);
 
         HouseholdMemberRequest request = HouseholdMemberRequest.builder()
                 .householdId(createDto.householdId())
@@ -127,6 +137,30 @@ public class HouseholdMemberRequestService {
                 .stream()
                 .map(this::toDto)
                 .toList();
+    }
+
+    @Transactional
+    public HouseholdMemberRequestDto cancelRequest(UUID requestId, UUID requesterUserId) {
+        HouseholdMemberRequest request = requestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Household member request not found"));
+
+        if (!requesterUserId.equals(request.getRequestedBy())) {
+            throw new IllegalArgumentException("Bạn không có quyền hủy yêu cầu này");
+        }
+
+        if (request.getStatus() != RequestStatus.PENDING) {
+            throw new IllegalArgumentException("Chỉ có thể hủy các yêu cầu đang chờ duyệt");
+        }
+
+        request.setStatus(RequestStatus.CANCELLED);
+        request.setRejectedBy(requesterUserId);
+        request.setRejectedAt(OffsetDateTime.now());
+        request.setRejectionReason("Cư dân đã hủy yêu cầu");
+        request.setUpdatedAt(OffsetDateTime.now());
+
+        HouseholdMemberRequest saved = requestRepository.save(request);
+        log.info("Household member request {} cancelled by {}", requestId, requesterUserId);
+        return toDto(saved);
     }
 
     private void approveRequest(HouseholdMemberRequest request, UUID adminUserId) {
@@ -299,5 +333,108 @@ public class HouseholdMemberRequestService {
 
         request.setResidentId(existing.getId());
         return existing.getId();
+    }
+
+    private void ensureHouseholdHasCapacity(Household household) {
+        Unit unit = unitRepository.findById(household.getUnitId())
+                .orElseThrow(() -> new IllegalArgumentException("Unit not found for this household"));
+
+        long activeMembers = householdMemberRepository.countActiveMembersByHouseholdId(household.getId());
+        long pendingRequests = requestRepository.countByHouseholdIdAndStatus(household.getId(), RequestStatus.PENDING);
+        int capacity = calculateCapacity(unit);
+
+        if (activeMembers + pendingRequests >= capacity) {
+            String unitLabel = unit.getCode() != null ? unit.getCode() : "Căn hộ";
+            throw new IllegalArgumentException(String.format(
+                    "%s đã đủ %d thành viên (bao gồm các yêu cầu đang chờ duyệt). Vui lòng chờ hoàn tất hoặc cập nhật danh sách trước khi đăng ký thêm.",
+                    unitLabel,
+                    capacity
+            ));
+        }
+    }
+
+    private int calculateCapacity(Unit unit) {
+        Integer bedrooms = unit.getBedrooms();
+        int effectiveBedrooms = (bedrooms == null || bedrooms <= 0) ? 1 : bedrooms;
+        return Math.max(1, effectiveBedrooms) * 2;
+    }
+
+    private void validateEmailUniqueness(HouseholdMemberRequestCreateDto createDto,
+                                         Resident requesterResident,
+                                         UserPrincipal principal) {
+        if (!StringUtils.hasText(createDto.residentEmail())) {
+            return;
+        }
+
+        String normalizedEmail = createDto.residentEmail().trim();
+        if (normalizedEmail.isEmpty()) {
+            return;
+        }
+
+        String lowerEmail = normalizedEmail.toLowerCase();
+
+        if (requesterResident != null && StringUtils.hasText(requesterResident.getEmail())) {
+            String residentEmail = requesterResident.getEmail().trim().toLowerCase();
+            if (!residentEmail.isEmpty() && lowerEmail.equals(residentEmail)) {
+                throw new IllegalArgumentException("Email này trùng với email tài khoản của bạn. Vui lòng nhập email khác hoặc để trống.");
+            }
+        }
+
+        String accountEmail = resolvePrincipalEmail(principal);
+        if (accountEmail != null && lowerEmail.equals(accountEmail)) {
+            throw new IllegalArgumentException("Email này trùng với email tài khoản của bạn. Vui lòng nhập email khác hoặc để trống.");
+        }
+
+        boolean existsInResidents = residentRepository.existsByEmailIgnoreCase(normalizedEmail);
+        boolean existsInAccounts = iamClientService.emailExists(normalizedEmail);
+
+        if (existsInResidents || existsInAccounts) {
+            throw new IllegalArgumentException("Email này đã được sử dụng trong hệ thống. Vui lòng nhập email khác hoặc để trống.");
+        }
+    }
+
+    private void validateNationalIdUniqueness(HouseholdMemberRequestCreateDto createDto) {
+        if (!StringUtils.hasText(createDto.residentNationalId())) {
+            return;
+        }
+
+        String normalizedId = createDto.residentNationalId().trim();
+        if (normalizedId.isEmpty()) {
+            return;
+        }
+
+        if (residentRepository.existsByNationalId(normalizedId)) {
+            throw new IllegalArgumentException("CCCD/CMND này đã tồn tại trong hệ thống. Vui lòng nhập số khác hoặc để trống.");
+        }
+    }
+
+    private void validatePhoneUniqueness(HouseholdMemberRequestCreateDto createDto) {
+        if (!StringUtils.hasText(createDto.residentPhone())) {
+            return;
+        }
+
+        String normalizedPhone = createDto.residentPhone().trim();
+        if (normalizedPhone.isEmpty()) {
+            return;
+        }
+
+        if (residentRepository.existsByPhone(normalizedPhone)) {
+            throw new IllegalArgumentException("Số điện thoại này đã tồn tại trong hệ thống. Vui lòng nhập số khác hoặc để trống.");
+        }
+    }
+
+    private String resolvePrincipalEmail(UserPrincipal principal) {
+        if (principal == null) {
+            return null;
+        }
+        try {
+            ResidentAccountDto account = iamClientService.getUserAccountInfo(principal.uid());
+            if (account != null && StringUtils.hasText(account.email())) {
+                return account.email().trim().toLowerCase();
+            }
+        } catch (Exception e) {
+            log.warn("Không thể lấy thông tin email tài khoản hiện tại: {}", e.getMessage());
+        }
+        return null;
     }
 }

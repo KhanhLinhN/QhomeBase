@@ -6,9 +6,11 @@ import com.QhomeBase.baseservice.dto.HouseholdMemberUpdateDto;
 import com.QhomeBase.baseservice.model.Household;
 import com.QhomeBase.baseservice.model.HouseholdMember;
 import com.QhomeBase.baseservice.model.Resident;
+import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.repository.HouseholdMemberRepository;
 import com.QhomeBase.baseservice.repository.HouseholdRepository;
 import com.QhomeBase.baseservice.repository.ResidentRepository;
+import com.QhomeBase.baseservice.repository.UnitRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,6 +30,7 @@ public class HouseHoldMemberService {
     private final HouseholdMemberRepository householdMemberRepository;
     private final HouseholdRepository householdRepository;
     private final ResidentRepository residentRepository;
+    private final UnitRepository unitRepository;
 
     @Transactional
     public HouseholdMemberDto createHouseholdMember(HouseholdMemberCreateDto createDto) {
@@ -53,6 +56,8 @@ public class HouseHoldMemberService {
                 throw new IllegalArgumentException("Household already has a primary member");
             }
         }
+
+        validateHouseholdCapacity(household);
 
         LocalDate joinedAt = createDto.joinedAt() != null ? createDto.joinedAt() : LocalDate.now();
 
@@ -133,6 +138,33 @@ public class HouseHoldMemberService {
         member.setLeftAt(LocalDate.now());
         householdMemberRepository.save(member);
         log.info("Removed household member {} from household", memberId);
+    }
+
+    private void validateHouseholdCapacity(Household household) {
+        if (household == null) {
+            throw new IllegalArgumentException("Household information is required");
+        }
+
+        Unit unit = unitRepository.findById(household.getUnitId())
+                .orElseThrow(() -> new IllegalArgumentException("Unit not found for this household"));
+
+        long activeMembers = householdMemberRepository.countActiveMembersByHouseholdId(household.getId());
+        int capacity = calculateCapacity(unit);
+
+        if (activeMembers >= capacity) {
+            String unitLabel = unit.getCode() != null ? unit.getCode() : "Căn hộ";
+            throw new IllegalArgumentException(String.format(
+                    "%s chỉ được đăng ký tối đa %d thành viên đang sinh sống (quy tắc 1 phòng ngủ x2). Vui lòng cập nhật lại danh sách trước khi thêm mới.",
+                    unitLabel,
+                    capacity
+            ));
+        }
+    }
+
+    private int calculateCapacity(Unit unit) {
+        Integer bedrooms = unit.getBedrooms();
+        int effectiveBedrooms = (bedrooms == null || bedrooms <= 0) ? 1 : bedrooms;
+        return Math.max(1, effectiveBedrooms) * 2;
     }
 
     @Transactional(readOnly = true)

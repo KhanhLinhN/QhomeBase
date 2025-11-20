@@ -48,6 +48,18 @@ public interface HouseholdMemberRepository extends JpaRepository<HouseholdMember
             @Param("householdId") UUID householdId
     );
 
+    @Query("SELECT COUNT(hm) FROM HouseholdMember hm " +
+           "WHERE hm.householdId = :householdId " +
+           "AND (hm.leftAt IS NULL OR hm.leftAt >= CURRENT_DATE)")
+    long countActiveMembersByHouseholdId(@Param("householdId") UUID householdId);
+
+    @Query("SELECT COUNT(hm) FROM HouseholdMember hm " +
+           "JOIN Resident r ON hm.residentId = r.id " +
+           "WHERE hm.householdId = :householdId " +
+           "AND (hm.leftAt IS NULL OR hm.leftAt >= CURRENT_DATE) " +
+           "AND r.userId IS NOT NULL")
+    long countActiveMembersWithAccount(@Param("householdId") UUID householdId);
+
 }
 
 

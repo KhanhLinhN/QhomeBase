@@ -30,3 +30,4 @@ QhomeBase/customer-interaction-service/src/main/resources/qhomeapp-firebase-admi
 **/service-account*.json
 **/firebase-*.json
 QhomeBase/iam-service/target/classes/com/QhomeBase/iamservice/service/UserService.class
+QHomeApp_Flutter/
