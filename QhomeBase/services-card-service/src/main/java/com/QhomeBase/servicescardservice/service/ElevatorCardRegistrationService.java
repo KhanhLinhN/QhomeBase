@@ -51,6 +51,7 @@ public class ElevatorCardRegistrationService {
     private final BillingClient billingClient;
     private final ResidentUnitLookupService residentUnitLookupService;
     private final NotificationClient notificationClient;
+    private final CardFeeReminderService cardFeeReminderService;
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
@@ -434,6 +435,17 @@ public class ElevatorCardRegistrationService {
                     params.get("vnp_BankCode"),
                     params.get("vnp_CardType"),
                     responseCode
+            );
+
+            cardFeeReminderService.resetReminderAfterPayment(
+                    CardFeeReminderService.CardFeeType.ELEVATOR,
+                    registration.getId(),
+                    registration.getUnitId(),
+                    registration.getResidentId(),
+                    registration.getUserId(),
+                    registration.getApartmentNumber(),
+                    registration.getBuildingName(),
+                    payDate
             );
 
             orderIdToRegistrationId.remove(orderId);

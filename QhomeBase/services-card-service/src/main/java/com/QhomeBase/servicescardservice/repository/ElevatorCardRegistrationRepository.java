@@ -58,4 +58,11 @@ public interface ElevatorCardRegistrationRepository extends JpaRepository<Elevat
            "AND e.status NOT IN :excludedStatuses")
     long countAllElevatorCardsByUnitId(@Param("unitId") UUID unitId, 
                                        @Param("excludedStatuses") List<String> excludedStatuses);
+
+    @Query("""
+            SELECT e FROM ElevatorCardRegistration e
+            WHERE UPPER(e.paymentStatus) = 'PAID'
+              AND UPPER(e.status) NOT IN ('REJECTED', 'CANCELLED')
+            """)
+    List<ElevatorCardRegistration> findActivePaidCards();
 }

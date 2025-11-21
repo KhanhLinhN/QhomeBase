@@ -45,4 +45,12 @@ public interface RegisterServiceRequestRepository extends JpaRepository<Register
     List<RegisterServiceRequest> findByPaymentStatusAndUpdatedAtBefore(String paymentStatus, OffsetDateTime updatedAtBefore);
 
     List<RegisterServiceRequest> findByStatusAndUpdatedAtBefore(String status, OffsetDateTime updatedAtBefore);
+
+    @Query("""
+            SELECT r FROM RegisterServiceRequest r
+            WHERE r.serviceType = :serviceType
+              AND UPPER(r.paymentStatus) = 'PAID'
+              AND UPPER(r.status) NOT IN ('REJECTED', 'CANCELLED')
+            """)
+    List<RegisterServiceRequest> findActivePaidCards(@Param("serviceType") String serviceType);
 }

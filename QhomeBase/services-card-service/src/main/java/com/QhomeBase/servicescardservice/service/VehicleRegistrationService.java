@@ -58,6 +58,7 @@ public class VehicleRegistrationService {
     private final BillingClient billingClient;
     private final ResidentUnitLookupService residentUnitLookupService;
     private final NotificationClient notificationClient;
+    private final CardFeeReminderService cardFeeReminderService;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
     private Path ensureUploadDir() throws IOException {
@@ -480,6 +481,21 @@ public class VehicleRegistrationService {
                     params.get("vnp_BankCode"),
                     params.get("vnp_CardType"),
                     responseCode
+            );
+
+            UUID residentId = residentUnitLookupService.resolveByUser(registration.getUserId(), registration.getUnitId())
+                    .map(ResidentUnitLookupService.AddressInfo::residentId)
+                    .orElse(null);
+
+            cardFeeReminderService.resetReminderAfterPayment(
+                    CardFeeReminderService.CardFeeType.VEHICLE,
+                    registration.getId(),
+                    registration.getUnitId(),
+                    residentId,
+                    registration.getUserId(),
+                    registration.getApartmentNumber(),
+                    registration.getBuildingName(),
+                    payDate
             );
             orderIdToRegistrationId.remove(orderId);
             return new VehicleRegistrationPaymentResult(registrationId, true, responseCode, signatureValid);
