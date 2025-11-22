@@ -152,10 +152,13 @@ public class BillingCycleService {
                     continue;
                 }
 
+                LocalDate periodFrom = readingCycle.periodFrom();
+                LocalDate periodTo = periodFrom.withDayOfMonth(24);
+
                 CreateBillingCycleRequest request = CreateBillingCycleRequest.builder()
                         .name(readingCycle.name())
-                        .periodFrom(readingCycle.periodFrom())
-                        .periodTo(readingCycle.periodTo())
+                        .periodFrom(periodFrom)
+                        .periodTo(periodTo)
                         .status(readingCycle.status() != null ? readingCycle.status() : "OPEN")
                         .externalCycleId(readingCycle.id())
                         .build();

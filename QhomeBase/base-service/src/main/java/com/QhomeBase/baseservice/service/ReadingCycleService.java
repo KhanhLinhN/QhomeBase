@@ -47,11 +47,16 @@ public class ReadingCycleService {
         YearMonth targetMonth = validateMonthlyWindow(req.periodFrom(), req.periodTo());
         ensureCycleDoesNotExist(targetMonth, req.serviceId());
 
+        LocalDate periodTo = req.periodTo();
+        if (periodTo == null || periodTo.equals(targetMonth.atEndOfMonth())) {
+            periodTo = targetMonth.atDay(15);
+        }
+
         ReadingCycle cycle = ReadingCycle.builder()
                 .name(buildCycleName(targetMonth))
                 .service(service)
                 .periodFrom(targetMonth.atDay(1))
-                .periodTo(targetMonth.atEndOfMonth())
+                .periodTo(periodTo)
                 .status(ReadingCycleStatus.OPEN)
                 .description(req.description())
                 .createdBy(createdBy)
@@ -157,10 +162,13 @@ public class ReadingCycleService {
             return false;
         }
 
+        LocalDate periodFrom = cycle.getPeriodFrom();
+        LocalDate periodTo = periodFrom.withDayOfMonth(24);
+
         CreateBillingCycleRequest request = CreateBillingCycleRequest.builder()
                 .name(cycle.getName() + " • " + cycle.getService().getCode())
-                .periodFrom(cycle.getPeriodFrom())
-                .periodTo(cycle.getPeriodTo())
+                .periodFrom(periodFrom)
+                .periodTo(periodTo)
                 .status("OPEN")
                 .externalCycleId(cycle.getId())
                 .build();
@@ -168,8 +176,8 @@ public class ReadingCycleService {
         log.info("Creating billing cycle for reading cycle {} (service {}): {} → {}",
                 cycle.getId(),
                 cycle.getService().getCode(),
-                cycle.getPeriodFrom(),
-                cycle.getPeriodTo());
+                periodFrom,
+                periodTo);
 
         try {
             List<BillingCycleDto> existing = financeBillingClient
@@ -213,12 +221,13 @@ public class ReadingCycleService {
                             .name(cycleName)
                             .service(service)
                             .periodFrom(month.atDay(1))
-                            .periodTo(month.atEndOfMonth())
+                            .periodTo(month.atDay(15))
                             .status(ReadingCycleStatus.OPEN)
-                            .description("Auto-generated cycle for " + cycleName)
+                            .description("Auto-generated cycle for " + cycleName + " (reading period: 1-15)")
                             .build();
                     ReadingCycle saved = readingCycleRepository.save(cycle);
-                    log.info("Auto-created reading cycle {} for service {}", cycleName, serviceId);
+                    log.info("Auto-created reading cycle {} for service {} (period: {} to {})", 
+                            cycleName, serviceId, month.atDay(1), month.atDay(15));
                     return saved;
                 });
     }
@@ -307,8 +316,11 @@ public class ReadingCycleService {
         }
 
         YearMonth yearMonth = YearMonth.from(from);
-        if (!from.equals(yearMonth.atDay(1)) || !to.equals(yearMonth.atEndOfMonth())) {
-            throw new IllegalArgumentException("Reading cycles must align to a full calendar month");
+        boolean isValidPeriod = (from.equals(yearMonth.atDay(1)) && to.equals(yearMonth.atDay(15))) ||
+                                (from.equals(yearMonth.atDay(1)) && to.equals(yearMonth.atEndOfMonth()));
+        
+        if (!isValidPeriod) {
+            throw new IllegalArgumentException("Reading cycles must be from day 1 to day 15, or from day 1 to end of month");
         }
         return yearMonth;
     }
@@ -319,7 +331,7 @@ public class ReadingCycleService {
             throw new IllegalStateException("Reading cycle already exists for " + cycleName + " and service " + serviceId);
         });
         List<ReadingCycle> overlaps = readingCycleRepository.findOverlappingCyclesByService(
-                month.atDay(1), month.atEndOfMonth(), serviceId);
+                month.atDay(1), month.atDay(15), serviceId);
         if (!overlaps.isEmpty()) {
             throw new IllegalStateException("Reading cycle overlaps with an existing period for this service");
         }

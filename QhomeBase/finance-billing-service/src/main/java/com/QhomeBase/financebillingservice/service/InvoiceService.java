@@ -194,7 +194,7 @@ public class InvoiceService {
                 .code(invoiceCode)
                 .issuedAt(OffsetDateTime.now())
                 .dueDate(request.getDueDate())
-                .status(InvoiceStatus.DRAFT)
+                .status(InvoiceStatus.PUBLISHED)
                 .currency(request.getCurrency() != null ? request.getCurrency() : "VND")
                 .billToName(request.getBillToName())
                 .billToAddress(request.getBillToAddress())
@@ -723,7 +723,7 @@ public class InvoiceService {
                 .taxAmount(line.getTaxAmount() != null ? line.getTaxAmount().doubleValue() : 0.0)
                 .lineTotal(line.getLineTotal() != null ? line.getLineTotal().doubleValue() : 0.0)
                 .serviceCode(line.getServiceCode())
-                .status(invoice.getStatus() != null ? invoice.getStatus().name() : "DRAFT")
+                .status(invoice.getStatus() != null ? invoice.getStatus().name() : "PUBLISHED")
                 .build();
     }
 

@@ -103,6 +103,15 @@ public class MeterReadingImportService {
                 continue;
             }
 
+            ReadingCycleDto readingCycle = cycleCache.get(readingCycleId);
+            if (readingCycle == null) {
+                String errorMsg = String.format("Unit %s, Cycle %s: Reading cycle not found in cache", unitId, readingCycleId);
+                log.error("Reading cycle {} not found in cache for unit={}", readingCycleId, unitId);
+                errors.add(errorMsg);
+                skipped++;
+                continue;
+            }
+
             try {
                 BigDecimal totalUsage = group.stream()
                         .map(ImportedReadingDto::getUsageKwh)
@@ -179,7 +188,7 @@ public class MeterReadingImportService {
                     continue;
                 }
 
-                LocalDate dueDate = calculateDueDate(serviceDate);
+                LocalDate dueDate = calculateDueDate(readingCycle.periodTo());
                 
                 CreateInvoiceRequest req = CreateInvoiceRequest.builder()
                         .payerUnitId(unitId)
@@ -330,9 +339,12 @@ public class MeterReadingImportService {
         return ServiceCode.isValid(serviceCode);
     }
     
-    private LocalDate calculateDueDate(LocalDate serviceDate) {
-        LocalDate endOfMonth = serviceDate.withDayOfMonth(serviceDate.lengthOfMonth());
-        return endOfMonth.plusDays(7);
+    private LocalDate calculateDueDate(LocalDate readingCycleEndDate) {
+        if (readingCycleEndDate == null) {
+            log.warn("Reading cycle end date is null, using current date + 7 days as fallback");
+            return LocalDate.now().plusDays(7);
+        }
+        return readingCycleEndDate.plusDays(7);
     }
 
     private String getDefaultDescription(String serviceCode) {
@@ -363,7 +375,7 @@ public class MeterReadingImportService {
         }
 
         LocalDate periodFrom = serviceDate.withDayOfMonth(1);
-        LocalDate periodTo = periodFrom.plusMonths(1).minusDays(1);
+        LocalDate periodTo = periodFrom.withDayOfMonth(24);
         
         List<BillingCycle> existing = billingCycleRepository.findListByTime(periodFrom, periodTo);
         for (BillingCycle cycle : existing) {

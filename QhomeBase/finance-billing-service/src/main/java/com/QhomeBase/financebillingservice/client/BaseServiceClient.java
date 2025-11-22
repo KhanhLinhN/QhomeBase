@@ -42,4 +42,33 @@ public class BaseServiceClient {
             throw new RuntimeException("Failed to fetch reading cycle from base-service: " + e.getMessage(), e);
         }
     }
+
+    public UnitInfo getUnitById(UUID unitId) {
+        try {
+            return webClient.get()
+                    .uri("/api/units/{unitId}", unitId)
+                    .retrieve()
+                    .bodyToMono(UnitInfo.class)
+                    .block();
+        } catch (Exception e) {
+            log.warn("Error fetching unit {} from base-service: {}", unitId, e.getMessage());
+            return null;
+        }
+    }
+
+    public static class UnitInfo {
+        private UUID id;
+        private String code;
+        private String name;
+        private Integer floor;
+
+        public UUID getId() { return id; }
+        public void setId(UUID id) { this.id = id; }
+        public String getCode() { return code; }
+        public void setCode(String code) { this.code = code; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public Integer getFloor() { return floor; }
+        public void setFloor(Integer floor) { this.floor = floor; }
+    }
 }
