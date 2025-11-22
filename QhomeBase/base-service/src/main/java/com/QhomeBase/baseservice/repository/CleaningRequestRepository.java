@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -32,26 +33,32 @@ public interface CleaningRequestRepository extends JpaRepository<CleaningRequest
     @Query("select c from CleaningRequest c " +
             "where c.status = :status " +
             "and c.resendAlertSent = false " +
-            "and coalesce(c.lastResentAt, c.createdAt) <= :deadline")
+            "and coalesce(c.lastResentAt, c.createdAt) <= :deadline " +
+            "and c.cleaningDate = :today")
     List<CleaningRequest> findPendingRequestsForReminder(
             @Param("status") String status,
-            @Param("deadline") OffsetDateTime deadline);
+            @Param("deadline") OffsetDateTime deadline,
+            @Param("today") LocalDate today);
 
     @Query("select c from CleaningRequest c " +
             "where c.status = :status " +
             "and c.lastResentAt is not null " +
-            "and c.lastResentAt <= :resendDeadline")
+            "and c.lastResentAt <= :resendDeadline " +
+            "and c.cleaningDate = :today")
     List<CleaningRequest> findResentRequestsForAutoCancel(
             @Param("status") String status,
-            @Param("resendDeadline") OffsetDateTime resendDeadline);
+            @Param("resendDeadline") OffsetDateTime resendDeadline,
+            @Param("today") LocalDate today);
 
     @Query("select c from CleaningRequest c " +
             "where c.status = :status " +
             "and c.lastResentAt is null " +
             "and c.resendAlertSent = true " +
-            "and c.createdAt <= :noResendDeadline")
+            "and c.createdAt <= :noResendDeadline " +
+            "and c.cleaningDate = :today")
     List<CleaningRequest> findNonResentRequestsForAutoCancel(
             @Param("status") String status,
-            @Param("noResendDeadline") OffsetDateTime noResendDeadline);
+            @Param("noResendDeadline") OffsetDateTime noResendDeadline,
+            @Param("today") LocalDate today);
 }
 

@@ -2,8 +2,10 @@ package com.QhomeBase.baseservice.controller;
 
 import com.QhomeBase.baseservice.dto.AdminServiceRequestActionDto;
 import com.QhomeBase.baseservice.dto.CreateMaintenanceRequestDto;
+import com.QhomeBase.baseservice.dto.MaintenanceRequestConfigDto;
 import com.QhomeBase.baseservice.dto.MaintenanceRequestDto;
 import com.QhomeBase.baseservice.security.UserPrincipal;
+import com.QhomeBase.baseservice.service.MaintenanceRequestMonitor;
 import com.QhomeBase.baseservice.service.MaintenanceRequestService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +25,7 @@ import java.util.UUID;
 public class MaintenanceRequestController {
 
     private final MaintenanceRequestService maintenanceRequestService;
+    private final MaintenanceRequestMonitor maintenanceRequestMonitor;
 
     @PostMapping
     @PreAuthorize("hasRole('RESIDENT')")
@@ -87,6 +90,26 @@ public class MaintenanceRequestController {
             @PathVariable UUID requestId) {
         MaintenanceRequestDto dto = maintenanceRequestService.cancelRequest(principal.uid(), requestId);
         return ResponseEntity.ok(dto);
+    }
+
+    @PostMapping("/{requestId}/resend")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<?> resendMaintenanceRequest(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID requestId) {
+        try {
+            MaintenanceRequestDto dto = maintenanceRequestService.resendRequest(principal.uid(), requestId);
+            return ResponseEntity.ok(dto);
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            log.warn("Failed to resend maintenance request: {}", ex.getMessage());
+            return ResponseEntity.badRequest().body(java.util.Map.of("message", ex.getMessage()));
+        }
+    }
+
+    @GetMapping("/config")
+    public ResponseEntity<MaintenanceRequestConfigDto> getConfig() {
+        MaintenanceRequestConfigDto config = maintenanceRequestMonitor.getConfig();
+        return ResponseEntity.ok(config);
     }
 }
 

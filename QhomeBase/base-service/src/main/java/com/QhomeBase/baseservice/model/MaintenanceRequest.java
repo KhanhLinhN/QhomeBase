@@ -71,6 +71,17 @@ public class MaintenanceRequest {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    @Column(name = "last_resent_at")
+    private OffsetDateTime lastResentAt;
+
+    @Column(name = "resend_alert_sent", nullable = false)
+    @Builder.Default
+    private boolean resendAlertSent = false;
+
+    @Column(name = "call_alert_sent", nullable = false)
+    @Builder.Default
+    private boolean callAlertSent = false;
+
     @PrePersist
     public void onCreate() {
         OffsetDateTime now = OffsetDateTime.now();

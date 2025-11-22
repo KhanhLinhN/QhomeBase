@@ -21,7 +21,10 @@ public record MaintenanceRequestDto(
         String note,
         String status,
         OffsetDateTime createdAt,
-        OffsetDateTime updatedAt
+        OffsetDateTime updatedAt,
+        OffsetDateTime lastResentAt,
+        boolean resendAlertSent,
+        boolean callAlertSent
 ) {}
 
 

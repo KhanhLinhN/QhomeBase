@@ -57,4 +57,9 @@ public interface ResidentCardRegistrationRepository extends JpaRepository<Reside
               AND UPPER(r.status) NOT IN ('REJECTED', 'CANCELLED')
             """)
     List<ResidentCardRegistration> findActivePaidCards();
+
+    /**
+     * Tìm các thẻ đã duyệt và đã thanh toán để cập nhật trạng thái (NEEDS_RENEWAL, SUSPENDED)
+     */
+    List<ResidentCardRegistration> findByStatusAndPaymentStatus(String status, String paymentStatus);
 }

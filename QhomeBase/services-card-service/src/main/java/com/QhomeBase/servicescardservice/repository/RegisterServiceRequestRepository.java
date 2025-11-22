@@ -53,4 +53,9 @@ public interface RegisterServiceRequestRepository extends JpaRepository<Register
               AND UPPER(r.status) NOT IN ('REJECTED', 'CANCELLED')
             """)
     List<RegisterServiceRequest> findActivePaidCards(@Param("serviceType") String serviceType);
+
+    /**
+     * Tìm các thẻ đã duyệt và đã thanh toán để cập nhật trạng thái (NEEDS_RENEWAL, SUSPENDED)
+     */
+    List<RegisterServiceRequest> findByStatusAndPaymentStatus(String status, String paymentStatus);
 }

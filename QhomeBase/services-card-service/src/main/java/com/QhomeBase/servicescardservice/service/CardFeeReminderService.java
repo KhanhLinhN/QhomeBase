@@ -374,7 +374,8 @@ public class CardFeeReminderService {
     }
 
     private int getSafeCycleDays() {
-        return Math.max(1, cycleDays);
+        // Allow 0 for test mode (triggers immediately on same day)
+        return Math.max(0, cycleDays);
     }
 
     private int getSafeGraceDays() {

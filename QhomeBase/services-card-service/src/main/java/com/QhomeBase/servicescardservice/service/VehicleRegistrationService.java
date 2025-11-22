@@ -45,6 +45,7 @@ public class VehicleRegistrationService {
     private static final BigDecimal REGISTRATION_FEE = BigDecimal.valueOf(30000);
     private static final int MAX_IMAGES = 6;
     private static final String SERVICE_TYPE = "VEHICLE_REGISTRATION";
+    private static final String STATUS_APPROVED = "APPROVED";
     private static final String STATUS_READY_FOR_PAYMENT = "READY_FOR_PAYMENT";
     private static final String STATUS_PAYMENT_PENDING = "PAYMENT_PENDING";
     private static final String STATUS_PENDING_REVIEW = "PENDING";
@@ -218,13 +219,23 @@ public class VehicleRegistrationService {
             throw new IllegalStateException("Đăng ký này đã bị hủy do không thanh toán. Vui lòng tạo đăng ký mới.");
         }
 
-        // Cho phép tiếp tục thanh toán nếu payment_status là UNPAID hoặc PAYMENT_PENDING/PAYMENT_APPROVAL
-        // (PAYMENT_PENDING/PAYMENT_APPROVAL có thể xảy ra khi user chưa hoàn tất thanh toán trong 10 phút)
+        String currentStatus = registration.getStatus();
         String paymentStatus = registration.getPaymentStatus();
-        if (!Objects.equals(paymentStatus, "UNPAID") && 
-            !Objects.equals(paymentStatus, "PAYMENT_PENDING") && 
-            !Objects.equals(paymentStatus, "PAYMENT_APPROVAL")) {
-            throw new IllegalStateException("Đăng ký đã thanh toán hoặc không thể tiếp tục thanh toán");
+        
+        // Cho phép gia hạn nếu status = NEEDS_RENEWAL hoặc SUSPENDED (đã thanh toán trước đó)
+        if ("NEEDS_RENEWAL".equalsIgnoreCase(currentStatus) || "SUSPENDED".equalsIgnoreCase(currentStatus)) {
+            if (!"PAID".equalsIgnoreCase(paymentStatus)) {
+                throw new IllegalStateException("Thẻ chưa thanh toán, không thể gia hạn");
+            }
+            // Cho phép thanh toán để gia hạn
+        } else {
+            // Cho phép tiếp tục thanh toán nếu payment_status là UNPAID hoặc PAYMENT_PENDING/PAYMENT_APPROVAL
+            // (PAYMENT_PENDING/PAYMENT_APPROVAL có thể xảy ra khi user chưa hoàn tất thanh toán trong 10 phút)
+            if (!Objects.equals(paymentStatus, "UNPAID") && 
+                !Objects.equals(paymentStatus, "PAYMENT_PENDING") && 
+                !Objects.equals(paymentStatus, "PAYMENT_APPROVAL")) {
+                throw new IllegalStateException("Đăng ký đã thanh toán hoặc không thể tiếp tục thanh toán");
+            }
         }
         registration.setStatus(STATUS_PAYMENT_PENDING);
         registration.setPaymentStatus("PAYMENT_APPROVAL");
@@ -457,10 +468,33 @@ public class VehicleRegistrationService {
                     registration.getApartmentNumber(),
                     registration.getBuildingName()
             );
-            registration.setStatus(STATUS_PENDING_REVIEW);
+            
             registration.setPaymentGateway(PAYMENT_VNPAY);
             OffsetDateTime payDate = parsePayDate(params.get("vnp_PayDate"));
             registration.setPaymentDate(payDate);
+            
+            // Nếu là gia hạn (status = NEEDS_RENEWAL hoặc SUSPENDED), sau khi thanh toán thành công → set status = APPROVED
+            // Nếu là đăng ký mới, sau khi thanh toán → set status = PENDING_REVIEW (chờ admin duyệt)
+            String currentStatus = registration.getStatus();
+            if ("NEEDS_RENEWAL".equals(currentStatus) || "SUSPENDED".equals(currentStatus)) {
+                registration.setStatus(STATUS_APPROVED);
+                registration.setApprovedAt(OffsetDateTime.now()); // Cập nhật lại approved_at khi gia hạn
+                log.info("✅ [VehicleRegistration] Gia hạn thành công, thẻ {} đã được set lại status = APPROVED", registration.getId());
+                
+                // Reset reminder cycle sau khi gia hạn (approved_at đã được set ở trên)
+                cardFeeReminderService.resetReminderAfterPayment(
+                        CardFeeReminderService.CardFeeType.VEHICLE,
+                        registration.getId(),
+                        registration.getUnitId(),
+                        null, // Vehicle card không có residentId
+                        registration.getUserId(),
+                        registration.getApartmentNumber(),
+                        registration.getBuildingName(),
+                        payDate // payment_date mới (approved_at sẽ được lấy từ registration.getApprovedAt())
+                );
+            } else {
+                registration.setStatus(STATUS_PENDING_REVIEW);
+            }
             requestRepository.save(registration);
 
             // Email placeholder – actual implementation depends on user info lookup

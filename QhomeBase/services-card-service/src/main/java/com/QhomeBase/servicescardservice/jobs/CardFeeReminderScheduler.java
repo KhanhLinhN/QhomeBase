@@ -31,9 +31,6 @@ public class CardFeeReminderScheduler {
     @Value("${card.fee.reminder.enabled:true}")
     private boolean remindersEnabled;
 
-    @Value("${card.fee.reminder.test-mode:false}")
-    private boolean testMode;
-
     @Value("${card.fee.reminder.grace-days:5}")
     private int graceDays;
 
@@ -98,72 +95,6 @@ public class CardFeeReminderScheduler {
                     notificationCount, batches.size(), processedStates.size());
         } catch (Exception ex) {
             log.error("❌ [CardFeeReminderJob] Lỗi khi chạy job nhắc đóng phí thẻ", ex);
-        }
-    }
-
-    /**
-     * Scheduled job test chạy mỗi phút để test reminder logic.
-     * Chỉ chạy khi test-mode = true.
-     * Use this for testing reminder logic without waiting for the daily scheduled job.
-     */
-    @Scheduled(cron = "0 * * * * *", zone = "Asia/Ho_Chi_Minh") // Every minute
-    public void executeReminderJobTest() {
-        if (!testMode) {
-            return; // Only run in test mode
-        }
-
-        if (!remindersEnabled) {
-            log.debug("ℹ️ [CardFeeReminderJob-TEST] Reminders are disabled via configuration");
-            return;
-        }
-
-        try {
-            log.debug("🔔 [CardFeeReminderJob-TEST] Running test reminder job (every minute)");
-
-            // Sync active cards vào reminder state (đảm bảo tracking đầy đủ)
-            reminderService.syncActiveCardsIntoReminderState();
-
-            LocalDate today = LocalDate.now(ZONE);
-            List<CardFeeReminderState> dueStates = reminderService.findDueStates(today);
-            
-            if (CollectionUtils.isEmpty(dueStates)) {
-                log.debug("ℹ️ [CardFeeReminderJob-TEST] No card fees due on {}", today);
-                return;
-            }
-
-            log.info("🔔 [CardFeeReminderJob-TEST] Found {} reminder states due on {}", dueStates.size(), today);
-
-            // Gom theo unit và gửi notification
-            List<ReminderBatch> batches = buildBatches(dueStates, today);
-            if (batches.isEmpty()) {
-                log.debug("ℹ️ [CardFeeReminderJob-TEST] No batches ready after filtering recipient data");
-                return;
-            }
-
-            int notificationCount = 0;
-            List<CardFeeReminderState> processedStates = new ArrayList<>();
-
-            for (ReminderBatch batch : batches) {
-                for (UUID residentId : batch.residentIds) {
-                    if (residentId == null) {
-                        continue;
-                    }
-                    // Gửi realtime notification + FCM push notification
-                    sendReminder(batch, residentId);
-                    notificationCount++;
-                }
-                processedStates.addAll(batch.states);
-            }
-
-            // Mark reminder đã gửi để tránh duplicate trong cùng ngày
-            if (!processedStates.isEmpty()) {
-                reminderService.markReminderSent(processedStates);
-            }
-
-            log.info("✅ [CardFeeReminderJob-TEST] Sent {} notifications for {} batches ({} states)",
-                    notificationCount, batches.size(), processedStates.size());
-        } catch (Exception ex) {
-            log.error("❌ [CardFeeReminderJob-TEST] Lỗi khi chạy test job nhắc đóng phí thẻ", ex);
         }
     }
 

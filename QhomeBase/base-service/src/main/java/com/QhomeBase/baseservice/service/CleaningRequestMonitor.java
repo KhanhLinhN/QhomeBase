@@ -11,7 +11,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +25,7 @@ public class CleaningRequestMonitor {
 
     private static final String STATUS_PENDING = "PENDING";
     private static final String STATUS_CANCELLED = "CANCELLED";
+    private static final ZoneId DEFAULT_TIMEZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final Duration reminderThreshold;
     private final Duration resendCancelThreshold;
@@ -56,27 +59,31 @@ public class CleaningRequestMonitor {
 
     @Scheduled(fixedDelayString = "${cleaning.request.monitor.delay:60000}")
     public void checkPendingRequests() {
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(DEFAULT_TIMEZONE);
+        LocalDate today = now.toLocalDate();
         
         // Check for reminder: requests created more than reminderThreshold ago
+        // CHỈ áp dụng cho requests có cleaningDate trong ngày hôm nay (realtime check)
         OffsetDateTime reminderDeadline = now.minus(reminderThreshold);
         List<CleaningRequest> reminderCandidates =
-                cleaningRequestRepository.findPendingRequestsForReminder(STATUS_PENDING, reminderDeadline);
+                cleaningRequestRepository.findPendingRequestsForReminder(STATUS_PENDING, reminderDeadline, today);
         reminderCandidates.forEach(this::notifyResendReminder);
         cleaningRequestRepository.saveAll(reminderCandidates);
 
         // Check for auto-cancel: requests that were resent more than resendCancelThreshold ago
+        // CHỈ áp dụng cho requests có cleaningDate trong ngày hôm nay (realtime check)
         OffsetDateTime resendCancelDeadline = now.minus(resendCancelThreshold);
         List<CleaningRequest> resentCancelCandidates =
-                cleaningRequestRepository.findResentRequestsForAutoCancel(STATUS_PENDING, resendCancelDeadline);
+                cleaningRequestRepository.findResentRequestsForAutoCancel(STATUS_PENDING, resendCancelDeadline, today);
         resentCancelCandidates.forEach(this::autoCancelRequest);
         cleaningRequestRepository.saveAll(resentCancelCandidates);
 
         // Check for auto-cancel: requests that were NOT resent but reminder was sent
         // Cancel after noResendCancelThreshold from createdAt (5 hours reminder + 1 hour grace period)
+        // CHỈ áp dụng cho requests có cleaningDate trong ngày hôm nay (realtime check)
         OffsetDateTime noResendCancelDeadline = now.minus(noResendCancelThreshold);
         List<CleaningRequest> noResendCancelCandidates =
-                cleaningRequestRepository.findNonResentRequestsForAutoCancel(STATUS_PENDING, noResendCancelDeadline);
+                cleaningRequestRepository.findNonResentRequestsForAutoCancel(STATUS_PENDING, noResendCancelDeadline, today);
         noResendCancelCandidates.forEach(this::autoCancelRequest);
         cleaningRequestRepository.saveAll(noResendCancelCandidates);
     }
@@ -105,7 +112,7 @@ public class CleaningRequestMonitor {
             long hours = noResendCancelThreshold.toHours();
             cancelMessage = "Yêu cầu dọn dẹp \"" + request.getCleaningType() + "\" đã quá " + hours + " tiếng mà admin không phản hồi nên đã tự hủy. Bạn có thể gửi lại yêu cầu mới nếu cần.";
         }
-        
+
         sendResidentNotification(
                 request,
                 "Yêu cầu dọn dẹp đã bị hủy",

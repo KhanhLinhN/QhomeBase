@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -27,5 +28,29 @@ public interface MaintenanceRequestRepository extends JpaRepository<MaintenanceR
             @Param("residentId") UUID residentId,
             @Param("limit") int limit,
             @Param("offset") int offset);
+
+    @Query("select m from MaintenanceRequest m " +
+            "where m.status = :status " +
+            "and m.resendAlertSent = false " +
+            "and m.callAlertSent = false " +
+            "and coalesce(m.lastResentAt, m.createdAt) <= :deadline " +
+            "and m.preferredDatetime is not null " +
+            "and CAST(m.preferredDatetime AS date) = CAST(:today AS date)")
+    List<MaintenanceRequest> findPendingRequestsForReminder(
+            @Param("status") String status,
+            @Param("deadline") OffsetDateTime deadline,
+            @Param("today") OffsetDateTime today);
+
+    @Query("select m from MaintenanceRequest m " +
+            "where m.status = :status " +
+            "and m.resendAlertSent = true " +
+            "and m.callAlertSent = false " +
+            "and coalesce(m.lastResentAt, m.createdAt) <= :deadline " +
+            "and m.preferredDatetime is not null " +
+            "and CAST(m.preferredDatetime AS date) = CAST(:today AS date)")
+    List<MaintenanceRequest> findPendingRequestsForCallAlert(
+            @Param("status") String status,
+            @Param("deadline") OffsetDateTime deadline,
+            @Param("today") OffsetDateTime today);
 }
 

@@ -100,6 +100,44 @@ public class CardFeeReminderTestController {
     }
 
     /**
+     * Find reminder state by card ID and card type.
+     * Useful for finding stateId after card is approved.
+     * 
+     * @param cardId Card ID
+     * @param cardType Card type (RESIDENT, ELEVATOR, VEHICLE)
+     * @return Reminder state info
+     */
+    @GetMapping("/find-by-card")
+    public ResponseEntity<?> findByCard(
+            @RequestParam UUID cardId,
+            @RequestParam String cardType) {
+        try {
+            Optional<CardFeeReminderState> stateOpt = reminderStateRepository
+                    .findByCardTypeAndCardId(cardType.toUpperCase(), cardId);
+            
+            if (stateOpt.isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "Reminder state not found for card: " + cardId));
+            }
+
+            CardFeeReminderState state = stateOpt.get();
+            Map<String, Object> response = new HashMap<>();
+            response.put("stateId", state.getId());
+            response.put("cardType", state.getCardType());
+            response.put("cardId", state.getCardId());
+            response.put("nextDueDate", state.getNextDueDate());
+            response.put("reminderCount", state.getReminderCount());
+            response.put("lastRemindedAt", state.getLastRemindedAt());
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("❌ [TEST] Error finding reminder state for card {}: {}", cardId, e.getMessage(), e);
+            return ResponseEntity.status(500)
+                    .body(Map.of("error", "Failed to find reminder state: " + e.getMessage()));
+        }
+    }
+
+    /**
      * Set next_due_date to today (immediately due) for testing.
      * 
      * @param stateId Reminder state ID

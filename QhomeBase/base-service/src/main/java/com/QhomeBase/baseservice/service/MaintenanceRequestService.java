@@ -146,7 +146,10 @@ public class MaintenanceRequestService {
                 entity.getNote(),
                 entity.getStatus(),
                 entity.getCreatedAt(),
-                entity.getUpdatedAt()
+                entity.getUpdatedAt(),
+                entity.getLastResentAt(),
+                entity.isResendAlertSent(),
+                entity.isCallAlertSent()
         );
     }
 
@@ -244,6 +247,32 @@ public class MaintenanceRequestService {
         request.setStatus(STATUS_CANCELLED);
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
         notifyMaintenanceCancelled(saved);
+        return toDto(saved);
+    }
+
+    @SuppressWarnings("null")
+    public MaintenanceRequestDto resendRequest(UUID userId, UUID requestId) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        
+        MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
+
+        if (request.getResidentId() == null || !request.getResidentId().equals(resident.getId())) {
+            throw new IllegalArgumentException("You can only resend your own requests");
+        }
+
+        if (!STATUS_PENDING.equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Only pending requests can be resent");
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        request.setLastResentAt(now);
+        request.setResendAlertSent(false); // Reset để có thể gửi reminder lại nếu cần
+        request.setCallAlertSent(false); // Reset call alert nếu đã set
+        
+        MaintenanceRequest saved = maintenanceRequestRepository.save(request);
+        log.info("Resent maintenance request {} at {}", saved.getId(), now);
         return toDto(saved);
     }
 

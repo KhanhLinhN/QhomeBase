@@ -37,6 +37,7 @@ import java.util.concurrent.ConcurrentMap;
 public class ResidentCardRegistrationService {
 
     private static final BigDecimal REGISTRATION_FEE = BigDecimal.valueOf(30000);
+    private static final String STATUS_APPROVED = "APPROVED";
     private static final String STATUS_READY_FOR_PAYMENT = "READY_FOR_PAYMENT";
     private static final String STATUS_PAYMENT_PENDING = "PAYMENT_PENDING";
     private static final String STATUS_PENDING_REVIEW = "PENDING";
@@ -229,11 +230,22 @@ public class ResidentCardRegistrationService {
         if ("CANCELLED".equalsIgnoreCase(registration.getStatus())) {
             throw new IllegalStateException("Đăng ký này đã bị hủy do không thanh toán. Vui lòng tạo đăng ký mới.");
         }
-        // Cho phép tiếp tục thanh toán nếu payment_status là UNPAID hoặc PAYMENT_PENDING
-        // (PAYMENT_PENDING có thể xảy ra khi user chưa hoàn tất thanh toán trong 10 phút)
+        
+        String currentStatus = registration.getStatus();
         String paymentStatus = registration.getPaymentStatus();
-        if (!Objects.equals(paymentStatus, "UNPAID") && !Objects.equals(paymentStatus, "PAYMENT_PENDING")) {
-            throw new IllegalStateException("Đăng ký đã thanh toán hoặc không thể tiếp tục thanh toán");
+        
+        // Cho phép gia hạn nếu status = NEEDS_RENEWAL hoặc SUSPENDED (đã thanh toán trước đó)
+        if ("NEEDS_RENEWAL".equalsIgnoreCase(currentStatus) || "SUSPENDED".equalsIgnoreCase(currentStatus)) {
+            if (!"PAID".equalsIgnoreCase(paymentStatus)) {
+                throw new IllegalStateException("Thẻ chưa thanh toán, không thể gia hạn");
+            }
+            // Cho phép thanh toán để gia hạn
+        } else {
+            // Cho phép tiếp tục thanh toán nếu payment_status là UNPAID hoặc PAYMENT_PENDING
+            // (PAYMENT_PENDING có thể xảy ra khi user chưa hoàn tất thanh toán trong 10 phút)
+            if (!Objects.equals(paymentStatus, "UNPAID") && !Objects.equals(paymentStatus, "PAYMENT_PENDING")) {
+                throw new IllegalStateException("Đăng ký đã thanh toán hoặc không thể tiếp tục thanh toán");
+            }
         }
 
         registration.setStatus(STATUS_PAYMENT_PENDING);
@@ -352,10 +364,33 @@ public class ResidentCardRegistrationService {
             } catch (Exception e) {
                 log.warn("⚠️ [ResidentCard] Không thể resolve địa chỉ sau thanh toán, giữ nguyên giá trị hiện tại: {}", e.getMessage());
             }
-            registration.setStatus(STATUS_PENDING_REVIEW);
+            
+            // Nếu là gia hạn (status = NEEDS_RENEWAL hoặc SUSPENDED), sau khi thanh toán thành công → set status = APPROVED
+            // Nếu là đăng ký mới, sau khi thanh toán → set status = PENDING_REVIEW (chờ admin duyệt)
             registration.setPaymentGateway(PAYMENT_VNPAY);
             OffsetDateTime payDate = parsePayDate(params.get("vnp_PayDate"));
             registration.setPaymentDate(payDate);
+            
+            String currentStatus = registration.getStatus();
+            if ("NEEDS_RENEWAL".equals(currentStatus) || "SUSPENDED".equals(currentStatus)) {
+                registration.setStatus(STATUS_APPROVED);
+                registration.setApprovedAt(OffsetDateTime.now()); // Cập nhật lại approved_at khi gia hạn
+                log.info("✅ [ResidentCard] Gia hạn thành công, thẻ {} đã được set lại status = APPROVED", registration.getId());
+                
+                // Reset reminder cycle sau khi gia hạn (approved_at đã được set ở trên)
+                cardFeeReminderService.resetReminderAfterPayment(
+                        CardFeeReminderService.CardFeeType.RESIDENT,
+                        registration.getId(),
+                        registration.getUnitId(),
+                        registration.getResidentId(),
+                        registration.getUserId(),
+                        registration.getApartmentNumber(),
+                        registration.getBuildingName(),
+                        payDate // payment_date mới (approved_at sẽ được lấy từ registration.getApprovedAt())
+                );
+            } else {
+                registration.setStatus(STATUS_PENDING_REVIEW);
+            }
             repository.save(registration);
 
             log.info("✅ [ResidentCard] Thanh toán thành công cho đăng ký {}", registration.getId());
