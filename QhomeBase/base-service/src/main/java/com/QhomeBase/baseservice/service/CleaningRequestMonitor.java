@@ -1,5 +1,6 @@
 package com.QhomeBase.baseservice.service;
 
+import com.QhomeBase.baseservice.dto.CleaningRequestConfigDto;
 import com.QhomeBase.baseservice.model.CleaningRequest;
 import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.repository.CleaningRequestRepository;
@@ -45,6 +46,14 @@ public class CleaningRequestMonitor {
         this.noResendCancelThreshold = noResendCancelThreshold;
     }
 
+    public CleaningRequestConfigDto getConfig() {
+        return new CleaningRequestConfigDto(
+                reminderThreshold,
+                resendCancelThreshold,
+                noResendCancelThreshold
+        );
+    }
+
     @Scheduled(fixedDelayString = "${cleaning.request.monitor.delay:60000}")
     public void checkPendingRequests() {
         OffsetDateTime now = OffsetDateTime.now();
@@ -64,7 +73,7 @@ public class CleaningRequestMonitor {
         cleaningRequestRepository.saveAll(resentCancelCandidates);
 
         // Check for auto-cancel: requests that were NOT resent but reminder was sent
-        // Cancel after noResendCancelThreshold from createdAt (5 min reminder + 1 min grace period)
+        // Cancel after noResendCancelThreshold from createdAt (5 hours reminder + 1 hour grace period)
         OffsetDateTime noResendCancelDeadline = now.minus(noResendCancelThreshold);
         List<CleaningRequest> noResendCancelCandidates =
                 cleaningRequestRepository.findNonResentRequestsForAutoCancel(STATUS_PENDING, noResendCancelDeadline);
@@ -75,10 +84,11 @@ public class CleaningRequestMonitor {
     private void notifyResendReminder(CleaningRequest request) {
         request.setResendAlertSent(true);
 
+        long hours = reminderThreshold.toHours();
         sendResidentNotification(
                 request,
                 "Admin chưa phản hồi yêu cầu dọn dẹp",
-                "Yêu cầu dọn dẹp \"" + request.getCleaningType() + "\" đã quá 5 phút, hãy gửi lại yêu cầu để admin xem lại.",
+                "Yêu cầu dọn dẹp \"" + request.getCleaningType() + "\" đã quá " + hours + " tiếng, hãy gửi lại yêu cầu để admin xem lại.",
                 "RESEND_REMINDER"
         );
     }
@@ -87,9 +97,14 @@ public class CleaningRequestMonitor {
         request.setStatus(STATUS_CANCELLED);
         request.setResendAlertSent(false);
 
-        String cancelMessage = request.getLastResentAt() != null
-                ? "Yêu cầu dọn dẹp \"" + request.getCleaningType() + "\" đã quá 5 phút sau khi gửi lại mà admin không phản hồi nên đã tự hủy. Bạn có thể gửi lại yêu cầu mới nếu cần."
-                : "Yêu cầu dọn dẹp \"" + request.getCleaningType() + "\" đã quá 6 phút mà admin không phản hồi nên đã tự hủy. Bạn có thể gửi lại yêu cầu mới nếu cần.";
+        String cancelMessage;
+        if (request.getLastResentAt() != null) {
+            long hours = resendCancelThreshold.toHours();
+            cancelMessage = "Yêu cầu dọn dẹp \"" + request.getCleaningType() + "\" đã quá " + hours + " tiếng sau khi gửi lại mà admin không phản hồi nên đã tự hủy. Bạn có thể gửi lại yêu cầu mới nếu cần.";
+        } else {
+            long hours = noResendCancelThreshold.toHours();
+            cancelMessage = "Yêu cầu dọn dẹp \"" + request.getCleaningType() + "\" đã quá " + hours + " tiếng mà admin không phản hồi nên đã tự hủy. Bạn có thể gửi lại yêu cầu mới nếu cần.";
+        }
         
         sendResidentNotification(
                 request,

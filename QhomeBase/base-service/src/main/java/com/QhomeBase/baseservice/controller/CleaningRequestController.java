@@ -1,10 +1,12 @@
 package com.QhomeBase.baseservice.controller;
 
 import com.QhomeBase.baseservice.dto.AdminServiceRequestActionDto;
+import com.QhomeBase.baseservice.dto.CleaningRequestConfigDto;
 import com.QhomeBase.baseservice.dto.CleaningRequestDto;
 import com.QhomeBase.baseservice.dto.CreateCleaningRequestDto;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import com.QhomeBase.baseservice.service.CleaningRequestService;
+import com.QhomeBase.baseservice.service.CleaningRequestMonitor;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +25,7 @@ import java.util.UUID;
 public class CleaningRequestController {
 
     private final CleaningRequestService cleaningRequestService;
+    private final CleaningRequestMonitor cleaningRequestMonitor;
 
     @PostMapping
     @PreAuthorize("hasRole('RESIDENT')")
@@ -36,6 +39,13 @@ public class CleaningRequestController {
             log.warn("Failed to create cleaning request: {}", ex.getMessage());
             return ResponseEntity.badRequest().body(java.util.Map.of("message", ex.getMessage()));
         }
+    }
+
+    @GetMapping("/config")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<CleaningRequestConfigDto> getCleaningRequestConfig() {
+        CleaningRequestConfigDto config = cleaningRequestMonitor.getConfig();
+        return ResponseEntity.ok(config);
     }
 
     @GetMapping("/my")
