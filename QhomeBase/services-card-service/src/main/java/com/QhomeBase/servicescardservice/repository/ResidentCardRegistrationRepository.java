@@ -64,4 +64,16 @@ public interface ResidentCardRegistrationRepository extends JpaRepository<Reside
            "AND r.status NOT IN :excludedStatuses")
     long countAllResidentCardsByUnitId(@Param("unitId") UUID unitId, 
                                        @Param("excludedStatuses") List<String> excludedStatuses);
+
+    @Query("""
+            SELECT r FROM ResidentCardRegistration r
+            WHERE UPPER(r.paymentStatus) = 'PAID'
+              AND UPPER(r.status) NOT IN ('REJECTED', 'CANCELLED')
+            """)
+    List<ResidentCardRegistration> findActivePaidCards();
+
+    /**
+     * Tìm các thẻ đã duyệt và đã thanh toán để cập nhật trạng thái (NEEDS_RENEWAL, SUSPENDED)
+     */
+    List<ResidentCardRegistration> findByStatusAndPaymentStatus(String status, String paymentStatus);
 }

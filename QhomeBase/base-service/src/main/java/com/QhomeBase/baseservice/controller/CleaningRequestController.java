@@ -1,10 +1,12 @@
 package com.QhomeBase.baseservice.controller;
 
 import com.QhomeBase.baseservice.dto.AdminServiceRequestActionDto;
+import com.QhomeBase.baseservice.dto.CleaningRequestConfigDto;
 import com.QhomeBase.baseservice.dto.CleaningRequestDto;
 import com.QhomeBase.baseservice.dto.CreateCleaningRequestDto;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import com.QhomeBase.baseservice.service.CleaningRequestService;
+import com.QhomeBase.baseservice.service.CleaningRequestMonitor;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +25,7 @@ import java.util.UUID;
 public class CleaningRequestController {
 
     private final CleaningRequestService cleaningRequestService;
+    private final CleaningRequestMonitor cleaningRequestMonitor;
 
     @PostMapping
     @PreAuthorize("hasRole('RESIDENT')")
@@ -38,12 +41,37 @@ public class CleaningRequestController {
         }
     }
 
+    @GetMapping("/config")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<CleaningRequestConfigDto> getCleaningRequestConfig() {
+        CleaningRequestConfigDto config = cleaningRequestMonitor.getConfig();
+        return ResponseEntity.ok(config);
+    }
+
     @GetMapping("/my")
     @PreAuthorize("hasRole('RESIDENT')")
     public ResponseEntity<List<CleaningRequestDto>> getMyCleaningRequests(
             @AuthenticationPrincipal UserPrincipal principal) {
         List<CleaningRequestDto> requests = cleaningRequestService.getMyRequests(principal.uid());
         return ResponseEntity.ok(requests);
+    }
+
+    @PostMapping("/{requestId}/resend")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<CleaningRequestDto> resendCleaningRequest(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID requestId) {
+        CleaningRequestDto dto = cleaningRequestService.resendRequest(principal.uid(), requestId);
+        return ResponseEntity.ok(dto);
+    }
+
+    @PatchMapping("/{requestId}/cancel")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<CleaningRequestDto> cancelCleaningRequest(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID requestId) {
+        CleaningRequestDto dto = cleaningRequestService.cancelRequest(principal.uid(), requestId);
+        return ResponseEntity.ok(dto);
     }
 
     @GetMapping("/admin/pending")

@@ -21,6 +21,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +36,7 @@ public class CleaningRequestService {
     private static final String STATUS_PENDING = "PENDING";
     private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
     private static final String STATUS_DONE = "DONE";
+    private static final String STATUS_CANCELLED = "CANCELLED";
 
     private static final Map<String, BigDecimal> DEFAULT_DURATIONS = Map.of(
             "Dọn dẹp cơ bản", BigDecimal.valueOf(1),
@@ -92,6 +94,7 @@ public class CleaningRequestService {
                 .unitId(unit.getId())
                 .residentId(resident.getId())
                 .createdBy(userId)
+                .userId(userId)
                 .cleaningType(normalizedType)
                 .cleaningDate(dto.cleaningDate())
                 .startTime(dto.startTime())
@@ -149,6 +152,7 @@ public class CleaningRequestService {
                 entity.getUnitId(),
                 entity.getResidentId(),
                 entity.getCreatedBy(),
+                entity.getUserId(),
                 entity.getCleaningType(),
                 entity.getCleaningDate(),
                 entity.getStartTime(),
@@ -160,7 +164,9 @@ public class CleaningRequestService {
                 entity.getPaymentMethod(),
                 entity.getStatus(),
                 entity.getCreatedAt(),
-                entity.getUpdatedAt()
+                entity.getUpdatedAt(),
+                entity.getLastResentAt(),
+                entity.isResendAlertSent()
         );
     }
 
@@ -191,6 +197,54 @@ public class CleaningRequestService {
         request.setStatus(STATUS_DONE);
         CleaningRequest saved = cleaningRequestRepository.save(request);
         notifyCleaningCompleted(saved, dto != null ? dto.note() : null);
+        return toDto(saved);
+    }
+
+    @SuppressWarnings("null")
+    public CleaningRequestDto resendRequest(UUID userId, UUID requestId) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        
+        CleaningRequest request = cleaningRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Cleaning request not found"));
+
+        if (request.getResidentId() == null || !request.getResidentId().equals(resident.getId())) {
+            throw new IllegalArgumentException("You can only resend your own requests");
+        }
+
+        if (!STATUS_PENDING.equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Only pending requests can be resent");
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        request.setLastResentAt(now);
+        request.setResendAlertSent(false);
+        CleaningRequest saved = cleaningRequestRepository.save(request);
+        notifyCleaningResendPrompt(saved);
+        return toDto(saved);
+    }
+
+    @SuppressWarnings("null")
+    public CleaningRequestDto cancelRequest(UUID userId, UUID requestId) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        
+        CleaningRequest request = cleaningRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Cleaning request not found"));
+
+        if (request.getResidentId() == null || !request.getResidentId().equals(resident.getId())) {
+            throw new IllegalArgumentException("You can only cancel your own requests");
+        }
+
+        if (STATUS_DONE.equalsIgnoreCase(request.getStatus()) ||
+                STATUS_CANCELLED.equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Cannot cancel a completed or already cancelled request");
+        }
+
+        request.setStatus(STATUS_CANCELLED);
+        request.setResendAlertSent(false);
+        CleaningRequest saved = cleaningRequestRepository.save(request);
+        notifyCleaningCancelled(saved);
         return toDto(saved);
     }
 
@@ -239,6 +293,28 @@ public class CleaningRequestService {
                 "Yêu cầu dọn dẹp đã hoàn tất",
                 body.toString(),
                 STATUS_DONE
+        );
+    }
+
+    private void notifyCleaningResendPrompt(CleaningRequest request) {
+        StringBuilder body = new StringBuilder("Yêu cầu dọn dẹp \"")
+                .append(request.getCleaningType())
+                .append("\" của bạn đã được gửi lại.");
+
+        sendCleaningNotification(
+                request,
+                "Yêu cầu dọn dẹp đã được gửi lại",
+                body.toString(),
+                STATUS_PENDING
+        );
+    }
+
+    private void notifyCleaningCancelled(CleaningRequest request) {
+        sendCleaningNotification(
+                request,
+                "Yêu cầu dọn dẹp đã được hủy",
+                "Yêu cầu dọn dẹp \"" + request.getCleaningType() + "\" đã được hủy. Nếu cần, bạn có thể gửi lại yêu cầu mới.",
+                STATUS_CANCELLED
         );
     }
 

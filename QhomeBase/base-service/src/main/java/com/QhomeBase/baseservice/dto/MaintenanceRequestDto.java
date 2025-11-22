@@ -8,6 +8,7 @@ public record MaintenanceRequestDto(
         UUID id,
         UUID unitId,
         UUID residentId,
+        UUID userId,
         UUID createdBy,
         String category,
         String title,
@@ -20,7 +21,10 @@ public record MaintenanceRequestDto(
         String note,
         String status,
         OffsetDateTime createdAt,
-        OffsetDateTime updatedAt
+        OffsetDateTime updatedAt,
+        OffsetDateTime lastResentAt,
+        boolean resendAlertSent,
+        boolean callAlertSent
 ) {}
 
 

@@ -12,6 +12,7 @@ public record CleaningRequestDto(
         UUID unitId,
         UUID residentId,
         UUID createdBy,
+        UUID userId,
         String cleaningType,
         LocalDate cleaningDate,
         LocalTime startTime,
@@ -23,7 +24,9 @@ public record CleaningRequestDto(
         String paymentMethod,
         String status,
         OffsetDateTime createdAt,
-        OffsetDateTime updatedAt
+        OffsetDateTime updatedAt,
+        OffsetDateTime lastResentAt,
+        boolean resendAlertSent
 ) {
 }
 

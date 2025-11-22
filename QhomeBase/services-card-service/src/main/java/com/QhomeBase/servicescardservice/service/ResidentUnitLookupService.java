@@ -23,11 +23,8 @@ public class ResidentUnitLookupService {
             return Optional.empty();
         }
 
-        MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("residentId", residentId)
-                .addValue("unitId", unitId);
-
-        SqlRowSet rowSet = jdbcTemplate.queryForRowSet("""
+        // Build dynamic query to avoid NULL parameter type issues in PostgreSQL
+        StringBuilder query = new StringBuilder("""
                 SELECT u.code AS apartment_number,
                        COALESCE(b.name, b.code) AS building_name,
                        hm.resident_id,
@@ -37,12 +34,24 @@ public class ResidentUnitLookupService {
                 JOIN data.units u ON u.id = h.unit_id
                 JOIN data.buildings b ON b.id = u.building_id
                 JOIN data.residents r ON r.id = hm.resident_id
-                WHERE (:residentId IS NULL OR hm.resident_id = :residentId)
-                  AND (:unitId IS NULL OR h.unit_id = :unitId)
-                  AND (hm.left_at IS NULL)
-                ORDER BY hm.is_primary DESC NULLS LAST, hm.created_at DESC NULLS LAST
-                LIMIT 1
-                """, params);
+                WHERE hm.left_at IS NULL
+                """);
+
+        MapSqlParameterSource params = new MapSqlParameterSource();
+        
+        if (residentId != null) {
+            query.append(" AND hm.resident_id = :residentId");
+            params.addValue("residentId", residentId);
+        }
+        
+        if (unitId != null) {
+            query.append(" AND h.unit_id = :unitId");
+            params.addValue("unitId", unitId);
+        }
+        
+        query.append(" ORDER BY hm.is_primary DESC NULLS LAST, hm.created_at DESC NULLS LAST LIMIT 1");
+
+        SqlRowSet rowSet = jdbcTemplate.queryForRowSet(query.toString(), params);
 
         if (rowSet.next()) {
             return Optional.of(mapRow(rowSet));
@@ -60,11 +69,8 @@ public class ResidentUnitLookupService {
             return Optional.empty();
         }
 
-        MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("userId", userId)
-                .addValue("unitId", unitId);
-
-        SqlRowSet rowSet = jdbcTemplate.queryForRowSet("""
+        // Build dynamic query to avoid NULL parameter type issues in PostgreSQL
+        StringBuilder query = new StringBuilder("""
                 SELECT u.code AS apartment_number,
                        COALESCE(b.name, b.code) AS building_name,
                        hm.resident_id,
@@ -74,11 +80,24 @@ public class ResidentUnitLookupService {
                 LEFT JOIN data.households h ON h.id = hm.household_id
                 LEFT JOIN data.units u ON u.id = h.unit_id
                 LEFT JOIN data.buildings b ON b.id = u.building_id
-                WHERE (:userId IS NULL OR r.user_id = :userId)
-                  AND (:unitId IS NULL OR h.unit_id = :unitId)
-                ORDER BY hm.is_primary DESC NULLS LAST, hm.created_at DESC NULLS LAST
-                LIMIT 1
-                """, params);
+                WHERE 1=1
+                """);
+
+        MapSqlParameterSource params = new MapSqlParameterSource();
+        
+        if (userId != null) {
+            query.append(" AND r.user_id = :userId");
+            params.addValue("userId", userId);
+        }
+        
+        if (unitId != null) {
+            query.append(" AND h.unit_id = :unitId");
+            params.addValue("unitId", unitId);
+        }
+        
+        query.append(" ORDER BY hm.is_primary DESC NULLS LAST, hm.created_at DESC NULLS LAST LIMIT 1");
+
+        SqlRowSet rowSet = jdbcTemplate.queryForRowSet(query.toString(), params);
 
         if (rowSet.next()) {
             AddressInfo info = mapRow(rowSet);
@@ -94,7 +113,7 @@ public class ResidentUnitLookupService {
         return Optional.empty();
     }
 
-    private Optional<AddressInfo> resolveByUnit(UUID unitId) {
+    public Optional<AddressInfo> resolveByUnit(UUID unitId) {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("unitId", unitId);
         SqlRowSet rowSet = jdbcTemplate.queryForRowSet("""
