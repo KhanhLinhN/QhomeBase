@@ -29,6 +29,20 @@ public interface ResidentCardRegistrationRepository extends JpaRepository<Reside
 
     List<ResidentCardRegistration> findByPaymentStatusAndUpdatedAtBefore(String paymentStatus, OffsetDateTime updatedAtBefore);
 
+    @Query(value = """
+        SELECT r.* FROM card.resident_card_registration r
+        LEFT JOIN data.units u ON u.id = r.unit_id
+        LEFT JOIN data.buildings b ON b.id = u.building_id
+        WHERE (:buildingId IS NULL OR b.id = :buildingId)
+          AND (:unitId IS NULL OR r.unit_id = :unitId)
+          AND (:status IS NULL OR r.status = :status)
+        ORDER BY r.approved_at DESC NULLS LAST, r.created_at DESC
+        """, nativeQuery = true)
+    List<ResidentCardRegistration> findApprovedCardsByBuildingAndUnit(
+        @Param("buildingId") UUID buildingId,
+        @Param("unitId") UUID unitId,
+        @Param("status") String status
+    );
     List<ResidentCardRegistration> findByStatusAndUpdatedAtBefore(String status, OffsetDateTime updatedAtBefore);
 
     /**

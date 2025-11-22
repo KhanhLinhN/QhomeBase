@@ -10,6 +10,7 @@ public record ReadingCycleCreateReq(
         @NotBlank String name,
         @NotNull LocalDate periodFrom,
         @NotNull LocalDate periodTo,
+        @NotNull UUID serviceId,
         String description,
         UUID createdBy
 ) {}

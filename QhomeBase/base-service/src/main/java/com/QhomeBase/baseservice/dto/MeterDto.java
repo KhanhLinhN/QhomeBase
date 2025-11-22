@@ -7,6 +7,8 @@ import java.util.UUID;
 public record MeterDto(
         UUID id,
         UUID unitId,
+        UUID buildingId,
+        String buildingCode,
         String unitCode,
         Integer floor,
         UUID serviceId,
@@ -21,3 +23,4 @@ public record MeterDto(
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {}
+

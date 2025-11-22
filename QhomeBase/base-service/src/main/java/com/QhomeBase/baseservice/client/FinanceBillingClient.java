@@ -3,6 +3,8 @@ package com.QhomeBase.baseservice.client;
 import com.QhomeBase.baseservice.dto.BillingImportedReadingDto;
 import com.QhomeBase.baseservice.dto.MeterReadingImportResponse;
 import com.QhomeBase.baseservice.dto.VehicleActivatedEvent;
+import com.QhomeBase.baseservice.dto.finance.BillingCycleDto;
+import com.QhomeBase.baseservice.dto.finance.CreateBillingCycleRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
@@ -10,6 +12,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.UUID;
 
 @Component
 @Slf4j
@@ -32,15 +35,15 @@ public class FinanceBillingClient {
     }
 
     public void notifyVehicleActivatedSync(VehicleActivatedEvent event) {
-        log.info("🚗 Notifying finance service: Vehicle activated - vehicleId={}, plateNo={}, residentId={}", 
+        log.info("Notifying finance service: Vehicle activated - vehicleId={}, plateNo={}, residentId={}", 
                 event.getVehicleId(), event.getPlateNo(), event.getResidentId());
         
         try {
             notifyVehicleActivated(event).block();
-            log.info("✅ Finance service notified successfully - Invoice should be created for vehicle: {}", 
+            log.info("Finance service notified successfully - Invoice should be created for vehicle: {}", 
                     event.getPlateNo());
         } catch (Exception e) {
-            log.error("❌ FAILED to notify finance service for vehicle: {} ({}). Invoice NOT created!", 
+            log.error("FAILED to notify finance service for vehicle: {} ({}). Invoice NOT created!", 
                     event.getPlateNo(), event.getVehicleId(), e);
             log.error("   Error details: {}", e.getMessage());
             log.error("   Finance service may be down. Please create invoice manually or retry.");
@@ -59,7 +62,7 @@ public class FinanceBillingClient {
     public MeterReadingImportResponse importMeterReadingsSync(List<BillingImportedReadingDto> readings) {
         try {
             MeterReadingImportResponse response = importMeterReadings(readings).block();
-            log.info("✅ Imported {} readings to finance-billing. Invoices created: {}", 
+            log.info("Imported {} readings to finance-billing. Invoices created: {}", 
                     readings != null ? readings.size() : 0,
                     response != null ? response.getInvoicesCreated() : 0);
             return response;
@@ -67,5 +70,28 @@ public class FinanceBillingClient {
             log.error("❌ FAILED to import meter readings to finance-billing", e);
             throw new RuntimeException("Failed to import meter readings to finance-billing: " + e.getMessage(), e);
         }
+    }
+
+    public Mono<BillingCycleDto> createBillingCycle(CreateBillingCycleRequest request) {
+        log.debug("Calling finance service to create billing cycle: {}", request);
+        return financeWebClient
+                .post()
+                .uri("/api/billing-cycles")
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(BillingCycleDto.class)
+                .doOnSuccess(dto -> log.debug("Finance returned billing cycle {}", dto != null ? dto.getId() : "null"))
+                .doOnError(error -> log.error("Finance billing cycle creation failed", error));
+    }
+
+    public Mono<List<BillingCycleDto>> findBillingCyclesByExternalId(UUID externalCycleId) {
+        log.debug("Checking finance for existing billing cycle: {}", externalCycleId);
+        return financeWebClient
+                .get()
+                .uri("/api/billing-cycles/external/{externalCycleId}", externalCycleId)
+                .retrieve()
+                .bodyToFlux(BillingCycleDto.class)
+                .collectList()
+                .doOnError(error -> log.error("Failed to query billing cycles for external id {}", externalCycleId, error));
     }
 }

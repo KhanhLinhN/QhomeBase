@@ -179,11 +179,14 @@ public class MeterReadingImportService {
                     continue;
                 }
 
+                LocalDate dueDate = calculateDueDate(serviceDate);
+                
                 CreateInvoiceRequest req = CreateInvoiceRequest.builder()
                         .payerUnitId(unitId)
                         .payerResidentId(residentId)
                         .cycleId(billingCycleId)
                         .currency("VND")
+                        .dueDate(dueDate)
                         .lines(invoiceLines)
                         .build();
 
@@ -327,6 +330,11 @@ public class MeterReadingImportService {
         return ServiceCode.isValid(serviceCode);
     }
     
+    private LocalDate calculateDueDate(LocalDate serviceDate) {
+        LocalDate endOfMonth = serviceDate.withDayOfMonth(serviceDate.lengthOfMonth());
+        return endOfMonth.plusDays(7);
+    }
+
     private String getDefaultDescription(String serviceCode) {
         if (ServiceCode.ELECTRIC.equals(serviceCode)) {
             return "Tiền điện";

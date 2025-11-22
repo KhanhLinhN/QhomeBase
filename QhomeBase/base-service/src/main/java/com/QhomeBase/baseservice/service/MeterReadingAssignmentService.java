@@ -12,8 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.List;
-import java.util.UUID;
+import java.time.YearMonth;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -34,7 +34,7 @@ public class MeterReadingAssignmentService {
         ReadingCycle cycle = readingCycleRepository.findById(req.cycleId())
                 .orElseThrow(() -> new RuntimeException("Reading cycle not found"));
         
-        Building building = req.buildingId() != null 
+        Building building = req.buildingId() != null
             ? buildingRepository.findById(req.buildingId())
                 .orElseThrow(() -> new RuntimeException("Building not found"))
             : null;
@@ -49,22 +49,24 @@ public class MeterReadingAssignmentService {
         
         LocalDate startDate = req.startDate() != null ? req.startDate() : cycle.getStartDate();
         LocalDate endDate = req.endDate() != null ? req.endDate() : cycle.getEndDate();
-        
+
+        validateCycleMonth(cycle);
         validateTimeRange(cycle, startDate, endDate);
         
         if (building != null) {
             validateNoOverlap(
-                req.cycleId(), 
-                building.getId(), 
+                req.cycleId(),
+                building.getId(),
                 req.serviceId(),
-                startDate, 
-                endDate, 
-                req.floor()
+                startDate,
+                endDate,
+                req.floor(),
+                req.unitIds()
             );
         }
         
         MeterReadingAssignmentStatus initialStatus = determineInitialStatus(startDate, endDate);
-        
+        validateActiveMeter(req.unitIds(), req.serviceId());
         MeterReadingAssignment assignment = MeterReadingAssignment.builder()
                 .cycle(cycle)
                 .building(building)
@@ -83,6 +85,26 @@ public class MeterReadingAssignmentService {
         assignment = meterReadingAssignmentRepository.save(assignment);
         return toDto(assignment);
     }
+
+    private void validateCycleMonth(ReadingCycle cycle) {
+        YearMonth cycleMonth = YearMonth.from(cycle.getPeriodFrom());
+        YearMonth currentMonth = YearMonth.from(LocalDate.now());
+        if (!cycleMonth.equals(currentMonth)) {
+            throw new RuntimeException(
+                String.format("Cannot assign meters for cycle %s because it is not in the current month %s",
+                        cycle.getName(), currentMonth)
+            );
+        }
+    }
+
+    public void validateActiveMeter(List<UUID> unitList, UUID serviceId) {
+      List<Meter> meterList = meterRepository.findByUnitIdsAndService(unitList, serviceId);
+      if (meterList.isEmpty()) {
+          throw new RuntimeException("Meter not found");
+      }
+    }
+
+
 
     private void validateTimeRange(ReadingCycle cycle, LocalDate startDate, LocalDate endDate) {
         if (startDate.isAfter(endDate)) {
@@ -109,7 +131,7 @@ public class MeterReadingAssignmentService {
 
     private void validateNoOverlap(UUID cycleId, UUID buildingId, UUID serviceId,
                                     LocalDate startDate, LocalDate endDate,
-                                    Integer floor) {
+                                    Integer floor, List<UUID> unitIds) {
         
         List<MeterReadingAssignment> assignments = meterReadingAssignmentRepository
                 .findByCycleId(cycleId)
@@ -128,22 +150,48 @@ public class MeterReadingAssignmentService {
                 continue;
             }
             
-            boolean floorOverlap = checkFloorOverlap(floor, existing.getFloor());
-            
-            if (floorOverlap) {
+            boolean unitsOverlap = checkUnitsOverlap(unitIds, existing.getUnitIds(), floor, existing.getFloor());
+
+            if (unitsOverlap) {
                 throw new RuntimeException(
                     String.format(
-                        "Assignment overlap detected! " +
-                        "Existing: %s to %s, Floor %s | " +
-                        "New: %s to %s, Floor %s",
+                        "Assignment overlap detected! Existing: %s to %s, Floor %s, Units %s | New: %s to %s, Floor %s, Units %s",
                         existing.getStartDate(), existing.getEndDate(),
                         formatFloor(existing.getFloor()),
+                        formatUnitList(existing.getUnitIds()),
                         startDate, endDate,
-                        formatFloor(floor)
+                        formatFloor(floor),
+                        formatUnitList(unitIds)
                     )
                 );
             }
         }
+    }
+
+    private boolean checkUnitsOverlap(List<UUID> newUnits, List<UUID> existingUnits, Integer floor1, Integer floor2) {
+        if (isAllUnits(newUnits) || isAllUnits(existingUnits)) {
+            return checkFloorOverlap(floor1, floor2);
+        }
+
+        for (UUID unit : newUnits) {
+            if (existingUnits.contains(unit)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isAllUnits(List<UUID> units) {
+        return units == null || units.isEmpty();
+    }
+
+    private String formatUnitList(List<UUID> units) {
+        if (isAllUnits(units)) {
+            return "ALL UNITS";
+        }
+        return units.stream()
+                .map(UUID::toString)
+                .collect(Collectors.joining(", "));
     }
 
     private boolean checkFloorOverlap(Integer floor1, Integer floor2) {

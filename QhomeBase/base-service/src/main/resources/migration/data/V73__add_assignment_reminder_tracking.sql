@@ -8,3 +8,6 @@ COMMENT ON COLUMN data.meter_reading_assignments.reminder_last_sent_date
 
 
 
+
+
+

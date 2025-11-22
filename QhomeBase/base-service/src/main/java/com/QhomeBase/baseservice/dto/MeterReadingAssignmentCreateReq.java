@@ -3,6 +3,7 @@ package com.QhomeBase.baseservice.dto;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 public record MeterReadingAssignmentCreateReq(
@@ -14,6 +15,6 @@ public record MeterReadingAssignmentCreateReq(
         LocalDate endDate,
         String note,
         Integer floor,
-        java.util.List<UUID> unitIds
+        List<UUID> unitIds
 ) {}
 

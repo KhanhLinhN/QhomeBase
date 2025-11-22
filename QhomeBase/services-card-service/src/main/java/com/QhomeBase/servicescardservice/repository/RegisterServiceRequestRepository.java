@@ -44,6 +44,21 @@ public interface RegisterServiceRequestRepository extends JpaRepository<Register
 
     List<RegisterServiceRequest> findByPaymentStatusAndUpdatedAtBefore(String paymentStatus, OffsetDateTime updatedAtBefore);
 
+    @Query(value = """
+        SELECT r.* FROM card.register_vehicle r
+        LEFT JOIN data.units u ON u.id = r.unit_id
+        LEFT JOIN data.buildings b ON b.id = u.building_id
+        WHERE r.service_type = 'VEHICLE_REGISTRATION'
+          AND (:buildingId IS NULL OR b.id = :buildingId)
+          AND (:unitId IS NULL OR r.unit_id = :unitId)
+          AND (:status IS NULL OR r.status = :status)
+        ORDER BY r.approved_at DESC NULLS LAST, r.created_at DESC
+        """, nativeQuery = true)
+    List<RegisterServiceRequest> findApprovedVehicleCardsByBuildingAndUnit(
+        @Param("buildingId") UUID buildingId,
+        @Param("unitId") UUID unitId,
+        @Param("status") String status
+    );
     List<RegisterServiceRequest> findByStatusAndUpdatedAtBefore(String status, OffsetDateTime updatedAtBefore);
 
     @Query("""

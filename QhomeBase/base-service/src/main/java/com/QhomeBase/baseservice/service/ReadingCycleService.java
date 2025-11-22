@@ -1,11 +1,15 @@
 package com.QhomeBase.baseservice.service;
 
+import com.QhomeBase.baseservice.client.FinanceBillingClient;
 import com.QhomeBase.baseservice.dto.ReadingCycleCreateReq;
 import com.QhomeBase.baseservice.dto.ReadingCycleDto;
+import com.QhomeBase.baseservice.dto.ReadingCycleUnassignedInfoDto;
 import com.QhomeBase.baseservice.dto.ReadingCycleUpdateReq;
-import com.QhomeBase.baseservice.model.ReadingCycle;
-import com.QhomeBase.baseservice.model.ReadingCycleStatus;
-import com.QhomeBase.baseservice.repository.ReadingCycleRepository;
+import com.QhomeBase.baseservice.dto.UnitWithoutMeterDto;
+import com.QhomeBase.baseservice.dto.finance.BillingCycleDto;
+import com.QhomeBase.baseservice.dto.finance.CreateBillingCycleRequest;
+import com.QhomeBase.baseservice.model.*;
+import com.QhomeBase.baseservice.repository.*;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -16,8 +20,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,16 +31,25 @@ public class ReadingCycleService {
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
 
     private final ReadingCycleRepository readingCycleRepository;
-
+    private final MeterReadingAssignmentRepository assignmentRepository;
+    private final ServiceRepository serviceRepository;
+    private final MeterRepository meterRepository;
+    private final UnitRepository unitRepository;
+    private final MeterService meterService;
+    private final FinanceBillingClient financeBillingClient;
     public ReadingCycleDto createCycle(ReadingCycleCreateReq req, Authentication authentication) {
         var principal = (UserPrincipal) authentication.getPrincipal();
         UUID createdBy = principal.uid();
 
+        com.QhomeBase.baseservice.model.Service service = serviceRepository.findById(req.serviceId())
+                .orElseThrow(() -> new IllegalArgumentException("Service not found: " + req.serviceId()));
+
         YearMonth targetMonth = validateMonthlyWindow(req.periodFrom(), req.periodTo());
-        ensureCycleDoesNotExist(targetMonth);
+        ensureCycleDoesNotExist(targetMonth, req.serviceId());
 
         ReadingCycle cycle = ReadingCycle.builder()
                 .name(buildCycleName(targetMonth))
+                .service(service)
                 .periodFrom(targetMonth.atDay(1))
                 .periodTo(targetMonth.atEndOfMonth())
                 .status(ReadingCycleStatus.OPEN)
@@ -46,6 +58,7 @@ public class ReadingCycleService {
                 .build();
 
         ReadingCycle saved = readingCycleRepository.save(cycle);
+        pushBillingCycle(saved);
         return toDto(saved);
     }
 
@@ -59,9 +72,6 @@ public class ReadingCycleService {
         ReadingCycle cycle = readingCycleRepository.findById(cycleId)
                 .orElseThrow(() -> new IllegalArgumentException("Reading cycle not found with id: " + cycleId));
         return toDto(cycle);
-
-
-
     }
 
     public List<ReadingCycleDto> getCyclesByStatus(ReadingCycleStatus status) {
@@ -71,9 +81,21 @@ public class ReadingCycleService {
                 .collect(Collectors.toList());
     }
 
+    public List<ReadingCycleDto> getCyclesByStatusAndService(ReadingCycleStatus status, UUID serviceId) {
+        return readingCycleRepository.findByStatusAndServiceId(status, serviceId).stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    public List<ReadingCycleDto> getCyclesByService(UUID serviceId) {
+        return readingCycleRepository.findByServiceId(serviceId).stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
     public List<ReadingCycleDto> getCyclesByPeriod(LocalDate from, LocalDate to) {
         return readingCycleRepository.findAll().stream()
-                .filter(cycle -> !cycle.getPeriodFrom().isAfter(to) 
+                .filter(cycle -> !cycle.getPeriodFrom().isAfter(to)
                         && !cycle.getPeriodTo().isBefore(from))
                 .map(this::toDto)
                 .collect(Collectors.toList());
@@ -97,7 +119,7 @@ public class ReadingCycleService {
 
     public ReadingCycleDto changeCycleStatus(UUID cycleId, ReadingCycleStatus newStatus) {
         log.debug("Changing cycle {} status to {}", cycleId, newStatus);
-        
+
         ReadingCycle existing = readingCycleRepository.findById(cycleId)
                 .orElseThrow(() -> {
                     log.warn("Reading cycle not found with id: {}", cycleId);
@@ -105,23 +127,68 @@ public class ReadingCycleService {
                 });
 
         log.debug("Current cycle status: {}, requested status: {}", existing.getStatus(), newStatus);
-        
+
         try {
             validateStatusTransition(existing.getStatus(), newStatus);
         } catch (IllegalStateException | IllegalArgumentException ex) {
-            log.warn("Status transition validation failed for cycle {}: {} -> {}: {}", 
+            log.warn("Status transition validation failed for cycle {}: {} -> {}: {}",
                     cycleId, existing.getStatus(), newStatus, ex.getMessage());
             throw ex;
         }
-        
+
+        if (newStatus == ReadingCycleStatus.COMPLETED) {
+            validateAllAssigned(cycleId);
+            validateAllAssignmentsCompleted(cycleId);
+        }
+
         ReadingCycleStatus oldStatus = existing.getStatus();
         existing.setStatus(newStatus);
         ReadingCycle saved = readingCycleRepository.save(existing);
-        
-        log.info("Successfully changed cycle {} status from {} to {}", 
+
+        log.info("Successfully changed cycle {} status from {} to {}",
                 cycleId, oldStatus, newStatus);
-        
+
         return toDto(saved);
+    }
+
+    private boolean pushBillingCycle(ReadingCycle cycle) {
+        if (cycle.getService() == null) {
+            log.warn("Skipping billing cycle push because service is null for reading cycle {}", cycle.getId());
+            return false;
+        }
+
+        CreateBillingCycleRequest request = CreateBillingCycleRequest.builder()
+                .name(cycle.getName() + " • " + cycle.getService().getCode())
+                .periodFrom(cycle.getPeriodFrom())
+                .periodTo(cycle.getPeriodTo())
+                .status("OPEN")
+                .externalCycleId(cycle.getId())
+                .build();
+
+        log.info("Creating billing cycle for reading cycle {} (service {}): {} → {}",
+                cycle.getId(),
+                cycle.getService().getCode(),
+                cycle.getPeriodFrom(),
+                cycle.getPeriodTo());
+
+        try {
+            List<BillingCycleDto> existing = financeBillingClient
+                    .findBillingCyclesByExternalId(cycle.getId())
+                    .block();
+            if (existing != null && !existing.isEmpty()) {
+                log.info("Skipped creating billing cycle for reading cycle {} because {} existing billing(s) found",
+                        cycle.getId(), existing.size());
+                return false;
+            }
+
+            BillingCycleDto billingCycle = financeBillingClient.createBillingCycle(request).block();
+            log.info("Billing cycle created for reading cycle {} → billingId={}", cycle.getId(),
+                    billingCycle != null ? billingCycle.getId() : "unknown");
+            return true;
+        } catch (Exception ex) {
+            log.error("Failed to create billing cycle for reading cycle {}", cycle.getId(), ex);
+            return false;
+        }
     }
 
     public void deleteCycle(UUID cycleId) {
@@ -135,28 +202,62 @@ public class ReadingCycleService {
         readingCycleRepository.delete(cycle);
     }
 
-    public ReadingCycle ensureMonthlyCycle(YearMonth month) {
+    public ReadingCycle ensureMonthlyCycle(YearMonth month, UUID serviceId) {
+        com.QhomeBase.baseservice.model.Service service = serviceRepository.findById(serviceId)
+                .orElseThrow(() -> new IllegalArgumentException("Service not found: " + serviceId));
+
         String cycleName = buildCycleName(month);
-        return readingCycleRepository.findByName(cycleName)
+        return readingCycleRepository.findByNameAndServiceId(cycleName, serviceId)
                 .orElseGet(() -> {
                     ReadingCycle cycle = ReadingCycle.builder()
                             .name(cycleName)
+                            .service(service)
                             .periodFrom(month.atDay(1))
                             .periodTo(month.atEndOfMonth())
                             .status(ReadingCycleStatus.OPEN)
                             .description("Auto-generated cycle for " + cycleName)
                             .build();
                     ReadingCycle saved = readingCycleRepository.save(cycle);
-                    log.info("Auto-created reading cycle {}", cycleName);
+                    log.info("Auto-created reading cycle {} for service {}", cycleName, serviceId);
                     return saved;
                 });
     }
+
+    public void ensureBillingCycleFor(ReadingCycle cycle) {
+        if (cycle == null) {
+            return;
+        }
+        pushBillingCycle(cycle);
+    }
+
+    public BillingSyncResult syncBillingCycles() {
+        List<ReadingCycle> cycles = readingCycleRepository.findAll();
+        int created = 0;
+        int skipped = 0;
+        int failed = 0;
+        for (ReadingCycle cycle : cycles) {
+            try {
+                boolean result = pushBillingCycle(cycle);
+                if (result) {
+                    created++;
+                } else {
+                    skipped++;
+                }
+            } catch (Exception ex) {
+                log.error("Failed to sync billing cycle for reading cycle {}", cycle.getId(), ex);
+                failed++;
+            }
+        }
+        return new BillingSyncResult(cycles.size(), created, skipped, failed);
+    }
+
+    public record BillingSyncResult(int scanned, int created, int skipped, int failed) {}
 
     private void validateStatusTransition(ReadingCycleStatus current, ReadingCycleStatus next) {
         if (current == null || next == null) {
             throw new IllegalArgumentException("Status cannot be null");
         }
-        
+
         switch (current) {
             case CLOSED:
                 throw new IllegalStateException("Cannot change status of a closed cycle");
@@ -187,6 +288,9 @@ public class ReadingCycleService {
                 cycle.getPeriodFrom(),
                 cycle.getPeriodTo(),
                 cycle.getStatus(),
+                cycle.getService() != null ? cycle.getService().getId() : null,
+                cycle.getService() != null ? cycle.getService().getCode() : null,
+                cycle.getService() != null ? cycle.getService().getName() : null,
                 cycle.getDescription(),
                 cycle.getCreatedBy(),
                 cycle.getCreatedAt(),
@@ -209,19 +313,218 @@ public class ReadingCycleService {
         return yearMonth;
     }
 
-    private void ensureCycleDoesNotExist(YearMonth month) {
+    private void ensureCycleDoesNotExist(YearMonth month, UUID serviceId) {
         String cycleName = buildCycleName(month);
-        readingCycleRepository.findByName(cycleName).ifPresent(existing -> {
-            throw new IllegalStateException("Reading cycle already exists for " + cycleName);
+        readingCycleRepository.findByNameAndServiceId(cycleName, serviceId).ifPresent(existing -> {
+            throw new IllegalStateException("Reading cycle already exists for " + cycleName + " and service " + serviceId);
         });
-        List<ReadingCycle> overlaps = readingCycleRepository.findOverlappingCycles(
-                month.atDay(1), month.atEndOfMonth());
+        List<ReadingCycle> overlaps = readingCycleRepository.findOverlappingCyclesByService(
+                month.atDay(1), month.atEndOfMonth(), serviceId);
         if (!overlaps.isEmpty()) {
-            throw new IllegalStateException("Reading cycle overlaps with an existing period");
+            throw new IllegalStateException("Reading cycle overlaps with an existing period for this service");
         }
     }
 
     private String buildCycleName(YearMonth month) {
         return month.format(MONTH_FORMATTER);
+    }
+    public ReadingCycleUnassignedInfoDto getUnassignedUnitsInfo(UUID cycleId) {
+        return buildUnassignedUnitsInfo(cycleId);
+    }
+
+    private ReadingCycleUnassignedInfoDto buildUnassignedUnitsInfo(UUID cycleId) {
+        ReadingCycle readingCycle = readingCycleRepository.findById(cycleId)
+                .orElseThrow(() -> new IllegalArgumentException("Reading cycle not found: " + cycleId));
+
+        if (readingCycle.getService() == null) {
+            throw new IllegalStateException("Reading cycle must have a service");
+        }
+
+        UUID serviceId = readingCycle.getService().getId();
+
+        Set<UUID> assignedUnits = new HashSet<>();
+        assignmentRepository.findByCycleId(cycleId).stream()
+                .filter(a -> a.getService() != null && Objects.equals(a.getService().getId(), serviceId))
+                .forEach(assignment -> collectAssignedUnits(assignment, assignedUnits));
+
+        Set<UUID> unitsWithMeters = meterRepository.findByServiceId(serviceId).stream()
+                .filter(meter -> Boolean.TRUE.equals(meter.getActive()))
+                .map(Meter::getUnit)
+                .filter(Objects::nonNull)
+                .map(Unit::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Set<UUID> unassignedUnits = unitsWithMeters.stream()
+                .filter(unitId -> !assignedUnits.contains(unitId))
+                .collect(Collectors.toSet());
+
+        List<UnitWithoutMeterDto> missingMeterUnits = meterService.getUnitsDoNotHaveMeter(serviceId, null);
+
+        List<UnassignedUnit> collectedUnits = new ArrayList<>();
+        for (UUID unitId : unassignedUnits) {
+            unitRepository.findById(unitId).ifPresent(unit -> {
+                String buildingLabel = determineBuildingLabel(unit);
+                UUID buildingId = unit.getBuilding() != null ? unit.getBuilding().getId() : null;
+                String buildingCode = unit.getBuilding() != null ? unit.getBuilding().getCode() : null;
+                String unitCode = unit.getCode() != null ? unit.getCode() : unitId.toString();
+                collectedUnits.add(new UnassignedUnit(
+                        unitId, unitCode, unit.getFloor(), buildingId, buildingCode, buildingLabel, false));
+            });
+        }
+
+        for (UnitWithoutMeterDto dto : missingMeterUnits) {
+            collectedUnits.add(new UnassignedUnit(
+                    dto.unitId(),
+                    dto.unitCode() != null ? dto.unitCode() : dto.unitId().toString(),
+                    dto.floor(),
+                    dto.buildingId(),
+                    dto.buildingCode(),
+                    determineBuildingLabel(dto.buildingCode(), dto.buildingName()),
+                    true
+            ));
+        }
+
+        if (collectedUnits.isEmpty()) {
+            return new ReadingCycleUnassignedInfoDto(cycleId, serviceId, 0, List.of(), "", missingMeterUnits);
+        }
+
+        Map<FloorGroup, List<String>> groupedUnits = new HashMap<>();
+        for (UnassignedUnit candidate : collectedUnits) {
+            FloorGroup floorGroup = new FloorGroup(
+                    candidate.buildingId,
+                    candidate.buildingCode,
+                    candidate.buildingLabel,
+                    candidate.floor);
+            List<String> unitCodes = groupedUnits.computeIfAbsent(floorGroup, group -> new ArrayList<>());
+            String label = candidate.unitCode != null ? candidate.unitCode : candidate.unitId.toString();
+            if (candidate.missingMeter) {
+                label += " (chưa có công tơ)";
+            }
+            unitCodes.add(label);
+        }
+
+        Comparator<Map.Entry<FloorGroup, List<String>>> entryComparator =
+                Comparator.comparing((Map.Entry<FloorGroup, List<String>> entry) -> entry.getKey().buildingName,
+                                Comparator.nullsLast(String::compareTo))
+                        .thenComparing(entry -> Optional.ofNullable(entry.getKey().floor).orElse(Integer.MIN_VALUE));
+
+        List<ReadingCycleUnassignedInfoDto.ReadingCycleUnassignedFloorDto> floorDtos = groupedUnits.entrySet().stream()
+                .sorted(entryComparator)
+                .map(entry -> {
+                    List<String> unitCodes = entry.getValue();
+                    unitCodes.sort(String::compareTo);
+                    return new ReadingCycleUnassignedInfoDto.ReadingCycleUnassignedFloorDto(
+                            entry.getKey().buildingId,
+                            entry.getKey().buildingCode,
+                            entry.getKey().buildingName,
+                            entry.getKey().floor,
+                            unitCodes
+                    );
+                })
+                .collect(Collectors.toList());
+
+        String message = buildUnassignedMessage(collectedUnits.size(), floorDtos);
+        return new ReadingCycleUnassignedInfoDto(cycleId, serviceId, collectedUnits.size(), floorDtos, message, missingMeterUnits);
+    }
+
+    private void collectAssignedUnits(MeterReadingAssignment assignment, Set<UUID> assignedUnits) {
+        if (assignment.getUnitIds() != null && !assignment.getUnitIds().isEmpty()) {
+            assignedUnits.addAll(assignment.getUnitIds());
+            return;
+        }
+        if (assignment.getBuilding() == null) {
+            return;
+        }
+        if (assignment.getFloor() != null) {
+            List<Unit> unitsInFloor = unitRepository.findByBuildingIdAndFloorNumber(
+                    assignment.getBuilding().getId(), assignment.getFloor());
+            unitsInFloor.stream()
+                    .map(Unit::getId)
+                    .filter(Objects::nonNull)
+                    .forEach(assignedUnits::add);
+        } else {
+            List<Unit> unitsInBuilding = unitRepository.findAllByBuildingId(
+                    assignment.getBuilding().getId());
+            unitsInBuilding.stream()
+                    .map(Unit::getId)
+                    .filter(Objects::nonNull)
+                    .forEach(assignedUnits::add);
+        }
+    }
+
+    private String determineBuildingLabel(Unit unit) {
+        if (unit == null) {
+            return "Unknown";
+        }
+        String code = unit.getBuilding() != null ? unit.getBuilding().getCode() : null;
+        String name = unit.getBuilding() != null ? unit.getBuilding().getName() : null;
+        return determineBuildingLabel(code, name);
+    }
+
+    private String determineBuildingLabel(String code, String name) {
+        if (code != null && !code.isBlank()) {
+            return code;
+        }
+        if (name != null && !name.isBlank()) {
+            return name;
+        }
+        return "Unknown";
+    }
+
+    private String buildUnassignedMessage(int total, List<ReadingCycleUnassignedInfoDto.ReadingCycleUnassignedFloorDto> floors) {
+        StringBuilder message = new StringBuilder();
+        message.append("Còn ").append(total).append(" căn hộ/phòng chưa được assign:");
+        for (ReadingCycleUnassignedInfoDto.ReadingCycleUnassignedFloorDto floor : floors) {
+            message.append("\n")
+                    .append(floor.buildingCode() != null ? floor.buildingCode() :
+                            floor.buildingName() != null ? floor.buildingName() : "Unknown")
+                    .append(" - Tầng ")
+                    .append(floor.floor() != null ? floor.floor() : "N/A")
+                    .append(": ")
+                    .append(String.join(", ", floor.unitCodes()));
+        }
+        return message.toString();
+    }
+
+    private record FloorGroup(UUID buildingId, String buildingCode, String buildingName, Integer floor) {}
+
+    private record UnassignedUnit(UUID unitId, String unitCode, Integer floor, UUID buildingId,
+                                  String buildingCode, String buildingLabel, boolean missingMeter) {}
+
+    private void validateAllAssigned(UUID cycleId) {
+        ReadingCycleUnassignedInfoDto info = getUnassignedUnitsInfo(cycleId);
+        if (info.totalUnassigned() > 0) {
+            throw new IllegalStateException(info.message());
+        }
+    }
+
+    private void validateAllAssignmentsCompleted(UUID cycleId) {
+        ReadingCycle readingCycle = readingCycleRepository.findById(cycleId)
+                .orElseThrow(() -> new IllegalArgumentException("Reading cycle not found: " + cycleId));
+
+        if (readingCycle.getService() == null) {
+            throw new IllegalStateException("Reading cycle must have a service");
+        }
+
+        UUID serviceId = readingCycle.getService().getId();
+
+        List<MeterReadingAssignment> incompleteAssignments =
+                assignmentRepository.findByCycleId(cycleId).stream()
+                        .filter(a -> a.getService() != null && Objects.equals(a.getService().getId(), serviceId))
+                        .filter(a -> a.getCompletedAt() == null)
+                        .collect(Collectors.toList());
+        
+        if (!incompleteAssignments.isEmpty()) {
+            int incompleteCount = incompleteAssignments.size();
+            log.warn("Cannot mark cycle {} as COMPLETED: {} assignment(s) are not completed for service {}", 
+                    cycleId, incompleteCount, serviceId);
+            throw new IllegalStateException(
+                    String.format("Không thể đánh dấu cycle là COMPLETED. Còn %d assignment chưa hoàn thành.", 
+                            incompleteCount)
+            );
+        }
+        
+        log.debug("All assignments for cycle {} (service {}) are completed", cycleId, serviceId);
     }
 }

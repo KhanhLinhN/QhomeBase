@@ -3,6 +3,7 @@ package com.QhomeBase.baseservice.controller;
 import com.QhomeBase.baseservice.dto.MeterCreateReq;
 import com.QhomeBase.baseservice.dto.MeterDto;
 import com.QhomeBase.baseservice.dto.MeterUpdateReq;
+import com.QhomeBase.baseservice.dto.UnitWithoutMeterDto;
 import com.QhomeBase.baseservice.service.MeterService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -65,6 +66,30 @@ public class MeterController {
 
             return ResponseEntity.ok(result);
         } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @GetMapping("/missing")
+    public ResponseEntity<List<UnitWithoutMeterDto>> getUnitsWithoutMeter(
+            @RequestParam UUID serviceId,
+            @RequestParam(required = false) UUID buildingId) {
+        try {
+            List<UnitWithoutMeterDto> result = meterService.getUnitsDoNotHaveMeter(serviceId, buildingId);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/missing")
+    public ResponseEntity<List<MeterDto>> createMissingMeters(
+            @RequestParam UUID serviceId,
+            @RequestParam(required = false) UUID buildingId) {
+        try {
+            List<MeterDto> created = meterService.createMissingMeters(serviceId, buildingId);
+            return ResponseEntity.ok(created);
+        } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
     }

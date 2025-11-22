@@ -20,3 +20,6 @@ COMMENT ON COLUMN data.meter_reading_reminders.type IS 'Loại nhắc nhở (VD:
 
 
 
+
+
+
