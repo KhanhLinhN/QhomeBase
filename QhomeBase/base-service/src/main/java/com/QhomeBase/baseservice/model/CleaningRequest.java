@@ -54,6 +54,9 @@ public class CleaningRequest {
     @Column(name = "contact_phone", nullable = false)
     private String contactPhone;
 
+    @Column(name = "user_id")
+    private UUID userId;
+
     @Convert(converter = StringListConverter.class)
     @Column(name = "extra_services", columnDefinition = "TEXT")
     @Builder.Default
@@ -70,6 +73,13 @@ public class CleaningRequest {
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    @Column(name = "last_resent_at")
+    private OffsetDateTime lastResentAt;
+
+    @Column(name = "resend_alert_sent", nullable = false)
+    @Builder.Default
+    private boolean resendAlertSent = false;
 
     @PrePersist
     public void onCreate() {

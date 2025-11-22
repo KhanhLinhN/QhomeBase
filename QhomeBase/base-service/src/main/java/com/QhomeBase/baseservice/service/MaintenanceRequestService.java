@@ -37,6 +37,7 @@ public class MaintenanceRequestService {
     private static final String STATUS_PENDING = "PENDING";
     private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
     private static final String STATUS_DONE = "DONE";
+    private static final String STATUS_CANCELLED = "CANCELLED";
 
     private static final LocalTime WORKING_START = LocalTime.of(8, 0);
     private static final LocalTime WORKING_END = LocalTime.of(18, 0);
@@ -94,6 +95,7 @@ public class MaintenanceRequestService {
                 .unitId(unit.getId())
                 .residentId(resident.getId())
                 .createdBy(userId)
+                .userId(userId)
                 .category(dto.category().trim())
                 .title(dto.title().trim())
                 .description(dto.description().trim())
@@ -131,6 +133,7 @@ public class MaintenanceRequestService {
                 entity.getId(),
                 entity.getUnitId(),
                 entity.getResidentId(),
+                entity.getUserId(),
                 entity.getCreatedBy(),
                 entity.getCategory(),
                 entity.getTitle(),
@@ -221,6 +224,29 @@ public class MaintenanceRequestService {
         return toDto(saved);
     }
 
+    @SuppressWarnings("null")
+    public MaintenanceRequestDto cancelRequest(UUID userId, UUID requestId) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        
+        MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
+
+        if (request.getResidentId() == null || !request.getResidentId().equals(resident.getId())) {
+            throw new IllegalArgumentException("You can only cancel your own requests");
+        }
+
+        if (STATUS_DONE.equalsIgnoreCase(request.getStatus()) ||
+                STATUS_CANCELLED.equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Cannot cancel a completed or already cancelled request");
+        }
+
+        request.setStatus(STATUS_CANCELLED);
+        MaintenanceRequest saved = maintenanceRequestRepository.save(request);
+        notifyMaintenanceCancelled(saved);
+        return toDto(saved);
+    }
+
     private void ensureNoActiveRequest(UUID residentId) {
         if (residentId == null) {
             return;
@@ -267,6 +293,19 @@ public class MaintenanceRequestService {
                 "Yêu cầu sửa chữa đã hoàn tất",
                 body.toString(),
                 STATUS_DONE
+        );
+    }
+
+    private void notifyMaintenanceCancelled(MaintenanceRequest request) {
+        StringBuilder body = new StringBuilder("Yêu cầu sửa chữa \"")
+                .append(request.getTitle())
+                .append("\" đã được hủy.");
+
+        sendMaintenanceNotification(
+                request,
+                "Yêu cầu sửa chữa đã được hủy",
+                body.toString(),
+                STATUS_CANCELLED
         );
     }
 

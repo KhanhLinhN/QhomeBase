@@ -79,5 +79,14 @@ public class MaintenanceRequestController {
         );
         return ResponseEntity.ok(dto);
     }
+
+    @PatchMapping("/{requestId}/cancel")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<MaintenanceRequestDto> cancelMaintenanceRequest(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID requestId) {
+        MaintenanceRequestDto dto = maintenanceRequestService.cancelRequest(principal.uid(), requestId);
+        return ResponseEntity.ok(dto);
+    }
 }
 

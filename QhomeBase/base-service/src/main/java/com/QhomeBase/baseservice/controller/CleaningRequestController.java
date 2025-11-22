@@ -46,6 +46,24 @@ public class CleaningRequestController {
         return ResponseEntity.ok(requests);
     }
 
+    @PostMapping("/{requestId}/resend")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<CleaningRequestDto> resendCleaningRequest(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID requestId) {
+        CleaningRequestDto dto = cleaningRequestService.resendRequest(principal.uid(), requestId);
+        return ResponseEntity.ok(dto);
+    }
+
+    @PatchMapping("/{requestId}/cancel")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<CleaningRequestDto> cancelCleaningRequest(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID requestId) {
+        CleaningRequestDto dto = cleaningRequestService.cancelRequest(principal.uid(), requestId);
+        return ResponseEntity.ok(dto);
+    }
+
     @GetMapping("/admin/pending")
     @PreAuthorize("@authz.canManageServiceRequests()")
     public ResponseEntity<List<CleaningRequestDto>> getPendingCleaningRequests() {

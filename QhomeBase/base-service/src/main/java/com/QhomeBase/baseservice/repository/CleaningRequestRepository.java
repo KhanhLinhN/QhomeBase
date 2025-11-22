@@ -2,8 +2,11 @@ package com.QhomeBase.baseservice.repository;
 
 import com.QhomeBase.baseservice.model.CleaningRequest;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -12,5 +15,43 @@ public interface CleaningRequestRepository extends JpaRepository<CleaningRequest
     List<CleaningRequest> findByResidentIdOrderByCreatedAtDesc(UUID residentId);
     List<CleaningRequest> findByStatusOrderByCreatedAtAsc(String status);
     boolean existsByResidentIdAndStatusIgnoreCase(UUID residentId, String status);
+
+    long countByResidentId(UUID residentId);
+
+    long countByResidentIdAndStatusIgnoreCase(UUID residentId, String status);
+
+    @Query(value = "select * from data.cleaning_requests " +
+            "where resident_id = :residentId " +
+            "order by created_at desc " +
+            "limit :limit offset :offset", nativeQuery = true)
+    List<CleaningRequest> findByResidentIdWithPagination(
+            @Param("residentId") UUID residentId,
+            @Param("limit") int limit,
+            @Param("offset") int offset);
+
+    @Query("select c from CleaningRequest c " +
+            "where c.status = :status " +
+            "and c.resendAlertSent = false " +
+            "and coalesce(c.lastResentAt, c.createdAt) <= :deadline")
+    List<CleaningRequest> findPendingRequestsForReminder(
+            @Param("status") String status,
+            @Param("deadline") OffsetDateTime deadline);
+
+    @Query("select c from CleaningRequest c " +
+            "where c.status = :status " +
+            "and c.lastResentAt is not null " +
+            "and c.lastResentAt <= :resendDeadline")
+    List<CleaningRequest> findResentRequestsForAutoCancel(
+            @Param("status") String status,
+            @Param("resendDeadline") OffsetDateTime resendDeadline);
+
+    @Query("select c from CleaningRequest c " +
+            "where c.status = :status " +
+            "and c.lastResentAt is null " +
+            "and c.resendAlertSent = true " +
+            "and c.createdAt <= :noResendDeadline")
+    List<CleaningRequest> findNonResentRequestsForAutoCancel(
+            @Param("status") String status,
+            @Param("noResendDeadline") OffsetDateTime noResendDeadline);
 }
 

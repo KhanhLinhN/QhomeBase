@@ -8,6 +8,7 @@ public record MaintenanceRequestDto(
         UUID id,
         UUID unitId,
         UUID residentId,
+        UUID userId,
         UUID createdBy,
         String category,
         String title,

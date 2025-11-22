@@ -56,6 +56,9 @@ public class MaintenanceRequest {
     @Column(name = "contact_phone", nullable = false)
     private String contactPhone;
 
+    @Column(name = "user_id")
+    private UUID userId;
+
     @Column(name = "note")
     private String note;
 
