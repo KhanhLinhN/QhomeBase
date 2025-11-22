@@ -1,13 +1,12 @@
 package com.QhomeBase.baseservice.service;
 
-import com.QhomeBase.baseservice.dto.MeterCreateReq;
-import com.QhomeBase.baseservice.dto.MeterDto;
-import com.QhomeBase.baseservice.dto.MeterUpdateReq;
-import com.QhomeBase.baseservice.dto.MeterWithReadingDto;
+import com.QhomeBase.baseservice.dto.*;
 import com.QhomeBase.baseservice.model.Meter;
 import com.QhomeBase.baseservice.model.MeterReading;
 import com.QhomeBase.baseservice.model.MeterReadingAssignment;
 import com.QhomeBase.baseservice.model.ReadingCycle;
+import com.QhomeBase.baseservice.model.Service;
+import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.repository.MeterReadingAssignmentRepository;
 import com.QhomeBase.baseservice.repository.MeterReadingRepository;
 import com.QhomeBase.baseservice.repository.MeterRepository;
@@ -16,17 +15,14 @@ import com.QhomeBase.baseservice.repository.ServiceRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.Comparator;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Slf4j
-@Service
+@org.springframework.stereotype.Service
 @RequiredArgsConstructor
 public class MeterService {
 
@@ -70,6 +66,52 @@ public class MeterService {
         return meters.stream()
                 .map(this::toDto)
                 .toList();
+    }
+    public List<UnitWithoutMeterDto> getUnitsDoNotHaveMeter(UUID serviceId, UUID buildingId) {
+        Service service = serviceRepository.findById(serviceId)
+                .orElseThrow(() -> new IllegalArgumentException("Service not found: " + serviceId));
+
+        Set<UUID> unitsWithMeter = new HashSet<>(meterRepository.findUnitIdsByServiceId(serviceId));
+        List<Unit> units = buildingId != null
+                ? unitRepository.findAllByBuildingId(buildingId)
+                : unitRepository.findAllWithBuilding();
+        return units.stream()
+                .filter(unit -> !unitsWithMeter.contains(unit.getId()))
+                .map(unit -> new UnitWithoutMeterDto(
+                        unit.getId(),
+                        unit.getCode(),
+                        unit.getFloor(),
+                        unit.getBuilding() != null ? unit.getBuilding().getId() : null,
+                        unit.getBuilding() != null ? unit.getBuilding().getCode() : null,
+                        unit.getBuilding() != null ? unit.getBuilding().getName() : null,
+                        service.getId(),
+                        service.getCode(),
+                        service.getName()
+                ))
+                .toList();
+    }
+
+    @Transactional
+    public List<MeterDto> createMissingMeters(UUID serviceId, UUID buildingId) {
+        List<UnitWithoutMeterDto> missingUnits = getUnitsDoNotHaveMeter(serviceId, buildingId);
+        List<MeterDto> created = new ArrayList<>();
+        Service service = serviceRepository.findById(serviceId)
+                .orElseThrow(() -> new IllegalArgumentException("Service not found: " + serviceId));
+        for (UnitWithoutMeterDto dto : missingUnits) {
+            Unit unit = unitRepository.findById(dto.unitId())
+                    .orElseThrow(() -> new IllegalArgumentException("Unit not found: " + dto.unitId()));
+            String meterCode = generateMeterCode(unit, service);
+            Meter meter = Meter.builder()
+                    .unit(unit)
+                    .service(service)
+                    .meterCode(meterCode)
+                    .active(true)
+                    .installedAt(LocalDate.now())
+                    .build();
+            Meter saved = meterRepository.save(meter);
+            created.add(toDto(saved));
+        }
+        return created;
     }
 
     @Transactional(readOnly = true)
@@ -284,10 +326,15 @@ public class MeterService {
                     "Active meter already exists for unit " + req.unitId() + " and service " + req.serviceId());
         }
 
+        String meterCode = req.meterCode();
+        if (meterCode == null || meterCode.isBlank()) {
+            meterCode = generateMeterCode(unit, service);
+        }
+
         var meter = Meter.builder()
                 .unit(unit)
                 .service(service)
-                .meterCode(req.meterCode())
+                .meterCode(meterCode)
                 .active(true)
                 .installedAt(req.installedAt() != null ? req.installedAt() : LocalDate.now())
                 .build();
@@ -296,6 +343,18 @@ public class MeterService {
         log.info("Created meter: {} for unit: {} service: {}", savedMeter.getId(), req.unitId(), req.serviceId());
 
         return toDto(savedMeter);
+    }
+
+    private String generateMeterCode(Unit unit, Service service) {
+        String unitCode = unit.getCode() != null ? unit.getCode() : unit.getId().toString().substring(0, 8);
+        String serviceCode = service.getCode() != null ? service.getCode() : service.getId().toString().substring(0, 8);
+        String base = (unitCode + "-" + serviceCode).toUpperCase().replaceAll("\\s+", "");
+        String candidate = base;
+        int suffix = 1;
+        while (meterRepository.findByMeterCode(candidate).isPresent()) {
+            candidate = base + "-" + suffix++;
+        }
+        return candidate;
     }
 
     @Transactional
@@ -384,9 +443,16 @@ public class MeterService {
             }
         }
 
+        UUID buildingId = meter.getUnit() != null && meter.getUnit().getBuilding() != null
+                ? meter.getUnit().getBuilding().getId() : null;
+        String buildingCode = meter.getUnit() != null && meter.getUnit().getBuilding() != null
+                ? meter.getUnit().getBuilding().getCode() : null;
+
         return new MeterDto(
                 meter.getId(),
                 meter.getUnit() != null ? meter.getUnit().getId() : null,
+                buildingId,
+                buildingCode,
                 meter.getUnit() != null ? meter.getUnit().getCode() : null,
                 meter.getUnit() != null ? meter.getUnit().getFloor() : null,
                 meter.getService() != null ? meter.getService().getId() : null,

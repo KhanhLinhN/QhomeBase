@@ -11,7 +11,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "reading_cycles", schema = "data", 
-       uniqueConstraints = @UniqueConstraint(name = "uq_reading_cycle_name", columnNames = {"name"}))
+       uniqueConstraints = @UniqueConstraint(name = "uq_reading_cycle_name_service", columnNames = {"name", "service_id"}))
 @Getter
 @Setter
 @Builder
@@ -23,8 +23,12 @@ public class ReadingCycle {
     @GeneratedValue
     private UUID id;
 
-    @Column(name = "name", nullable = false, unique = true)
+    @Column(name = "name", nullable = false)
     private String name;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "service_id", nullable = false)
+    private Service service;
 
     @Column(name = "period_from", nullable = false)
     private LocalDate periodFrom;

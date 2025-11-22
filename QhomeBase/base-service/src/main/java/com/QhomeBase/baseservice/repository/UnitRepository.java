@@ -1,11 +1,12 @@
 package com.QhomeBase.baseservice.repository;
 
 import com.QhomeBase.baseservice.model.Unit;
-import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface UnitRepository extends JpaRepository<Unit, UUID> {
@@ -27,5 +28,13 @@ public interface UnitRepository extends JpaRepository<Unit, UUID> {
            "AND (hm.leftAt IS NULL OR hm.leftAt >= CURRENT_DATE) " +
            "AND (h.endDate IS NULL OR h.endDate >= CURRENT_DATE)")
     List<Unit> findAllUnitsByUserId(@Param("userId") UUID userId);
+
+    @Query("SELECT u FROM Unit u JOIN FETCH u.building")
+    List<Unit> findAllWithBuilding();
+
+    @Query("SELECT u FROM Unit u JOIN FETCH u.building WHERE u.building.id = :buildingId AND u.code = :code")
+    Optional<Unit> findByBuildingIdAndCode(@Param("buildingId") UUID buildingId, @Param("code") String code);
+
+
 
 }

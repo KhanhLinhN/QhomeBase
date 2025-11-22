@@ -2,6 +2,7 @@ package com.QhomeBase.financebillingservice.controller;
 
 import com.QhomeBase.financebillingservice.dto.BillingCycleDto;
 import com.QhomeBase.financebillingservice.dto.CreateBillingCycleRequest;
+import com.QhomeBase.financebillingservice.dto.ReadingCycleDto;
 import com.QhomeBase.financebillingservice.service.BillingCycleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -24,11 +25,26 @@ public class BillingCycleController {
         return billingCycleService.loadPeriod(year);
     }
 
+    @PostMapping("/sync-missing")
+    public List<BillingCycleDto> createMissingBillingCycles() {
+        return billingCycleService.createBillingCyclesForMissingReadingCycles();
+    }
+
+    @GetMapping("/missing")
+    public List<ReadingCycleDto> getMissingReadingCycles() {
+        return billingCycleService.getMissingReadingCyclesInfo();
+    }
+
     @GetMapping
     public List<BillingCycleDto> getBillingCycle(
             @RequestParam LocalDate startDate,
             @RequestParam LocalDate endDate) {
         return billingCycleService.getListByTime(startDate, endDate);
+    }
+
+    @GetMapping("/external/{externalCycleId}")
+    public List<BillingCycleDto> getByExternalCycleId(@PathVariable UUID externalCycleId) {
+        return billingCycleService.findByExternalCycleId(externalCycleId);
     }
 
     @PostMapping

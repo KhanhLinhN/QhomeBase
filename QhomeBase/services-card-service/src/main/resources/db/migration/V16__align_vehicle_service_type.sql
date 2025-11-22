@@ -12,3 +12,6 @@ WHERE service_type = 'VEHICLE';
 
 
 
+
+
+

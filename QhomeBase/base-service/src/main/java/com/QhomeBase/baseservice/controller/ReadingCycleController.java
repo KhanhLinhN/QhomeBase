@@ -2,6 +2,7 @@ package com.QhomeBase.baseservice.controller;
 
 import com.QhomeBase.baseservice.dto.ReadingCycleCreateReq;
 import com.QhomeBase.baseservice.dto.ReadingCycleDto;
+import com.QhomeBase.baseservice.dto.ReadingCycleUnassignedInfoDto;
 import com.QhomeBase.baseservice.dto.ReadingCycleUpdateReq;
 import com.QhomeBase.baseservice.model.ReadingCycleStatus;
 import com.QhomeBase.baseservice.service.ReadingCycleService;
@@ -51,6 +52,27 @@ public class ReadingCycleController {
         return ResponseEntity.ok(cycles);
     }
 
+    @GetMapping("/service/{serviceId}")
+    public ResponseEntity<List<ReadingCycleDto>> getCyclesByService(
+            @PathVariable UUID serviceId) {
+        List<ReadingCycleDto> cycles = readingCycleService.getCyclesByService(serviceId);
+        return ResponseEntity.ok(cycles);
+    }
+
+    @GetMapping("/status/{status}/service/{serviceId}")
+    public ResponseEntity<List<ReadingCycleDto>> getCyclesByStatusAndService(
+            @PathVariable ReadingCycleStatus status,
+            @PathVariable UUID serviceId) {
+        List<ReadingCycleDto> cycles = readingCycleService.getCyclesByStatusAndService(status, serviceId);
+        return ResponseEntity.ok(cycles);
+    }
+
+    @GetMapping("/{cycleId}/unassigned")
+    public ResponseEntity<ReadingCycleUnassignedInfoDto> getCycleUnassignedInfo(@PathVariable UUID cycleId) {
+        ReadingCycleUnassignedInfoDto info = readingCycleService.getUnassignedUnitsInfo(cycleId);
+        return ResponseEntity.ok(info);
+    }
+
     @GetMapping("/period")
     public ResponseEntity<List<ReadingCycleDto>> getCyclesByPeriod(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -80,6 +102,12 @@ public class ReadingCycleController {
     public ResponseEntity<Void> deleteCycle(@PathVariable UUID cycleId) {
         readingCycleService.deleteCycle(cycleId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/sync-billing")
+    public ResponseEntity<ReadingCycleService.BillingSyncResult> syncBillingCycles() {
+        ReadingCycleService.BillingSyncResult result = readingCycleService.syncBillingCycles();
+        return ResponseEntity.ok(result);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

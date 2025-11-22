@@ -2,6 +2,7 @@ package com.QhomeBase.baseservice.controller;
 
 import com.QhomeBase.baseservice.dto.imports.BuildingImportResponse;
 import com.QhomeBase.baseservice.service.imports.BuildingImportService;
+import com.QhomeBase.baseservice.service.imports.BuildingExportService;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,14 +15,15 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
-@RequestMapping("/api/buildings/import")
+@RequestMapping("/api/buildings")
 @RequiredArgsConstructor
 @Slf4j
 public class BuildingImportController {
 
     private final BuildingImportService buildingImportService;
+    private final BuildingExportService buildingExportService;
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("@authz.canCreateBuilding()")
     public ResponseEntity<BuildingImportResponse> importBuildings(
             @RequestParam("file") MultipartFile file,
@@ -43,12 +45,32 @@ public class BuildingImportController {
         }
     }
 
-    @GetMapping(value = "/template", produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    @GetMapping(value = "/import/template", produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     @PreAuthorize("@authz.canViewBuildings()")
     public ResponseEntity<byte[]> downloadTemplate() {
         byte[] bytes = buildingImportService.generateTemplateWorkbook();
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"building_import_template.xlsx\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(bytes);
+    }
+
+    @GetMapping(value = "/export", produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    @PreAuthorize("@authz.canViewBuildings()")
+    public ResponseEntity<byte[]> exportBuildings(
+            @RequestParam(value = "withUnits", defaultValue = "false") boolean withUnits
+    ) {
+        byte[] bytes;
+        String filename;
+        if (withUnits) {
+            bytes = buildingExportService.exportBuildingsWithUnitsToExcel();
+            filename = "buildings_with_units_export.xlsx";
+        } else {
+            bytes = buildingExportService.exportBuildingsToExcel();
+            filename = "buildings_export.xlsx";
+        }
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(bytes);
     }

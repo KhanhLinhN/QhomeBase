@@ -688,6 +688,10 @@ public class InvoiceService {
                 .lines(lines.stream().map(this::lineToDto).collect(Collectors.toList()))
                 .build();
     }
+
+    public InvoiceDto mapToDto(Invoice invoice) {
+        return toDto(invoice);
+    }
     
     private InvoiceLineDto lineToDto(InvoiceLine line) {
         return InvoiceLineDto.builder()

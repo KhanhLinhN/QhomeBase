@@ -26,4 +26,46 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
     List<Invoice> findByPayerUnitIdAndCycleId(@Param("unitId") UUID unitId, @Param("cycleId") UUID cycleId);
 
     Optional<Invoice> findByVnpTransactionRef(String vnpTransactionRef);
+
+    @Query(value = """
+    select i.*
+    from billing.invoices i
+    where i.cycle_id =  :cycleId
+""", nativeQuery = true)
+    List<Invoice> findByCycleId( @Param("cycleId") UUID cycleId);
+
+     @Query(value = """
+     SELECT i.*
+     FROM billing.invoices i
+     INNER JOIN data.units u ON i.payer_unit_id = u.id
+     WHERE u.building_id = :buildingId
+       AND i.cycle_id = :cycleId
+ """, nativeQuery = true)
+     List<Invoice> findByCycleIdAndBuildingId(@Param("cycleId") UUID cycleId, @Param("buildingId") UUID buildingId);
+
+    List<Invoice> findByCycleIdAndStatus(UUID cycleId, InvoiceStatus status);
+
+    List<Invoice> findByCycleIdAndStatusIn(UUID cycleId, List<InvoiceStatus> statuses);
+
+    List<Invoice> findByCycleIdAndPayerUnitId(UUID cycleId, UUID unitId);
+
+    @Query(value = """
+    SELECT u.building_id as buildingId,
+           b.code as buildingCode,
+           b.name as buildingName,
+           i.status as status,
+           COALESCE(SUM((il.quantity * il.unit_price) + il.tax_amount), 0) as totalAmount,
+           COUNT(DISTINCT i.id) as invoiceCount
+    FROM billing.invoices i
+    LEFT JOIN billing.invoice_lines il ON il.invoice_id = i.id
+    LEFT JOIN data.units u ON u.id = i.payer_unit_id
+    LEFT JOIN data.buildings b ON b.id = u.building_id
+    WHERE i.cycle_id = :cycleId
+      AND u.building_id IS NOT NULL
+    GROUP BY u.building_id, b.code, b.name, i.status
+    """, nativeQuery = true)
+    List<BuildingInvoiceSummary> summarizeByCycleAndBuilding(
+            @Param("cycleId") UUID cycleId,
+            @Param("serviceCode") String serviceCode,
+            @Param("serviceMonth") String serviceMonth);
 }

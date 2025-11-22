@@ -1,6 +1,7 @@
 package com.QhomeBase.baseservice.scheduler;
 
 import com.QhomeBase.baseservice.service.MeterReadingReminderService;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,10 +21,17 @@ public class MeterReadingReminderScheduler {
     @Value("${meter-reading.reminder.timezone:Asia/Ho_Chi_Minh}")
     private String timezoneId;
 
-    @Scheduled(cron = "${meter-reading.reminder.cron:0 0 8 * * *}")
-    public void runReminderJob() {
-        LocalDate today = LocalDate.now(resolveZoneId());
+    @PostConstruct
+    public void initializeReminders() {
+        runReminderJob(LocalDate.now(resolveZoneId()));
+    }
 
+    @Scheduled(cron = "${meter-reading.reminder.cron:0 0 8 * * *}")
+    public void scheduledReminderJob() {
+        runReminderJob(LocalDate.now(resolveZoneId()));
+    }
+
+    private void runReminderJob(LocalDate today) {
         try {
             reminderService.processReminders(today);
             log.debug("[MeterReminder] Processed reminders for {}", today);

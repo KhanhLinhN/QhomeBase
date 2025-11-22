@@ -73,5 +73,8 @@ public interface MeterRepository extends JpaRepository<Meter, UUID> {
         @Param("unitIds") List<UUID> unitIds,
         @Param("serviceId") UUID serviceId
     );
+
+    @Query("SELECT DISTINCT m.unit.id FROM Meter m WHERE m.service.id = :serviceId AND m.active = true")
+    List<UUID> findUnitIdsByServiceId(@Param("serviceId") UUID serviceId);
 }
 

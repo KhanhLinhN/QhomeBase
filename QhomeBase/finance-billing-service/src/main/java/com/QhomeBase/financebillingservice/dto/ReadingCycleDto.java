@@ -11,6 +11,9 @@ public record ReadingCycleDto(
         LocalDate periodTo,
         String status,
         String description,
+        UUID serviceId,
+        String serviceCode,
+        String serviceName,
         UUID createdBy,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
