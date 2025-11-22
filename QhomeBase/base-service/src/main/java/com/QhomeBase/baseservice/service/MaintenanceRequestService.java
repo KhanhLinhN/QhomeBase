@@ -1,5 +1,6 @@
 package com.QhomeBase.baseservice.service;
 
+import com.QhomeBase.baseservice.dto.AdminServiceRequestActionDto;
 import com.QhomeBase.baseservice.dto.CreateMaintenanceRequestDto;
 import com.QhomeBase.baseservice.dto.MaintenanceRequestDto;
 import com.QhomeBase.baseservice.model.Household;
@@ -18,9 +19,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -29,12 +34,22 @@ import java.util.UUID;
 @Transactional
 public class MaintenanceRequestService {
 
+    private static final String STATUS_PENDING = "PENDING";
+    private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
+    private static final String STATUS_DONE = "DONE";
+
+    private static final LocalTime WORKING_START = LocalTime.of(8, 0);
+    private static final LocalTime WORKING_END = LocalTime.of(18, 0);
+    private static final ZoneId DEFAULT_TIMEZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+
     private final MaintenanceRequestRepository maintenanceRequestRepository;
     private final UnitRepository unitRepository;
     private final ResidentRepository residentRepository;
     private final HouseholdRepository householdRepository;
     private final HouseholdMemberRepository householdMemberRepository;
+    private final NotificationClient notificationClient;
 
+    @SuppressWarnings("null")
     public MaintenanceRequestDto create(UUID userId, CreateMaintenanceRequestDto dto) {
         Unit unit = unitRepository.findById(dto.unitId())
                 .orElseThrow(() -> new IllegalArgumentException("Unit not found"));
@@ -49,6 +64,11 @@ public class MaintenanceRequestService {
         if (!belongsToUnit) {
             throw new IllegalArgumentException("You are not associated with this unit");
         }
+
+        ensureNoActiveRequest(resident.getId());
+
+        OffsetDateTime normalizedPreferredDatetime = normalizePreferredDatetime(dto.preferredDatetime());
+        validatePreferredDatetime(normalizedPreferredDatetime);
 
         List<String> attachments = dto.attachments() != null
                 ? new ArrayList<>(dto.attachments())
@@ -79,11 +99,11 @@ public class MaintenanceRequestService {
                 .description(dto.description().trim())
                 .attachments(attachments)
                 .location(dto.location().trim())
-                .preferredDatetime(dto.preferredDatetime())
+                .preferredDatetime(normalizedPreferredDatetime)
                 .contactName(contactName)
                 .contactPhone(contactPhone)
                 .note(dto.note())
-                .status("PENDING")
+                .status(STATUS_PENDING)
                 .build();
 
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
@@ -124,6 +144,168 @@ public class MaintenanceRequestService {
                 entity.getStatus(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
+        );
+    }
+
+    @SuppressWarnings("null")
+    public List<MaintenanceRequestDto> getMyRequests(UUID userId) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        List<MaintenanceRequest> requests = maintenanceRequestRepository
+                .findByResidentIdOrderByCreatedAtDesc(resident.getId());
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    public List<MaintenanceRequestDto> getPendingRequests() {
+        List<MaintenanceRequest> requests = maintenanceRequestRepository
+                .findByStatusOrderByCreatedAtAsc(STATUS_PENDING);
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    private void validatePreferredDatetime(OffsetDateTime preferredDatetime) {
+        if (preferredDatetime == null) {
+            throw new IllegalArgumentException("Preferred datetime is required");
+        }
+
+        OffsetDateTime now = OffsetDateTime.now(DEFAULT_TIMEZONE);
+        if (preferredDatetime.isBefore(now)) {
+            throw new IllegalArgumentException("Preferred datetime cannot be in the past");
+        }
+
+        LocalTime preferredTime = preferredDatetime.toLocalTime();
+        if (preferredTime.isBefore(WORKING_START) || preferredTime.isAfter(WORKING_END)) {
+            throw new IllegalArgumentException(
+                    String.format("Preferred time must be between %s and %s",
+                            WORKING_START, WORKING_END));
+        }
+    }
+
+    private OffsetDateTime normalizePreferredDatetime(OffsetDateTime preferredDatetime) {
+        if (preferredDatetime == null) {
+            throw new IllegalArgumentException("Preferred datetime is required");
+        }
+        return preferredDatetime.atZoneSameInstant(DEFAULT_TIMEZONE).toOffsetDateTime();
+    }
+
+    @SuppressWarnings("null")
+    public MaintenanceRequestDto approveRequest(UUID adminId, UUID requestId, AdminServiceRequestActionDto dto) {
+        MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
+
+        if (!STATUS_PENDING.equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Only pending requests can be moved to in-progress");
+        }
+
+        request.setStatus(STATUS_IN_PROGRESS);
+        MaintenanceRequest saved = maintenanceRequestRepository.save(request);
+        notifyMaintenanceInProgress(saved, dto != null ? dto.note() : null);
+        return toDto(saved);
+    }
+
+    @SuppressWarnings("null")
+    public MaintenanceRequestDto completeRequest(UUID staffId, UUID requestId, AdminServiceRequestActionDto dto) {
+        MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
+
+        if (!STATUS_IN_PROGRESS.equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Only in-progress requests can be marked done");
+        }
+
+        request.setStatus(STATUS_DONE);
+        MaintenanceRequest saved = maintenanceRequestRepository.save(request);
+        notifyMaintenanceCompleted(saved, dto != null ? dto.note() : null);
+        return toDto(saved);
+    }
+
+    private void ensureNoActiveRequest(UUID residentId) {
+        if (residentId == null) {
+            return;
+        }
+        boolean hasPending = maintenanceRequestRepository
+                .existsByResidentIdAndStatusIgnoreCase(residentId, STATUS_PENDING);
+        boolean hasInProgress = maintenanceRequestRepository
+                .existsByResidentIdAndStatusIgnoreCase(residentId, STATUS_IN_PROGRESS);
+        if (hasPending || hasInProgress) {
+            throw new IllegalStateException(
+                    "Bạn đang có yêu cầu sửa chữa chưa hoàn tất. Vui lòng chờ đơn hiện tại sang trạng thái DONE trước khi tạo thêm.");
+        }
+    }
+
+    private void notifyMaintenanceInProgress(MaintenanceRequest request, String note) {
+        StringBuilder body = new StringBuilder("Yêu cầu sửa chữa \"")
+                .append(request.getTitle())
+                .append("\" đang được xử lý.");
+        if (note != null && !note.isBlank()) {
+            body.append(' ').append(note.trim());
+        } else if (request.getPreferredDatetime() != null) {
+            body.append(" Kỹ thuật viên sẽ liên hệ cho lịch hẹn dự kiến vào ")
+                    .append(request.getPreferredDatetime());
+        }
+
+        sendMaintenanceNotification(
+                request,
+                "Yêu cầu sửa chữa đang xử lý",
+                body.toString(),
+                STATUS_IN_PROGRESS
+        );
+    }
+
+    private void notifyMaintenanceCompleted(MaintenanceRequest request, String note) {
+        StringBuilder body = new StringBuilder("Yêu cầu sửa chữa \"")
+                .append(request.getTitle())
+                .append("\" đã hoàn tất.");
+        if (note != null && !note.isBlank()) {
+            body.append(' ').append(note.trim());
+        }
+
+        sendMaintenanceNotification(
+                request,
+                "Yêu cầu sửa chữa đã hoàn tất",
+                body.toString(),
+                STATUS_DONE
+        );
+    }
+
+    private void sendMaintenanceNotification(
+            MaintenanceRequest request,
+            String title,
+            String body,
+            String status
+    ) {
+        if (request.getResidentId() == null) {
+            log.warn("⚠️ [MaintenanceRequest] Missing residentId for request {}", request.getId());
+            return;
+        }
+
+        Unit unit = null;
+        UUID unitId = request.getUnitId();
+        if (unitId != null) {
+            unit = unitRepository.findById(unitId).orElse(null);
+        }
+
+        Map<String, String> data = new HashMap<>();
+        data.put("entity", "MAINTENANCE_REQUEST");
+        data.put("requestId", request.getId().toString());
+        data.put("status", status);
+        data.put("category", request.getCategory());
+
+        UUID buildingId = (unit != null && unit.getBuilding() != null)
+                ? unit.getBuilding().getId()
+                : null;
+
+        notificationClient.sendResidentNotification(
+                request.getResidentId(),
+                buildingId,
+                "REQUEST",
+                title,
+                body,
+                request.getId(),
+                "MAINTENANCE_REQUEST",
+                data
         );
     }
 }

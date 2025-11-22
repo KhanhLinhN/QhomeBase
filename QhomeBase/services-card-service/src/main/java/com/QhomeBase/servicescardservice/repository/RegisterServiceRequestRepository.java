@@ -59,4 +59,5 @@ public interface RegisterServiceRequestRepository extends JpaRepository<Register
         @Param("unitId") UUID unitId,
         @Param("status") String status
     );
+    List<RegisterServiceRequest> findByStatusAndUpdatedAtBefore(String status, OffsetDateTime updatedAtBefore);
 }

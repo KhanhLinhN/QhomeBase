@@ -9,8 +9,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import com.QhomeBase.customerinteractionservice.dto.RequestApproveRequest;
 import com.QhomeBase.customerinteractionservice.dto.RequestDTO;
+import com.QhomeBase.customerinteractionservice.service.processingLogService;
 import com.QhomeBase.customerinteractionservice.service.requestService;
+import jakarta.validation.Valid;
 
 @CrossOrigin(origins = "http://localhost:3000")
 @RestController
@@ -18,9 +21,11 @@ import com.QhomeBase.customerinteractionservice.service.requestService;
 public class requestController {
 
     private final requestService requestService;
+    private final processingLogService processingLogService;
 
-    public requestController(requestService requestService) {
+    public requestController(requestService requestService, processingLogService processingLogService) {
         this.requestService = requestService;
+        this.processingLogService = processingLogService;
     }
 
    @GetMapping()
@@ -55,10 +60,38 @@ public class requestController {
     }
 
     @PostMapping("/createRequest")
-    public ResponseEntity<RequestDTO> addNewRequest(@RequestBody RequestDTO requestDTO, Authentication auth)
+    public ResponseEntity<?> addNewRequest(@RequestBody RequestDTO requestDTO, Authentication auth)
     {
-        RequestDTO savedRequest = requestService.createNewRequest(requestDTO, auth);
-        return ResponseEntity.status(HttpStatus.CREATED).body(savedRequest);
+        try {
+            RequestDTO savedRequest = requestService.createNewRequest(requestDTO, auth);
+            return ResponseEntity.status(HttpStatus.CREATED).body(savedRequest);
+        } catch (IllegalStateException e) {
+            // Rate limit exception - sẽ được GlobalExceptionHandler xử lý
+            throw e;
+        } catch (IllegalArgumentException e) {
+            // Validation exception - sẽ được GlobalExceptionHandler xử lý
+            throw e;
+        }
+    }
+
+    @PostMapping("/{requestId}/approve")
+    public ResponseEntity<RequestDTO> approveRequest(
+            @PathVariable UUID requestId,
+            @Valid @RequestBody RequestApproveRequest approveRequest,
+            Authentication authentication) {
+        try {
+            RequestDTO approvedRequest = processingLogService.approveRequest(requestId, approveRequest, authentication);
+            return ResponseEntity.ok(approvedRequest);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest()
+                    .body(null);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(null);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(null);
+        }
     }
 
 }

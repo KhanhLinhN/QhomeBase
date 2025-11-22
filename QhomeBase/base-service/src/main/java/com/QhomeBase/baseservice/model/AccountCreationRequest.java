@@ -83,7 +83,8 @@ public class AccountCreationRequest {
     public enum RequestStatus {
         PENDING,
         APPROVED,
-        REJECTED
+        REJECTED,
+        CANCELLED
     }
 }
 

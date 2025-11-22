@@ -48,6 +48,7 @@ public class VehicleRegistrationService {
     private static final String STATUS_READY_FOR_PAYMENT = "READY_FOR_PAYMENT";
     private static final String STATUS_PAYMENT_PENDING = "PAYMENT_PENDING";
     private static final String STATUS_PENDING_REVIEW = "PENDING";
+    private static final String STATUS_CANCELLED = "CANCELLED";
     private static final String PAYMENT_VNPAY = "VNPAY";
 
     private final RegisterServiceRequestRepository requestRepository;
@@ -212,8 +213,17 @@ public class VehicleRegistrationService {
         RegisterServiceRequest registration = requestRepository.findByIdAndUserId(registrationId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
 
-        if (!Objects.equals(registration.getPaymentStatus(), "UNPAID")) {
-            throw new IllegalStateException("Đăng ký đã thanh toán hoặc đang xử lý");
+        if ("CANCELLED".equalsIgnoreCase(registration.getStatus())) {
+            throw new IllegalStateException("Đăng ký này đã bị hủy do không thanh toán. Vui lòng tạo đăng ký mới.");
+        }
+
+        // Cho phép tiếp tục thanh toán nếu payment_status là UNPAID hoặc PAYMENT_PENDING/PAYMENT_APPROVAL
+        // (PAYMENT_PENDING/PAYMENT_APPROVAL có thể xảy ra khi user chưa hoàn tất thanh toán trong 10 phút)
+        String paymentStatus = registration.getPaymentStatus();
+        if (!Objects.equals(paymentStatus, "UNPAID") && 
+            !Objects.equals(paymentStatus, "PAYMENT_PENDING") && 
+            !Objects.equals(paymentStatus, "PAYMENT_APPROVAL")) {
+            throw new IllegalStateException("Đăng ký đã thanh toán hoặc không thể tiếp tục thanh toán");
         }
         registration.setStatus(STATUS_PAYMENT_PENDING);
         registration.setPaymentStatus("PAYMENT_APPROVAL");
@@ -273,10 +283,13 @@ public class VehicleRegistrationService {
     public void cancelRegistration(UUID userId, UUID registrationId) {
         RegisterServiceRequest registration = requestRepository.findByIdAndUserId(registrationId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
-        if (Objects.equals(registration.getPaymentStatus(), "PAID")) {
-            throw new IllegalStateException("Không thể hủy đăng ký đã thanh toán");
+        if (STATUS_CANCELLED.equalsIgnoreCase(registration.getStatus())) {
+            return;
         }
-        requestRepository.delete(registration);
+        registration.setStatus(STATUS_CANCELLED);
+        registration.setUpdatedAt(OffsetDateTime.now());
+        requestRepository.save(registration);
+        log.info("✅ [VehicleRegistration] User {} đã hủy đăng ký {}", userId, registrationId);
     }
 
     @Transactional

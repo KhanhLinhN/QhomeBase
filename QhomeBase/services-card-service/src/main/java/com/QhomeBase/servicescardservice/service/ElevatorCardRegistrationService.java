@@ -10,6 +10,8 @@ import com.QhomeBase.servicescardservice.config.VnpayProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -38,8 +41,8 @@ public class ElevatorCardRegistrationService {
     private static final String STATUS_PENDING_REVIEW = "PENDING";
     private static final String STATUS_READY_FOR_PAYMENT = "READY_FOR_PAYMENT";
     private static final String STATUS_PAYMENT_PENDING = "PAYMENT_PENDING";
-    private static final String STATUS_COMPLETED = "COMPLETED";
     private static final String STATUS_REJECTED = "REJECTED";
+    private static final String STATUS_CANCELLED = "CANCELLED";
     private static final String PAYMENT_VNPAY = "VNPAY";
 
     private final ElevatorCardRegistrationRepository repository;
@@ -48,6 +51,7 @@ public class ElevatorCardRegistrationService {
     private final BillingClient billingClient;
     private final ResidentUnitLookupService residentUnitLookupService;
     private final NotificationClient notificationClient;
+    private final NamedParameterJdbcTemplate jdbcTemplate;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
     @Transactional
@@ -60,10 +64,10 @@ public class ElevatorCardRegistrationService {
                 .unitId(dto.unitId())
                 .residentId(dto.residentId())
                 .requestType(resolveRequestType(dto.requestType()))
-                .fullName(normalize(dto.fullName()))
+                .fullName(null) // Sẽ được lấy từ user context
                 .apartmentNumber(normalize(dto.apartmentNumber()))
                 .buildingName(normalize(dto.buildingName()))
-                .citizenId(normalize(dto.citizenId()))
+                .citizenId(null) // Không lưu CCCD cho thẻ thang máy, validate theo số người trong căn hộ
                 .phoneNumber(normalize(dto.phoneNumber()))
                 .note(dto.note())
                 .status(STATUS_READY_FOR_PAYMENT)
@@ -78,18 +82,27 @@ public class ElevatorCardRegistrationService {
                 .build();
 
         try {
-            applyResolvedAddress(registration, dto.residentId(), dto.unitId(), dto.fullName(), dto.apartmentNumber(), dto.buildingName());
+            // Tự động lấy thông tin từ user context (fullName, apartmentNumber, buildingName)
+            applyResolvedAddress(registration, dto.residentId(), dto.unitId(), null, dto.apartmentNumber(), dto.buildingName());
+            // Đảm bảo fullName luôn được set từ user context
+            if (!StringUtils.hasText(registration.getFullName())) {
+                log.warn("⚠️ [ElevatorCard] Không thể lấy fullName từ user context cho residentId: {}", dto.residentId());
+                throw new IllegalStateException("Không thể lấy thông tin người dùng. Vui lòng thử lại sau.");
+            }
+        } catch (IllegalStateException e) {
+            throw e; // Re-throw IllegalStateException
         } catch (Exception e) {
             log.warn("⚠️ [ElevatorCard] Không thể resolve địa chỉ từ database, sử dụng giá trị từ form: {}", e.getMessage());
             // Fallback to form values if lookup fails
-            if (!StringUtils.hasText(registration.getFullName())) {
-                registration.setFullName(normalize(dto.fullName()));
-            }
             if (!StringUtils.hasText(registration.getApartmentNumber())) {
                 registration.setApartmentNumber(normalize(dto.apartmentNumber()));
             }
             if (!StringUtils.hasText(registration.getBuildingName())) {
                 registration.setBuildingName(normalize(dto.buildingName()));
+            }
+            // Nếu không lấy được fullName từ user context, throw error
+            if (!StringUtils.hasText(registration.getFullName())) {
+                throw new IllegalStateException("Không thể lấy thông tin người dùng. Vui lòng thử lại sau.");
             }
         }
 
@@ -104,6 +117,39 @@ public class ElevatorCardRegistrationService {
                                                                 HttpServletRequest request) {
         ElevatorCardRegistrationDto created = createRegistration(userId, dto);
         return initiatePayment(userId, created.id(), request);
+    }
+
+    /**
+     * Lấy số lượng thẻ thang máy tối đa có thể đăng ký cho một căn hộ
+     * (bằng số người đang ở trong căn hộ đó)
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> getMaxCardsForUnit(UUID unitId) {
+        if (unitId == null) {
+            log.warn("⚠️ [ElevatorCard] getMaxCardsForUnit called with null unitId");
+            throw new IllegalArgumentException("unitId không được để trống");
+        }
+        
+        log.debug("🔍 [ElevatorCard] getMaxCardsForUnit được gọi với unitId: {}", unitId);
+        
+        UnitCapacityInfo capacityInfo = resolveUnitCapacity(unitId);
+        long maxCards = capacityInfo.maxResidents();
+        long registeredCards = repository.countElevatorCardsByUnitId(unitId);
+        long remainingSlots = Math.max(0, maxCards - registeredCards);
+        
+        log.info("📊 [ElevatorCard] Unit {} ({}): maxCards={}, registeredCards={}, remainingSlots={}", 
+                capacityInfo.unitCode(), capacityInfo.buildingName(), maxCards, registeredCards, remainingSlots);
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("unitId", unitId.toString());
+        result.put("unitCode", capacityInfo.unitCode());
+        result.put("buildingName", capacityInfo.buildingName());
+        result.put("maxCards", maxCards);
+        result.put("registeredCards", registeredCards);
+        result.put("remainingSlots", remainingSlots);
+        result.put("canRegisterMore", remainingSlots > 0);
+        
+        return result;
     }
 
     @Transactional(readOnly = true)
@@ -238,8 +284,14 @@ public class ElevatorCardRegistrationService {
         if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
             throw new IllegalStateException("Đăng ký đã bị từ chối");
         }
-        if (!Objects.equals(registration.getPaymentStatus(), "UNPAID")) {
-            throw new IllegalStateException("Đăng ký đã thanh toán hoặc đang xử lý");
+        if ("CANCELLED".equalsIgnoreCase(registration.getStatus())) {
+            throw new IllegalStateException("Đăng ký này đã bị hủy do không thanh toán. Vui lòng tạo đăng ký mới.");
+        }
+        // Cho phép tiếp tục thanh toán nếu payment_status là UNPAID hoặc PAYMENT_PENDING
+        // (PAYMENT_PENDING có thể xảy ra khi user chưa hoàn tất thanh toán trong 10 phút)
+        String paymentStatus = registration.getPaymentStatus();
+        if (!Objects.equals(paymentStatus, "UNPAID") && !Objects.equals(paymentStatus, "PAYMENT_PENDING")) {
+            throw new IllegalStateException("Đăng ký đã thanh toán hoặc không thể tiếp tục thanh toán");
         }
 
         registration.setStatus(STATUS_PAYMENT_PENDING);
@@ -279,10 +331,13 @@ public class ElevatorCardRegistrationService {
     public void cancelRegistration(UUID userId, UUID registrationId) {
         ElevatorCardRegistration registration = repository.findByIdAndUserId(registrationId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký thang máy"));
-        if ("PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
-            throw new IllegalStateException("Không thể hủy đăng ký đã thanh toán");
+        if (STATUS_CANCELLED.equalsIgnoreCase(registration.getStatus())) {
+            return;
         }
-        repository.delete(registration);
+        registration.setStatus(STATUS_CANCELLED);
+        registration.setUpdatedAt(OffsetDateTime.now());
+        repository.save(registration);
+        log.info("✅ [ElevatorCard] User {} đã hủy đăng ký {}", userId, registrationId);
     }
 
     @Transactional
@@ -435,9 +490,123 @@ public class ElevatorCardRegistrationService {
         if (dto.residentId() == null) {
             throw new IllegalArgumentException("Cư dân là bắt buộc");
         }
-        if (!StringUtils.hasText(dto.fullName())) {
-            throw new IllegalArgumentException("Họ và tên là bắt buộc");
+        // fullName sẽ được tự động lấy từ user context, không cần validate
+        
+        // Validate resident thuộc unit (căn hộ) đó
+        validateResidentBelongsToUnit(dto.residentId(), dto.unitId());
+        
+        // Validate số thẻ thang máy không vượt quá số người trong căn hộ
+        validateElevatorCardLimitByUnit(dto.unitId());
+    }
+    
+    /**
+     * Kiểm tra resident có thuộc unit (căn hộ) đó không
+     */
+    private void validateResidentBelongsToUnit(UUID residentId, UUID unitId) {
+        Optional<ResidentUnitLookupService.AddressInfo> info = 
+                residentUnitLookupService.resolveByResident(residentId, unitId);
+        
+        if (info.isEmpty()) {
+            throw new IllegalArgumentException(
+                String.format("Cư dân không thuộc căn hộ này. Vui lòng kiểm tra lại thông tin căn hộ và cư dân.")
+            );
         }
+        
+        // Kiểm tra thêm: resident phải có trong household của unit đó
+        try {
+            MapSqlParameterSource params = new MapSqlParameterSource()
+                    .addValue("residentId", residentId)
+                    .addValue("unitId", unitId);
+            
+            Long count = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*)
+                    FROM data.household_members hm
+                    JOIN data.households h ON h.id = hm.household_id
+                    WHERE hm.resident_id = :residentId
+                      AND h.unit_id = :unitId
+                      AND (hm.left_at IS NULL OR hm.left_at >= CURRENT_DATE)
+                      AND (h.end_date IS NULL OR h.end_date >= CURRENT_DATE)
+                    """, params, Long.class);
+            
+            if (count == null || count == 0) {
+                throw new IllegalArgumentException(
+                    String.format("Cư dân không thuộc căn hộ này hoặc đã rời khỏi căn hộ. Vui lòng kiểm tra lại.")
+                );
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("⚠️ [ElevatorCard] Không thể validate resident-unit relationship: {}", e.getMessage());
+            // Nếu có lỗi khi query, vẫn cho phép tiếp tục (fallback)
+        }
+    }
+
+    /**
+     * Kiểm tra số thẻ thang máy đã đăng ký không vượt quá số người trong căn hộ
+     */
+    private void validateElevatorCardLimitByUnit(UUID unitId) {
+        UnitCapacityInfo capacityInfo = resolveUnitCapacity(unitId);
+        long numberOfResidents = capacityInfo.maxResidents();
+        
+        // Đếm số thẻ đã thanh toán (bao gồm cả đang chờ duyệt) hoặc đã được duyệt
+        long registeredCards = repository.countElevatorCardsByUnitId(unitId);
+        
+        if (registeredCards >= numberOfResidents) {
+            throw new IllegalStateException(
+                String.format("Căn hộ này chỉ được phép đăng ký tối đa %d thẻ thang máy (theo số người trong căn hộ). " +
+                            "Hiện tại đã có %d thẻ đã thanh toán (bao gồm thẻ chờ duyệt và đã duyệt). " +
+                            "Vui lòng thanh toán hoặc hủy các thẻ đã đăng ký trước khi đăng ký thẻ mới.",
+                            numberOfResidents, registeredCards)
+            );
+        }
+        
+        log.debug("✅ [ElevatorCard] Unit {} ({}): capacity={} residents, {} registered cards (including unpaid)", 
+                capacityInfo.unitCode(), capacityInfo.buildingName(), numberOfResidents, registeredCards);
+    }
+
+    private UnitCapacityInfo resolveUnitCapacity(UUID unitId) {
+        if (unitId == null) {
+            throw new IllegalArgumentException("unitId không được để trống");
+        }
+        try {
+            MapSqlParameterSource params = new MapSqlParameterSource()
+                    .addValue("unitId", unitId);
+
+            return jdbcTemplate.queryForObject("""
+                    SELECT 
+                        u.id   AS unit_id,
+                        u.code AS unit_code,
+                        u.bedrooms,
+                        b.id   AS building_id,
+                        b.code AS building_code,
+                        b.name AS building_name
+                    FROM data.units u
+                    JOIN data.buildings b ON b.id = u.building_id
+                    WHERE u.id = :unitId
+                    """, params, (rs, rowNum) -> {
+                Integer bedrooms = rs.getObject("bedrooms") != null ? rs.getInt("bedrooms") : null;
+                int maxResidents = computeMaxResidents(bedrooms);
+                return new UnitCapacityInfo(
+                        rs.getObject("unit_id", UUID.class),
+                        rs.getString("unit_code"),
+                        rs.getObject("building_id", UUID.class),
+                        rs.getString("building_code"),
+                        rs.getString("building_name"),
+                        bedrooms,
+                        maxResidents
+                );
+            });
+        } catch (Exception e) {
+            log.error("❌ [ElevatorCard] Không thể lấy thông tin căn hộ unitId: {}", unitId, e);
+            throw new IllegalStateException("Không thể xác định sức chứa căn hộ. Vui lòng thử lại sau.", e);
+        }
+    }
+
+    private int computeMaxResidents(Integer bedrooms) {
+        if (bedrooms != null && bedrooms > 0) {
+            return Math.max(bedrooms * 2, 1);
+        }
+        return 4;
     }
 
     private String resolveRequestType(String requestType) {
@@ -465,6 +634,16 @@ public class ElevatorCardRegistrationService {
         }
         return request.getRemoteAddr();
     }
+
+    private record UnitCapacityInfo(
+            UUID unitId,
+            String unitCode,
+            UUID buildingId,
+            String buildingCode,
+            String buildingName,
+            Integer bedrooms,
+            int maxResidents
+    ) {}
 
     private ElevatorCardRegistrationDto toDto(ElevatorCardRegistration entity) {
         return new ElevatorCardRegistrationDto(

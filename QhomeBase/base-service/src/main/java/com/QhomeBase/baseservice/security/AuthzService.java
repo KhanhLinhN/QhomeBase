@@ -247,4 +247,12 @@ public class AuthzService {
         boolean okPerm = hasPerm("base.vehicle.registration.cancel");
         return okRole || okPerm || isGlobalAdmin();
     }
+
+    // ========== Service Request Permissions ==========
+
+    public boolean canManageServiceRequests() {
+        boolean okRole = hasAnyRole(Set.of("ADMIN", "SUPPORTER"));
+        boolean okPerm = hasPerm("base.service-request.manage");
+        return okRole || okPerm || isGlobalAdmin();
+    }
 }

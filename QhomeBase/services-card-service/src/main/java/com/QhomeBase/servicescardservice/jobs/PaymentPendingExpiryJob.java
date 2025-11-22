@@ -21,6 +21,7 @@ import java.util.List;
 public class PaymentPendingExpiryJob {
 
     private static final String STATUS_READY_FOR_PAYMENT = "READY_FOR_PAYMENT";
+    private static final String STATUS_CANCELLED = "CANCELLED";
 
     private final ResidentCardRegistrationRepository residentRepo;
     private final ElevatorCardRegistrationRepository elevatorRepo;
@@ -34,6 +35,7 @@ public class PaymentPendingExpiryJob {
     public void sweepPendingPayments() {
         try {
             final OffsetDateTime threshold = OffsetDateTime.now().minusMinutes(pendingTtlMinutes);
+            final String expiryNote = "Auto-cancelled pending payment after " + pendingTtlMinutes + " minutes";
 
             // Resident
             List<ResidentCardRegistration> residentPendings =
@@ -77,9 +79,52 @@ public class PaymentPendingExpiryJob {
                         vehiclePendings.size());
             }
 
+            // Auto-cancel READY_FOR_PAYMENT that stayed unpaid beyond TTL
+            cancelExpiredReadyForPayment(residentRepo.findByStatusAndUpdatedAtBefore(STATUS_READY_FOR_PAYMENT, threshold),
+                    expiryNote, "resident-card");
+            cancelExpiredReadyForPayment(elevatorRepo.findByStatusAndUpdatedAtBefore(STATUS_READY_FOR_PAYMENT, threshold),
+                    expiryNote, "elevator-card");
+            cancelExpiredReadyForPayment(vehicleRepo.findByStatusAndUpdatedAtBefore(STATUS_READY_FOR_PAYMENT, threshold),
+                    expiryNote, "vehicle");
+
         } catch (Exception e) {
             log.error("❌ [ExpireJob] Error sweeping pending payments", e);
         }
+    }
+
+    private void cancelExpiredReadyForPayment(List<?> registrations, String note, String tag) {
+        if (registrations.isEmpty()) {
+            return;
+        }
+        int cancelled = 0;
+        for (Object obj : registrations) {
+            if (obj instanceof ResidentCardRegistration resident) {
+                resident.setStatus(STATUS_CANCELLED);
+                resident.setPaymentStatus("UNPAID");
+                if (resident.getAdminNote() == null || resident.getAdminNote().isBlank()) {
+                    resident.setAdminNote(note);
+                }
+                residentRepo.save(resident);
+                cancelled++;
+            } else if (obj instanceof ElevatorCardRegistration elevator) {
+                elevator.setStatus(STATUS_CANCELLED);
+                elevator.setPaymentStatus("UNPAID");
+                if (elevator.getAdminNote() == null || elevator.getAdminNote().isBlank()) {
+                    elevator.setAdminNote(note);
+                }
+                elevatorRepo.save(elevator);
+                cancelled++;
+            } else if (obj instanceof RegisterServiceRequest vehicle) {
+                vehicle.setStatus(STATUS_CANCELLED);
+                vehicle.setPaymentStatus("UNPAID");
+                if (vehicle.getAdminNote() == null || vehicle.getAdminNote().isBlank()) {
+                    vehicle.setAdminNote(note);
+                }
+                vehicleRepo.save(vehicle);
+                cancelled++;
+            }
+        }
+        log.info("🧹 [ExpireJob] Auto-cancelled {} {} registrations stuck at READY_FOR_PAYMENT", cancelled, tag);
     }
 }
 

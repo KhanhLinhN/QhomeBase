@@ -30,6 +30,7 @@ public record CreateMaintenanceRequestDto(
         @NotBlank(message = "Location is required")
         String location,
 
+        @NotNull(message = "Preferred datetime is required")
         OffsetDateTime preferredDatetime,
 
         String contactName,

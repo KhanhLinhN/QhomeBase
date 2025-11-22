@@ -34,4 +34,6 @@ public interface HouseholdMemberRequestRepository extends JpaRepository<Househol
             String residentPhone,
             List<RequestStatus> statuses
     );
+
+    long countByHouseholdIdAndStatus(UUID householdId, RequestStatus status);
 }

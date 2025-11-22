@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -96,6 +97,41 @@ public class ResidentCardRegistrationController {
         }
     }
 
+    @PostMapping("/{registrationId}/resume-payment")
+    public ResponseEntity<?> resumePayment(@PathVariable String registrationId,
+                                          @RequestHeader HttpHeaders headers,
+                                          HttpServletRequest request) {
+        UUID userId = jwtUtil.getUserIdFromHeaders(headers);
+        if (userId == null) {
+            log.warn("⚠️ [ResidentCard] Unauthorized request to resumePayment");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        
+        try {
+            UUID regUuid = UUID.fromString(registrationId);
+            log.debug("🔍 [ResidentCard] resumePayment request: registrationId={}, userId={}", regUuid, userId);
+            
+            ResidentCardPaymentResponse response = registrationService.initiatePayment(userId, regUuid, request);
+            Map<String, Object> body = new HashMap<>();
+            body.put("registrationId", response.registrationId() != null ? response.registrationId().toString() : null);
+            body.put("paymentUrl", response.paymentUrl());
+            
+            log.info("✅ [ResidentCard] resumePayment success: registrationId={}", regUuid);
+            return ResponseEntity.ok(body);
+        } catch (IllegalArgumentException e) {
+            log.warn("⚠️ [ResidentCard] Invalid argument: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (IllegalStateException e) {
+            log.warn("⚠️ [ResidentCard] IllegalStateException: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            log.error("❌ [ResidentCard] Lỗi tiếp tục thanh toán", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Không thể tiếp tục thanh toán: " + e.getMessage()));
+        }
+    }
+
     @PostMapping("/vnpay-url")
     public ResponseEntity<?> createRegistrationAndPay(@RequestBody ResidentCardRegistrationCreateDto dto,
                                                       @RequestHeader HttpHeaders headers,
@@ -123,6 +159,28 @@ public class ResidentCardRegistrationController {
             log.error("❌ [ResidentCard] Lỗi tạo đăng ký", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Không thể khởi tạo đăng ký thẻ cư dân: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/household-members")
+    public ResponseEntity<?> getHouseholdMembers(@RequestParam UUID unitId,
+                                                @RequestHeader HttpHeaders headers) {
+        UUID userId = jwtUtil.getUserIdFromHeaders(headers);
+        if (userId == null) {
+            log.warn("⚠️ [ResidentCard] Unauthorized request to getHouseholdMembers");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        
+        try {
+            log.debug("🔍 [ResidentCard] getHouseholdMembers request: unitId={}, userId={}", unitId, userId);
+            List<Map<String, Object>> members = registrationService.getHouseholdMembersByUnit(unitId);
+            log.info("✅ [ResidentCard] getHouseholdMembers success: {} members", members.size());
+            return ResponseEntity.ok(members);
+        } catch (Exception e) {
+            log.error("❌ [ResidentCard] Lỗi lấy danh sách thành viên", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Không thể lấy danh sách thành viên: " + e.getMessage()));
         }
     }
 

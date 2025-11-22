@@ -10,6 +10,8 @@ import com.QhomeBase.servicescardservice.service.vnpay.VnpayService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -39,6 +41,7 @@ public class ResidentCardRegistrationService {
     private static final String STATUS_PAYMENT_PENDING = "PAYMENT_PENDING";
     private static final String STATUS_PENDING_REVIEW = "PENDING";
     private static final String STATUS_REJECTED = "REJECTED";
+    private static final String STATUS_CANCELLED = "CANCELLED";
     private static final String PAYMENT_VNPAY = "VNPAY";
 
     private final ResidentCardRegistrationRepository repository;
@@ -47,6 +50,7 @@ public class ResidentCardRegistrationService {
     private final BillingClient billingClient;
     private final ResidentUnitLookupService residentUnitLookupService;
     private final NotificationClient notificationClient;
+    private final NamedParameterJdbcTemplate jdbcTemplate;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
     @Transactional
@@ -221,8 +225,14 @@ public class ResidentCardRegistrationService {
         if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
             throw new IllegalStateException("Đăng ký đã bị từ chối");
         }
-        if (!Objects.equals(registration.getPaymentStatus(), "UNPAID")) {
-            throw new IllegalStateException("Đăng ký đã thanh toán hoặc đang xử lý");
+        if ("CANCELLED".equalsIgnoreCase(registration.getStatus())) {
+            throw new IllegalStateException("Đăng ký này đã bị hủy do không thanh toán. Vui lòng tạo đăng ký mới.");
+        }
+        // Cho phép tiếp tục thanh toán nếu payment_status là UNPAID hoặc PAYMENT_PENDING
+        // (PAYMENT_PENDING có thể xảy ra khi user chưa hoàn tất thanh toán trong 10 phút)
+        String paymentStatus = registration.getPaymentStatus();
+        if (!Objects.equals(paymentStatus, "UNPAID") && !Objects.equals(paymentStatus, "PAYMENT_PENDING")) {
+            throw new IllegalStateException("Đăng ký đã thanh toán hoặc không thể tiếp tục thanh toán");
         }
 
         registration.setStatus(STATUS_PAYMENT_PENDING);
@@ -262,10 +272,13 @@ public class ResidentCardRegistrationService {
     public void cancelRegistration(UUID userId, UUID registrationId) {
         ResidentCardRegistration registration = repository.findByIdAndUserId(registrationId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký thẻ cư dân"));
-        if ("PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
-            throw new IllegalStateException("Không thể hủy đăng ký đã thanh toán");
+        if (STATUS_CANCELLED.equalsIgnoreCase(registration.getStatus())) {
+            return;
         }
-        repository.delete(registration);
+        registration.setStatus(STATUS_CANCELLED);
+        registration.setUpdatedAt(OffsetDateTime.now());
+        repository.save(registration);
+        log.info("✅ [ResidentCard] User {} đã hủy đăng ký {}", userId, registrationId);
     }
 
     @Transactional
@@ -417,6 +430,202 @@ public class ResidentCardRegistrationService {
         }
         if (dto.residentId() == null) {
             throw new IllegalArgumentException("Cư dân là bắt buộc");
+        }
+        
+        // Validate số lượng thẻ cư dân không vượt quá số người trong căn hộ
+        validateResidentCardLimitByUnit(dto.unitId());
+        
+        // Validate CCCD phải thuộc căn hộ đó và không được trùng với thẻ cư dân đã tồn tại
+        if (StringUtils.hasText(dto.citizenId())) {
+            String normalizedCitizenId = normalize(dto.citizenId());
+            
+            // Kiểm tra CCCD có thuộc căn hộ không
+            validateCitizenIdBelongsToUnit(normalizedCitizenId, dto.unitId());
+            
+            // Kiểm tra CCCD đã được sử dụng chưa
+            if (repository.existsByCitizenId(normalizedCitizenId)) {
+                throw new IllegalStateException(
+                    String.format("CCCD/CMND %s đã được sử dụng để đăng ký thẻ cư dân. " +
+                                "Mỗi CCCD/CMND chỉ được phép đăng ký 1 thẻ cư dân.",
+                                normalizedCitizenId)
+                );
+            }
+            log.debug("✅ [ResidentCard] CCCD {} chưa được sử dụng và thuộc căn hộ", normalizedCitizenId);
+        }
+    }
+
+    /**
+     * Kiểm tra số thẻ cư dân đã đăng ký không vượt quá số người trong căn hộ
+     */
+    private void validateResidentCardLimitByUnit(UUID unitId) {
+        // Đếm số household members (số người) trong căn hộ
+        long numberOfResidents = countHouseholdMembersByUnit(unitId);
+        
+        // Đếm số thẻ cư dân đã đăng ký cho căn hộ này (bao gồm cả chưa thanh toán)
+        // Đếm TẤT CẢ các registration trừ REJECTED và CANCELLED
+        // Logic: Nếu đã đăng ký đủ số lượng thẻ (kể cả chưa thanh toán), không cho phép đăng ký thêm
+        // Chỉ khi một thẻ bị hủy (CANCELLED) hoặc từ chối (REJECTED) thì mới có thể đăng ký thêm
+        long registeredCards = repository.countAllResidentCardsByUnitId(unitId, List.of("REJECTED", "CANCELLED"));
+        
+        if (registeredCards >= numberOfResidents) {
+            throw new IllegalStateException(
+                String.format("Căn hộ này chỉ được phép đăng ký tối đa %d thẻ cư dân (theo số người trong căn hộ). " +
+                            "Hiện tại đã đăng ký %d thẻ (bao gồm cả các thẻ chưa thanh toán). " +
+                            "Vui lòng thanh toán hoặc hủy các thẻ đã đăng ký trước khi đăng ký thẻ mới.",
+                            numberOfResidents, registeredCards)
+            );
+        }
+        
+        log.debug("✅ [ResidentCard] Unit {}: {} residents, {} registered cards (including unpaid)", 
+                unitId, numberOfResidents, registeredCards);
+    }
+
+    /**
+     * Kiểm tra CCCD có thuộc căn hộ đó không
+     */
+    private void validateCitizenIdBelongsToUnit(String citizenId, UUID unitId) {
+        if (!StringUtils.hasText(citizenId) || unitId == null) {
+            return;
+        }
+        
+        try {
+            MapSqlParameterSource params = new MapSqlParameterSource()
+                    .addValue("citizenId", citizenId)
+                    .addValue("unitId", unitId);
+            
+            log.debug("🔍 [ResidentCard] Đang kiểm tra CCCD {} có thuộc căn hộ {} không", citizenId, unitId);
+            
+            Long count = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(DISTINCT hm.resident_id)
+                    FROM data.household_members hm
+                    JOIN data.households h ON h.id = hm.household_id
+                    JOIN data.residents r ON r.id = hm.resident_id
+                    WHERE h.unit_id = :unitId
+                      AND r.national_id = :citizenId
+                      AND (hm.left_at IS NULL OR hm.left_at >= CURRENT_DATE)
+                      AND (h.end_date IS NULL OR h.end_date >= CURRENT_DATE)
+                    """, params, Long.class);
+            
+            if (count == null || count == 0) {
+                throw new IllegalStateException(
+                    String.format("CCCD/CMND %s không thuộc căn hộ này. " +
+                                "Vui lòng kiểm tra lại thông tin CCCD/CMND và căn hộ.",
+                                citizenId)
+                );
+            }
+            
+            log.debug("✅ [ResidentCard] CCCD {} thuộc căn hộ {}", citizenId, unitId);
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("❌ [ResidentCard] Không thể kiểm tra CCCD {} có thuộc căn hộ {} không", citizenId, unitId, e);
+            throw new IllegalStateException(
+                String.format("Không thể xác thực CCCD/CMND. Vui lòng thử lại sau."), e);
+        }
+    }
+
+    /**
+     * Lấy danh sách thành viên trong căn hộ (bao gồm citizenId và fullName)
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getHouseholdMembersByUnit(UUID unitId) {
+        if (unitId == null) {
+            log.warn("⚠️ [ResidentCard] getHouseholdMembersByUnit called with null unitId");
+            return List.of();
+        }
+        
+        try {
+            MapSqlParameterSource params = new MapSqlParameterSource()
+                    .addValue("unitId", unitId);
+            
+            log.debug("🔍 [ResidentCard] Đang lấy danh sách thành viên trong căn hộ unitId: {}", unitId);
+            
+            // Query để lấy danh sách thành viên và check xem họ đã có thẻ được approve chưa
+            List<Map<String, Object>> members = jdbcTemplate.query("""
+                    SELECT DISTINCT
+                        r.id AS resident_id,
+                        r.full_name AS full_name,
+                        r.national_id AS citizen_id,
+                        r.phone AS phone_number,
+                        r.email AS email,
+                        r.dob AS date_of_birth,
+                        CASE 
+                            WHEN EXISTS (
+                                SELECT 1 FROM card.resident_card_registration rcr
+                                WHERE rcr.citizen_id = r.national_id
+                                  AND rcr.status IN ('APPROVED', 'ACTIVE', 'ISSUED', 'COMPLETED')
+                            ) THEN true
+                            ELSE false
+                        END AS has_approved_card,
+                        CASE
+                            WHEN EXISTS (
+                                SELECT 1 FROM card.resident_card_registration rcr
+                                WHERE rcr.citizen_id = r.national_id
+                                  AND rcr.status IN ('PENDING', 'REVIEW_PENDING', 'PROCESSING', 'IN_PROGRESS')
+                                  AND rcr.payment_status = 'PAID'
+                            ) THEN true
+                            ELSE false
+                        END AS waiting_for_approval
+                    FROM data.household_members hm
+                    JOIN data.households h ON h.id = hm.household_id
+                    JOIN data.residents r ON r.id = hm.resident_id
+                    WHERE h.unit_id = :unitId
+                      AND (hm.left_at IS NULL OR hm.left_at >= CURRENT_DATE)
+                      AND (h.end_date IS NULL OR h.end_date >= CURRENT_DATE)
+                    ORDER BY r.full_name
+                    """, params, (rs, rowNum) -> {
+                Map<String, Object> member = new HashMap<>();
+                member.put("residentId", rs.getObject("resident_id", UUID.class).toString());
+                member.put("fullName", rs.getString("full_name"));
+                member.put("citizenId", rs.getString("citizen_id"));
+                member.put("phoneNumber", rs.getString("phone_number"));
+                member.put("email", rs.getString("email"));
+                member.put("dateOfBirth", rs.getDate("date_of_birth") != null 
+                    ? rs.getDate("date_of_birth").toString() : null);
+                member.put("hasApprovedCard", rs.getBoolean("has_approved_card"));
+                member.put("waitingForApproval", rs.getBoolean("waiting_for_approval"));
+                return member;
+            });
+            
+            log.info("✅ [ResidentCard] Căn hộ {} có {} thành viên", unitId, members.size());
+            return members;
+        } catch (Exception e) {
+            log.error("❌ [ResidentCard] Không thể lấy danh sách thành viên trong căn hộ unitId: {}", unitId, e);
+            return List.of();
+        }
+    }
+
+    /**
+     * Đếm số household members (số người) đang ở trong căn hộ
+     */
+    private long countHouseholdMembersByUnit(UUID unitId) {
+        if (unitId == null) {
+            log.warn("⚠️ [ResidentCard] unitId is null, returning 0");
+            return 0;
+        }
+        
+        try {
+            MapSqlParameterSource params = new MapSqlParameterSource()
+                    .addValue("unitId", unitId);
+            
+            log.debug("🔍 [ResidentCard] Đang đếm số người trong căn hộ unitId: {}", unitId);
+            
+            Long count = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(DISTINCT hm.resident_id)
+                    FROM data.household_members hm
+                    JOIN data.households h ON h.id = hm.household_id
+                    WHERE h.unit_id = :unitId
+                      AND (hm.left_at IS NULL OR hm.left_at >= CURRENT_DATE)
+                      AND (h.end_date IS NULL OR h.end_date >= CURRENT_DATE)
+                    """, params, Long.class);
+            
+            long result = count != null ? count : 0;
+            log.info("✅ [ResidentCard] Căn hộ {} có {} người đang ở", unitId, result);
+            return result;
+        } catch (Exception e) {
+            log.error("❌ [ResidentCard] Không thể đếm số người trong căn hộ unitId: {}", unitId, e);
+            throw new IllegalStateException(
+                String.format("Không thể đếm số người trong căn hộ. Vui lòng thử lại sau. UnitId: %s", unitId), e);
         }
     }
 

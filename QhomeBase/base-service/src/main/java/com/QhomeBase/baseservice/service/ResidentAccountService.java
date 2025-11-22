@@ -11,7 +11,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -27,6 +29,7 @@ public class ResidentAccountService {
     private final UnitRepository unitRepository;
     private final IamClientService iamClientService;
     private final AccountCreationRequestRepository accountCreationRequestRepository;
+    private final NotificationClient notificationClient;
     
     public boolean canCreateAccountForUnit(UUID unitId, UUID requesterUserId) {
         Household household = householdRepository.findCurrentHouseholdByUnitId(unitId)
@@ -264,18 +267,22 @@ public class ResidentAccountService {
         }
 
         boolean hasPermission = false;
+        Household targetHousehold = null;
         for (HouseholdMember member : residentMembers) {
             Household household = householdRepository.findById(member.getHouseholdId())
                     .orElse(null);
             if (household != null && canCreateAccountForUnit(household.getUnitId(), requesterUserId)) {
                 hasPermission = true;
+                targetHousehold = household;
                 break;
             }
         }
 
-        if (!hasPermission) {
+        if (!hasPermission || targetHousehold == null) {
             throw new IllegalArgumentException("You don't have permission to create account request for this resident");
         }
+
+        ensureAccountCapacityAvailable(targetHousehold);
 
         String username = null;
         String password = null;
@@ -324,6 +331,30 @@ public class ResidentAccountService {
     }
 
     @Transactional
+    public AccountCreationRequestDto cancelAccountRequest(UUID requestId, UUID requesterUserId) {
+        AccountCreationRequest request = accountCreationRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy yêu cầu tạo tài khoản"));
+
+        if (!requesterUserId.equals(request.getRequestedBy())) {
+            throw new IllegalArgumentException("Bạn không có quyền hủy yêu cầu này");
+        }
+
+        if (request.getStatus() != AccountCreationRequest.RequestStatus.PENDING) {
+            throw new IllegalArgumentException("Chỉ có thể hủy các yêu cầu đang chờ duyệt");
+        }
+
+        request.setStatus(AccountCreationRequest.RequestStatus.CANCELLED);
+        request.setRejectedBy(requesterUserId);
+        request.setRejectedAt(OffsetDateTime.now());
+        request.setRejectionReason("Cư dân đã hủy yêu cầu");
+
+        AccountCreationRequest saved = accountCreationRequestRepository.save(request);
+        log.info("Resident {} cancelled account creation request {}", requesterUserId, requestId);
+
+        return mapToDto(saved);
+    }
+
+    @Transactional
     public AccountCreationRequestDto approveAccountRequest(UUID requestId, UUID adminUserId, boolean approve, String rejectionReason) {
         return approveAccountRequest(requestId, adminUserId, approve, rejectionReason, null);
     }
@@ -363,6 +394,12 @@ public class ResidentAccountService {
 
                 log.info("Approved and created account for resident {}: userId={}, username={}", 
                         request.getResidentId(), account.userId(), account.username());
+
+                notifyAccountRequestStatus(
+                        request,
+                        "Yêu cầu tạo tài khoản đã được duyệt",
+                        "Ban quản trị đã tạo tài khoản cho thành viên của bạn."
+                );
             } catch (Exception e) {
                 log.error("Failed to create account after approval for resident {}: {}", 
                         request.getResidentId(), e.getMessage(), e);
@@ -371,6 +408,12 @@ public class ResidentAccountService {
                 request.setRejectionReason("Failed to create account: " + e.getMessage());
                 request.setRejectedAt(OffsetDateTime.now());
                 accountCreationRequestRepository.save(request);
+
+                notifyAccountRequestStatus(
+                        request,
+                        "Yêu cầu tạo tài khoản chưa được xử lý",
+                        "Hệ thống chưa thể tạo tài khoản. Vui lòng liên hệ ban quản trị để được hỗ trợ."
+                );
                 throw new RuntimeException("Failed to create account after approval: " + e.getMessage(), e);
             }
         } else {
@@ -381,6 +424,14 @@ public class ResidentAccountService {
 
             accountCreationRequestRepository.save(request);
             log.info("Rejected account request {} by admin {}", requestId, adminUserId);
+
+            notifyAccountRequestStatus(
+                    request,
+                    "Yêu cầu tạo tài khoản bị từ chối",
+                    rejectionReason != null && !rejectionReason.isBlank()
+                            ? rejectionReason
+                            : "Ban quản trị đã từ chối yêu cầu tạo tài khoản cho thành viên."
+            );
         }
 
         return mapToDto(request);
@@ -469,6 +520,103 @@ public class ResidentAccountService {
                 request.getRejectedAt(),
                 request.getCreatedAt()
         );
+    }
+
+    private void ensureAccountCapacityAvailable(Household household) {
+        if (household.getUnitId() == null) {
+            throw new IllegalArgumentException("Household is missing unit information");
+        }
+
+        Unit unit = unitRepository.findById(household.getUnitId())
+                .orElseThrow(() -> new IllegalArgumentException("Unit not found for this household"));
+
+        int capacity = calculateCapacity(unit);
+        long activeAccounts = householdMemberRepository.countActiveMembersWithAccount(household.getId());
+        long pendingAccountRequests = accountCreationRequestRepository.countPendingByHouseholdId(household.getId());
+
+        if (activeAccounts + pendingAccountRequests >= capacity) {
+            String unitLabel = unit.getCode() != null ? unit.getCode() : "Căn hộ";
+            throw new IllegalArgumentException(String.format(
+                    "%s đã đạt giới hạn %d tài khoản thành viên (bao gồm các yêu cầu chờ duyệt). "
+                            + "Vui lòng hủy bớt yêu cầu hoặc xóa tài khoản trước khi đăng ký thêm.",
+                    unitLabel,
+                    capacity
+            ));
+        }
+    }
+
+    private int calculateCapacity(Unit unit) {
+        Integer bedrooms = unit.getBedrooms();
+        int effectiveBedrooms = (bedrooms == null || bedrooms <= 0) ? 1 : bedrooms;
+        return Math.max(1, effectiveBedrooms) * 2;
+    }
+
+    private void notifyAccountRequestStatus(AccountCreationRequest request, String title, String message) {
+        try {
+            Resident requester = residentRepository.findByUserId(request.getRequestedBy()).orElse(null);
+            if (requester == null || requester.getId() == null) {
+                log.warn("⚠️ [ResidentAccountService] Cannot notify requester {}, resident not found", request.getRequestedBy());
+                return;
+            }
+
+            UUID residentId = requester.getId();
+            UUID buildingId = null;
+            UUID unitId = null;
+            String unitCode = null;
+
+            if (request.getResidentId() != null) {
+                List<HouseholdMember> members = householdMemberRepository.findActiveMembersByResidentId(request.getResidentId());
+                if (!members.isEmpty()) {
+                    Household household = householdRepository.findById(members.get(0).getHouseholdId()).orElse(null);
+                    if (household != null && household.getUnitId() != null) {
+                        Unit unit = unitRepository.findById(household.getUnitId()).orElse(null);
+                        if (unit != null) {
+                            unitId = unit.getId();
+                            unitCode = unit.getCode();
+                            if (unit.getBuilding() != null) {
+                                buildingId = unit.getBuilding().getId();
+                            }
+                        }
+                    }
+                }
+            }
+
+            Resident targetResident = request.getResidentId() != null
+                    ? residentRepository.findById(request.getResidentId()).orElse(null)
+                    : null;
+
+            Map<String, String> data = new HashMap<>();
+            data.put("requestId", request.getId().toString());
+            data.put("status", request.getStatus().name());
+            if (unitId != null) {
+                data.put("unitId", unitId.toString());
+            }
+            if (unitCode != null) {
+                data.put("unitCode", unitCode);
+            }
+            if (targetResident != null && targetResident.getFullName() != null) {
+                data.put("memberName", targetResident.getFullName());
+            }
+            if (request.getUsername() != null) {
+                data.put("username", request.getUsername());
+            }
+            if (request.getRejectionReason() != null) {
+                data.put("reason", request.getRejectionReason());
+            }
+
+            notificationClient.sendResidentNotification(
+                    residentId,
+                    buildingId,
+                    "REQUEST",
+                    title,
+                    message,
+                    request.getId(),
+                    "ACCOUNT_CREATION_REQUEST",
+                    data
+            );
+        } catch (Exception ex) {
+            log.warn("⚠️ [ResidentAccountService] Failed to dispatch account request notification {}: {}", request.getId(), ex.getMessage());
+        }
     }
 
     @Transactional(readOnly = true)
