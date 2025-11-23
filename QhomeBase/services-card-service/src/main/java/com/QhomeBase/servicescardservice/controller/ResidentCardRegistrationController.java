@@ -44,8 +44,8 @@ public class ResidentCardRegistrationController {
                     .body(Map.of("message", "Unauthorized"));
         }
         try {
-            // Default status = "PENDING" if not provided (vì Flutter luôn gửi PENDING)
-            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : "PENDING";
+            // Only use status if provided, don't set default
+            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : null;
             String finalPaymentStatus = (paymentStatus != null && !paymentStatus.isBlank()) ? paymentStatus.trim() : null;
             
             return ResponseEntity.ok(

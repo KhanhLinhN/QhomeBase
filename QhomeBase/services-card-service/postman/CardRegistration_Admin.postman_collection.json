@@ -466,7 +466,7 @@
               "mode": "raw",
               "raw": "{\n  \"note\": \"Thông tin xe không hợp lệ.\",\n  \"issueMessage\": \"Vui lòng kiểm tra lại thông tin đăng ký và gửi lại.\"\n}"
             },
-            "description": "Admin từ chối đăng ký xe.\n\n**Điều kiện:**\n- Có thể reject ở bất kỳ trạng thái nào (trừ `CANCELLED` và `REJECTED`)\n\n**Sau khi reject:**\n- `status = REJECTED`\n- Lưu `rejectionReason` và `adminNote`",
+            "description": "Admin từ chối đăng ký xe.\n\n**Điều kiện:**\n- Chỉ admin mới có thể reject\n- Có thể reject khi đăng ký ở trạng thái `PENDING` hoặc `READY_FOR_PAYMENT`\n- Không thể reject nếu đã `REJECTED` hoặc `CANCELLED`\n\n**Request Body:**\n- `note` (optional): Lý do từ chối (tối đa 2000 ký tự)\n- `issueMessage` (optional): Thông điệp gửi cư dân (tối đa 2000 ký tự)\n- `decision` (optional): Không sử dụng cho vehicle registration\n\n**Sau khi reject:**\n- `status = REJECTED`\n- `rejectionReason = note`\n- `adminNote = note`\n- `updatedAt` được cập nhật\n\n**Ví dụ lý do từ chối:**\n- \"Biển số xe không hợp lệ\"\n- \"Thông tin chủ xe không khớp\"\n- \"Ảnh đăng ký không rõ ràng\"\n- \"Thiếu giấy tờ cần thiết\"",
             "url": {
               "raw": "{{cardServiceBaseUrl}}/api/register-service/admin/vehicle-registrations/{{vehicleRegistrationId}}/reject",
               "host": [
@@ -711,8 +711,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"decision\": \"REJECT\",\n  \"note\": \"Ảnh xác minh không rõ.\"\n}"
+              "raw": "{\n  \"decision\": \"REJECT\",\n  \"note\": \"Ảnh xác minh không rõ.\",\n  \"issueMessage\": \"Vui lòng cung cấp ảnh rõ ràng hơn.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
+            "description": "Admin từ chối đăng ký thẻ thang máy.\n\n**Điều kiện:**\n- Chỉ admin mới có thể reject\n- Có thể reject khi đăng ký ở trạng thái `PENDING` hoặc `READY_FOR_PAYMENT`\n- Không thể reject nếu đã `REJECTED` hoặc `CANCELLED`\n\n**Request Body:**\n- `decision` (required): Phải là `\"REJECT\"`\n- `note` (optional): Lý do từ chối\n- `issueMessage` (optional): Thông điệp gửi cư dân\n\n**Sau khi reject:**\n- `status = REJECTED`\n- `rejectionReason = note`\n- `adminNote = note`\n- `updatedAt` được cập nhật\n\n**Ví dụ lý do từ chối:**\n- \"Ảnh xác minh không rõ\"\n- \"Thông tin căn hộ không khớp\"\n- \"Thiếu giấy tờ cần thiết\"\n- \"Không đủ điều kiện đăng ký\"",
             "url": {
               "raw": "{{cardServiceBaseUrl}}/api/elevator-card/admin/registrations/{{elevatorRegistrationId}}/decision",
               "host": [
@@ -990,8 +996,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"decision\": \"REJECT\",\n  \"note\": \"Thông tin cư trú chưa được xác minh.\",\n  \"issueMessage\": \"Vui lòng kiểm tra lại thông tin đăng ký và gửi lại.\"\n}"
+              "raw": "{\n  \"decision\": \"REJECT\",\n  \"note\": \"Thông tin cư trú chưa được xác minh.\",\n  \"issueMessage\": \"Vui lòng kiểm tra lại thông tin đăng ký và gửi lại.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
+            "description": "Admin từ chối đăng ký thẻ cư dân.\n\n**Điều kiện:**\n- Chỉ admin mới có thể reject\n- Có thể reject khi đăng ký ở trạng thái `PENDING` hoặc `READY_FOR_PAYMENT`\n- Không thể reject nếu đã `REJECTED` hoặc `CANCELLED`\n\n**Request Body:**\n- `decision` (required): Phải là `\"REJECT\"`\n- `note` (optional): Lý do từ chối\n- `issueMessage` (optional): Thông điệp gửi cư dân\n\n**Sau khi reject:**\n- `status = REJECTED`\n- `rejectionReason = note`\n- `adminNote = note`\n- `updatedAt` được cập nhật\n\n**Ví dụ lý do từ chối:**\n- \"Thông tin cư trú chưa được xác minh\"\n- \"CCCD/CMND không hợp lệ\"\n- \"Thông tin căn hộ không khớp\"\n- \"Thiếu giấy tờ cần thiết\"\n- \"Không đủ điều kiện đăng ký\"",
             "url": {
               "raw": "{{cardServiceBaseUrl}}/api/resident-card/admin/registrations/{{residentRegistrationId}}/decision",
               "host": [
