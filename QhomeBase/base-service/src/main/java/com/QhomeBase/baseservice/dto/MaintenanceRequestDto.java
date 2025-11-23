@@ -1,5 +1,6 @@
 package com.QhomeBase.baseservice.dto;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -24,7 +25,12 @@ public record MaintenanceRequestDto(
         OffsetDateTime updatedAt,
         OffsetDateTime lastResentAt,
         boolean resendAlertSent,
-        boolean callAlertSent
+        boolean callAlertSent,
+        String adminResponse,
+        BigDecimal estimatedCost,
+        UUID respondedBy,
+        OffsetDateTime respondedAt,
+        String responseStatus
 ) {}
 
 

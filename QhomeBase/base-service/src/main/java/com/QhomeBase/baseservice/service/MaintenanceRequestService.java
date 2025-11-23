@@ -1,5 +1,6 @@
 package com.QhomeBase.baseservice.service;
 
+import com.QhomeBase.baseservice.dto.AdminMaintenanceResponseDto;
 import com.QhomeBase.baseservice.dto.AdminServiceRequestActionDto;
 import com.QhomeBase.baseservice.dto.CreateMaintenanceRequestDto;
 import com.QhomeBase.baseservice.dto.MaintenanceRequestDto;
@@ -38,6 +39,10 @@ public class MaintenanceRequestService {
     private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
     private static final String STATUS_DONE = "DONE";
     private static final String STATUS_CANCELLED = "CANCELLED";
+    
+    private static final String RESPONSE_STATUS_PENDING_APPROVAL = "PENDING_APPROVAL";
+    private static final String RESPONSE_STATUS_APPROVED = "APPROVED";
+    private static final String RESPONSE_STATUS_REJECTED = "REJECTED";
 
     private static final ZoneId DEFAULT_TIMEZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
@@ -170,7 +175,12 @@ public class MaintenanceRequestService {
                 entity.getUpdatedAt(),
                 entity.getLastResentAt(),
                 entity.isResendAlertSent(),
-                entity.isCallAlertSent()
+                entity.isCallAlertSent(),
+                entity.getAdminResponse(),
+                entity.getEstimatedCost(),
+                entity.getRespondedBy(),
+                entity.getRespondedAt(),
+                entity.getResponseStatus()
         );
     }
 
@@ -219,6 +229,35 @@ public class MaintenanceRequestService {
     }
 
     @SuppressWarnings("null")
+    public MaintenanceRequestDto respondToRequest(UUID adminId, UUID requestId, AdminMaintenanceResponseDto dto) {
+        MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
+
+        if (!STATUS_PENDING.equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Only pending requests can receive admin response");
+        }
+
+        if (request.getResponseStatus() != null && RESPONSE_STATUS_PENDING_APPROVAL.equalsIgnoreCase(request.getResponseStatus())) {
+            throw new IllegalStateException("Request already has a pending response awaiting approval");
+        }
+
+        request.setAdminResponse(dto.adminResponse());
+        request.setEstimatedCost(dto.estimatedCost());
+        request.setRespondedBy(adminId);
+        request.setRespondedAt(OffsetDateTime.now());
+        request.setResponseStatus(RESPONSE_STATUS_PENDING_APPROVAL);
+        
+        if (dto.note() != null && !dto.note().isBlank()) {
+            request.setNote(dto.note().trim());
+        }
+
+        MaintenanceRequest saved = maintenanceRequestRepository.save(request);
+        notifyMaintenanceResponseReceived(saved);
+        log.info("Admin {} responded to maintenance request {}", adminId, requestId);
+        return toDto(saved);
+    }
+
+    @SuppressWarnings("null")
     public MaintenanceRequestDto approveRequest(UUID adminId, UUID requestId, AdminServiceRequestActionDto dto) {
         MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
@@ -249,6 +288,58 @@ public class MaintenanceRequestService {
     }
 
     @SuppressWarnings("null")
+    public MaintenanceRequestDto approveResponse(UUID userId, UUID requestId) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        
+        MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
+
+        if (request.getResidentId() == null || !request.getResidentId().equals(resident.getId())) {
+            throw new IllegalArgumentException("You can only approve responses for your own requests");
+        }
+
+        if (!RESPONSE_STATUS_PENDING_APPROVAL.equalsIgnoreCase(request.getResponseStatus())) {
+            throw new IllegalStateException("No pending response to approve");
+        }
+
+        if (!STATUS_PENDING.equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Request status must be PENDING to approve response");
+        }
+
+        request.setResponseStatus(RESPONSE_STATUS_APPROVED);
+        request.setStatus(STATUS_IN_PROGRESS);
+        MaintenanceRequest saved = maintenanceRequestRepository.save(request);
+        notifyMaintenanceResponseApproved(saved);
+        log.info("Resident {} approved response for maintenance request {}", resident.getId(), requestId);
+        return toDto(saved);
+    }
+
+    @SuppressWarnings("null")
+    public MaintenanceRequestDto rejectResponse(UUID userId, UUID requestId) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        
+        MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
+
+        if (request.getResidentId() == null || !request.getResidentId().equals(resident.getId())) {
+            throw new IllegalArgumentException("You can only reject responses for your own requests");
+        }
+
+        if (!RESPONSE_STATUS_PENDING_APPROVAL.equalsIgnoreCase(request.getResponseStatus())) {
+            throw new IllegalStateException("No pending response to reject");
+        }
+
+        request.setResponseStatus(RESPONSE_STATUS_REJECTED);
+        request.setStatus(STATUS_CANCELLED);
+        MaintenanceRequest saved = maintenanceRequestRepository.save(request);
+        notifyMaintenanceResponseRejected(saved);
+        log.info("Resident {} rejected response for maintenance request {}", resident.getId(), requestId);
+        return toDto(saved);
+    }
+
+    @SuppressWarnings("null")
     public MaintenanceRequestDto cancelRequest(UUID userId, UUID requestId) {
         Resident resident = residentRepository.findByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
@@ -266,6 +357,9 @@ public class MaintenanceRequestService {
         }
 
         request.setStatus(STATUS_CANCELLED);
+        if (request.getResponseStatus() == null || RESPONSE_STATUS_PENDING_APPROVAL.equalsIgnoreCase(request.getResponseStatus())) {
+            request.setResponseStatus(RESPONSE_STATUS_REJECTED);
+        }
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
         notifyMaintenanceCancelled(saved);
         return toDto(saved);
@@ -343,6 +437,52 @@ public class MaintenanceRequestService {
                 "Yêu cầu sửa chữa đã hoàn tất",
                 body.toString(),
                 STATUS_DONE
+        );
+    }
+
+    private void notifyMaintenanceResponseReceived(MaintenanceRequest request) {
+        StringBuilder body = new StringBuilder("Yêu cầu sửa chữa \"")
+                .append(request.getTitle())
+                .append("\" đã nhận được phản hồi từ admin.");
+        
+        if (request.getEstimatedCost() != null) {
+            body.append(" Chi phí ước tính: ")
+                    .append(String.format("%,.0f", request.getEstimatedCost()))
+                    .append(" VNĐ.");
+        }
+        body.append(" Vui lòng xem chi tiết và xác nhận.");
+
+        sendMaintenanceNotification(
+                request,
+                "Phản hồi từ admin về yêu cầu sửa chữa",
+                body.toString(),
+                request.getStatus()
+        );
+    }
+
+    private void notifyMaintenanceResponseApproved(MaintenanceRequest request) {
+        StringBuilder body = new StringBuilder("Bạn đã xác nhận phản hồi từ admin cho yêu cầu sửa chữa \"")
+                .append(request.getTitle())
+                .append("\". Yêu cầu đang được xử lý.");
+
+        sendMaintenanceNotification(
+                request,
+                "Đã xác nhận phản hồi từ admin",
+                body.toString(),
+                STATUS_IN_PROGRESS
+        );
+    }
+
+    private void notifyMaintenanceResponseRejected(MaintenanceRequest request) {
+        StringBuilder body = new StringBuilder("Bạn đã từ chối phản hồi từ admin cho yêu cầu sửa chữa \"")
+                .append(request.getTitle())
+                .append("\". Yêu cầu đã được hủy.");
+
+        sendMaintenanceNotification(
+                request,
+                "Đã từ chối phản hồi từ admin",
+                body.toString(),
+                STATUS_CANCELLED
         );
     }
 

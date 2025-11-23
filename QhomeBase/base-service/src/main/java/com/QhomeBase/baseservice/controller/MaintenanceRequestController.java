@@ -1,5 +1,6 @@
 package com.QhomeBase.baseservice.controller;
 
+import com.QhomeBase.baseservice.dto.AdminMaintenanceResponseDto;
 import com.QhomeBase.baseservice.dto.AdminServiceRequestActionDto;
 import com.QhomeBase.baseservice.dto.CreateMaintenanceRequestDto;
 import com.QhomeBase.baseservice.dto.MaintenanceRequestConfigDto;
@@ -55,6 +56,25 @@ public class MaintenanceRequestController {
         return ResponseEntity.ok(maintenanceRequestService.getPendingRequests());
     }
 
+    @PostMapping("/admin/{requestId}/respond")
+    @PreAuthorize("@authz.canManageServiceRequests()")
+    public ResponseEntity<MaintenanceRequestDto> respondToMaintenanceRequest(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID requestId,
+            @Valid @RequestBody AdminMaintenanceResponseDto request) {
+        try {
+            MaintenanceRequestDto dto = maintenanceRequestService.respondToRequest(
+                    principal.uid(),
+                    requestId,
+                    request
+            );
+            return ResponseEntity.ok(dto);
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            log.warn("Failed to respond to maintenance request: {}", ex.getMessage());
+            return ResponseEntity.badRequest().body(null);
+        }
+    }
+
     @PatchMapping("/admin/{requestId}/approve")
     @PreAuthorize("@authz.canManageServiceRequests()")
     public ResponseEntity<MaintenanceRequestDto> approveMaintenanceRequest(
@@ -81,6 +101,34 @@ public class MaintenanceRequestController {
                 request
         );
         return ResponseEntity.ok(dto);
+    }
+
+    @PostMapping("/{requestId}/approve-response")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<MaintenanceRequestDto> approveResponse(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID requestId) {
+        try {
+            MaintenanceRequestDto dto = maintenanceRequestService.approveResponse(principal.uid(), requestId);
+            return ResponseEntity.ok(dto);
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            log.warn("Failed to approve response: {}", ex.getMessage());
+            return ResponseEntity.badRequest().body(null);
+        }
+    }
+
+    @PostMapping("/{requestId}/reject-response")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<MaintenanceRequestDto> rejectResponse(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID requestId) {
+        try {
+            MaintenanceRequestDto dto = maintenanceRequestService.rejectResponse(principal.uid(), requestId);
+            return ResponseEntity.ok(dto);
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            log.warn("Failed to reject response: {}", ex.getMessage());
+            return ResponseEntity.badRequest().body(null);
+        }
     }
 
     @PatchMapping("/{requestId}/cancel")
