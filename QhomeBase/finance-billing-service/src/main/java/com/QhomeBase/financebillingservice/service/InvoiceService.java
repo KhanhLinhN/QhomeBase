@@ -237,7 +237,7 @@ public class InvoiceService {
             log.info("Created {} invoice lines for invoice: {}", request.getLines().size(), savedInvoice.getId());
         }
         
-        // Send notification to resident
+        // Send notification to resident (only for electricity and water invoices)
         sendInvoiceNotification(savedInvoice);
         
         return toDto(savedInvoice);
@@ -246,6 +246,28 @@ public class InvoiceService {
     private void sendInvoiceNotification(Invoice invoice) {
         if (invoice.getPayerResidentId() == null) {
             log.warn("⚠️ [InvoiceService] Cannot send notification: payerResidentId is null");
+            return;
+        }
+        
+        // Only send notification for electricity and water invoices
+        // Skip notification for card payment invoices (VEHICLE_CARD, ELEVATOR_CARD, RESIDENT_CARD)
+        List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceId(invoice.getId());
+        boolean shouldSendNotification = false;
+        
+        for (InvoiceLine line : lines) {
+            String serviceCode = line.getServiceCode();
+            if (serviceCode != null) {
+                String normalized = serviceCode.trim().toUpperCase();
+                // Only send notification for electricity and water invoices
+                if (normalized.contains("ELECTRICITY") || normalized.contains("WATER")) {
+                    shouldSendNotification = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!shouldSendNotification) {
+            log.debug("ℹ️ [InvoiceService] Skipping notification for invoice {} - not an electricity/water invoice", invoice.getId());
             return;
         }
         

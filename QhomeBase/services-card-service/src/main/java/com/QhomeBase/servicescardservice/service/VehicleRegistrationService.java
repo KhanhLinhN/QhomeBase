@@ -42,11 +42,12 @@ import java.util.concurrent.ConcurrentMap;
 @Slf4j
 public class VehicleRegistrationService {
 
-    private static final BigDecimal REGISTRATION_FEE = BigDecimal.valueOf(30000);
     private static final int MAX_IMAGES = 6;
     private static final String SERVICE_TYPE = "VEHICLE_REGISTRATION";
     private static final String STATUS_APPROVED = "APPROVED";
     private static final String STATUS_READY_FOR_PAYMENT = "READY_FOR_PAYMENT";
+    
+    private final CardPricingService cardPricingService;
     private static final String STATUS_PAYMENT_PENDING = "PAYMENT_PENDING";
     private static final String STATUS_PENDING_REVIEW = "PENDING";
     private static final String STATUS_CANCELLED = "CANCELLED";
@@ -136,7 +137,7 @@ public class VehicleRegistrationService {
                 .buildingName(normalize(dto.buildingName()))
                 .status(STATUS_READY_FOR_PAYMENT)
                 .paymentStatus("UNPAID")
-                .paymentAmount(REGISTRATION_FEE)
+                .paymentAmount(cardPricingService.getPrice("VEHICLE"))
                 .build();
 
         applyResolvedAddressForUser(
@@ -251,7 +252,8 @@ public class VehicleRegistrationService {
         String clientIp = resolveClientIp(request);
         String orderInfo = "Thanh toán đăng ký xe " + (saved.getLicensePlate() != null ? saved.getLicensePlate() : saved.getId());
         String returnUrl = vnpayProperties.getReturnUrl();
-        var paymentResult = vnpayService.createPaymentUrlWithRef(orderId, orderInfo, REGISTRATION_FEE, clientIp, returnUrl);
+        BigDecimal registrationFee = cardPricingService.getPrice("VEHICLE");
+        var paymentResult = vnpayService.createPaymentUrlWithRef(orderId, orderInfo, registrationFee, clientIp, returnUrl);
         
         // Save transaction reference to database for fallback lookup
         saved.setVnpayTransactionRef(paymentResult.transactionRef());
@@ -385,15 +387,22 @@ public class VehicleRegistrationService {
             // Note: AddressInfo doesn't have buildingId, so we pass null and let the notification service handle it
             UUID buildingId = null;
 
+            // Get current card price from database
+            BigDecimal currentPrice = cardPricingService.getPrice("VEHICLE");
+            String formattedPrice = formatVnd(currentPrice);
+
             String title = "Thẻ xe đã được duyệt";
             String message = issueMessage != null && !issueMessage.isBlank() 
                     ? issueMessage 
-                    : String.format("Thẻ xe %s của bạn đã được duyệt. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", 
-                            registration.getLicensePlate() != null ? registration.getLicensePlate() : "");
+                    : String.format("Thẻ xe %s của bạn đã được duyệt. Phí đăng ký: %s. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", 
+                            registration.getLicensePlate() != null ? registration.getLicensePlate() : "",
+                            formattedPrice);
 
             Map<String, String> data = new HashMap<>();
             data.put("cardType", "VEHICLE_CARD");
             data.put("registrationId", registration.getId().toString());
+            data.put("price", currentPrice.toString());
+            data.put("formattedPrice", formattedPrice);
             if (registration.getLicensePlate() != null) {
                 data.put("licensePlate", registration.getLicensePlate());
             }
@@ -435,17 +444,25 @@ public class VehicleRegistrationService {
             // Resolve buildingId from unitId if needed
             UUID buildingId = null;
 
+            // Get current card price from database
+            BigDecimal currentPrice = cardPricingService.getPrice("VEHICLE");
+            String formattedPrice = formatVnd(currentPrice);
+
             String title = "Thẻ xe bị từ chối";
             String message = rejectionReason != null && !rejectionReason.isBlank() 
-                    ? String.format("Yêu cầu đăng ký thẻ xe %s của bạn đã bị từ chối. Lý do: %s", 
-                            registration.getLicensePlate() != null ? registration.getLicensePlate() : "", rejectionReason)
-                    : String.format("Yêu cầu đăng ký thẻ xe %s của bạn đã bị từ chối. Vui lòng liên hệ quản trị viên để biết thêm chi tiết.", 
-                            registration.getLicensePlate() != null ? registration.getLicensePlate() : "");
+                    ? String.format("Yêu cầu đăng ký thẻ xe %s của bạn đã bị từ chối. Phí đăng ký: %s. Lý do: %s", 
+                            registration.getLicensePlate() != null ? registration.getLicensePlate() : "",
+                            formattedPrice, rejectionReason)
+                    : String.format("Yêu cầu đăng ký thẻ xe %s của bạn đã bị từ chối. Phí đăng ký: %s. Vui lòng liên hệ quản trị viên để biết thêm chi tiết.", 
+                            registration.getLicensePlate() != null ? registration.getLicensePlate() : "",
+                            formattedPrice);
 
             Map<String, String> data = new HashMap<>();
             data.put("cardType", "VEHICLE_CARD");
             data.put("registrationId", registration.getId().toString());
             data.put("status", "REJECTED");
+            data.put("price", currentPrice.toString());
+            data.put("formattedPrice", formattedPrice);
             if (registration.getLicensePlate() != null) {
                 data.put("licensePlate", registration.getLicensePlate());
             }
@@ -819,6 +836,26 @@ public class VehicleRegistrationService {
     public record VehicleRegistrationPaymentResponse(UUID registrationId, String paymentUrl) {}
 
     public record VehicleRegistrationPaymentResult(UUID registrationId, boolean success, String responseCode, boolean signatureValid) {}
+
+    /**
+     * Format BigDecimal price to VND string (e.g., 30000 -> "30.000 VND")
+     */
+    private String formatVnd(BigDecimal amount) {
+        if (amount == null) {
+            return "0 VND";
+        }
+        String digits = amount.toBigInteger().toString();
+        StringBuilder buffer = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            buffer.append(digits.charAt(i));
+            int remaining = digits.length() - i - 1;
+            if (remaining % 3 == 0 && remaining != 0) {
+                buffer.append(".");
+            }
+        }
+        buffer.append(" VND");
+        return buffer.toString();
+    }
 }
 
 
