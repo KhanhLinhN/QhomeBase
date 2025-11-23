@@ -110,8 +110,210 @@
     },
     {
       "name": "Vehicle Registration",
-      "description": "Admin APIs for vehicle registrations.",
+      "description": "Resident and Admin APIs for vehicle registrations.",
       "item": [
+        {
+          "name": "Upload Images",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{resident_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "Danh sách file ảnh (tối đa 10MB mỗi file). Có thể upload nhiều file cùng lúc."
+                }
+              ]
+            },
+            "description": "Upload ảnh cho đăng ký xe (giấy tờ xe, biển số, v.v.).\n\n**Yêu cầu:**\n- File size tối đa: 10MB mỗi file\n- Format: JPG, PNG, JPEG\n- Có thể upload nhiều file cùng lúc\n\n**Response:**\n- Trả về mảng `imageUrls` để sử dụng trong request tạo đăng ký\n\n**Lưu ý:**\n- Upload ảnh trước, sau đó dùng `imageUrls` trong request tạo đăng ký",
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/register-service/upload-images",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register-service",
+                "upload-images"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Vehicle Registration & Payment URL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// After creating registration, status = READY_FOR_PAYMENT, paymentStatus = UNPAID",
+                  "// After calling vnpay-url, status = PAYMENT_PENDING, paymentStatus = PAYMENT_APPROVAL",
+                  "pm.test(\"Payment URL created\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json && json.registrationId) {",
+                  "    pm.environment.set(\"vehicleRegistrationId\", json.registrationId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{resident_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceType\": \"VEHICLE_REGISTRATION\",\n  \"requestType\": \"NEW_CARD\",\n  \"unitId\": \"{{unitId}}\",\n  \"vehicleType\": \"MOTORBIKE\",\n  \"licensePlate\": \"30A1-12345\",\n  \"vehicleBrand\": \"Honda\",\n  \"vehicleColor\": \"Đỏ\",\n  \"apartmentNumber\": \"A-12-05\",\n  \"buildingName\": \"Block A\",\n  \"note\": \"Đăng ký thẻ xe mới\",\n  \"imageUrls\": [\n    \"https://example.com/image1.jpg\",\n    \"https://example.com/image2.jpg\"\n  ]\n}"
+            },
+            "description": "Tạo đăng ký xe mới và lấy URL thanh toán VNPay.\n\n**Request Body:**\n- `serviceType`: `VEHICLE_REGISTRATION` (bắt buộc)\n- `requestType`: `NEW_CARD` (mới) hoặc `RENEWAL` (gia hạn)\n- `unitId`: UUID của căn hộ\n- `vehicleType`: `CAR`, `MOTORBIKE`, `BICYCLE`, `OTHER`\n- `licensePlate`: Biển số xe\n- `vehicleBrand`: Hãng xe\n- `vehicleColor`: Màu xe\n- `apartmentNumber`: Số căn hộ\n- `buildingName`: Tên tòa nhà\n- `imageUrls`: Mảng URL ảnh (từ API Upload Images)\n\n**Flow trạng thái:**\n1. Sau khi tạo: `status = READY_FOR_PAYMENT`, `paymentStatus = UNPAID`\n2. Sau khi gọi API này: `status = PAYMENT_PENDING`, `paymentStatus = PAYMENT_APPROVAL`\n3. Sau khi thanh toán thành công (VNPay callback): `paymentStatus = PAID`, `status = PENDING` (chờ admin duyệt)\n\n**Response:**\n- `registrationId`: UUID của đăng ký\n- `paymentUrl`: URL thanh toán VNPay",
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/register-service/vnpay-url",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register-service",
+                "vnpay-url"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Vehicle Registration (Resident)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{resident_token}}",
+                "type": "text"
+              }
+            ],
+            "description": "Lấy thông tin chi tiết đăng ký xe của resident.\n\n**Trạng thái có thể:**\n- `READY_FOR_PAYMENT` + `UNPAID`: Chưa thanh toán\n- `PAYMENT_PENDING` + `PAYMENT_APPROVAL`: Đang thanh toán\n- `PENDING` + `PAID`: Đã thanh toán, chờ admin duyệt\n- `APPROVED` + `PAID`: Đã được phê duyệt",
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/register-service/{{vehicleRegistrationId}}",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register-service",
+                "{{vehicleRegistrationId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resume Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{resident_token}}",
+                "type": "text"
+              }
+            ],
+            "description": "Tiếp tục thanh toán cho đăng ký đã tạo nhưng chưa hoàn tất.\n\n**⚠️ KHI NÀO DÙNG API NÀY:**\n- Đăng ký có `paymentStatus = PAYMENT_APPROVAL` (đang chờ thanh toán VNPay) → Muốn lấy URL thanh toán mới\n- Đăng ký có `paymentStatus = UNPAID` (chưa thanh toán) → Muốn lấy URL thanh toán\n- Đăng ký có `status = PAYMENT_PENDING` → Muốn tiếp tục thanh toán\n\n**Điều kiện:**\n- `status = READY_FOR_PAYMENT` hoặc `PAYMENT_PENDING`\n- `paymentStatus = UNPAID` hoặc `PAYMENT_APPROVAL` hoặc `PAYMENT_PENDING`\n\n**Khác biệt với \"Update & Pay\":**\n- API này **KHÔNG** cập nhật thông tin đăng ký\n- API này **CHỈ** tạo URL thanh toán mới\n- Có thể dùng với `paymentStatus = PAYMENT_APPROVAL` (không như \"Update & Pay\")\n\n**Sau khi gọi:**\n- `status = PAYMENT_PENDING`\n- `paymentStatus = PAYMENT_APPROVAL`\n- Trả về URL thanh toán VNPay mới\n\n**Ví dụ sử dụng:**\n- User đã bấm thanh toán nhưng chưa hoàn tất trên VNPay (timeout, đóng tab, v.v.)\n- User muốn lấy lại URL thanh toán để tiếp tục",
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/register-service/{{vehicleRegistrationId}}/resume-payment",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register-service",
+                "{{vehicleRegistrationId}}",
+                "resume-payment"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Payment URL (Update & Pay)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{resident_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicleType\": \"MOTORBIKE\",\n  \"licensePlate\": \"30A1-12345\",\n  \"vehicleBrand\": \"Honda\",\n  \"vehicleColor\": \"Đỏ\",\n  \"note\": \"Cập nhật thông tin xe\"\n}"
+            },
+            "description": "Cập nhật thông tin đăng ký và lấy URL thanh toán.\n\n**⚠️ QUAN TRỌNG - Điều kiện bắt buộc:**\n- **CHỈ** cập nhật được khi `paymentStatus = UNPAID` (chưa thanh toán)\n- **KHÔNG THỂ** cập nhật nếu:\n  - `paymentStatus = PAID` (đã thanh toán) → Lỗi: \"Đăng ký đã thanh toán, không thể chỉnh sửa\"\n  - `paymentStatus = PAYMENT_APPROVAL` (đang chờ thanh toán) → Lỗi: \"Đăng ký đã thanh toán, không thể chỉnh sửa\"\n\n**⚠️ LƯU Ý QUAN TRỌNG:**\n- Nếu đăng ký có `paymentStatus = PAYMENT_APPROVAL` (đang chờ thanh toán VNPay):\n  - **KHÔNG** dùng API này để cập nhật thông tin\n  - **DÙNG** API \"Resume Payment\" để lấy URL thanh toán mới (không cập nhật thông tin)\n  - Hoặc gọi API này với **body rỗng** (không gửi body) để chỉ lấy URL thanh toán mới\n\n**Khi nào dùng API này:**\n- Đã tạo đăng ký nhưng chưa thanh toán (`READY_FOR_PAYMENT` + `UNPAID`)\n- Muốn **VỪA sửa thông tin xe VỪA** lấy URL thanh toán\n- Muốn tạo lại URL thanh toán sau khi cập nhật thông tin\n\n**Request Body:**\n- **Có thể gửi body rỗng** `{}` để chỉ lấy URL thanh toán (không cập nhật thông tin)\n- **Hoặc gửi các field cần cập nhật:**\n  - `vehicleType`: `CAR`, `MOTORBIKE`, `BICYCLE`, `OTHER`\n  - `licensePlate`: Biển số xe\n  - `vehicleBrand`: Hãng xe\n  - `vehicleColor`: Màu xe\n  - `note`: Ghi chú\n\n**Flow:**\n1. Nếu có body: Kiểm tra `paymentStatus = UNPAID` (nếu không → lỗi 400)\n2. Nếu có body: Cập nhật thông tin đăng ký\n3. Nếu có body: Reset `status = READY_FOR_PAYMENT`\n4. Tạo URL thanh toán: `status = PAYMENT_PENDING`, `paymentStatus = PAYMENT_APPROVAL`\n\n**Response:**\n- `registrationId`: UUID của đăng ký\n- `paymentUrl`: URL thanh toán VNPay mới\n\n**Lỗi có thể gặp:**\n- `400 Bad Request`: \"Đăng ký đã thanh toán, không thể chỉnh sửa\"\n  - **Nguyên nhân:** Gửi body với đăng ký có `paymentStatus != UNPAID`\n  - **Giải pháp:** Dùng API \"Resume Payment\" hoặc gửi body rỗng `{}`",
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/register-service/{{vehicleRegistrationId}}/vnpay-url",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register-service",
+                "{{vehicleRegistrationId}}",
+                "vnpay-url"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cancel Vehicle Registration",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{resident_token}}",
+                "type": "text"
+              }
+            ],
+            "description": "Hủy đăng ký xe.\n\n**Sau khi hủy:**\n- `status = CANCELLED`\n\n**Lưu ý:**\n- Chỉ hủy được khi chưa được admin approve\n- Nếu đã thanh toán, cần xử lý hoàn tiền riêng",
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/register-service/{{vehicleRegistrationId}}/cancel",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register-service",
+                "{{vehicleRegistrationId}}",
+                "cancel"
+              ]
+            }
+          }
+        },
         {
           "name": "List Vehicle Registrations (Admin)",
           "request": {
@@ -123,6 +325,7 @@
                 "type": "text"
               }
             ],
+            "description": "Lấy danh sách đăng ký xe cho admin.\n\n**Query Parameters:**\n- `status`: PENDING, READY_FOR_PAYMENT, PAYMENT_PENDING, APPROVED, REJECTED, CANCELLED, COMPLETED\n  - Nếu `status=PENDING`, sẽ bao gồm cả READY_FOR_PAYMENT và PAYMENT_PENDING\n- `paymentStatus`: UNPAID, PAYMENT_APPROVAL, PAYMENT_PENDING, PAID\n\n**Flow trạng thái:**\n- `READY_FOR_PAYMENT` + `UNPAID`: Đã tạo, chưa thanh toán\n- `PAYMENT_PENDING` + `PAYMENT_APPROVAL`: Đang trong quá trình thanh toán\n- `PENDING` + `PAID`: Đã thanh toán, chờ admin duyệt\n- `APPROVED` + `PAID`: Đã được admin phê duyệt",
             "url": {
               "raw": "{{cardServiceBaseUrl}}/api/register-service/admin/vehicle-registrations",
               "host": [
@@ -133,6 +336,20 @@
                 "register-service",
                 "admin",
                 "vehicle-registrations"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "PENDING, READY_FOR_PAYMENT, PAYMENT_PENDING, APPROVED, REJECTED, CANCELLED, COMPLETED. Để trống để lấy tất cả.",
+                  "disabled": false
+                },
+                {
+                  "key": "paymentStatus",
+                  "value": "",
+                  "description": "UNPAID, PAYMENT_APPROVAL, PAYMENT_PENDING, PAID. Để trống để lấy tất cả.",
+                  "disabled": false
+                }
               ]
             }
           }
@@ -148,6 +365,7 @@
                 "type": "text"
               }
             ],
+            "description": "Lấy thông tin chi tiết đăng ký xe cho admin.\n\n**Response bao gồm:**\n- Thông tin đăng ký (biển số, loại xe, màu sắc, v.v.)\n- Trạng thái (`status`, `paymentStatus`)\n- Thông tin admin (người duyệt, thời gian duyệt, ghi chú)\n- Danh sách ảnh đính kèm\n- Thông tin thanh toán (số tiền, ngày thanh toán, gateway)",
             "url": {
               "raw": "{{cardServiceBaseUrl}}/api/register-service/admin/vehicle-registrations/{{vehicleRegistrationId}}",
               "host": [
@@ -181,8 +399,9 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"note\": \"Đã kiểm tra. Cho phép thanh toán.\"\n}"
+              "raw": "{\n  \"note\": \"Đã kiểm tra thông tin xe. Phê duyệt đăng ký.\",\n  \"issueMessage\": \"Thẻ xe đã được phê duyệt. Vui lòng thanh toán để hoàn tất đăng ký.\"\n}"
             },
+            "description": "Admin phê duyệt đăng ký xe.\n\n**Điều kiện:**\n- Chỉ approve được khi `status = PENDING` hoặc `READY_FOR_PAYMENT`\n- Sau khi approve: `status = APPROVED`\n\n**Lưu ý:**\n- Nếu đăng ký ở trạng thái `READY_FOR_PAYMENT` (chưa thanh toán), admin có thể approve trước, sau đó user mới thanh toán.\n- Nếu đăng ký ở trạng thái `PENDING` (đã thanh toán), admin approve để hoàn tất quy trình.",
             "url": {
               "raw": "{{cardServiceBaseUrl}}/api/register-service/admin/vehicle-registrations/{{vehicleRegistrationId}}/approve",
               "host": [
@@ -195,6 +414,34 @@
                 "vehicle-registrations",
                 "{{vehicleRegistrationId}}",
                 "approve"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark Payment as Paid (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "description": "Admin đánh dấu thanh toán thành công (không qua VNPay).\n\n**⚠️ Mục đích:**\n- Dùng để test hoặc đánh dấu thanh toán thủ công khi không qua VNPay\n- Giúp admin xem được đăng ký ở trạng thái đã thanh toán\n\n**Điều kiện:**\n- Chỉ admin mới được gọi\n- Đăng ký chưa được đánh dấu là `PAID`\n\n**Thay đổi trạng thái:**\n- `paymentStatus`: `UNPAID`/`PAYMENT_APPROVAL` → `PAID`\n- `status`: \n  - Nếu là đăng ký mới: `READY_FOR_PAYMENT`/`PAYMENT_PENDING` → `PENDING` (chờ admin duyệt)\n  - Nếu là gia hạn (`NEEDS_RENEWAL`/`SUSPENDED`): → `APPROVED`\n- `paymentDate`: Set = thời gian hiện tại\n- `paymentGateway`: Set = `MANUAL`\n\n**Lưu ý:**\n- API này sẽ ghi nhận thanh toán vào billing service\n- Không cần gửi body",
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/register-service/admin/vehicle-registrations/{{vehicleRegistrationId}}/mark-paid",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register-service",
+                "admin",
+                "vehicle-registrations",
+                "{{vehicleRegistrationId}}",
+                "mark-paid"
               ]
             }
           }
@@ -217,8 +464,9 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"note\": \"Thông tin xe không hợp lệ.\"\n}"
+              "raw": "{\n  \"note\": \"Thông tin xe không hợp lệ.\",\n  \"issueMessage\": \"Vui lòng kiểm tra lại thông tin đăng ký và gửi lại.\"\n}"
             },
+            "description": "Admin từ chối đăng ký xe.\n\n**Điều kiện:**\n- Có thể reject ở bất kỳ trạng thái nào (trừ `CANCELLED` và `REJECTED`)\n\n**Sau khi reject:**\n- `status = REJECTED`\n- Lưu `rejectionReason` và `adminNote`",
             "url": {
               "raw": "{{cardServiceBaseUrl}}/api/register-service/admin/vehicle-registrations/{{vehicleRegistrationId}}/reject",
               "host": [
@@ -233,6 +481,90 @@
                 "reject"
               ]
             }
+          }
+        },
+        {
+          "name": "VNPay Return Callback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/register-service/vnpay/return?vnp_Amount=30000000&vnp_BankCode=NCB&vnp_CardType=ATM&vnp_OrderInfo=Vehicle+Registration&vnp_PayDate=20240101120000&vnp_ResponseCode=00&vnp_TmnCode=YOUR_TMN_CODE&vnp_TransactionNo=12345678&vnp_TransactionStatus=00&vnp_TxnRef=REG123456&vnp_SecureHash=YOUR_HASH",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register-service",
+                "vnpay",
+                "return"
+              ],
+              "query": [
+                {
+                  "key": "vnp_Amount",
+                  "value": "30000000"
+                },
+                {
+                  "key": "vnp_BankCode",
+                  "value": "NCB"
+                },
+                {
+                  "key": "vnp_ResponseCode",
+                  "value": "00"
+                },
+                {
+                  "key": "vnp_TxnRef",
+                  "value": "REG123456"
+                },
+                {
+                  "key": "vnp_SecureHash",
+                  "value": "YOUR_HASH"
+                }
+              ]
+            },
+            "description": "VNPay callback endpoint cho web sau khi thanh toán.\n\n**Flow trạng thái sau khi thanh toán thành công:**\n- `paymentStatus = PAID`\n- Nếu là đăng ký mới: `status = PENDING` (chờ admin duyệt)\n- Nếu là gia hạn (NEEDS_RENEWAL/SUSPENDED): `status = APPROVED`\n\n**Lưu ý:**\n- `vnp_ResponseCode = 00` và `vnp_TransactionStatus = 00` nghĩa là thanh toán thành công\n- API này được VNPay gọi tự động, không cần gọi thủ công"
+          }
+        },
+        {
+          "name": "VNPay Redirect Callback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/register-service/vnpay/redirect?vnp_Amount=30000000&vnp_BankCode=NCB&vnp_CardType=ATM&vnp_OrderInfo=Vehicle+Registration&vnp_PayDate=20240101120000&vnp_ResponseCode=00&vnp_TmnCode=YOUR_TMN_CODE&vnp_TransactionNo=12345678&vnp_TransactionStatus=00&vnp_TxnRef=REG123456&vnp_SecureHash=YOUR_HASH",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register-service",
+                "vnpay",
+                "redirect"
+              ],
+              "query": [
+                {
+                  "key": "vnp_Amount",
+                  "value": "30000000"
+                },
+                {
+                  "key": "vnp_BankCode",
+                  "value": "NCB"
+                },
+                {
+                  "key": "vnp_ResponseCode",
+                  "value": "00"
+                },
+                {
+                  "key": "vnp_TxnRef",
+                  "value": "REG123456"
+                },
+                {
+                  "key": "vnp_SecureHash",
+                  "value": "YOUR_HASH"
+                }
+              ]
+            },
+            "description": "VNPay callback endpoint cho mobile app (deep link redirect).\n\n**Flow trạng thái:**\n- Tương tự như `/vnpay/return`, nhưng redirect về mobile app thay vì web\n- Sau khi thanh toán thành công: `paymentStatus = PAID`, `status = PENDING` (đăng ký mới) hoặc `APPROVED` (gia hạn)"
           }
         }
       ]
@@ -404,6 +736,36 @@
       "description": "Resident flows and admin decisions for resident access cards.",
       "item": [
         {
+          "name": "Get Household Members",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{resident_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/resident-card/household-members?unitId={{unitId}}",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resident-card",
+                "household-members"
+              ],
+              "query": [
+                {
+                  "key": "unitId",
+                  "value": "{{unitId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Create Resident Card Registration & Payment URL",
           "request": {
             "method": "POST",
@@ -437,6 +799,80 @@
           }
         },
         {
+          "name": "Get Resident Card Registration (Resident)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{resident_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/resident-card/{{residentRegistrationId}}",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resident-card",
+                "{{residentRegistrationId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resume Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{resident_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/resident-card/{{residentRegistrationId}}/resume-payment",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resident-card",
+                "{{residentRegistrationId}}",
+                "resume-payment"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cancel Resident Card Registration",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{resident_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/resident-card/{{residentRegistrationId}}/cancel",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resident-card",
+                "{{residentRegistrationId}}",
+                "cancel"
+              ]
+            }
+          }
+        },
+        {
           "name": "List Resident Card Registrations (Admin)",
           "request": {
             "method": "GET",
@@ -448,7 +884,7 @@
               }
             ],
             "url": {
-              "raw": "{{cardServiceBaseUrl}}/api/resident-card/admin/registrations",
+              "raw": "{{cardServiceBaseUrl}}/api/resident-card/admin/registrations?status=PENDING&paymentStatus=UNPAID",
               "host": [
                 "{{cardServiceBaseUrl}}"
               ],
@@ -457,6 +893,19 @@
                 "resident-card",
                 "admin",
                 "registrations"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PENDING",
+                  "description": "PENDING, APPROVED, REJECTED, CANCELLED"
+                },
+                {
+                  "key": "paymentStatus",
+                  "value": "UNPAID",
+                  "description": "UNPAID, PAID, FAILED",
+                  "disabled": true
+                }
               ]
             }
           }
@@ -505,7 +954,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"decision\": \"APPROVE\",\n  \"note\": \"Phê duyệt phát hành thẻ cư dân.\"\n}"
+              "raw": "{\n  \"decision\": \"APPROVE\",\n  \"note\": \"Phê duyệt phát hành thẻ cư dân.\",\n  \"issueMessage\": \"Thẻ cư dân đã được phê duyệt. Vui lòng thanh toán để hoàn tất đăng ký.\"\n}"
             },
             "url": {
               "raw": "{{cardServiceBaseUrl}}/api/resident-card/admin/registrations/{{residentRegistrationId}}/decision",
@@ -541,7 +990,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"decision\": \"REJECT\",\n  \"note\": \"Thông tin cư trú chưa được xác minh.\"\n}"
+              "raw": "{\n  \"decision\": \"REJECT\",\n  \"note\": \"Thông tin cư trú chưa được xác minh.\",\n  \"issueMessage\": \"Vui lòng kiểm tra lại thông tin đăng ký và gửi lại.\"\n}"
             },
             "url": {
               "raw": "{{cardServiceBaseUrl}}/api/resident-card/admin/registrations/{{residentRegistrationId}}/decision",
@@ -557,6 +1006,90 @@
                 "decision"
               ]
             }
+          }
+        },
+        {
+          "name": "VNPay Return Callback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/resident-card/vnpay/return?vnp_Amount=20000000&vnp_BankCode=NCB&vnp_CardType=ATM&vnp_OrderInfo=Resident+Card+Registration&vnp_PayDate=20240101120000&vnp_ResponseCode=00&vnp_TmnCode=YOUR_TMN_CODE&vnp_TransactionNo=12345678&vnp_TransactionStatus=00&vnp_TxnRef=REG123456&vnp_SecureHash=YOUR_HASH",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resident-card",
+                "vnpay",
+                "return"
+              ],
+              "query": [
+                {
+                  "key": "vnp_Amount",
+                  "value": "20000000"
+                },
+                {
+                  "key": "vnp_BankCode",
+                  "value": "NCB"
+                },
+                {
+                  "key": "vnp_ResponseCode",
+                  "value": "00"
+                },
+                {
+                  "key": "vnp_TxnRef",
+                  "value": "REG123456"
+                },
+                {
+                  "key": "vnp_SecureHash",
+                  "value": "YOUR_HASH"
+                }
+              ]
+            },
+            "description": "VNPay callback endpoint for payment return. This is typically called by VNPay after payment."
+          }
+        },
+        {
+          "name": "VNPay Redirect Callback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cardServiceBaseUrl}}/api/resident-card/vnpay/redirect?vnp_Amount=20000000&vnp_BankCode=NCB&vnp_CardType=ATM&vnp_OrderInfo=Resident+Card+Registration&vnp_PayDate=20240101120000&vnp_ResponseCode=00&vnp_TmnCode=YOUR_TMN_CODE&vnp_TransactionNo=12345678&vnp_TransactionStatus=00&vnp_TxnRef=REG123456&vnp_SecureHash=YOUR_HASH",
+              "host": [
+                "{{cardServiceBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resident-card",
+                "vnpay",
+                "redirect"
+              ],
+              "query": [
+                {
+                  "key": "vnp_Amount",
+                  "value": "20000000"
+                },
+                {
+                  "key": "vnp_BankCode",
+                  "value": "NCB"
+                },
+                {
+                  "key": "vnp_ResponseCode",
+                  "value": "00"
+                },
+                {
+                  "key": "vnp_TxnRef",
+                  "value": "REG123456"
+                },
+                {
+                  "key": "vnp_SecureHash",
+                  "value": "YOUR_HASH"
+                }
+              ]
+            },
+            "description": "VNPay callback endpoint for payment redirect. This redirects to mobile app deep link."
           }
         }
       ]
