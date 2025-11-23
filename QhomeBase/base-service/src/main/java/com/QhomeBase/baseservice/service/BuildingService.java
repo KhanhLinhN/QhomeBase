@@ -4,7 +4,11 @@ import com.QhomeBase.baseservice.dto.BuildingCreateReq;
 import com.QhomeBase.baseservice.dto.BuildingDto;
 import com.QhomeBase.baseservice.dto.BuildingUpdateReq;
 import com.QhomeBase.baseservice.model.Building;
+import com.QhomeBase.baseservice.model.BuildingStatus;
+import com.QhomeBase.baseservice.model.Unit;
+import com.QhomeBase.baseservice.model.UnitStatus;
 import com.QhomeBase.baseservice.repository.BuildingRepository;
+import com.QhomeBase.baseservice.repository.UnitRepository;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import jakarta.transaction.Transactional;
 import org.springframework.security.core.Authentication;
@@ -20,9 +24,11 @@ import java.util.stream.Collectors;
 public class BuildingService {
 
     private final BuildingRepository respo;
+    private final UnitRepository unitRepository;
 
-    public BuildingService(BuildingRepository respo) {
+    public BuildingService(BuildingRepository respo, UnitRepository unitRepository) {
         this.respo = respo;
+        this.unitRepository = unitRepository;
     }
 
     public List<Building> findAllOrderByCodeAsc() {
@@ -137,5 +143,34 @@ public class BuildingService {
 
         Building saved = respo.save(existing);
         return toDto(saved);
+    }
+    
+    @Transactional
+    public void changeBuildingStatus(UUID buildingId, BuildingStatus newStatus, Authentication auth) {
+        var u = (UserPrincipal) auth.getPrincipal();
+        
+        Building building = respo.findById(buildingId)
+                .orElseThrow(() -> new IllegalArgumentException("Building not found with id: " + buildingId));
+        
+        building.setStatus(newStatus);
+        building.setUpdatedBy(u.username());
+        
+        respo.save(building);
+        
+        // When building status changes to INACTIVE, set all units to INACTIVE
+        // When building status changes to ACTIVE, do nothing (keep units' current status)
+        if (newStatus == BuildingStatus.INACTIVE) {
+            List<Unit> units = unitRepository.findAllByBuildingId(buildingId);
+            boolean changed = false;
+            for (Unit unit : units) {
+                if (unit.getStatus() != UnitStatus.INACTIVE) {
+                    unit.setStatus(UnitStatus.INACTIVE);
+                    changed = true;
+                }
+            }
+            if (changed) {
+                unitRepository.saveAll(units);
+            }
+        }
     }
 }

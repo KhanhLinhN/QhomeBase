@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -31,6 +32,13 @@ public class Request {
     private String content;
     @Column(name = "status", nullable = false)
     private String status;
+    @Column(name = "type", nullable = true)
+    private String type;
+    @Column(name = "fee", nullable = true)
+    private java.math.BigDecimal fee;
+    @Column(name = "repaired_date", nullable = true)
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate repairedDate;
     @Column(name = "created_at", nullable = false)
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
