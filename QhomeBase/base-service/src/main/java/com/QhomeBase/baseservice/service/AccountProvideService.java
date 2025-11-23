@@ -48,23 +48,77 @@ public class AccountProvideService {
             throw new IllegalStateException("Household already has a primary resident");
         }
 
-        validateUniqueContact(request);
+       
+        Resident resident;
+        String nationalId = request.resident().nationalId();
+        if (nationalId != null && !nationalId.isBlank()) {
+            resident = residentRepository.findByNationalId(nationalId).orElse(null);
+            if (resident != null) {
+                log.info("Reusing existing resident {} (nationalId: {}) for unit {}", resident.getId(), nationalId, unitId);
+              
+                String phone = request.resident().phone();
+                if (phone != null && !phone.isBlank() && !phone.equals(resident.getPhone())) {
+                    if (residentRepository.existsByPhone(phone)) {
+                        throw new IllegalArgumentException("There is already a resident with that phone");
+                    }
+                    resident.setPhone(phone);
+                }
+                
+                String email = request.resident().email();
+                if (email != null && !email.isBlank() && !email.equals(resident.getEmail())) {
+                    if (residentRepository.existsByEmail(email)) {
+                        throw new IllegalArgumentException("There is already a resident with that email");
+                    }
+                    resident.setEmail(email);
+                }
+                
+                // Update other fields if provided
+                if (request.resident().fullName() != null && !request.resident().fullName().isBlank()) {
+                    resident.setFullName(request.resident().fullName());
+                }
+                if (request.resident().dob() != null) {
+                    resident.setDob(request.resident().dob());
+                }
+                if (request.resident().status() != null) {
+                    resident.setStatus(request.resident().status());
+                }
+                resident = residentRepository.save(resident);
+            } else {
+                // Create new resident - validate unique phone/email
+                validateUniqueContact(request);
+                Resident.ResidentBuilder builder = Resident.builder()
+                        .fullName(request.resident().fullName())
+                        .phone(request.resident().phone())
+                        .email(request.resident().email())
+                        .nationalId(request.resident().nationalId())
+                        .dob(request.resident().dob());
 
-        Resident.ResidentBuilder builder = Resident.builder()
-                .fullName(request.resident().fullName())
-                .phone(request.resident().phone())
-                .email(request.resident().email())
-                .nationalId(request.resident().nationalId())
-                .dob(request.resident().dob());
+                if (request.resident().status() != null) {
+                    builder.status(request.resident().status());
+                }
 
-        if (request.resident().status() != null) {
-            builder.status(request.resident().status());
+                resident = builder.build();
+                resident = residentRepository.save(resident);
+            }
+        } else {
+            // No national ID provided - create new resident and validate unique phone/email
+            validateUniqueContact(request);
+            Resident.ResidentBuilder builder = Resident.builder()
+                    .fullName(request.resident().fullName())
+                    .phone(request.resident().phone())
+                    .email(request.resident().email())
+                    .nationalId(request.resident().nationalId())
+                    .dob(request.resident().dob());
+
+            if (request.resident().status() != null) {
+                builder.status(request.resident().status());
+            }
+
+            resident = builder.build();
+            resident = residentRepository.save(resident);
         }
 
         try {
-            Resident resident = builder.build();
-
-            resident = residentRepository.save(resident);
 
             household.setPrimaryResidentId(resident.getId());
             household.setUpdatedAt(OffsetDateTime.now());
@@ -163,6 +217,7 @@ public class AccountProvideService {
     private record HouseholdProvisionContext(Household household, boolean createdForProvision) {}
 
     private void validateUniqueContact(PrimaryResidentProvisionRequest request) {
+        // Phone and email should remain unique as they are used for account creation
         String phone = request.resident().phone();
         if (phone != null && !phone.isBlank() && residentRepository.existsByPhone(phone)) {
             throw new IllegalArgumentException("There is already a resident with that phone");
@@ -173,10 +228,8 @@ public class AccountProvideService {
             throw new IllegalArgumentException("There is already a resident with that email");
         }
 
-        String nationalId = request.resident().nationalId();
-        if (nationalId != null && !nationalId.isBlank() && residentRepository.existsByNationalId(nationalId)) {
-            throw new IllegalArgumentException("There is already a resident with that national id");
-        }
+        // National ID validation removed - allow reusing existing resident
+        // A person can be primary resident of multiple units (e.g., owns multiple apartments)
     }
 
     private String resolveRelation(PrimaryResidentProvisionRequest request) {

@@ -8,7 +8,10 @@ ADD COLUMN IF NOT EXISTS service_id UUID;
 ALTER TABLE data.reading_cycles 
 DROP CONSTRAINT IF EXISTS uq_reading_cycle_name;
 
--- Step 3: Add foreign key constraint
+-- Step 3: Add foreign key constraint (drop if exists first)
+ALTER TABLE data.reading_cycles
+DROP CONSTRAINT IF EXISTS fk_reading_cycle_service;
+
 ALTER TABLE data.reading_cycles
 ADD CONSTRAINT fk_reading_cycle_service 
 FOREIGN KEY (service_id) REFERENCES data.services(id);
@@ -106,6 +109,9 @@ ALTER TABLE data.reading_cycles
 ALTER COLUMN service_id SET NOT NULL;
 
 -- Step 6: Create new unique constraint (name + service_id)
+ALTER TABLE data.reading_cycles
+DROP CONSTRAINT IF EXISTS uq_reading_cycle_name_service;
+
 ALTER TABLE data.reading_cycles
 ADD CONSTRAINT uq_reading_cycle_name_service UNIQUE (name, service_id);
 

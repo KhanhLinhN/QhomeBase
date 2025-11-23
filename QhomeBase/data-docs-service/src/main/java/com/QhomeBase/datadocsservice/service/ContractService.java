@@ -139,7 +139,16 @@ public class ContractService {
             contract.setPurchasePrice(request.getPurchasePrice());
         }
         if (request.getPaymentMethod() != null || request.getPaymentTerms() != null) {
-            throw new IllegalArgumentException("Purchase contracts are fully paid. Payment method and terms are not applicable");
+            if ("PURCHASE".equals(currentType)) {
+                throw new IllegalArgumentException("Purchase contracts are fully paid. Payment method and terms are not applicable");
+            }
+            
+            if (request.getPaymentMethod() != null) {
+                contract.setPaymentMethod(request.getPaymentMethod());
+            }
+            if (request.getPaymentTerms() != null) {
+                contract.setPaymentTerms(request.getPaymentTerms());
+            }
         }
         if (request.getPurchaseDate() != null) {
             if ("RENTAL".equals(currentType)) {

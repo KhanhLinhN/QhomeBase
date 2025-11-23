@@ -194,8 +194,9 @@ public class VehicleRegistrationController {
     public ResponseEntity<?> getRegistrationsForAdmin(@RequestParam(name = "status", required = false) String status,
                                                       @RequestParam(name = "paymentStatus", required = false) String paymentStatus) {
         try {
-            // Default status = "PENDING" if not provided (vì Flutter luôn gửi PENDING)
-            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : "PENDING";
+            // Only use status if provided, don't set default
+            // This allows frontend to filter by specific status or get all
+            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : null;
             String finalPaymentStatus = (paymentStatus != null && !paymentStatus.isBlank()) ? paymentStatus.trim() : null;
             
             return ResponseEntity.ok(
@@ -242,6 +243,25 @@ public class VehicleRegistrationController {
             String adminNote = request != null ? request.getNote() : null;
             String issueMessage = request != null ? request.getIssueMessage() : null;
             RegisterServiceRequestDto dto = registrationService.approveRegistration(regUuid, adminId, adminNote, issueMessage);
+            return ResponseEntity.ok(toResponse(dto));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/admin/vehicle-registrations/{registrationId}/mark-paid")
+    public ResponseEntity<?> markPaymentAsPaid(@PathVariable String registrationId,
+                                               @RequestHeader HttpHeaders headers) {
+        UUID adminId = jwtUtil.getUserIdFromHeaders(headers);
+        if (adminId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        try {
+            UUID regUuid = UUID.fromString(registrationId);
+            RegisterServiceRequestDto dto = registrationService.markPaymentAsPaid(regUuid, adminId);
             return ResponseEntity.ok(toResponse(dto));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));

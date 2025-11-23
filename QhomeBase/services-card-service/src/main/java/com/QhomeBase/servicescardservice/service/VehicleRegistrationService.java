@@ -278,8 +278,21 @@ public class VehicleRegistrationService {
         List<RegisterServiceRequest> registrations =
                 requestRepository.findAllByServiceTypeWithImages(SERVICE_TYPE);
         return registrations.stream()
-                .filter(reg -> status == null || status.equalsIgnoreCase(reg.getStatus()))
-                .filter(reg -> paymentStatus == null || paymentStatus.equalsIgnoreCase(reg.getPaymentStatus()))
+                .filter(reg -> {
+                    if (status == null || status.isBlank()) {
+                        return true; // No status filter
+                    }
+                    String regStatus = reg.getStatus();
+                    // If filtering for PENDING, also include READY_FOR_PAYMENT and PAYMENT_PENDING
+                    // as these are also pending admin approval
+                    if ("PENDING".equalsIgnoreCase(status)) {
+                        return "PENDING".equalsIgnoreCase(regStatus) 
+                            || STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(regStatus)
+                            || STATUS_PAYMENT_PENDING.equalsIgnoreCase(regStatus);
+                    }
+                    return status.equalsIgnoreCase(regStatus);
+                })
+                .filter(reg -> paymentStatus == null || paymentStatus.isBlank() || paymentStatus.equalsIgnoreCase(reg.getPaymentStatus()))
                 .map(this::toDto)
                 .toList();
     }
@@ -379,6 +392,62 @@ public class VehicleRegistrationService {
             log.error("❌ [VehicleRegistration] Không thể gửi notification approval cho registrationId: {}", 
                     registration.getId(), e);
         }
+    }
+
+    @Transactional
+    public RegisterServiceRequestDto markPaymentAsPaid(UUID registrationId, UUID adminId) {
+        RegisterServiceRequest registration = requestRepository.findById(registrationId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
+
+        String currentPaymentStatus = registration.getPaymentStatus();
+        if ("PAID".equalsIgnoreCase(currentPaymentStatus)) {
+            throw new IllegalStateException("Đăng ký đã được đánh dấu là đã thanh toán");
+        }
+
+        OffsetDateTime now = OffsetDateTime.now(ZoneId.of("UTC"));
+        registration.setPaymentStatus("PAID");
+        registration.setPaymentDate(now);
+        registration.setPaymentGateway("MANUAL");
+        registration.setUpdatedAt(now);
+
+        // Nếu là gia hạn (status = NEEDS_RENEWAL hoặc SUSPENDED), sau khi thanh toán → set status = APPROVED
+        // Nếu là đăng ký mới, sau khi thanh toán → set status = PENDING_REVIEW (chờ admin duyệt)
+        String currentStatus = registration.getStatus();
+        if ("NEEDS_RENEWAL".equals(currentStatus) || "SUSPENDED".equals(currentStatus)) {
+            registration.setStatus(STATUS_APPROVED);
+            registration.setApprovedAt(now);
+            log.info("✅ [VehicleRegistration] Admin đánh dấu thanh toán thành công (gia hạn), thẻ {} đã được set status = APPROVED", registration.getId());
+        } else {
+            registration.setStatus(STATUS_PENDING_REVIEW);
+            log.info("✅ [VehicleRegistration] Admin đánh dấu thanh toán thành công (đăng ký mới), thẻ {} đã được set status = PENDING", registration.getId());
+        }
+
+        RegisterServiceRequest saved = requestRepository.save(registration);
+
+        // Record payment in billing service
+        try {
+            billingClient.recordVehicleRegistrationPayment(
+                    saved.getId(),
+                    saved.getUserId(),
+                    saved.getUnitId(),
+                    saved.getVehicleType(),
+                    saved.getLicensePlate(),
+                    saved.getRequestType(),
+                    saved.getNote(),
+                    saved.getPaymentAmount(),
+                    now,
+                    "MANUAL_" + saved.getId().toString(), // transactionRef
+                    null, // transactionNo
+                    "MANUAL", // bankCode
+                    null, // cardType
+                    "00" // responseCode (success)
+            );
+            log.info("✅ [VehicleRegistration] Đã ghi nhận thanh toán vào billing service");
+        } catch (Exception e) {
+            log.warn("⚠️ [VehicleRegistration] Không thể ghi nhận thanh toán vào billing service: {}", e.getMessage());
+        }
+
+        return toDto(saved);
     }
 
     @Transactional
@@ -630,13 +699,18 @@ public class VehicleRegistrationService {
                 .map(img -> new RegisterServiceImageDto(img.getId(), entity.getId(), img.getImageUrl(), img.getCreatedAt()))
                 .toList();
 
+        // Normalize COMPLETED to APPROVED for backward compatibility with old seed data
+        String normalizedStatus = "COMPLETED".equalsIgnoreCase(entity.getStatus()) 
+                ? STATUS_APPROVED 
+                : entity.getStatus();
+
         return new RegisterServiceRequestDto(
                 entity.getId(),
                 entity.getUserId(),
                 entity.getServiceType(),
                 entity.getRequestType(),
                 entity.getNote(),
-                entity.getStatus(),
+                normalizedStatus,
                 entity.getVehicleType(),
                 entity.getLicensePlate(),
                 entity.getVehicleBrand(),
