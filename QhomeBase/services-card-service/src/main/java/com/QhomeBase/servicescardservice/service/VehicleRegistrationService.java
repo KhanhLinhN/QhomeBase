@@ -323,6 +323,31 @@ public class VehicleRegistrationService {
 
         RegisterServiceRequest saved = requestRepository.save(registration);
 
+        // Create reminder state if card is already paid (for test mode)
+        // In production, reminder state will be created after payment callback
+        if ("PAID".equalsIgnoreCase(saved.getPaymentStatus())) {
+            try {
+                // Resolve residentId from userId and unitId
+                UUID residentId = residentUnitLookupService.resolveByUser(saved.getUserId(), saved.getUnitId())
+                        .map(ResidentUnitLookupService.AddressInfo::residentId)
+                        .orElse(null);
+                
+                cardFeeReminderService.resetReminderAfterPayment(
+                        CardFeeReminderService.CardFeeType.VEHICLE,
+                        saved.getId(),
+                        saved.getUnitId(),
+                        residentId,
+                        saved.getUserId(),
+                        saved.getApartmentNumber(),
+                        saved.getBuildingName(),
+                        saved.getPaymentDate() != null ? saved.getPaymentDate() : now
+                );
+                log.info("✅ [VehicleRegistration] Đã tạo reminder state cho thẻ {} sau khi approve", saved.getId());
+            } catch (Exception e) {
+                log.warn("⚠️ [VehicleRegistration] Không thể tạo reminder state sau khi approve: {}", e.getMessage());
+            }
+        }
+
         // Send notification to resident
         sendVehicleCardApprovalNotification(saved, issueMessage);
 

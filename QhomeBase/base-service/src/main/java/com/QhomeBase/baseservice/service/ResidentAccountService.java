@@ -395,10 +395,30 @@ public class ResidentAccountService {
                 log.info("Approved and created account for resident {}: userId={}, username={}", 
                         request.getResidentId(), account.userId(), account.username());
 
+                // Get building name for notification message
+                String buildingName = null;
+                if (request.getResidentId() != null) {
+                    List<HouseholdMember> members = householdMemberRepository.findActiveMembersByResidentId(request.getResidentId());
+                    if (!members.isEmpty()) {
+                        Household household = householdRepository.findById(members.get(0).getHouseholdId()).orElse(null);
+                        if (household != null && household.getUnitId() != null) {
+                            Unit unit = unitRepository.findById(household.getUnitId()).orElse(null);
+                            if (unit != null && unit.getBuilding() != null) {
+                                buildingName = unit.getBuilding().getName();
+                            }
+                        }
+                    }
+                }
+                
+                String message = "Ban quản trị đã tạo tài khoản cho thành viên của bạn.";
+                if (buildingName != null && !buildingName.isBlank()) {
+                    message += " Tòa nhà: " + buildingName;
+                }
+                
                 notifyAccountRequestStatus(
                         request,
                         "Yêu cầu tạo tài khoản đã được duyệt",
-                        "Ban quản trị đã tạo tài khoản cho thành viên của bạn."
+                        message
                 );
             } catch (Exception e) {
                 log.error("Failed to create account after approval for resident {}: {}", 
@@ -409,10 +429,30 @@ public class ResidentAccountService {
                 request.setRejectedAt(OffsetDateTime.now());
                 accountCreationRequestRepository.save(request);
 
+                // Get building name for notification message
+                String buildingNameForError = null;
+                if (request.getResidentId() != null) {
+                    List<HouseholdMember> members = householdMemberRepository.findActiveMembersByResidentId(request.getResidentId());
+                    if (!members.isEmpty()) {
+                        Household household = householdRepository.findById(members.get(0).getHouseholdId()).orElse(null);
+                        if (household != null && household.getUnitId() != null) {
+                            Unit unit = unitRepository.findById(household.getUnitId()).orElse(null);
+                            if (unit != null && unit.getBuilding() != null) {
+                                buildingNameForError = unit.getBuilding().getName();
+                            }
+                        }
+                    }
+                }
+                
+                String errorMessage = "Hệ thống chưa thể tạo tài khoản. Vui lòng liên hệ ban quản trị để được hỗ trợ.";
+                if (buildingNameForError != null && !buildingNameForError.isBlank()) {
+                    errorMessage += " Tòa nhà: " + buildingNameForError;
+                }
+                
                 notifyAccountRequestStatus(
                         request,
                         "Yêu cầu tạo tài khoản chưa được xử lý",
-                        "Hệ thống chưa thể tạo tài khoản. Vui lòng liên hệ ban quản trị để được hỗ trợ."
+                        errorMessage
                 );
                 throw new RuntimeException("Failed to create account after approval: " + e.getMessage(), e);
             }
@@ -425,12 +465,32 @@ public class ResidentAccountService {
             accountCreationRequestRepository.save(request);
             log.info("Rejected account request {} by admin {}", requestId, adminUserId);
 
+            // Get building name for notification message
+            String buildingName = null;
+            if (request.getResidentId() != null) {
+                List<HouseholdMember> members = householdMemberRepository.findActiveMembersByResidentId(request.getResidentId());
+                if (!members.isEmpty()) {
+                    Household household = householdRepository.findById(members.get(0).getHouseholdId()).orElse(null);
+                    if (household != null && household.getUnitId() != null) {
+                        Unit unit = unitRepository.findById(household.getUnitId()).orElse(null);
+                        if (unit != null && unit.getBuilding() != null) {
+                            buildingName = unit.getBuilding().getName();
+                        }
+                    }
+                }
+            }
+            
+            String message = rejectionReason != null && !rejectionReason.isBlank()
+                    ? rejectionReason
+                    : "Ban quản trị đã từ chối yêu cầu tạo tài khoản cho thành viên.";
+            if (buildingName != null && !buildingName.isBlank()) {
+                message += " Tòa nhà: " + buildingName;
+            }
+            
             notifyAccountRequestStatus(
                     request,
                     "Yêu cầu tạo tài khoản bị từ chối",
-                    rejectionReason != null && !rejectionReason.isBlank()
-                            ? rejectionReason
-                            : "Ban quản trị đã từ chối yêu cầu tạo tài khoản cho thành viên."
+                    message
             );
         }
 
@@ -563,6 +623,7 @@ public class ResidentAccountService {
             UUID buildingId = null;
             UUID unitId = null;
             String unitCode = null;
+            String buildingName = null;
 
             if (request.getResidentId() != null) {
                 List<HouseholdMember> members = householdMemberRepository.findActiveMembersByResidentId(request.getResidentId());
@@ -575,6 +636,7 @@ public class ResidentAccountService {
                             unitCode = unit.getCode();
                             if (unit.getBuilding() != null) {
                                 buildingId = unit.getBuilding().getId();
+                                buildingName = unit.getBuilding().getName();
                             }
                         }
                     }
@@ -593,6 +655,9 @@ public class ResidentAccountService {
             }
             if (unitCode != null) {
                 data.put("unitCode", unitCode);
+            }
+            if (buildingName != null) {
+                data.put("buildingName", buildingName);
             }
             if (targetResident != null && targetResident.getFullName() != null) {
                 data.put("memberName", targetResident.getFullName());

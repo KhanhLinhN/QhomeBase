@@ -290,5 +290,78 @@ public class FileStorageService {
             throw new FileStorageException("Sorry! Filename contains invalid path sequence: " + fileName);
         }
     }
+
+    /**
+     * Load file by simple path (for backward compatibility)
+     * Example: "news/cover_maintenance.jpg" -> resolves to uploads/news/cover_maintenance.jpg
+     * This method handles old URL format without ownerId/date structure
+     * Also tries to find file in subdirectories if not found at root level
+     */
+    public Resource loadFileByPath(String filePath) {
+        try {
+            // Remove leading slash if present
+            if (filePath.startsWith("/")) {
+                filePath = filePath.substring(1);
+            }
+            
+            log.debug("Loading file by path: {} | Storage location: {}", filePath, this.fileStorageLocation);
+            
+            // First, try direct path: uploads/news/cover_maintenance.jpg
+            Path targetPath = this.fileStorageLocation.resolve(filePath).normalize();
+            
+            // Security check: ensure the resolved path is within storage location
+            if (!targetPath.startsWith(this.fileStorageLocation.normalize())) {
+                throw new FileStorageException("Invalid file path: " + filePath);
+            }
+            
+            Resource resource = new UrlResource(targetPath.toUri());
+            if (resource.exists() && resource.isReadable()) {
+                log.info("File found at direct path: {}", targetPath);
+                return resource;
+            }
+            
+            // If not found, try to search in subdirectories
+            // Example: news/cover_maintenance.jpg -> search in uploads/news/*/cover_maintenance.jpg
+            log.debug("File not found at direct path: {}, searching in subdirectories...", targetPath);
+            
+            String[] pathParts = filePath.split("/");
+            if (pathParts.length >= 2) {
+                String category = pathParts[0]; // e.g., "news"
+                String fileName = pathParts[pathParts.length - 1]; // e.g., "cover_maintenance.jpg"
+                
+                Path categoryPath = this.fileStorageLocation.resolve(category);
+                if (Files.exists(categoryPath) && Files.isDirectory(categoryPath)) {
+                    // Search recursively in category directory
+                    try {
+                        Path foundFile = Files.walk(categoryPath)
+                                .filter(Files::isRegularFile)
+                                .filter(p -> p.getFileName().toString().equals(fileName))
+                                .findFirst()
+                                .orElse(null);
+                        
+                        if (foundFile != null) {
+                            log.info("File found in subdirectory: {}", foundFile);
+                            Resource foundResource = new UrlResource(foundFile.toUri());
+                            if (foundResource.exists() && foundResource.isReadable()) {
+                                return foundResource;
+                            }
+                        }
+                    } catch (IOException e) {
+                        log.warn("Error searching for file in subdirectories: {}", e.getMessage());
+                    }
+                }
+            }
+            
+            log.warn("File not found: {} | Searched at: {}", filePath, targetPath);
+            throw new com.QhomeBase.datadocsservice.exception.FileNotFoundException("File not found: " + filePath);
+            
+        } catch (MalformedURLException ex) {
+            log.error("Malformed URL for file path: {}", filePath, ex);
+            throw new com.QhomeBase.datadocsservice.exception.FileNotFoundException("File not found: " + filePath, ex);
+        } catch (IOException ex) {
+            log.error("Error loading file: {}", filePath, ex);
+            throw new FileStorageException("Could not load file: " + filePath, ex);
+        }
+    }
 }
 

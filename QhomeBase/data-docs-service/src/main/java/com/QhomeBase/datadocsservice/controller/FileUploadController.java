@@ -158,6 +158,7 @@ public class FileUploadController {
                 .body(resource);
     }
 
+
     @ExceptionHandler(FileStorageException.class)
     public ResponseEntity<ErrorResponse> handleFileStorageException(FileStorageException ex) {
         return ResponseEntity

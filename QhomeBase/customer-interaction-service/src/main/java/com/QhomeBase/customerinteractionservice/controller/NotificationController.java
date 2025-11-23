@@ -11,6 +11,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -68,12 +69,27 @@ public class NotificationController {
     }
 
     @GetMapping("/resident")
-    public ResponseEntity<List<NotificationResponse>> getNotificationsForResident(
+    public ResponseEntity<?> getNotificationsForResident(
+            @RequestParam UUID residentId,
+            @RequestParam UUID buildingId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "7") int size) {
+        
+        // Ensure size is 7 as per requirement
+        size = 7;
+        
+        com.QhomeBase.customerinteractionservice.dto.notification.NotificationPagedResponse pagedResponse = 
+                notificationService.getNotificationsForResidentPaged(residentId, buildingId, page, size);
+        return ResponseEntity.ok(pagedResponse);
+    }
+
+    @GetMapping("/resident/count")
+    public ResponseEntity<Map<String, Long>> getNotificationsCountForResident(
             @RequestParam UUID residentId,
             @RequestParam UUID buildingId) {
         
-        List<NotificationResponse> notifications = notificationService.getNotificationsForResident(residentId, buildingId);
-        return ResponseEntity.ok(notifications);
+        long totalCount = notificationService.getNotificationsCountForResident(residentId, buildingId);
+        return ResponseEntity.ok(java.util.Map.of("totalCount", totalCount));
     }
 
     @GetMapping("/role")

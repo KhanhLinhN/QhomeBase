@@ -14,6 +14,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -80,12 +82,18 @@ public class NewsService {
     }
 
     private NewsDetailResponse toDetailResponse(News news) {
+        // Normalize coverImageUrl: convert empty string to null
+        String coverImageUrl = news.getCoverImageUrl();
+        if (coverImageUrl != null && coverImageUrl.trim().isEmpty()) {
+            coverImageUrl = null;
+        }
+        
         return NewsDetailResponse.builder()
                 .id(news.getId())
                 .title(news.getTitle())
                 .summary(news.getSummary())
                 .bodyHtml(news.getBodyHtml())
-                .coverImageUrl(news.getCoverImageUrl())
+                .coverImageUrl(coverImageUrl)
                 .status(news.getStatus())
                 .publishAt(news.getPublishAt())
                 .expireAt(news.getExpireAt())
@@ -223,18 +231,79 @@ public class NewsService {
         return toDetailResponse(news);
     }
 
-    public List<NewsDetailResponse> getNewsForResident(UUID residentId) {
+    public NewsPagedResponse getNewsForResidentPaged(UUID residentId, int page, int size) {
         List<News> allNews = newsRepository.findAll();
 
-        return allNews.stream()
+        List<NewsDetailResponse> filteredAndSorted = allNews.stream()
+                // Only show news with status = PUBLISHED (exclude DRAFT, SCHEDULED, HIDDEN, EXPIRED, ARCHIVED)
+                .filter(news -> news.getStatus() == NewsStatus.PUBLISHED)
                 .filter(news -> shouldShowNewsToResident(news, residentId))
+                .sorted((n1, n2) -> {
+                    // Sort by publishAt DESC (newest first, from largest to smallest date)
+                    // News with newest publishAt will be on page 1 (first page)
+                    // If publishAt is null, fallback to createdAt
+                    Instant publishAt1 = n1.getPublishAt() != null ? n1.getPublishAt() : n1.getCreatedAt();
+                    Instant publishAt2 = n2.getPublishAt() != null ? n2.getPublishAt() : n2.getCreatedAt();
+                    
+                    if (publishAt1 != null && publishAt2 != null) {
+                        // Sort DESC: publishAt2.compareTo(publishAt1) means newer date comes first
+                        return publishAt2.compareTo(publishAt1);
+                    }
+                    // If one publishAt is null, prioritize the one with publishAt
+                    if (publishAt1 != null) return -1;
+                    if (publishAt2 != null) return 1;
+                    return 0;
+                })
                 .map(this::toDetailResponse)
                 .collect(Collectors.toList());
+
+        // Calculate pagination
+        long totalElements = filteredAndSorted.size();
+        int totalPages = (int) Math.ceil((double) totalElements / size);
+        
+        // Ensure page is within valid range
+        if (page < 0) {
+            page = 0;
+        }
+        if (page >= totalPages && totalPages > 0) {
+            page = totalPages - 1;
+        }
+
+        // Apply pagination
+        int start = page * size;
+        int end = Math.min(start + size, filteredAndSorted.size());
+        List<NewsDetailResponse> pagedContent = start < filteredAndSorted.size() 
+                ? filteredAndSorted.subList(start, end)
+                : new ArrayList<>();
+
+        return NewsPagedResponse.builder()
+                .content(pagedContent)
+                .currentPage(page)
+                .pageSize(size)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+                .hasNext(page < totalPages - 1)
+                .hasPrevious(page > 0)
+                .isFirst(page == 0)
+                .isLast(page >= totalPages - 1 || totalPages == 0)
+                .build();
+    }
+
+    // Backward compatibility method - returns first page
+    public List<NewsDetailResponse> getNewsForResident(UUID residentId) {
+        NewsPagedResponse pagedResponse = getNewsForResidentPaged(residentId, 0, 7);
+        return pagedResponse.getContent();
     }
 
     private boolean shouldShowNewsToResident(News news, UUID residentId) {
-        if (!news.isActive()) {
-            return false;
+        // Note: Status filter (PUBLISHED only) is already applied before calling this method
+        // So we don't need to check isActive() here, but we still check publishAt/expireAt dates
+        Instant now = Instant.now();
+        if (news.getPublishAt() != null && news.getPublishAt().isAfter(now)) {
+            return false; // Not published yet
+        }
+        if (news.getExpireAt() != null && news.getExpireAt().isBefore(now)) {
+            return false; // Already expired
         }
 
         NotificationScope scope = news.getScope();

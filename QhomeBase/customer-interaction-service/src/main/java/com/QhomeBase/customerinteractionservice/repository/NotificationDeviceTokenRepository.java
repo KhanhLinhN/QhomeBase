@@ -24,7 +24,7 @@ public interface NotificationDeviceTokenRepository extends JpaRepository<Notific
     @Query("""
             select t from NotificationDeviceToken t
             where t.disabled = false
-            and (t.buildingId is null or t.buildingId = :buildingId)
+            and t.buildingId = :buildingId
             """)
     List<NotificationDeviceToken> findForBuilding(@Param("buildingId") UUID buildingId);
 

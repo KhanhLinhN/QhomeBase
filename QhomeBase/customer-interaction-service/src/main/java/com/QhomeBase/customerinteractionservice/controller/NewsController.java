@@ -71,10 +71,15 @@ public class NewsController {
     }
 
     @GetMapping("/resident")
-    public ResponseEntity<List<NewsDetailResponse>> getNewsForResident(
-            @RequestParam UUID residentId) {
+    public ResponseEntity<?> getNewsForResident(
+            @RequestParam UUID residentId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "7") int size) {
         
-        List<NewsDetailResponse> news = newsService.getNewsForResident(residentId);
+        // Ensure size is 7 as per requirement
+        size = 7;
+        
+        NewsPagedResponse news = newsService.getNewsForResidentPaged(residentId, page, size);
         return ResponseEntity.ok(news);
     }
 

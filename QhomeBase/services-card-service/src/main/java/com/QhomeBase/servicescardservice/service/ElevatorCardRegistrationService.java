@@ -200,6 +200,26 @@ public class ElevatorCardRegistrationService {
 
             ElevatorCardRegistration saved = repository.save(registration);
 
+            // Create reminder state if card is already paid (for test mode)
+            // In production, reminder state will be created after payment callback
+            if ("PAID".equalsIgnoreCase(saved.getPaymentStatus())) {
+                try {
+                    cardFeeReminderService.resetReminderAfterPayment(
+                            CardFeeReminderService.CardFeeType.ELEVATOR,
+                            saved.getId(),
+                            saved.getUnitId(),
+                            saved.getResidentId(),
+                            saved.getUserId(),
+                            saved.getApartmentNumber(),
+                            saved.getBuildingName(),
+                            saved.getPaymentDate() != null ? saved.getPaymentDate() : now
+                    );
+                    log.info("✅ [ElevatorCard] Đã tạo reminder state cho thẻ {} sau khi approve", saved.getId());
+                } catch (Exception e) {
+                    log.warn("⚠️ [ElevatorCard] Không thể tạo reminder state sau khi approve: {}", e.getMessage());
+                }
+            }
+
             // Send notification to resident
             sendElevatorCardApprovalNotification(saved, request.issueMessage());
 

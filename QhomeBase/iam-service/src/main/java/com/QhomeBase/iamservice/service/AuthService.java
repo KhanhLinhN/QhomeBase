@@ -131,6 +131,10 @@ public class AuthService {
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
     }
 
+    public boolean emailExists(String email) {
+        return userRepository.findByEmail(email).isPresent();
+    }
+
     @Transactional
     public void refreshToken(UUID userId) {
         User user = userRepository.findById(userId)

@@ -13,8 +13,8 @@ import com.QhomeBase.baseservice.repository.HouseholdRepository;
 import com.QhomeBase.baseservice.repository.MaintenanceRequestRepository;
 import com.QhomeBase.baseservice.repository.ResidentRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -22,6 +22,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -29,7 +30,6 @@ import java.util.Map;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 @Transactional
 public class MaintenanceRequestService {
@@ -39,9 +39,11 @@ public class MaintenanceRequestService {
     private static final String STATUS_DONE = "DONE";
     private static final String STATUS_CANCELLED = "CANCELLED";
 
-    private static final LocalTime WORKING_START = LocalTime.of(8, 0);
-    private static final LocalTime WORKING_END = LocalTime.of(18, 0);
     private static final ZoneId DEFAULT_TIMEZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
+    
+    private final LocalTime workingStart;
+    private final LocalTime workingEnd;
 
     private final MaintenanceRequestRepository maintenanceRequestRepository;
     private final UnitRepository unitRepository;
@@ -49,6 +51,25 @@ public class MaintenanceRequestService {
     private final HouseholdRepository householdRepository;
     private final HouseholdMemberRepository householdMemberRepository;
     private final NotificationClient notificationClient;
+
+    public MaintenanceRequestService(
+            MaintenanceRequestRepository maintenanceRequestRepository,
+            UnitRepository unitRepository,
+            ResidentRepository residentRepository,
+            HouseholdRepository householdRepository,
+            HouseholdMemberRepository householdMemberRepository,
+            NotificationClient notificationClient,
+            @Value("${maintenance.request.working.hours.start:06:00}") String workingStartStr,
+            @Value("${maintenance.request.working.hours.end:23:30}") String workingEndStr) {
+        this.maintenanceRequestRepository = maintenanceRequestRepository;
+        this.unitRepository = unitRepository;
+        this.residentRepository = residentRepository;
+        this.householdRepository = householdRepository;
+        this.householdMemberRepository = householdMemberRepository;
+        this.notificationClient = notificationClient;
+        this.workingStart = LocalTime.parse(workingStartStr, TIME_FORMATTER);
+        this.workingEnd = LocalTime.parse(workingEndStr, TIME_FORMATTER);
+    }
 
     @SuppressWarnings("null")
     public MaintenanceRequestDto create(UUID userId, CreateMaintenanceRequestDto dto) {
@@ -183,10 +204,10 @@ public class MaintenanceRequestService {
         }
 
         LocalTime preferredTime = preferredDatetime.toLocalTime();
-        if (preferredTime.isBefore(WORKING_START) || preferredTime.isAfter(WORKING_END)) {
+        if (preferredTime.isBefore(workingStart) || preferredTime.isAfter(workingEnd)) {
             throw new IllegalArgumentException(
                     String.format("Preferred time must be between %s and %s",
-                            WORKING_START, WORKING_END));
+                            workingStart, workingEnd));
         }
     }
 

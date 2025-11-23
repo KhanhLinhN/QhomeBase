@@ -128,10 +128,51 @@ public class CardFeeReminderService {
 
         List<CardFeeReminderState> states = reminderStateRepository.findDueStates(safeToday, cutoffDate);
 
-        // Filter out states that were already reminded today
+        // Filter out states that were already reminded
+        // In test mode (cycleDays = 0): check minutes (allow sending every minute)
+        // In production mode (cycleDays > 0): check days (send once per day)
+        boolean isTestMode = getSafeCycleDays() == 0;
+        OffsetDateTime now = OffsetDateTime.now(DEFAULT_ZONE);
+        
         return states.stream()
-                .filter(state -> state.getLastRemindedAt() == null
-                        || state.getLastRemindedAt().atZoneSameInstant(DEFAULT_ZONE).toLocalDate().isBefore(safeToday))
+                .filter(state -> {
+                    // First, check if card is still active (not cancelled, suspended, or rejected)
+                    if (!isCardActive(state)) {
+                        return false; // Skip reminder for inactive cards
+                    }
+                    
+                    if (isTestMode) {
+                        // Test mode: check minutes
+                        if (state.getLastRemindedAt() == null) {
+                            // First reminder: check if at least 2 minutes have passed since approval
+                            // Get approved_at from card to calculate delay
+                            OffsetDateTime approvedAt = getApprovedAtFromCard(
+                                    CardFeeType.valueOf(state.getCardType()), 
+                                    state.getCardId());
+                            if (approvedAt != null) {
+                                long minutesSinceApproval = java.time.Duration.between(
+                                        approvedAt, now).toMinutes();
+                                // First reminder requires 2 minutes delay
+                                return minutesSinceApproval >= 2;
+                            }
+                            // If can't get approved_at, allow sending (fallback)
+                            return true;
+                        } else {
+                            // Subsequent reminders: allow sending every minute
+                            long minutesSinceLastReminder = java.time.Duration.between(
+                                    state.getLastRemindedAt(), now).toMinutes();
+                            return minutesSinceLastReminder >= 1; // At least 1 minute since last reminder
+                        }
+                    } else {
+                        // Production mode: check days - send once per day
+                        if (state.getLastRemindedAt() == null) {
+                            return true; // Never reminded, allow sending
+                        }
+                        LocalDate lastRemindedDate = state.getLastRemindedAt()
+                                .atZoneSameInstant(DEFAULT_ZONE).toLocalDate();
+                        return lastRemindedDate.isBefore(safeToday);
+                    }
+                })
                 .toList();
     }
 
@@ -388,6 +429,63 @@ public class CardFeeReminderService {
         }
         String trimmed = value.trim();
         return trimmed.length() > 100 ? trimmed.substring(0, 100) : trimmed;
+    }
+
+    /**
+     * Check if card is still active (not cancelled, suspended, or rejected).
+     * Cards that are cancelled, suspended, or rejected should not receive reminders.
+     */
+    private boolean isCardActive(CardFeeReminderState state) {
+        try {
+            CardFeeType cardType = CardFeeType.valueOf(state.getCardType());
+            UUID cardId = state.getCardId();
+            
+            switch (cardType) {
+                case RESIDENT -> {
+                    return residentCardRepository.findById(cardId)
+                            .map(card -> {
+                                String status = card.getStatus();
+                                // Exclude cancelled, suspended, and rejected cards
+                                return status != null 
+                                    && !status.equalsIgnoreCase("CANCELLED")
+                                    && !status.equalsIgnoreCase("SUSPENDED")
+                                    && !status.equalsIgnoreCase("REJECTED");
+                            })
+                            .orElse(false); // If card not found, consider inactive
+                }
+                case ELEVATOR -> {
+                    return elevatorCardRepository.findById(cardId)
+                            .map(card -> {
+                                String status = card.getStatus();
+                                // Exclude cancelled, suspended, and rejected cards
+                                return status != null 
+                                    && !status.equalsIgnoreCase("CANCELLED")
+                                    && !status.equalsIgnoreCase("SUSPENDED")
+                                    && !status.equalsIgnoreCase("REJECTED");
+                            })
+                            .orElse(false); // If card not found, consider inactive
+                }
+                case VEHICLE -> {
+                    return vehicleRegistrationRepository.findById(cardId)
+                            .map(card -> {
+                                String status = card.getStatus();
+                                // Exclude cancelled, suspended, and rejected cards
+                                return status != null 
+                                    && !status.equalsIgnoreCase("CANCELLED")
+                                    && !status.equalsIgnoreCase("SUSPENDED")
+                                    && !status.equalsIgnoreCase("REJECTED");
+                            })
+                            .orElse(false); // If card not found, consider inactive
+                }
+                default -> {
+                    return false;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ [CardFeeReminder] Không thể kiểm tra trạng thái card {} {}: {}", 
+                    state.getCardType(), state.getCardId(), e.getMessage());
+            return false; // On error, consider inactive to be safe
+        }
     }
 
     /**

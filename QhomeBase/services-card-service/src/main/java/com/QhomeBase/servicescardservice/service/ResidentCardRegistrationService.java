@@ -59,6 +59,11 @@ public class ResidentCardRegistrationService {
     public ResidentCardRegistrationDto createRegistration(UUID userId, ResidentCardRegistrationCreateDto dto) {
         validatePayload(dto);
 
+        // Normalize citizenId: loại bỏ tất cả ký tự không phải số
+        String normalizedCitizenId = dto.citizenId() != null 
+                ? dto.citizenId().replaceAll("[^0-9]", "") 
+                : null;
+        
         ResidentCardRegistration registration = ResidentCardRegistration.builder()
                 .userId(userId)
                 .unitId(dto.unitId())
@@ -67,7 +72,7 @@ public class ResidentCardRegistrationService {
                 .fullName(normalize(dto.fullName()))
                 .apartmentNumber(normalize(dto.apartmentNumber()))
                 .buildingName(normalize(dto.buildingName()))
-                .citizenId(normalize(dto.citizenId()))
+                .citizenId(normalizedCitizenId)
                 .phoneNumber(normalize(dto.phoneNumber()))
                 .note(dto.note())
                 .status(STATUS_READY_FOR_PAYMENT)
@@ -161,6 +166,26 @@ public class ResidentCardRegistrationService {
             registration.setUpdatedAt(now);
 
             ResidentCardRegistration saved = repository.save(registration);
+
+            // Create reminder state if card is already paid (for test mode)
+            // In production, reminder state will be created after payment callback
+            if ("PAID".equalsIgnoreCase(saved.getPaymentStatus())) {
+                try {
+                    cardFeeReminderService.resetReminderAfterPayment(
+                            CardFeeReminderService.CardFeeType.RESIDENT,
+                            saved.getId(),
+                            saved.getUnitId(),
+                            saved.getResidentId(),
+                            saved.getUserId(),
+                            saved.getApartmentNumber(),
+                            saved.getBuildingName(),
+                            saved.getPaymentDate() != null ? saved.getPaymentDate() : now
+                    );
+                    log.info("✅ [ResidentCard] Đã tạo reminder state cho thẻ {} sau khi approve", saved.getId());
+                } catch (Exception e) {
+                    log.warn("⚠️ [ResidentCard] Không thể tạo reminder state sau khi approve: {}", e.getMessage());
+                }
+            }
 
             // Send notification to resident
             sendCardApprovalNotification(saved, request.issueMessage());
@@ -482,23 +507,31 @@ public class ResidentCardRegistrationService {
         // Validate số lượng thẻ cư dân không vượt quá số người trong căn hộ
         validateResidentCardLimitByUnit(dto.unitId());
         
-        // Validate CCCD phải thuộc căn hộ đó và không được trùng với thẻ cư dân đã tồn tại
-        if (StringUtils.hasText(dto.citizenId())) {
-            String normalizedCitizenId = normalize(dto.citizenId());
-            
-            // Kiểm tra CCCD có thuộc căn hộ không
-            validateCitizenIdBelongsToUnit(normalizedCitizenId, dto.unitId());
-            
-            // Kiểm tra CCCD đã được sử dụng chưa
-            if (repository.existsByCitizenId(normalizedCitizenId)) {
-                throw new IllegalStateException(
-                    String.format("CCCD/CMND %s đã được sử dụng để đăng ký thẻ cư dân. " +
-                                "Mỗi CCCD/CMND chỉ được phép đăng ký 1 thẻ cư dân.",
-                                normalizedCitizenId)
-                );
-            }
-            log.debug("✅ [ResidentCard] CCCD {} chưa được sử dụng và thuộc căn hộ", normalizedCitizenId);
+        // Validate CCCD phải là 13 số
+        if (!StringUtils.hasText(dto.citizenId())) {
+            throw new IllegalArgumentException("CCCD/CMND là bắt buộc");
         }
+        
+        // Normalize CCCD: loại bỏ tất cả khoảng trắng và ký tự không phải số
+        String normalizedCitizenId = dto.citizenId().replaceAll("[^0-9]", "");
+        
+        // Validate format: phải đúng 13 số
+        if (normalizedCitizenId.length() != 13) {
+            throw new IllegalArgumentException("CCCD/CMND phải là 13 số");
+        }
+        
+        // Kiểm tra CCCD có thuộc căn hộ không
+        validateCitizenIdBelongsToUnit(normalizedCitizenId, dto.unitId());
+        
+        // Kiểm tra CCCD đã được sử dụng chưa
+        if (repository.existsByCitizenId(normalizedCitizenId)) {
+            throw new IllegalStateException(
+                String.format("CCCD/CMND %s đã được sử dụng để đăng ký thẻ cư dân. " +
+                            "Mỗi CCCD/CMND chỉ được phép đăng ký 1 thẻ cư dân.",
+                            normalizedCitizenId)
+            );
+        }
+        log.debug("✅ [ResidentCard] CCCD {} chưa được sử dụng và thuộc căn hộ", normalizedCitizenId);
     }
 
     /**
