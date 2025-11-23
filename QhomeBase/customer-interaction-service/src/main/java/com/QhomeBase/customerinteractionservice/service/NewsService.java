@@ -220,24 +220,52 @@ public class NewsService {
         return toManagementResponse(news);
     }
 
-    public NewsDetailResponse getNewsForResident(UUID newsId, UUID residentId) {
-        News news = newsRepository.findById(newsId)
-                .orElseThrow(() -> new IllegalArgumentException("News not found with ID: " + newsId));
-
-        if (!shouldShowNewsToResident(news, residentId)) {
-            throw new IllegalArgumentException("News not accessible for this resident");
-        }
-
-        return toDetailResponse(news);
-    }
 
     public NewsPagedResponse getNewsForResidentPaged(UUID residentId, int page, int size) {
+        // Lấy buildingId từ residentId
+        UUID buildingId = getResidentBuildingId(residentId);
+        
+        log.info("🔍 [NewsService] getNewsForResidentPaged: residentId={}, buildingId={}, page={}, size={}", 
+                residentId, buildingId, page, size);
+        
         List<News> allNews = newsRepository.findAll();
+        
+        log.info("📰 [NewsService] Total news in DB: {}", allNews.size());
+        
+        // Log tất cả news trong DB để debug
+        for (News news : allNews) {
+            log.debug("📰 [NewsService] News in DB: id={}, title={}, status={}, scope={}, targetBuildingId={}, publishAt={}, expireAt={}", 
+                    news.getId(), news.getTitle(), news.getStatus(), news.getScope(), 
+                    news.getTargetBuildingId(), news.getPublishAt(), news.getExpireAt());
+        }
 
         List<NewsDetailResponse> filteredAndSorted = allNews.stream()
                 // Only show news with status = PUBLISHED (exclude DRAFT, SCHEDULED, HIDDEN, EXPIRED, ARCHIVED)
-                .filter(news -> news.getStatus() == NewsStatus.PUBLISHED)
-                .filter(news -> shouldShowNewsToResident(news, residentId))
+                .peek(news -> log.debug("📰 [NewsService] Checking news {}: status={}, scope={}, targetBuildingId={}", 
+                        news.getId(), news.getStatus(), news.getScope(), news.getTargetBuildingId()))
+                .filter(news -> {
+                    boolean isPublished = news.getStatus() == NewsStatus.PUBLISHED;
+                    if (!isPublished) {
+                        log.debug("❌ [NewsService] News {} filtered out: status={} (not PUBLISHED)", 
+                                news.getId(), news.getStatus());
+                    }
+                    return isPublished;
+                })
+                .filter(news -> {
+                    // Filter theo buildingId: chỉ hiển thị news có targetBuildingId = null (tất cả tòa) 
+                    // hoặc targetBuildingId = buildingId (tòa của resident)
+                    boolean shouldShow = shouldShowNewsToBuilding(news, buildingId);
+                    if (!shouldShow) {
+                        log.info("❌ [NewsService] News {} filtered out: title={}, status={}, scope={}, targetBuildingId={}, publishAt={}, expireAt={}, buildingId={}", 
+                                news.getId(), news.getTitle(), news.getStatus(), news.getScope(), 
+                                news.getTargetBuildingId(), news.getPublishAt(), news.getExpireAt(), buildingId);
+                    } else {
+                        log.info("✅ [NewsService] News {} passed all filters: title={}, scope={}, targetBuildingId={}, publishAt={}, expireAt={}", 
+                                news.getId(), news.getTitle(), news.getScope(), news.getTargetBuildingId(), 
+                                news.getPublishAt(), news.getExpireAt());
+                    }
+                    return shouldShow;
+                })
                 .sorted((n1, n2) -> {
                     // Sort by publishAt DESC (newest first, from largest to smallest date)
                     // News with newest publishAt will be on page 1 (first page)
@@ -256,6 +284,9 @@ public class NewsService {
                 })
                 .map(this::toDetailResponse)
                 .collect(Collectors.toList());
+
+        log.info("✅ [NewsService] getNewsForResidentPaged: after filtering, found {} news for residentId={}, buildingId={}", 
+                filteredAndSorted.size(), residentId, buildingId);
 
         // Calculate pagination
         long totalElements = filteredAndSorted.size();
@@ -294,62 +325,14 @@ public class NewsService {
         NewsPagedResponse pagedResponse = getNewsForResidentPaged(residentId, 0, 7);
         return pagedResponse.getContent();
     }
-
-    private boolean shouldShowNewsToResident(News news, UUID residentId) {
-        // Note: Status filter (PUBLISHED only) is already applied before calling this method
-        // So we don't need to check isActive() here, but we still check publishAt/expireAt dates
-        Instant now = Instant.now();
-        if (news.getPublishAt() != null && news.getPublishAt().isAfter(now)) {
-            return false; // Not published yet
-        }
-        if (news.getExpireAt() != null && news.getExpireAt().isBefore(now)) {
-            return false; // Already expired
-        }
-
-        NotificationScope scope = news.getScope();
-        if (scope == null) {
-            return true;
-        }
-
-        if (scope == NotificationScope.INTERNAL) {
-            return false;
-        }
-        if (scope == NotificationScope.EXTERNAL) {
-            if (news.getTargetBuildingId() == null) {
-                return true;
-            }
-
-            UUID residentBuildingId = getResidentBuildingId(residentId);
-            if (residentBuildingId == null) {
-                log.debug("Unable to resolve building for resident {} -> allow news {}", residentId, news.getId());
-                return true;
-            }
-            return residentBuildingId.equals(news.getTargetBuildingId());
-        }
-        if (news.getScope() == null) {
-            return true;
-        }
-
-        if (news.getScope() == NotificationScope.INTERNAL) {
-            return false;
-        }
-
-        if (news.getScope() == NotificationScope.EXTERNAL) {
-            if (news.getTargetBuildingId() == null) {
-                return true;
-            }
-
-            UUID residentBuildingId = getResidentBuildingId(residentId);
-            if (residentBuildingId == null) {
-                log.debug("Unable to resolve building for resident {} -> allow news {}", residentId, news.getId());
-                return true;
-            }
-            return residentBuildingId.equals(news.getTargetBuildingId());
-        }
-
-        return true;
-    }
-
+    
+    /**
+     * Lấy buildingId từ residentId bằng cách:
+     * 1. Lấy household members của resident
+     * 2. Lấy household từ member
+     * 3. Lấy unit từ household
+     * 4. Lấy buildingId từ unit
+     */
     private UUID getResidentBuildingId(UUID residentId) {
         if (residentId == null) {
             return null;
@@ -357,34 +340,132 @@ public class NewsService {
         try {
             List<HouseholdMemberDto> members = baseServiceClient.getActiveHouseholdMembersByResident(residentId);
             if (members == null || members.isEmpty()) {
+                log.warn("⚠️ [NewsService] No household members found for resident {}", residentId);
                 return null;
             }
 
+            // Ưu tiên primary member, nếu không có thì lấy member đầu tiên
             HouseholdMemberDto prioritizedMember = members.stream()
                     .filter(member -> Boolean.TRUE.equals(member.isPrimary()))
                     .findFirst()
                     .orElse(members.get(0));
 
             if (prioritizedMember.householdId() == null) {
+                log.warn("⚠️ [NewsService] No householdId found for resident {}", residentId);
                 return null;
             }
 
             HouseholdDto household = baseServiceClient.getHouseholdById(prioritizedMember.householdId());
             if (household == null || household.unitId() == null) {
+                log.warn("⚠️ [NewsService] No unitId found for household {}", prioritizedMember.householdId());
                 return null;
             }
 
             UnitDto unit = baseServiceClient.getUnitById(household.unitId());
-            if (unit == null) {
+            if (unit == null || unit.buildingId() == null) {
+                log.warn("⚠️ [NewsService] No buildingId found for unit {}", household.unitId());
                 return null;
             }
 
+            log.info("✅ [NewsService] Resolved buildingId={} for residentId={}", unit.buildingId(), residentId);
             return unit.buildingId();
         } catch (Exception e) {
-            log.warn("Failed to resolve building for resident {}: {}", residentId, e.getMessage());
+            log.warn("⚠️ [NewsService] Failed to resolve buildingId for resident {}: {}", residentId, e.getMessage());
             return null;
         }
     }
+
+    /**
+     * Kiểm tra xem news có nên hiển thị cho building không.
+     * 
+     * Logic:
+     * 1. Kiểm tra publishAt/expireAt dates
+     * 2. Nếu scope == null → hiển thị cho tất cả
+     * 3. Nếu scope == INTERNAL → không hiển thị cho resident (chỉ cho staff)
+     * 4. Nếu scope == EXTERNAL:
+     *    - Nếu targetBuildingId == null → hiển thị cho TẤT CẢ tòa
+     *    - Nếu targetBuildingId != null → chỉ hiển thị cho tòa đó (so sánh với buildingId)
+     */
+    private boolean shouldShowNewsToBuilding(News news, UUID buildingId) {
+        // Note: Status filter (PUBLISHED only) is already applied before calling this method
+        // So we don't need to check isActive() here, but we still check publishAt/expireAt dates
+        Instant now = Instant.now();
+        
+        // Check publishAt
+        if (news.getPublishAt() != null && news.getPublishAt().isAfter(now)) {
+            log.info("❌ [NewsService] News {} filtered by publishAt: publishAt={}, now={}", 
+                    news.getId(), news.getPublishAt(), now);
+            return false; // Not published yet
+        }
+        
+        // Check expireAt
+        if (news.getExpireAt() != null && news.getExpireAt().isBefore(now)) {
+            log.info("❌ [NewsService] News {} filtered by expireAt: expireAt={}, now={}", 
+                    news.getId(), news.getExpireAt(), now);
+            return false; // Already expired
+        }
+
+        NotificationScope scope = news.getScope();
+        
+        // Nếu scope == null → hiển thị cho tất cả
+        if (scope == null) {
+            log.info("✅ [NewsService] News {} has no scope -> show to all", news.getId());
+            return true;
+        }
+
+        // INTERNAL news chỉ dành cho staff, không hiển thị cho resident
+        if (scope == NotificationScope.INTERNAL) {
+            log.info("❌ [NewsService] News {} has scope=INTERNAL -> hide from residents", news.getId());
+            return false;
+        }
+
+        // EXTERNAL news dành cho resident - filter theo buildingId
+        if (scope == NotificationScope.EXTERNAL) {
+            // Nếu targetBuildingId == null → hiển thị cho TẤT CẢ tòa
+            if (news.getTargetBuildingId() == null) {
+                log.info("✅ [NewsService] News {} has scope=EXTERNAL, targetBuildingId=null -> show to all buildings", news.getId());
+                return true;
+            }
+
+            // Nếu targetBuildingId != null → chỉ hiển thị cho tòa đó
+            if (buildingId == null) {
+                // Nếu không có buildingId, chỉ hiển thị news có targetBuildingId = null
+                // KHÔNG hiển thị news có targetBuildingId cụ thể
+                log.warn("⚠️ [NewsService] No buildingId provided -> hiding news {} with targetBuildingId={}", 
+                        news.getId(), news.getTargetBuildingId());
+                return false;
+            }
+            
+            boolean matches = buildingId.equals(news.getTargetBuildingId());
+            if (matches) {
+                log.info("✅ [NewsService] News {} has scope=EXTERNAL, targetBuildingId={} matches buildingId={}", 
+                        news.getId(), news.getTargetBuildingId(), buildingId);
+            } else {
+                log.info("❌ [NewsService] News {} has scope=EXTERNAL, targetBuildingId={} doesn't match buildingId={}", 
+                        news.getId(), news.getTargetBuildingId(), buildingId);
+            }
+            return matches;
+        }
+
+        // Default: allow access (backward compatibility)
+        log.info("✅ [NewsService] News {} default case -> show to all", news.getId());
+        return true;
+    }
+
+    public NewsDetailResponse getNewsForResident(UUID newsId, UUID residentId) {
+        // Lấy buildingId từ residentId
+        UUID buildingId = getResidentBuildingId(residentId);
+        
+        News news = newsRepository.findById(newsId)
+                .orElseThrow(() -> new IllegalArgumentException("News not found with ID: " + newsId));
+
+        if (!shouldShowNewsToBuilding(news, buildingId)) {
+            throw new IllegalArgumentException("News not accessible for this resident");
+        }
+
+        return toDetailResponse(news);
+    }
+
 
     private void validateNewsScope(NotificationScope scope, String targetRole, UUID targetBuildingId) {
         if (scope == null) {

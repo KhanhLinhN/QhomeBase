@@ -401,6 +401,9 @@ public class NotificationService {
             // Send WebSocket notification to resident-specific channel for real-time update
             sendWebSocketNotificationToResident(savedNotification, request.getResidentId(), "NOTIFICATION_CREATED");
             
+            // Also send to general channels (building/external) for clients that subscribe to those channels
+            sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
+            
             log.info("✅ Created internal notification for residentId: {} | Notification ID: {}", 
                     request.getResidentId(), savedNotification.getId());
         } else {

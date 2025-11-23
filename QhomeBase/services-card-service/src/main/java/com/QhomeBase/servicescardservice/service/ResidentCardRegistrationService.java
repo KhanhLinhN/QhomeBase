@@ -204,6 +204,9 @@ public class ResidentCardRegistrationService {
 
             ResidentCardRegistration saved = repository.save(registration);
 
+            // Send notification to resident
+            sendCardRejectionNotification(saved, request.note());
+
             log.info("✅ [ResidentCard] Admin {} đã reject đăng ký {}", adminId, registrationId);
             return toDto(saved);
         } else {
@@ -239,6 +242,49 @@ public class ResidentCardRegistrationService {
             log.info("✅ [ResidentCard] Đã gửi notification approval cho residentId: {}", registration.getResidentId());
         } catch (Exception e) {
             log.error("❌ [ResidentCard] Không thể gửi notification approval cho residentId: {}", registration.getResidentId(), e);
+        }
+    }
+
+    private void sendCardRejectionNotification(ResidentCardRegistration registration, String rejectionReason) {
+        try {
+            UUID residentId = registration.getResidentId();
+            if (residentId == null) {
+                log.warn("⚠️ [ResidentCard] residentId là null, không thể gửi notification cho registrationId: {}", 
+                        registration.getId());
+                return;
+            }
+
+            String title = "Thẻ cư dân bị từ chối";
+            String message = rejectionReason != null && !rejectionReason.isBlank() 
+                    ? String.format("Yêu cầu đăng ký thẻ cư dân của bạn đã bị từ chối. Lý do: %s", rejectionReason)
+                    : "Yêu cầu đăng ký thẻ cư dân của bạn đã bị từ chối. Vui lòng liên hệ quản trị viên để biết thêm chi tiết.";
+
+            Map<String, String> data = new HashMap<>();
+            data.put("cardType", "RESIDENT_CARD");
+            data.put("registrationId", registration.getId().toString());
+            data.put("status", "REJECTED");
+            if (registration.getApartmentNumber() != null) {
+                data.put("apartmentNumber", registration.getApartmentNumber());
+            }
+            if (rejectionReason != null) {
+                data.put("rejectionReason", rejectionReason);
+            }
+
+            notificationClient.sendResidentNotification(
+                    residentId,
+                    null, // buildingId - có thể null vì gửi theo residentId
+                    "CARD_REJECTED",
+                    title,
+                    message,
+                    registration.getId(),
+                    "RESIDENT_CARD_REGISTRATION",
+                    data
+            );
+
+            log.info("✅ [ResidentCard] Đã gửi notification rejection cho residentId: {}", residentId);
+        } catch (Exception e) {
+            log.error("❌ [ResidentCard] Không thể gửi notification rejection cho registrationId: {}", 
+                    registration.getId(), e);
         }
     }
 

@@ -238,6 +238,9 @@ public class ElevatorCardRegistrationService {
 
             ElevatorCardRegistration saved = repository.save(registration);
 
+            // Send notification to resident
+            sendElevatorCardRejectionNotification(saved, request.note());
+
             log.info("✅ [ElevatorCard] Admin {} đã reject đăng ký {}", adminId, registrationId);
             return toDto(saved);
         } else {
@@ -291,6 +294,59 @@ public class ElevatorCardRegistrationService {
             log.info("✅ [ElevatorCard] Đã gửi notification approval cho residentId: {}", residentId);
         } catch (Exception e) {
             log.error("❌ [ElevatorCard] Không thể gửi notification approval cho registrationId: {}", 
+                    registration.getId(), e);
+        }
+    }
+
+    private void sendElevatorCardRejectionNotification(ElevatorCardRegistration registration, String rejectionReason) {
+        try {
+            UUID residentId = registration.getResidentId();
+            if (residentId == null) {
+                log.warn("⚠️ [ElevatorCard] residentId là null, không thể gửi notification cho registrationId: {}", 
+                        registration.getId());
+                return;
+            }
+
+            // Resolve buildingId from unitId if needed
+            UUID buildingId = null;
+            if (registration.getUnitId() != null) {
+                // Note: AddressInfo doesn't have buildingId, so we pass null and let the notification service handle it
+                buildingId = null;
+            }
+
+            String title = "Thẻ thang máy bị từ chối";
+            String message = rejectionReason != null && !rejectionReason.isBlank() 
+                    ? String.format("Yêu cầu đăng ký thẻ thang máy của bạn đã bị từ chối. Lý do: %s", rejectionReason)
+                    : "Yêu cầu đăng ký thẻ thang máy của bạn đã bị từ chối. Vui lòng liên hệ quản trị viên để biết thêm chi tiết.";
+
+            Map<String, String> data = new HashMap<>();
+            data.put("cardType", "ELEVATOR_CARD");
+            data.put("registrationId", registration.getId().toString());
+            data.put("status", "REJECTED");
+            if (registration.getApartmentNumber() != null) {
+                data.put("apartmentNumber", registration.getApartmentNumber());
+            }
+            if (registration.getFullName() != null) {
+                data.put("fullName", registration.getFullName());
+            }
+            if (rejectionReason != null) {
+                data.put("rejectionReason", rejectionReason);
+            }
+
+            notificationClient.sendResidentNotification(
+                    residentId,
+                    buildingId,
+                    "CARD_REJECTED",
+                    title,
+                    message,
+                    registration.getId(),
+                    "ELEVATOR_CARD_REGISTRATION",
+                    data
+            );
+
+            log.info("✅ [ElevatorCard] Đã gửi notification rejection cho residentId: {}", residentId);
+        } catch (Exception e) {
+            log.error("❌ [ElevatorCard] Không thể gửi notification rejection cho registrationId: {}", 
                     registration.getId(), e);
         }
     }

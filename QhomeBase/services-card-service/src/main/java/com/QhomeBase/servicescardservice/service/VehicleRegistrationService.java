@@ -419,6 +419,61 @@ public class VehicleRegistrationService {
         }
     }
 
+    private void sendVehicleCardRejectionNotification(RegisterServiceRequest registration, String rejectionReason) {
+        try {
+            // Resolve residentId from userId and unitId
+            UUID residentId = residentUnitLookupService.resolveByUser(registration.getUserId(), registration.getUnitId())
+                    .map(ResidentUnitLookupService.AddressInfo::residentId)
+                    .orElse(null);
+
+            if (residentId == null) {
+                log.warn("⚠️ [VehicleRegistration] Không thể tìm thấy residentId cho userId={}, unitId={}, bỏ qua notification", 
+                        registration.getUserId(), registration.getUnitId());
+                return;
+            }
+
+            // Resolve buildingId from unitId if needed
+            UUID buildingId = null;
+
+            String title = "Thẻ xe bị từ chối";
+            String message = rejectionReason != null && !rejectionReason.isBlank() 
+                    ? String.format("Yêu cầu đăng ký thẻ xe %s của bạn đã bị từ chối. Lý do: %s", 
+                            registration.getLicensePlate() != null ? registration.getLicensePlate() : "", rejectionReason)
+                    : String.format("Yêu cầu đăng ký thẻ xe %s của bạn đã bị từ chối. Vui lòng liên hệ quản trị viên để biết thêm chi tiết.", 
+                            registration.getLicensePlate() != null ? registration.getLicensePlate() : "");
+
+            Map<String, String> data = new HashMap<>();
+            data.put("cardType", "VEHICLE_CARD");
+            data.put("registrationId", registration.getId().toString());
+            data.put("status", "REJECTED");
+            if (registration.getLicensePlate() != null) {
+                data.put("licensePlate", registration.getLicensePlate());
+            }
+            if (registration.getApartmentNumber() != null) {
+                data.put("apartmentNumber", registration.getApartmentNumber());
+            }
+            if (rejectionReason != null) {
+                data.put("rejectionReason", rejectionReason);
+            }
+
+            notificationClient.sendResidentNotification(
+                    residentId,
+                    buildingId,
+                    "CARD_REJECTED",
+                    title,
+                    message,
+                    registration.getId(),
+                    "VEHICLE_CARD_REGISTRATION",
+                    data
+            );
+
+            log.info("✅ [VehicleRegistration] Đã gửi notification rejection cho residentId: {}", residentId);
+        } catch (Exception e) {
+            log.error("❌ [VehicleRegistration] Không thể gửi notification rejection cho registrationId: {}", 
+                    registration.getId(), e);
+        }
+    }
+
     @Transactional
     public RegisterServiceRequestDto markPaymentAsPaid(UUID registrationId, UUID adminId) {
         RegisterServiceRequest registration = requestRepository.findById(registrationId)
@@ -491,6 +546,9 @@ public class VehicleRegistrationService {
         registration.setUpdatedAt(now);
 
         RegisterServiceRequest saved = requestRepository.save(registration);
+
+        // Send notification to resident
+        sendVehicleCardRejectionNotification(saved, reason);
 
         log.info("✅ [VehicleRegistration] Admin {} đã reject đăng ký {}", adminId, registrationId);
         return toDto(saved);

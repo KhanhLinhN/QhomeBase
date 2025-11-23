@@ -1,6 +1,7 @@
 package com.QhomeBase.financebillingservice.service;
 
 import com.QhomeBase.financebillingservice.model.BillingCycle;
+import com.QhomeBase.financebillingservice.model.Invoice;
 import com.QhomeBase.financebillingservice.repository.BillingCycleRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -17,6 +19,7 @@ import java.time.format.DateTimeFormatter;
 public class ScheduledBillingService {
     
     private final BillingCycleRepository billingCycleRepository;
+    private final InvoiceReminderService invoiceReminderService;
     
     /**
      * Scheduled job to create billing cycles automatically
@@ -73,6 +76,57 @@ public class ScheduledBillingService {
         
         log.warn("⚠️ Payment reminder sending is not fully implemented yet.");
         log.info("✅ Payment reminder sending completed");
+    }
+
+    /**
+     * Scheduled job to send invoice payment reminders
+     * Runs every hour to check for invoices that need reminder
+     * Logic:
+     * 1. Find invoices with status = PUBLISHED
+     * 2. Check if 24 hours have passed since invoice was issued
+     * 3. Check if 24 hours have passed since last reminder (or never reminded)
+     * 4. Check if reminder count < 7
+     * 5. Send notification and update reminder count
+     */
+    @Scheduled(cron = "${invoice.reminder.cron:0 0 * * * *}", zone = "Asia/Ho_Chi_Minh")
+    @Transactional
+    public void sendInvoicePaymentReminders() {
+        log.info("🔄 Starting scheduled invoice payment reminder sending...");
+        
+        try {
+            List<Invoice> invoicesNeedingReminder = invoiceReminderService.findInvoicesNeedingReminder();
+            
+            if (invoicesNeedingReminder.isEmpty()) {
+                log.debug("ℹ️ [InvoiceReminderJob] No invoices need reminder at this time");
+                return;
+            }
+            
+            log.info("📧 Found {} invoices that need reminder", invoicesNeedingReminder.size());
+            
+            int sentCount = 0;
+            for (Invoice invoice : invoicesNeedingReminder) {
+                try {
+                    // Double-check status before sending (might have been paid between query and now)
+                    Invoice currentInvoice = invoiceReminderService.getInvoiceRepository().findById(invoice.getId())
+                            .orElse(null);
+                    if (currentInvoice == null || currentInvoice.getStatus() != com.QhomeBase.financebillingservice.model.InvoiceStatus.PUBLISHED) {
+                        log.debug("ℹ️ [InvoiceReminderJob] Invoice {} status changed, skipping", invoice.getId());
+                        continue;
+                    }
+                    
+                    invoiceReminderService.sendReminder(currentInvoice);
+                    sentCount++;
+                } catch (Exception e) {
+                    log.error("❌ [InvoiceReminderJob] Failed to send reminder for invoice {}: {}", 
+                            invoice.getId(), e.getMessage(), e);
+                }
+            }
+            
+            log.info("✅ [InvoiceReminderJob] Sent {} reminders out of {} invoices that needed reminder", 
+                    sentCount, invoicesNeedingReminder.size());
+        } catch (Exception e) {
+            log.error("❌ [InvoiceReminderJob] Error in scheduled invoice reminder job", e);
+        }
     }
 }
 

@@ -38,6 +38,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/reading-cycles/**").permitAll()
                         .requestMatchers("/api/meter-reading-assignments/**").permitAll()
                         .requestMatchers("/api/units/**").permitAll()
+                        // Internal service calls - allow customer-interaction-service to get household/unit/building info
+                        .requestMatchers("/api/household-members/residents/**").permitAll()
+                        .requestMatchers("/api/households/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

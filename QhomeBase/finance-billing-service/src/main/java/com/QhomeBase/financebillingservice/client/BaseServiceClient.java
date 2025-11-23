@@ -58,12 +58,15 @@ public class BaseServiceClient {
 
     public static class UnitInfo {
         private UUID id;
+        private UUID buildingId;
         private String code;
         private String name;
         private Integer floor;
 
         public UUID getId() { return id; }
         public void setId(UUID id) { this.id = id; }
+        public UUID getBuildingId() { return buildingId; }
+        public void setBuildingId(UUID buildingId) { this.buildingId = buildingId; }
         public String getCode() { return code; }
         public void setCode(String code) { this.code = code; }
         public String getName() { return name; }

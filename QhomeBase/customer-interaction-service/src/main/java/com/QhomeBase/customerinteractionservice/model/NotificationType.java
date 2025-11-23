@@ -12,5 +12,6 @@ public enum NotificationType {
     NEWS,           // Deprecated - dùng INFO thay thế
     METER_READING,  // Deprecated - dùng ELECTRICITY hoặc WATER thay thế
     CARD_APPROVED,
+    CARD_REJECTED,
     CARD_FEE_REMINDER
 }
