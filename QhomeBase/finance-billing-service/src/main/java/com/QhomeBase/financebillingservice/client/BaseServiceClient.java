@@ -56,6 +56,33 @@ public class BaseServiceClient {
         }
     }
 
+    public HouseholdInfo getCurrentHouseholdByUnitId(UUID unitId) {
+        try {
+            return webClient.get()
+                    .uri("/api/households/units/{unitId}/current", unitId)
+                    .retrieve()
+                    .bodyToMono(HouseholdInfo.class)
+                    .block();
+        } catch (Exception e) {
+            log.warn("Error fetching current household for unit {} from base-service: {}", unitId, e.getMessage());
+            return null;
+        }
+    }
+
+    public List<HouseholdMemberInfo> getActiveMembersByHouseholdId(UUID householdId) {
+        try {
+            return webClient.get()
+                    .uri("/api/household-members/households/{householdId}", householdId)
+                    .retrieve()
+                    .bodyToFlux(HouseholdMemberInfo.class)
+                    .collectList()
+                    .block();
+        } catch (Exception e) {
+            log.warn("Error fetching active members for household {} from base-service: {}", householdId, e.getMessage());
+            return List.of();
+        }
+    }
+
     public static class UnitInfo {
         private UUID id;
         private UUID buildingId;
@@ -73,5 +100,37 @@ public class BaseServiceClient {
         public void setName(String name) { this.name = name; }
         public Integer getFloor() { return floor; }
         public void setFloor(Integer floor) { this.floor = floor; }
+    }
+
+    public static class HouseholdInfo {
+        private UUID id;
+        private UUID unitId;
+        private UUID primaryResidentId;
+
+        public UUID getId() { return id; }
+        public void setId(UUID id) { this.id = id; }
+        public UUID getUnitId() { return unitId; }
+        public void setUnitId(UUID unitId) { this.unitId = unitId; }
+        public UUID getPrimaryResidentId() { return primaryResidentId; }
+        public void setPrimaryResidentId(UUID primaryResidentId) { this.primaryResidentId = primaryResidentId; }
+    }
+
+    public static class HouseholdMemberInfo {
+        private UUID id;
+        private UUID householdId;
+        private UUID residentId;
+        private String residentName;
+        private Boolean isPrimary;
+
+        public UUID getId() { return id; }
+        public void setId(UUID id) { this.id = id; }
+        public UUID getHouseholdId() { return householdId; }
+        public void setHouseholdId(UUID householdId) { this.householdId = householdId; }
+        public UUID getResidentId() { return residentId; }
+        public void setResidentId(UUID residentId) { this.residentId = residentId; }
+        public String getResidentName() { return residentName; }
+        public void setResidentName(String residentName) { this.residentName = residentName; }
+        public Boolean getIsPrimary() { return isPrimary; }
+        public void setIsPrimary(Boolean isPrimary) { this.isPrimary = isPrimary; }
     }
 }
