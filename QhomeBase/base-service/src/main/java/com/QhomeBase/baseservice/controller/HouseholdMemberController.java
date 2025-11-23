@@ -38,9 +38,12 @@ public class HouseholdMemberController {
         try {
             List<HouseholdMemberDto> result = householdMemberService.getActiveMembersByHouseholdId(householdId);
             return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            log.warn("Failed to get members for household {}: {}", householdId, e.getMessage());
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid household ID {}: {}", householdId, e.getMessage());
             return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Failed to get members for household {}: {}", householdId, e.getMessage(), e);
+            return ResponseEntity.status(500).build();
         }
     }
 

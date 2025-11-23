@@ -1105,6 +1105,288 @@
           }
         }
       ]
+    },
+    {
+      "name": "Finance - Invoice Creation (After Payment)",
+      "description": "Test APIs for creating invoices in finance-billing-service after successful card payment. These APIs are called automatically by services-card-service when payment succeeds, but can be tested directly here.",
+      "item": [
+        {
+          "name": "Record Vehicle Registration Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"registrationId\": \"{{vehicleRegistrationId}}\",\n  \"userId\": \"YOUR_USER_ID\",\n  \"unitId\": \"{{unitId}}\",\n  \"vehicleType\": \"MOTORBIKE\",\n  \"licensePlate\": \"30A1-12345\",\n  \"requestType\": \"NEW_CARD\",\n  \"note\": \"Đăng ký thẻ xe mới\",\n  \"amount\": 30000.00,\n  \"paymentDate\": \"2025-01-15T10:30:00+07:00\",\n  \"transactionRef\": \"VNPAY_TXN_REF_123\",\n  \"transactionNo\": \"12345678\",\n  \"bankCode\": \"NCB\",\n  \"cardType\": \"ATM\",\n  \"responseCode\": \"00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Tạo hóa đơn cho thanh toán đăng ký thẻ xe.\n\n**Endpoint:** `POST /api/invoices/vehicle-registration-payment`\n\n**Mục đích:**\n- API này được gọi tự động bởi `services-card-service` khi thanh toán thành công\n- Tạo invoice với `serviceCode = VEHICLE_CARD`\n- Invoice được đánh dấu `status = PAID` ngay sau khi tạo\n\n**Request Body:**\n- `registrationId`: ID của vehicle registration\n- `userId`: ID của user đăng ký\n- `unitId`: ID của căn hộ\n- `vehicleType`: Loại xe (MOTORBIKE, CAR, etc.)\n- `licensePlate`: Biển số xe\n- `requestType`: Loại yêu cầu (NEW_CARD, RENEWAL)\n- `amount`: Số tiền thanh toán (mặc định 30,000 VND)\n- `paymentDate`: Ngày thanh toán\n- `transactionRef`, `transactionNo`, `bankCode`, `cardType`, `responseCode`: Thông tin từ VNPay\n\n**Response:**\n- InvoiceDto với `status = PAID`\n- `serviceCode = VEHICLE_CARD` trong invoice lines",
+            "url": {
+              "raw": "{{financeBillingUrl}}/api/invoices/vehicle-registration-payment",
+              "host": [
+                "{{financeBillingUrl}}"
+              ],
+              "path": [
+                "api",
+                "invoices",
+                "vehicle-registration-payment"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Invoice created successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const invoice = pm.response.json();",
+                  "    pm.expect(invoice).to.have.property('id');",
+                  "    pm.expect(invoice).to.have.property('code');",
+                  "    pm.expect(invoice.status).to.eql('PAID');",
+                  "    ",
+                  "    // Save invoice ID for later use",
+                  "    if (invoice.id) {",
+                  "        pm.environment.set('vehicleInvoiceId', invoice.id);",
+                  "        console.log('✅ Vehicle invoice created:', invoice.code);",
+                  "    }",
+                  "    ",
+                  "    // Check invoice lines",
+                  "    if (invoice.lines && invoice.lines.length > 0) {",
+                  "        const line = invoice.lines[0];",
+                  "        pm.expect(line.serviceCode).to.eql('VEHICLE_CARD');",
+                  "        console.log('✅ Service Code:', line.serviceCode);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Record Elevator Card Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"registrationId\": \"{{elevatorRegistrationId}}\",\n  \"userId\": \"YOUR_USER_ID\",\n  \"unitId\": \"{{unitId}}\",\n  \"fullName\": \"Nguyễn Văn A\",\n  \"apartmentNumber\": \"A1-101\",\n  \"buildingName\": \"Tòa A\",\n  \"requestType\": \"NEW_CARD\",\n  \"note\": \"Đăng ký thẻ thang máy mới\",\n  \"amount\": 30000.00,\n  \"paymentDate\": \"2025-01-15T10:30:00+07:00\",\n  \"transactionRef\": \"VNPAY_TXN_REF_456\",\n  \"transactionNo\": \"87654321\",\n  \"bankCode\": \"NCB\",\n  \"cardType\": \"ATM\",\n  \"responseCode\": \"00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Tạo hóa đơn cho thanh toán đăng ký thẻ thang máy.\n\n**Endpoint:** `POST /api/invoices/elevator-card-payment`\n\n**Mục đích:**\n- API này được gọi tự động bởi `services-card-service` khi thanh toán thành công\n- Tạo invoice với `serviceCode = ELEVATOR_CARD`\n- Invoice được đánh dấu `status = PAID` ngay sau khi tạo\n\n**Request Body:**\n- `registrationId`: ID của elevator card registration\n- `userId`: ID của user đăng ký\n- `unitId`: ID của căn hộ\n- `fullName`: Tên đầy đủ của cư dân\n- `apartmentNumber`: Số căn hộ\n- `buildingName`: Tên tòa nhà\n- `amount`: Số tiền thanh toán (mặc định 30,000 VND)\n- `paymentDate`: Ngày thanh toán\n- `transactionRef`, `transactionNo`, `bankCode`, `cardType`, `responseCode`: Thông tin từ VNPay\n\n**Response:**\n- InvoiceDto với `status = PAID`\n- `serviceCode = ELEVATOR_CARD` trong invoice lines",
+            "url": {
+              "raw": "{{financeBillingUrl}}/api/invoices/elevator-card-payment",
+              "host": [
+                "{{financeBillingUrl}}"
+              ],
+              "path": [
+                "api",
+                "invoices",
+                "elevator-card-payment"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Invoice created successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const invoice = pm.response.json();",
+                  "    pm.expect(invoice).to.have.property('id');",
+                  "    pm.expect(invoice).to.have.property('code');",
+                  "    pm.expect(invoice.status).to.eql('PAID');",
+                  "    ",
+                  "    // Save invoice ID for later use",
+                  "    if (invoice.id) {",
+                  "        pm.environment.set('elevatorInvoiceId', invoice.id);",
+                  "        console.log('✅ Elevator invoice created:', invoice.code);",
+                  "    }",
+                  "    ",
+                  "    // Check invoice lines",
+                  "    if (invoice.lines && invoice.lines.length > 0) {",
+                  "        const line = invoice.lines[0];",
+                  "        pm.expect(line.serviceCode).to.eql('ELEVATOR_CARD');",
+                  "        console.log('✅ Service Code:', line.serviceCode);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Record Resident Card Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"registrationId\": \"{{residentRegistrationId}}\",\n  \"userId\": \"YOUR_USER_ID\",\n  \"unitId\": \"{{unitId}}\",\n  \"fullName\": \"Nguyễn Văn A\",\n  \"apartmentNumber\": \"A1-101\",\n  \"buildingName\": \"Tòa A\",\n  \"requestType\": \"NEW_CARD\",\n  \"note\": \"Đăng ký thẻ cư dân mới\",\n  \"amount\": 30000.00,\n  \"paymentDate\": \"2025-01-15T10:30:00+07:00\",\n  \"transactionRef\": \"VNPAY_TXN_REF_789\",\n  \"transactionNo\": \"11223344\",\n  \"bankCode\": \"NCB\",\n  \"cardType\": \"ATM\",\n  \"responseCode\": \"00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Tạo hóa đơn cho thanh toán đăng ký thẻ cư dân.\n\n**Endpoint:** `POST /api/invoices/resident-card-payment`\n\n**Mục đích:**\n- API này được gọi tự động bởi `services-card-service` khi thanh toán thành công\n- Tạo invoice với `serviceCode = RESIDENT_CARD`\n- Invoice được đánh dấu `status = PAID` ngay sau khi tạo\n\n**Request Body:**\n- `registrationId`: ID của resident card registration\n- `userId`: ID của user đăng ký\n- `unitId`: ID của căn hộ\n- `fullName`: Tên đầy đủ của cư dân\n- `apartmentNumber`: Số căn hộ\n- `buildingName`: Tên tòa nhà\n- `amount`: Số tiền thanh toán (mặc định 30,000 VND)\n- `paymentDate`: Ngày thanh toán\n- `transactionRef`, `transactionNo`, `bankCode`, `cardType`, `responseCode`: Thông tin từ VNPay\n\n**Response:**\n- InvoiceDto với `status = PAID`\n- `serviceCode = RESIDENT_CARD` trong invoice lines",
+            "url": {
+              "raw": "{{financeBillingUrl}}/api/invoices/resident-card-payment",
+              "host": [
+                "{{financeBillingUrl}}"
+              ],
+              "path": [
+                "api",
+                "invoices",
+                "resident-card-payment"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Invoice created successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const invoice = pm.response.json();",
+                  "    pm.expect(invoice).to.have.property('id');",
+                  "    pm.expect(invoice).to.have.property('code');",
+                  "    pm.expect(invoice.status).to.eql('PAID');",
+                  "    ",
+                  "    // Save invoice ID for later use",
+                  "    if (invoice.id) {",
+                  "        pm.environment.set('residentInvoiceId', invoice.id);",
+                  "        console.log('✅ Resident invoice created:', invoice.code);",
+                  "    }",
+                  "    ",
+                  "    // Check invoice lines",
+                  "    if (invoice.lines && invoice.lines.length > 0) {",
+                  "        const line = invoice.lines[0];",
+                  "        pm.expect(line.serviceCode).to.eql('RESIDENT_CARD');",
+                  "        console.log('✅ Service Code:', line.serviceCode);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get All Invoices (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{financeBillingUrl}}/api/invoices/admin/all?serviceCode=VEHICLE_CARD&status=PAID&startDate=2025-01-01&endDate=2025-01-31",
+              "host": [
+                "{{financeBillingUrl}}"
+              ],
+              "path": [
+                "api",
+                "invoices",
+                "admin",
+                "all"
+              ],
+              "query": [
+                {
+                  "key": "serviceCode",
+                  "value": "VEHICLE_CARD",
+                  "description": "Filter by service code: VEHICLE_CARD, ELEVATOR_CARD, RESIDENT_CARD, ELECTRICITY, WATER"
+                },
+                {
+                  "key": "status",
+                  "value": "PAID",
+                  "description": "Filter by status: DRAFT, PUBLISHED, PAID, VOID"
+                },
+                {
+                  "key": "startDate",
+                  "value": "2025-01-01",
+                  "description": "Filter from date (YYYY-MM-DD)"
+                },
+                {
+                  "key": "endDate",
+                  "value": "2025-01-31",
+                  "description": "Filter to date (YYYY-MM-DD)"
+                }
+              ]
+            },
+            "description": "Lấy tất cả hóa đơn cho admin với các filters.\n\n**Endpoint:** `GET /api/invoices/admin/all`\n\n**Query Parameters:**\n- `serviceCode` (optional): Lọc theo loại dịch vụ (VEHICLE_CARD, ELEVATOR_CARD, RESIDENT_CARD, ELECTRICITY, WATER)\n- `status` (optional): Lọc theo trạng thái (DRAFT, PUBLISHED, PAID, VOID)\n- `unitId` (optional): Lọc theo căn hộ\n- `buildingId` (optional): Lọc theo tòa nhà\n- `startDate` (optional): Lọc từ ngày (YYYY-MM-DD)\n- `endDate` (optional): Lọc đến ngày (YYYY-MM-DD)\n\n**Response:**\n- Danh sách InvoiceDto được sắp xếp theo ngày phát hành (mới nhất trước)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Get invoices successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const invoices = pm.response.json();",
+                  "    pm.expect(invoices).to.be.an('array');",
+                  "    console.log('✅ Found', invoices.length, 'invoices');",
+                  "    ",
+                  "    // Log first few invoices",
+                  "    invoices.slice(0, 3).forEach((invoice, index) => {",
+                  "        console.log(`Invoice ${index + 1}: ${invoice.code} - ${invoice.status} - ${invoice.totalAmount} VND`);",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": [
@@ -1167,6 +1449,10 @@
     {
       "key": "residentId",
       "value": ""
+    },
+    {
+      "key": "financeBillingUrl",
+      "value": "http://localhost:8085"
     }
   ]
 }
