@@ -48,6 +48,7 @@ public class BuildingImportService {
             Row header = sheet.getRow(0);
             int idxName = findColumnIndex(header, "name");
             int idxAddress = findColumnIndex(header, "address");
+            int idxNumberOfFloors = findColumnIndex(header, "numberOfFloors");
             if (idxName < 0) {
                 throw new IllegalArgumentException("Thiếu cột name");
             }
@@ -58,6 +59,7 @@ public class BuildingImportService {
                 int excelRow = i;
                 String name = readString(r, idxName);
                 String address = readString(r, idxAddress);
+                Integer numberOfFloors = readInteger(r, idxNumberOfFloors);
 
                 try {
                     String trimmedName = name != null ? name.trim() : null;
@@ -65,8 +67,9 @@ public class BuildingImportService {
                     
                     validateBuildingName(trimmedName, excelRow);
                     validateBuildingAddress(trimmedAddress, excelRow);
+                    validateNumberOfFloors(numberOfFloors, excelRow);
                     
-                    var dto = buildingService.createBuilding(new BuildingCreateReq(trimmedName, trimmedAddress), createdBy != null ? createdBy : "import");
+                    var dto = buildingService.createBuilding(new BuildingCreateReq(trimmedName, trimmedAddress, numberOfFloors), createdBy != null ? createdBy : "import");
                     Building saved = buildingRepository.getBuildingById(dto.id());
 
                     response.getRows().add(BuildingImportRowResult.builder()
@@ -100,16 +103,19 @@ public class BuildingImportService {
             Row header = sh.createRow(0);
             header.createCell(0).setCellValue("name");
             header.createCell(1).setCellValue("address");
+            header.createCell(2).setCellValue("numberOfFloors");
 
             Row sample1 = sh.createRow(1);
             sample1.createCell(0).setCellValue("Tòa A");
             sample1.createCell(1).setCellValue("123 Đường ABC, Quận 1");
+            sample1.createCell(2).setCellValue(10);
 
             Row sample2 = sh.createRow(2);
             sample2.createCell(0).setCellValue("Tòa B");
             sample2.createCell(1).setCellValue("456 Đường DEF, Quận 2");
+            sample2.createCell(2).setCellValue(15);
 
-            for (int c = 0; c <= 1; c++) sh.autoSizeColumn(c);
+            for (int c = 0; c <= 2; c++) sh.autoSizeColumn(c);
             wb.write(bos);
             return bos.toByteArray();
         } catch (IOException e) {
@@ -136,8 +142,15 @@ public class BuildingImportService {
         if (idx < 0) return null;
         Cell c = r.getCell(idx);
         if (c == null) return null;
-        c.setCellType(CellType.STRING);
-        String v = c.getStringCellValue();
+        String v;
+        if (c.getCellType() == CellType.STRING) {
+            v = c.getStringCellValue();
+        } else if (c.getCellType() == CellType.NUMERIC) {
+            v = String.valueOf((long) c.getNumericCellValue());
+        } else {
+            DataFormatter formatter = new DataFormatter();
+            v = formatter.formatCellValue(c);
+        }
         return v != null ? v.trim() : null;
     }
 
@@ -164,6 +177,33 @@ public class BuildingImportService {
             if (address.length() < 5) {
                 throw new IllegalArgumentException("Địa chỉ (row " + rowNumber + ") phải có ít nhất 5 ký tự");
             }
+        }
+    }
+
+    private Integer readInteger(Row r, int idx) {
+        if (idx < 0) return null;
+        Cell c = r.getCell(idx);
+        if (c == null) return null;
+        try {
+            if (c.getCellType() == CellType.NUMERIC) {
+                double numValue = c.getNumericCellValue();
+                return (int) numValue;
+            } else if (c.getCellType() == CellType.STRING) {
+                String strValue = c.getStringCellValue();
+                if (strValue == null || strValue.trim().isEmpty()) {
+                    return null;
+                }
+                return Integer.parseInt(strValue.trim());
+            }
+        } catch (Exception e) {
+            return null;
+        }
+        return null;
+    }
+
+    private void validateNumberOfFloors(Integer numberOfFloors, int rowNumber) {
+        if (numberOfFloors != null && numberOfFloors <= 0) {
+            throw new IllegalArgumentException("Số tầng (row " + rowNumber + ") phải lớn hơn 0");
         }
     }
 }
