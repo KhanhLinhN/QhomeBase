@@ -13,22 +13,23 @@ import com.QhomeBase.baseservice.repository.HouseholdMemberRepository;
 import com.QhomeBase.baseservice.repository.HouseholdRepository;
 import com.QhomeBase.baseservice.repository.ResidentRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 @Transactional
 public class CleaningRequestService {
@@ -37,6 +38,8 @@ public class CleaningRequestService {
     private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
     private static final String STATUS_DONE = "DONE";
     private static final String STATUS_CANCELLED = "CANCELLED";
+
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
     private static final Map<String, BigDecimal> DEFAULT_DURATIONS = Map.of(
             "Dọn dẹp cơ bản", BigDecimal.valueOf(1),
@@ -48,12 +51,34 @@ public class CleaningRequestService {
             "Vệ sinh thiết bị", BigDecimal.valueOf(1)
     );
 
+    private final LocalTime workingStart;
+    private final LocalTime workingEnd;
+
     private final CleaningRequestRepository cleaningRequestRepository;
     private final UnitRepository unitRepository;
     private final ResidentRepository residentRepository;
     private final HouseholdRepository householdRepository;
     private final HouseholdMemberRepository householdMemberRepository;
     private final NotificationClient notificationClient;
+
+    public CleaningRequestService(
+            CleaningRequestRepository cleaningRequestRepository,
+            UnitRepository unitRepository,
+            ResidentRepository residentRepository,
+            HouseholdRepository householdRepository,
+            HouseholdMemberRepository householdMemberRepository,
+            NotificationClient notificationClient,
+            @Value("${cleaning.request.working.hours.start:08:00}") String workingStartStr,
+            @Value("${cleaning.request.working.hours.end:18:00}") String workingEndStr) {
+        this.cleaningRequestRepository = cleaningRequestRepository;
+        this.unitRepository = unitRepository;
+        this.residentRepository = residentRepository;
+        this.householdRepository = householdRepository;
+        this.householdMemberRepository = householdMemberRepository;
+        this.notificationClient = notificationClient;
+        this.workingStart = LocalTime.parse(workingStartStr, TIME_FORMATTER);
+        this.workingEnd = LocalTime.parse(workingEndStr, TIME_FORMATTER);
+    }
 
     @SuppressWarnings("null")
     public CleaningRequestDto create(UUID userId, CreateCleaningRequestDto dto) {
@@ -71,6 +96,11 @@ public class CleaningRequestService {
         }
 
         ensureNoActiveRequest(resident.getId());
+
+        // Validate working hours for startTime
+        if (dto.startTime() != null) {
+            validateStartTime(dto.startTime());
+        }
 
         String normalizedType = dto.cleaningType().trim();
         BigDecimal duration = DEFAULT_DURATIONS.getOrDefault(
@@ -129,6 +159,18 @@ public class CleaningRequestService {
         return requests.stream()
                 .map(this::toDto)
                 .toList();
+    }
+
+    private void validateStartTime(LocalTime startTime) {
+        if (startTime == null) {
+            throw new IllegalArgumentException("Start time is required");
+        }
+
+        if (startTime.isBefore(workingStart) || startTime.isAfter(workingEnd)) {
+            throw new IllegalArgumentException(
+                    String.format("Start time must be between %s and %s",
+                            workingStart.format(TIME_FORMATTER), workingEnd.format(TIME_FORMATTER)));
+        }
     }
 
     private boolean isResidentInHousehold(Resident resident, Household household) {

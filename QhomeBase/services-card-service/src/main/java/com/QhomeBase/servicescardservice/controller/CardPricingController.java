@@ -2,7 +2,6 @@ package com.QhomeBase.servicescardservice.controller;
 
 import com.QhomeBase.servicescardservice.dto.CardPricingDto;
 import com.QhomeBase.servicescardservice.dto.CreateCardPricingRequest;
-import com.QhomeBase.servicescardservice.dto.UpdateCardPricingRequest;
 import com.QhomeBase.servicescardservice.model.CardPricing;
 import com.QhomeBase.servicescardservice.service.CardPricingService;
 import com.QhomeBase.servicescardservice.util.JwtUtil;
@@ -106,50 +105,6 @@ public class CardPricingController {
             errorResponse.put("timestamp", java.time.OffsetDateTime.now());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
         }
-    }
-
-    /**
-     * Update card pricing (admin only)
-     */
-    @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<CardPricingDto> updatePricing(
-            @PathVariable UUID id,
-            @Valid @RequestBody UpdateCardPricingRequest request,
-            @RequestHeader HttpHeaders headers) {
-        
-        UUID adminId = jwtUtil.getUserIdFromHeaders(headers);
-        if (adminId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-        
-        CardPricing pricing = CardPricing.builder()
-                .price(request.getPrice())
-                .currency(request.getCurrency())
-                .description(request.getDescription())
-                .isActive(request.getIsActive())
-                .updatedBy(adminId)
-                .build();
-        
-        CardPricing updated = cardPricingService.updatePricing(id, pricing);
-        return ResponseEntity.ok(toDto(updated));
-    }
-
-    /**
-     * Delete card pricing (soft delete - set is_active = false) (admin only)
-     */
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> deletePricing(
-            @PathVariable UUID id,
-            @RequestHeader HttpHeaders headers) {
-        
-        UUID adminId = jwtUtil.getUserIdFromHeaders(headers);
-        if (adminId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-        cardPricingService.deletePricing(id, adminId);
-        return ResponseEntity.noContent().build();
     }
 
     private CardPricingDto toDto(CardPricing pricing) {

@@ -165,7 +165,7 @@ public class NotificationService {
 
         // Filter and sort by createdAt DESC (newest first)
         List<NotificationResponse> filteredAndSorted = allNotifications.stream()
-                .filter(n -> shouldShowNotificationToResident(n, buildingId))
+                .filter(n -> shouldShowNotificationToResident(n, residentId, buildingId))
                 .sorted((n1, n2) -> {
                     // Sort by createdAt DESC (newest first, from largest to smallest date)
                     Instant createdAt1 = n1.getCreatedAt();
@@ -223,7 +223,7 @@ public class NotificationService {
         );
 
         return allNotifications.stream()
-                .filter(n -> shouldShowNotificationToResident(n, buildingId))
+                .filter(n -> shouldShowNotificationToResident(n, residentId, buildingId))
                 .count();
     }
 
@@ -275,14 +275,20 @@ public class NotificationService {
                 .build();
     }
 
-    private boolean shouldShowNotificationToResident(Notification notification, UUID buildingId) {
+    private boolean shouldShowNotificationToResident(Notification notification, UUID residentId, UUID buildingId) {
         if (notification.getScope() == NotificationScope.INTERNAL) {
             return false;
         }
 
         if (notification.getScope() == NotificationScope.EXTERNAL) {
+            // If notification has targetResidentId, only show to that specific resident
+            if (notification.getTargetResidentId() != null) {
+                return residentId != null && residentId.equals(notification.getTargetResidentId());
+            }
+            
+            // Otherwise, use building-based filtering (for notifications to all residents in building or all buildings)
             if (notification.getTargetBuildingId() == null) {
-                return true;
+                return true; // Show to all buildings
             }
             return buildingId != null && buildingId.equals(notification.getTargetBuildingId());
         }
@@ -380,7 +386,7 @@ public class NotificationService {
                     dataPayload
             );
 
-            // Also save to DB with scope EXTERNAL and targetBuildingId if provided
+            // Also save to DB with scope EXTERNAL and targetResidentId for specific resident
             NotificationScope scope = NotificationScope.EXTERNAL;
             
             Notification notification = Notification.builder()
@@ -388,7 +394,8 @@ public class NotificationService {
                     .title(request.getTitle())
                     .message(request.getMessage())
                     .scope(scope)
-                    .targetBuildingId(request.getBuildingId())
+                    .targetResidentId(request.getResidentId()) // Set targetResidentId for specific resident
+                    .targetBuildingId(null) // Don't set targetBuildingId when targeting specific resident
                     .targetRole(null)
                     .referenceId(request.getReferenceId())
                     .referenceType(request.getReferenceType())

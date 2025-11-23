@@ -64,8 +64,8 @@ public class MaintenanceRequestService {
             HouseholdRepository householdRepository,
             HouseholdMemberRepository householdMemberRepository,
             NotificationClient notificationClient,
-            @Value("${maintenance.request.working.hours.start:06:00}") String workingStartStr,
-            @Value("${maintenance.request.working.hours.end:23:30}") String workingEndStr) {
+            @Value("${maintenance.request.working.hours.start:08:00}") String workingStartStr,
+            @Value("${maintenance.request.working.hours.end:18:00}") String workingEndStr) {
         this.maintenanceRequestRepository = maintenanceRequestRepository;
         this.unitRepository = unitRepository;
         this.residentRepository = residentRepository;
