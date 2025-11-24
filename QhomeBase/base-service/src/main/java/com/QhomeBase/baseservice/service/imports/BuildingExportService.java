@@ -38,7 +38,7 @@ public class BuildingExportService {
             headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
             Row header = sheet.createRow(0);
-            String[] headers = {"code", "name", "address", "status", "createdAt", "createdBy"};
+            String[] headers = {"code", "name", "address", "numberOfFloors", "status", "createdAt", "createdBy"};
             for (int i = 0; i < headers.length; i++) {
                 Cell cell = header.createCell(i);
                 cell.setCellValue(headers[i]);
@@ -51,15 +51,22 @@ public class BuildingExportService {
                 row.createCell(0).setCellValue(building.getCode() != null ? building.getCode() : "");
                 row.createCell(1).setCellValue(building.getName() != null ? building.getName() : "");
                 row.createCell(2).setCellValue(building.getAddress() != null ? building.getAddress() : "");
-                row.createCell(3).setCellValue(building.getStatus() != null ? building.getStatus().name() : "");
                 
-                if (building.getCreatedAt() != null) {
-                    row.createCell(4).setCellValue(building.getCreatedAt().format(DATE_FORMATTER));
+                if (building.getNumberOfFloors() != null) {
+                    row.createCell(3).setCellValue(building.getNumberOfFloors());
                 } else {
-                    row.createCell(4).setCellValue("");
+                    row.createCell(3).setCellValue("");
                 }
                 
-                row.createCell(5).setCellValue(building.getCreatedBy() != null ? building.getCreatedBy() : "");
+                row.createCell(4).setCellValue(building.getStatus() != null ? building.getStatus().name() : "");
+                
+                if (building.getCreatedAt() != null) {
+                    row.createCell(5).setCellValue(building.getCreatedAt().format(DATE_FORMATTER));
+                } else {
+                    row.createCell(5).setCellValue("");
+                }
+                
+                row.createCell(6).setCellValue(building.getCreatedBy() != null ? building.getCreatedBy() : "");
             }
 
             for (int i = 0; i < headers.length; i++) {
@@ -115,8 +122,16 @@ public class BuildingExportService {
                 Row buildingInfoRow2 = sheet.createRow(rowNum++);
                 buildingInfoRow2.createCell(0).setCellValue("Địa chỉ:");
                 buildingInfoRow2.createCell(1).setCellValue(building.getAddress() != null ? building.getAddress() : "");
-                buildingInfoRow2.createCell(3).setCellValue("Trạng thái:");
-                buildingInfoRow2.createCell(4).setCellValue(building.getStatus() != null ? building.getStatus().name() : "");
+                buildingInfoRow2.createCell(3).setCellValue("Số tầng:");
+                if (building.getNumberOfFloors() != null) {
+                    buildingInfoRow2.createCell(4).setCellValue(building.getNumberOfFloors());
+                } else {
+                    buildingInfoRow2.createCell(4).setCellValue("");
+                }
+
+                Row buildingInfoRow3 = sheet.createRow(rowNum++);
+                buildingInfoRow3.createCell(0).setCellValue("Trạng thái:");
+                buildingInfoRow3.createCell(1).setCellValue(building.getStatus() != null ? building.getStatus().name() : "");
 
                 rowNum++;
 

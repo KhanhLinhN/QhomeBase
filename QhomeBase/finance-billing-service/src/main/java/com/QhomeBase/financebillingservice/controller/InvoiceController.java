@@ -2,6 +2,7 @@ package com.QhomeBase.financebillingservice.controller;
 
 import com.QhomeBase.financebillingservice.dto.*;
 import com.QhomeBase.financebillingservice.model.InvoiceStatus;
+import com.QhomeBase.financebillingservice.service.InvoiceExportService;
 import com.QhomeBase.financebillingservice.service.InvoiceService;
 import com.QhomeBase.financebillingservice.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
@@ -9,7 +10,9 @@ import lombok.extern.slf4j.Slf4j;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import com.QhomeBase.financebillingservice.service.vnpay.VnpayService;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,6 +29,7 @@ import java.util.UUID;
 public class InvoiceController {
     
     private final InvoiceService invoiceService;
+    private final InvoiceExportService invoiceExportService;
     private final JwtUtil jwtUtil;
     private final VnpayService vnpayService;
     
@@ -57,6 +61,54 @@ public class InvoiceController {
     public ResponseEntity<List<InvoiceDto>> getInvoicesByServiceCode(@PathVariable String serviceCode) {
         List<InvoiceDto> invoices = invoiceService.getInvoicesByServiceCode(serviceCode);
         return ResponseEntity.ok(invoices);
+    }
+    
+    @GetMapping("/admin/all")
+    public ResponseEntity<List<InvoiceDto>> getAllInvoicesForAdmin(
+            @RequestParam(required = false) String serviceCode,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) UUID unitId,
+            @RequestParam(required = false) UUID buildingId,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+        List<InvoiceDto> invoices = invoiceService.getAllInvoicesForAdmin(
+                serviceCode, status, unitId, buildingId, startDate, endDate);
+        return ResponseEntity.ok(invoices);
+    }
+    
+    @GetMapping(value = "/admin/export", produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    public ResponseEntity<byte[]> exportInvoicesToExcel(
+            @RequestParam(required = false) String serviceCode,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) UUID unitId,
+            @RequestParam(required = false) UUID buildingId,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) String month) {
+        try {
+            byte[] bytes = invoiceExportService.exportInvoicesToExcel(
+                    serviceCode, status, unitId, buildingId, startDate, endDate);
+            
+            String filename;
+            if (month != null && !month.isBlank()) {
+                String monthFormatted = month.replace("-", "");
+                filename = String.format("danh_sach_hoa_don_%s.xlsx", monthFormatted);
+            } else if (startDate != null && !startDate.isBlank()) {
+                String monthFromDate = startDate.substring(0, 7).replace("-", "");
+                filename = String.format("danh_sach_hoa_don_%s.xlsx", monthFromDate);
+            } else {
+                filename = String.format("danh_sach_hoa_don_%s.xlsx", 
+                        java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")));
+            }
+            
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(bytes);
+        } catch (Exception e) {
+            log.error("Failed to export invoices", e);
+            return ResponseEntity.internalServerError().build();
+        }
     }
     
     @GetMapping("/resident/{residentId}/service/{serviceCode}")

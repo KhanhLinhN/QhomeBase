@@ -124,6 +124,86 @@ public class InvoiceService {
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
+    
+    public List<InvoiceDto> getAllInvoicesForAdmin(
+            String serviceCode,
+            String status,
+            UUID unitId,
+            UUID buildingId,
+            String startDate,
+            String endDate) {
+        List<Invoice> allInvoices = invoiceRepository.findAll();
+        
+        return allInvoices.stream()
+                .filter(invoice -> {
+                    // Filter by serviceCode
+                    if (serviceCode != null && !serviceCode.isBlank()) {
+                        List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceId(invoice.getId());
+                        boolean hasServiceCode = lines.stream()
+                                .anyMatch(line -> serviceCode.equalsIgnoreCase(line.getServiceCode()));
+                        if (!hasServiceCode) {
+                            return false;
+                        }
+                    }
+                    
+                    // Filter by status
+                    if (status != null && !status.isBlank()) {
+                        try {
+                            InvoiceStatus invoiceStatus = InvoiceStatus.valueOf(status.toUpperCase());
+                            if (invoice.getStatus() != invoiceStatus) {
+                                return false;
+                            }
+                        } catch (IllegalArgumentException e) {
+                            // Invalid status, skip filter
+                        }
+                    }
+                    
+                    // Filter by unitId
+                    if (unitId != null && !invoice.getPayerUnitId().equals(unitId)) {
+                        return false;
+                    }
+                    
+                    // Filter by buildingId (need to check via unit)
+                    if (buildingId != null) {
+                        // This would require a join with units table, simplified for now
+                        // You may need to add a repository method for this
+                    }
+                    
+                    // Filter by date range
+                    if (startDate != null && !startDate.isBlank()) {
+                        try {
+                            LocalDate start = LocalDate.parse(startDate);
+                            if (invoice.getIssuedAt() != null && invoice.getIssuedAt().toLocalDate().isBefore(start)) {
+                                return false;
+                            }
+                        } catch (Exception e) {
+                            // Invalid date format, skip filter
+                        }
+                    }
+                    
+                    if (endDate != null && !endDate.isBlank()) {
+                        try {
+                            LocalDate end = LocalDate.parse(endDate);
+                            if (invoice.getIssuedAt() != null && invoice.getIssuedAt().toLocalDate().isAfter(end)) {
+                                return false;
+                            }
+                        } catch (Exception e) {
+                            // Invalid date format, skip filter
+                        }
+                    }
+                    
+                    return true;
+                })
+                .map(this::toDto)
+                .sorted((a, b) -> {
+                    // Sort by issuedAt descending (newest first)
+                    if (a.getIssuedAt() == null && b.getIssuedAt() == null) return 0;
+                    if (a.getIssuedAt() == null) return 1;
+                    if (b.getIssuedAt() == null) return -1;
+                    return b.getIssuedAt().compareTo(a.getIssuedAt());
+                })
+                .collect(Collectors.toList());
+    }
 
     @Transactional
     public InvoiceDto recordVehicleRegistrationPayment(VehicleRegistrationPaymentRequest request) {

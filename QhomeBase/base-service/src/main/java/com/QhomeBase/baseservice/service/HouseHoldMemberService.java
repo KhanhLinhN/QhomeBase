@@ -202,11 +202,20 @@ public class HouseHoldMemberService {
         String residentEmail = null;
         String residentPhone = null;
 
-        Resident resident = residentRepository.findById(member.getResidentId()).orElse(null);
-        if (resident != null) {
-            residentName = resident.getFullName();
-            residentEmail = resident.getEmail();
-            residentPhone = resident.getPhone();
+        // Safely get resident info, handle null residentId
+        if (member.getResidentId() != null) {
+            try {
+                Resident resident = residentRepository.findById(member.getResidentId()).orElse(null);
+                if (resident != null) {
+                    residentName = resident.getFullName();
+                    residentEmail = resident.getEmail();
+                    residentPhone = resident.getPhone();
+                }
+            } catch (Exception e) {
+                log.warn("Failed to fetch resident {} for household member {}: {}", 
+                        member.getResidentId(), member.getId(), e.getMessage());
+                // Continue with null values
+            }
         }
 
         return new HouseholdMemberDto(

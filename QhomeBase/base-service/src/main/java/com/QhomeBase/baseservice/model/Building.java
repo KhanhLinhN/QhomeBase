@@ -53,6 +53,8 @@ public class Building {
     @Builder.Default
     private BuildingStatus status = BuildingStatus.ACTIVE;
 
+    @Column(name = "number_of_floors")
+    private Integer numberOfFloors;
 
     public UUID getId() {
         return this.id;

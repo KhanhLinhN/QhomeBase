@@ -105,7 +105,7 @@ public class BuildingService {
                 building.getCode(),
                 building.getName(),
                 building.getAddress(),
-                0,
+                building.getNumberOfFloors(),
                 0,
                 0
         );
@@ -118,6 +118,7 @@ public class BuildingService {
                 .code(newCode)
                 .name(req.name())
                 .address(req.address())
+                .numberOfFloors(req.numberOfFloors())
                 .createdBy(createdBy)
                 .build();
         Building saved = respo.save(b);
@@ -133,6 +134,9 @@ public class BuildingService {
 
         existing.setName(req.name());
         existing.setAddress(req.address());
+        if (req.numberOfFloors() != null) {
+            existing.setNumberOfFloors(req.numberOfFloors());
+        }
         existing.setUpdatedBy(u.username());
 
         Building saved = respo.save(existing);

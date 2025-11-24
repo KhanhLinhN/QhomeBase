@@ -4,6 +4,7 @@ package com.QhomeBase.baseservice.service;
 import com.QhomeBase.baseservice.dto.UnitCreateDto;
 import com.QhomeBase.baseservice.dto.UnitDto;
 import com.QhomeBase.baseservice.dto.UnitUpdateDto;
+import com.QhomeBase.baseservice.model.Building;
 import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.model.UnitStatus;
 import com.QhomeBase.baseservice.repository.UnitRepository;
@@ -49,9 +50,8 @@ public class UnitService {
     
     @Transactional
     public UnitDto updateUnit(UnitUpdateDto unit, UUID id) {
-        validateUnitUpdateDto(unit);
-        
         Unit existingUnit = unitRepository.findByIdWithBuilding(id);
+        validateUnitUpdateDto(unit, id);
 
         if (unit.floor() != null) {
             existingUnit.setFloor(unit.floor());
@@ -253,6 +253,15 @@ public class UnitService {
         if (dto.floor() != Math.floor(dto.floor())) {
             throw new IllegalArgumentException("Floor must be an integer");
         }
+        
+        Building building = buildingRepository.findById(dto.buildingId())
+                .orElseThrow(() -> new IllegalArgumentException("Building not found"));
+        if (building.getNumberOfFloors() != null && dto.floor() > building.getNumberOfFloors()) {
+            throw new IllegalArgumentException(
+                    String.format("Floor %d vượt quá số tầng của tòa nhà (%d tầng)", 
+                            dto.floor(), building.getNumberOfFloors()));
+        }
+        
         if (dto.areaM2() == null) {
             throw new NullPointerException("Area cannot be null");
         }
@@ -270,7 +279,7 @@ public class UnitService {
         }
     }
 
-    private void validateUnitUpdateDto(UnitUpdateDto dto) {
+    private void validateUnitUpdateDto(UnitUpdateDto dto, UUID unitId) {
         if (dto.floor() == null) {
             throw new NullPointerException("Floor cannot be null");
         }
@@ -280,20 +289,26 @@ public class UnitService {
         if (dto.floor() != Math.floor(dto.floor())) {
             throw new IllegalArgumentException("Floor must be an integer");
         }
-        if (dto.areaM2() == null) {
-            throw new NullPointerException("Area cannot be null");
+        
+        Unit existingUnit = unitRepository.findByIdWithBuilding(unitId);
+        Building building = existingUnit.getBuilding();
+        if (building.getNumberOfFloors() != null && dto.floor() > building.getNumberOfFloors()) {
+            throw new IllegalArgumentException(
+                    String.format("Floor %d vượt quá số tầng của tòa nhà (%d tầng)", 
+                            dto.floor(), building.getNumberOfFloors()));
         }
-        if (dto.areaM2().compareTo(BigDecimal.ZERO) <= 0) {
+        
+        if (dto.areaM2() != null && dto.areaM2().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Area must be positive");
         }
-        if (dto.bedrooms() == null) {
-            throw new NullPointerException("Bedrooms cannot be null");
-        }
-        if (dto.bedrooms() <= 0) {
-            throw new IllegalArgumentException("Bedrooms must be positive");
-        }
-        if (dto.bedrooms() != Math.floor(dto.bedrooms())) {
-            throw new IllegalArgumentException("Bedrooms must be an integer");
+        
+        if (dto.bedrooms() != null) {
+            if (dto.bedrooms() <= 0) {
+                throw new IllegalArgumentException("Bedrooms must be positive");
+            }
+            if (dto.bedrooms() != Math.floor(dto.bedrooms())) {
+                throw new IllegalArgumentException("Bedrooms must be an integer");
+            }
         }
     }
 }
