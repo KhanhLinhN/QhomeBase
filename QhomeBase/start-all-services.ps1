@@ -125,27 +125,31 @@ Write-Host ""
 
 # Step 1: Start IAM Service first (needed by Base Service)
 Start-ServiceWithLog "IAM Service" "iam-service" 8088 "Magenta"
-Start-Sleep -Seconds 5  # Wait for IAM to be ready
+Start-Sleep -Seconds 5  # Wait 5 seconds before next service
 
 # Step 2: Start Base Service (needed by Finance Billing)
 Start-ServiceWithLog "Base Service" "base-service" 8081 "Blue"
-Start-Sleep -Seconds 8  # Wait for Base Service to be ready
+Start-Sleep -Seconds 5  # Wait 5 seconds before next service
 
 # Step 3: Start Customer Interaction Service (needed by Base Service)
 Start-ServiceWithLog "Customer Interaction Service" "customer-interaction-service" 8086 "DarkCyan"
-Start-Sleep -Seconds 5  # Wait for Customer Interaction to be ready
+Start-Sleep -Seconds 5  # Wait 5 seconds before next service
 
 # Step 4: Start other independent services
 Start-ServiceWithLog "Data Docs Service" "data-docs-service" 8082 "Cyan"
+Start-Sleep -Seconds 5  # Wait 5 seconds before next service
+
 Start-ServiceWithLog "Services Card Service" "services-card-service" 8083 "Green"
+Start-Sleep -Seconds 5  # Wait 5 seconds before next service
+
 Start-ServiceWithLog "Asset Maintenance Service" "asset-maintenance-service" 8084 "Yellow"
+Start-Sleep -Seconds 5  # Wait 5 seconds before next service
 
 # Step 5: Start Finance Billing Service (depends on Base Service)
-Start-Sleep -Seconds 3  # Additional wait before Finance Billing
 Start-ServiceWithLog "Finance Billing Service" "finance-billing-service" 8085 "Red"
+Start-Sleep -Seconds 5  # Wait 5 seconds before next service
 
 # Step 6: Start API Gateway last (routes to all services)
-Start-Sleep -Seconds 3  # Wait before API Gateway
 Start-ServiceWithLog "API Gateway" "api-gateway" 8989 "DarkMagenta"
 
 # Step 7: Auto-start ngrok URL monitor based on current VNPAY_BASE_URL
@@ -183,6 +187,8 @@ if (-not $isUsingNgrok) {
     Write-Host "     - Tu dong cap nhat VNPAY_BASE_URL khi ngrok URL thay doi" -ForegroundColor Gray
     Write-Host "     - Tu dong RESTART tat ca services khi URL thay doi" -ForegroundColor Green
     Write-Host "     - Services se TU DONG nhan URL moi ngay lap tuc" -ForegroundColor Green
+    Write-Host "     - ✅ NEU services da start voi ngrok URL nay, KHONG CAN RESTART" -ForegroundColor Cyan
+    Write-Host "     - Chi restart khi ngrok URL thay doi" -ForegroundColor Gray
     Write-Host ""
     Write-Host "  N = No, khong start monitor" -ForegroundColor Gray
     Write-Host ""
@@ -192,6 +198,9 @@ if (-not $isUsingNgrok) {
     } elseif ($startMonitor -eq "R" -or $startMonitor -eq "r") {
         Write-Host ""
         Write-Host "Starting ngrok URL monitor with auto-restart..." -ForegroundColor Cyan
+        Write-Host "  Monitor se kiem tra: neu services da start voi ngrok URL nay, se KHONG restart" -ForegroundColor Gray
+        Write-Host "  Chi restart khi ngrok URL thay doi" -ForegroundColor Gray
+        Write-Host ""
         Start-Process powershell -ArgumentList @(
             "-NoExit",
             "-Command",

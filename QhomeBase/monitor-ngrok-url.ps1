@@ -15,7 +15,10 @@ $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $lastNgrokUrl = $null
 $wasNgrokRunning = $false  # Track if ngrok was running in previous check
 $wasUsingNgrok = $false  # Track if we were using ngrok URL before
-$wasUsingNgrok = $false  # Track if we were using ngrok URL before
+
+# Check current VNPAY_BASE_URL to see if services were already started with ngrok URL
+$currentVnpayUrl = $env:VNPAY_BASE_URL
+$initialCheckDone = $false  # Track if we've done the initial check
 
 Write-Host "Starting ngrok URL monitor..." -ForegroundColor Cyan
 Write-Host "Script se tu dong cap nhat VNPAY_BASE_URL khi ngrok URL thay doi" -ForegroundColor Cyan
@@ -61,6 +64,27 @@ while ($true) {
                 
                 # Check if ngrok just started (was not running before, now running)
                 $ngrokJustStarted = -not $wasNgrokRunning
+                
+                # Initial check: if VNPAY_BASE_URL already matches ngrok URL, services were started with ngrok
+                if (-not $initialCheckDone) {
+                    $initialCheckDone = $true
+                    if ($currentVnpayUrl -eq $currentNgrokUrl) {
+                        # Services were already started with this ngrok URL - no need to restart
+                        $lastNgrokUrl = $currentNgrokUrl
+                        $wasUsingNgrok = $true
+                        $wasNgrokRunning = $true
+                        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] ========================================" -ForegroundColor Green
+                        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] PHAT HIEN: Services da duoc start voi ngrok URL!" -ForegroundColor Green
+                        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] ========================================" -ForegroundColor Green
+                        Write-Host "  Ngrok URL: $currentNgrokUrl" -ForegroundColor Green
+                        Write-Host "  VNPAY_BASE_URL: $currentVnpayUrl" -ForegroundColor Green
+                        Write-Host "  ✅ URL khớp nhau - KHONG CAN RESTART services" -ForegroundColor Green
+                        Write-Host "  Monitor se theo doi va chi restart khi URL thay doi" -ForegroundColor Gray
+                        Write-Host "[$(Get-Date -Format 'HH:mm:ss')] ========================================" -ForegroundColor Green
+                        Write-Host ""
+                        continue  # Skip to next iteration
+                    }
+                }
                 
                 if ($lastNgrokUrl -eq $null -or $ngrokJustStarted) {
                     # Lan dau tien hoac ngrok vua bat dau - set URL
