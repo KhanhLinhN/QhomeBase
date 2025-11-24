@@ -30,9 +30,17 @@ public class UserController {
     @Transactional(readOnly = true)
     public ResponseEntity<Map<String, Object>> getCurrentUser(Authentication authentication) {
         try {
+            log.info("=== /api/users/me called ===");
+            if (authentication == null) {
+                log.error("Authentication is null!");
+                return ResponseEntity.status(500).body(Map.of("error", "Authentication is null"));
+            }
+            log.info("Authentication: {}", authentication.getClass().getSimpleName());
+            log.info("Principal: {}", authentication.getPrincipal() != null ? authentication.getPrincipal().getClass().getSimpleName() : "null");
+            
             UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
             UUID userId = principal.uid();
-            log.debug("Getting current user info for userId: {}", userId);
+            log.info("Getting current user info for userId: {}", userId);
             
             // Get user account info from IAM service
             log.debug("Calling IAM service to get user account info for userId: {}", userId);
