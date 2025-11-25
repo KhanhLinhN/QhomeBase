@@ -4,6 +4,7 @@ import com.QhomeBase.assetmaintenanceservice.dto.service.CreateServiceRequest;
 import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceAvailabilityDto;
 import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceAvailabilityRequest;
 import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceDto;
+import com.QhomeBase.assetmaintenanceservice.dto.service.UpdateServiceRequest;
 import com.QhomeBase.assetmaintenanceservice.service.ServiceConfigService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +41,22 @@ public class ServiceController {
     public ResponseEntity<ServiceDto> getServiceById(@PathVariable UUID id) {
         ServiceDto service = serviceConfigService.findById(id);
         return ResponseEntity.ok(service);
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("@authz.canManageServiceConfig()")
+    public ResponseEntity<ServiceDto> updateService(@PathVariable UUID id,
+                                                    @Valid @RequestBody UpdateServiceRequest request) {
+        ServiceDto updated = serviceConfigService.update(id, request);
+        return ResponseEntity.ok(updated);
+    }
+
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("@authz.canManageServiceConfig()")
+    public ResponseEntity<ServiceDto> toggleStatus(@PathVariable UUID id,
+                                                   @RequestParam("active") boolean active) {
+        ServiceDto updated = serviceConfigService.setActive(id, active);
+        return ResponseEntity.ok(updated);
     }
 
     @GetMapping("/{id}/availabilities")

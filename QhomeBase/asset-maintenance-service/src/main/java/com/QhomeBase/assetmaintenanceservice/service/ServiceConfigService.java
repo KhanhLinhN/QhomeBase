@@ -117,6 +117,54 @@ public class ServiceConfigService {
         serviceRepository.save(service);
 
     }
+
+    @Transactional
+    public ServiceDto update(UUID id, UpdateServiceRequest request) {
+        com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Service not found: " + id));
+
+        if (request.getName() != null) {
+            service.setName(request.getName().trim());
+        }
+        if (request.getDescription() != null) {
+            service.setDescription(request.getDescription());
+        }
+        if (request.getLocation() != null) {
+            service.setLocation(StringUtils.hasText(request.getLocation()) ? request.getLocation().trim() : null);
+        }
+        if (request.getMapUrl() != null) {
+            service.setMapUrl(StringUtils.hasText(request.getMapUrl()) ? request.getMapUrl().trim() : null);
+        }
+        if (request.getPricingType() != null) {
+            applyPricing(service, request.getPricingType(), request.getPricePerHour(), request.getPricePerSession());
+        }
+        if (request.getMaxCapacity() != null) {
+            service.setMaxCapacity(request.getMaxCapacity());
+        }
+        if (request.getMinDurationHours() != null) {
+            service.setMinDurationHours(request.getMinDurationHours());
+        }
+        if (request.getRules() != null) {
+            service.setRules(request.getRules());
+        }
+        if (request.getIsActive() != null) {
+            service.setIsActive(request.getIsActive());
+        }
+
+        service.setUpdatedAt(OffsetDateTime.now());
+        var saved = serviceRepository.save(service);
+        return toDto(saved);
+    }
+
+    @Transactional
+    public ServiceDto setActive(UUID id, boolean active) {
+        com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Service not found: " + id));
+        service.setIsActive(active);
+        service.setUpdatedAt(OffsetDateTime.now());
+        var saved = serviceRepository.save(service);
+        return toDto(saved);
+    }
     @Transactional(readOnly = true)
     public List<ServiceAvailabilityDto> findAvailability(UUID serivceId) {
         com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(serivceId).orElseThrow(()
