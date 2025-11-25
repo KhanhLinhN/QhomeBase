@@ -55,7 +55,19 @@ public class BaseServiceClient {
             return null;
         }
     }
-
+    public List<ServiceInfo> getAllServices() {
+        try {
+            return webClient.get()
+                    .uri("/api/services")
+                    .retrieve()
+                    .bodyToFlux(ServiceInfo.class)
+                    .collectList()
+                    .block();
+        } catch (Exception e) {
+            log.warn("Error fetching services from base-service: {}", e.getMessage());
+            return List.of();
+        }
+    }
     public static class UnitInfo {
         private UUID id;
         private String code;
@@ -70,5 +82,19 @@ public class BaseServiceClient {
         public void setName(String name) { this.name = name; }
         public Integer getFloor() { return floor; }
         public void setFloor(Integer floor) { this.floor = floor; }
+    }
+    public static class ServiceInfo {
+        private UUID id;
+        private String code;
+        private String name;
+
+        public UUID getId() { return id; }
+        public void setId(UUID id) { this.id = id; }
+        public String getCode() { return code; }
+        public void setCode(String code) { this.code = code; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+
+
     }
 }

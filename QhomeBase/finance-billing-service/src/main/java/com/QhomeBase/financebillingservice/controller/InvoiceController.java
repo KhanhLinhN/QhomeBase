@@ -63,6 +63,14 @@ public class InvoiceController {
         return ResponseEntity.ok(invoices);
     }
     
+    @GetMapping("/cycle/{cycleId}/missing-services")
+    public ResponseEntity<List<String>> getMissingServicesInCycle(
+            @PathVariable UUID cycleId,
+            @RequestParam(required = false) String serviceCode) {
+        List<String> missingServices = invoiceService.findServiceDoNotHaveInvoiceInCycle(cycleId, serviceCode);
+        return ResponseEntity.ok(missingServices);
+    }
+    
     @GetMapping("/admin/all")
     public ResponseEntity<List<InvoiceDto>> getAllInvoicesForAdmin(
             @RequestParam(required = false) String serviceCode,
