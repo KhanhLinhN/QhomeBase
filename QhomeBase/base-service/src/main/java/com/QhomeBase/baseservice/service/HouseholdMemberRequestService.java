@@ -192,11 +192,26 @@ public class HouseholdMemberRequestService {
         request.setUpdatedAt(OffsetDateTime.now());
         log.info("Household member request {} approved by {}", request.getId(), adminUserId);
 
+        // Get building name for notification message
+        String buildingName = null;
+        Household household = householdRepository.findById(request.getHouseholdId()).orElse(null);
+        if (household != null && household.getUnitId() != null) {
+            Unit unit = unitRepository.findById(household.getUnitId()).orElse(null);
+            if (unit != null && unit.getBuilding() != null) {
+                buildingName = unit.getBuilding().getName();
+            }
+        }
+        
+        String message = String.format("Thành viên %s đã được thêm vào căn hộ.",
+                request.getResidentFullName() != null ? request.getResidentFullName() : "");
+        if (buildingName != null && !buildingName.isBlank()) {
+            message += " Tòa nhà: " + buildingName;
+        }
+        
         notifyRequester(
                 request,
                 "Yêu cầu đăng ký thành viên đã được duyệt",
-                String.format("Thành viên %s đã được thêm vào căn hộ.",
-                        request.getResidentFullName() != null ? request.getResidentFullName() : "")
+                message
         );
     }
 
@@ -208,12 +223,27 @@ public class HouseholdMemberRequestService {
         request.setUpdatedAt(OffsetDateTime.now());
         log.info("Household member request {} rejected by {}", request.getId(), adminUserId);
 
+        // Get building name for notification message
+        String buildingName = null;
+        Household household = householdRepository.findById(request.getHouseholdId()).orElse(null);
+        if (household != null && household.getUnitId() != null) {
+            Unit unit = unitRepository.findById(household.getUnitId()).orElse(null);
+            if (unit != null && unit.getBuilding() != null) {
+                buildingName = unit.getBuilding().getName();
+            }
+        }
+        
+        String message = rejectionReason != null && !rejectionReason.isBlank()
+                ? rejectionReason
+                : "Ban quản trị đã từ chối yêu cầu đăng ký thành viên.";
+        if (buildingName != null && !buildingName.isBlank()) {
+            message += " Tòa nhà: " + buildingName;
+        }
+
         notifyRequester(
                 request,
                 "Yêu cầu đăng ký thành viên bị từ chối",
-                rejectionReason != null && !rejectionReason.isBlank()
-                        ? rejectionReason
-                        : "Ban quản trị đã từ chối yêu cầu đăng ký thành viên."
+                message
         );
     }
 
@@ -468,6 +498,7 @@ public class HouseholdMemberRequestService {
             UUID buildingId = null;
             UUID unitId = null;
             String unitCode = null;
+            String buildingName = null;
 
             Household household = householdRepository.findById(request.getHouseholdId()).orElse(null);
             if (household != null && household.getUnitId() != null) {
@@ -477,6 +508,7 @@ public class HouseholdMemberRequestService {
                     unitCode = unit.getCode();
                     if (unit.getBuilding() != null) {
                         buildingId = unit.getBuilding().getId();
+                        buildingName = unit.getBuilding().getName();
                     }
                 }
             }
@@ -489,6 +521,9 @@ public class HouseholdMemberRequestService {
             }
             if (unitCode != null) {
                 data.put("unitCode", unitCode);
+            }
+            if (buildingName != null) {
+                data.put("buildingName", buildingName);
             }
             if (request.getResidentFullName() != null) {
                 data.put("memberName", request.getResidentFullName());

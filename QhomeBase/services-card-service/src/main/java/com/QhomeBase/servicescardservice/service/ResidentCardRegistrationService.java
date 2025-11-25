@@ -36,12 +36,13 @@ import java.util.concurrent.ConcurrentMap;
 @SuppressWarnings({"NullAway", "DataFlowIssue"})
 public class ResidentCardRegistrationService {
 
-    private static final BigDecimal REGISTRATION_FEE = BigDecimal.valueOf(30000);
     private static final String STATUS_APPROVED = "APPROVED";
     private static final String STATUS_READY_FOR_PAYMENT = "READY_FOR_PAYMENT";
     private static final String STATUS_PAYMENT_PENDING = "PAYMENT_PENDING";
     private static final String STATUS_PENDING_REVIEW = "PENDING";
     private static final String STATUS_REJECTED = "REJECTED";
+    
+    private final CardPricingService cardPricingService;
     private static final String STATUS_CANCELLED = "CANCELLED";
     private static final String PAYMENT_VNPAY = "VNPAY";
 
@@ -59,6 +60,11 @@ public class ResidentCardRegistrationService {
     public ResidentCardRegistrationDto createRegistration(UUID userId, ResidentCardRegistrationCreateDto dto) {
         validatePayload(dto);
 
+        // Normalize citizenId: loại bỏ tất cả ký tự không phải số
+        String normalizedCitizenId = dto.citizenId() != null 
+                ? dto.citizenId().replaceAll("[^0-9]", "") 
+                : null;
+        
         ResidentCardRegistration registration = ResidentCardRegistration.builder()
                 .userId(userId)
                 .unitId(dto.unitId())
@@ -67,12 +73,12 @@ public class ResidentCardRegistrationService {
                 .fullName(normalize(dto.fullName()))
                 .apartmentNumber(normalize(dto.apartmentNumber()))
                 .buildingName(normalize(dto.buildingName()))
-                .citizenId(normalize(dto.citizenId()))
+                .citizenId(normalizedCitizenId)
                 .phoneNumber(normalize(dto.phoneNumber()))
                 .note(dto.note())
                 .status(STATUS_READY_FOR_PAYMENT)
                 .paymentStatus("UNPAID")
-                .paymentAmount(REGISTRATION_FEE)
+                .paymentAmount(cardPricingService.getPrice("RESIDENT"))
                 .paymentGateway(null)
                 .vnpayTransactionRef(null)
                 .adminNote(null)
@@ -162,6 +168,26 @@ public class ResidentCardRegistrationService {
 
             ResidentCardRegistration saved = repository.save(registration);
 
+            // Create reminder state if card is already paid (for test mode)
+            // In production, reminder state will be created after payment callback
+            if ("PAID".equalsIgnoreCase(saved.getPaymentStatus())) {
+                try {
+                    cardFeeReminderService.resetReminderAfterPayment(
+                            CardFeeReminderService.CardFeeType.RESIDENT,
+                            saved.getId(),
+                            saved.getUnitId(),
+                            saved.getResidentId(),
+                            saved.getUserId(),
+                            saved.getApartmentNumber(),
+                            saved.getBuildingName(),
+                            saved.getPaymentDate() != null ? saved.getPaymentDate() : now
+                    );
+                    log.info("✅ [ResidentCard] Đã tạo reminder state cho thẻ {} sau khi approve", saved.getId());
+                } catch (Exception e) {
+                    log.warn("⚠️ [ResidentCard] Không thể tạo reminder state sau khi approve: {}", e.getMessage());
+                }
+            }
+
             // Send notification to resident
             sendCardApprovalNotification(saved, request.issueMessage());
 
@@ -179,6 +205,9 @@ public class ResidentCardRegistrationService {
 
             ResidentCardRegistration saved = repository.save(registration);
 
+            // Send notification to resident
+            sendCardRejectionNotification(saved, request.note());
+
             log.info("✅ [ResidentCard] Admin {} đã reject đăng ký {}", adminId, registrationId);
             return toDto(saved);
         } else {
@@ -188,14 +217,21 @@ public class ResidentCardRegistrationService {
 
     private void sendCardApprovalNotification(ResidentCardRegistration registration, String issueMessage) {
         try {
+            // Get current card price from database
+            BigDecimal currentPrice = cardPricingService.getPrice("RESIDENT");
+            String formattedPrice = formatVnd(currentPrice);
+
             String title = "Thẻ cư dân đã được duyệt";
             String message = issueMessage != null && !issueMessage.isBlank() 
                     ? issueMessage 
-                    : String.format("Thẻ cư dân của bạn đã được duyệt. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", registration.getApartmentNumber());
+                    : String.format("Thẻ cư dân của bạn đã được duyệt. Phí đăng ký: %s. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", 
+                            formattedPrice);
 
             Map<String, String> data = new HashMap<>();
             data.put("cardType", "RESIDENT_CARD");
             data.put("registrationId", registration.getId().toString());
+            data.put("price", currentPrice.toString());
+            data.put("formattedPrice", formattedPrice);
             if (registration.getApartmentNumber() != null) {
                 data.put("apartmentNumber", registration.getApartmentNumber());
             }
@@ -214,6 +250,57 @@ public class ResidentCardRegistrationService {
             log.info("✅ [ResidentCard] Đã gửi notification approval cho residentId: {}", registration.getResidentId());
         } catch (Exception e) {
             log.error("❌ [ResidentCard] Không thể gửi notification approval cho residentId: {}", registration.getResidentId(), e);
+        }
+    }
+
+    private void sendCardRejectionNotification(ResidentCardRegistration registration, String rejectionReason) {
+        try {
+            UUID residentId = registration.getResidentId();
+            if (residentId == null) {
+                log.warn("⚠️ [ResidentCard] residentId là null, không thể gửi notification cho registrationId: {}", 
+                        registration.getId());
+                return;
+            }
+
+            // Get current card price from database
+            BigDecimal currentPrice = cardPricingService.getPrice("RESIDENT");
+            String formattedPrice = formatVnd(currentPrice);
+
+            String title = "Thẻ cư dân bị từ chối";
+            String message = rejectionReason != null && !rejectionReason.isBlank() 
+                    ? String.format("Yêu cầu đăng ký thẻ cư dân của bạn đã bị từ chối. Phí đăng ký: %s. Lý do: %s", 
+                            formattedPrice, rejectionReason)
+                    : String.format("Yêu cầu đăng ký thẻ cư dân của bạn đã bị từ chối. Phí đăng ký: %s. Vui lòng liên hệ quản trị viên để biết thêm chi tiết.", 
+                            formattedPrice);
+
+            Map<String, String> data = new HashMap<>();
+            data.put("cardType", "RESIDENT_CARD");
+            data.put("registrationId", registration.getId().toString());
+            data.put("status", "REJECTED");
+            data.put("price", currentPrice.toString());
+            data.put("formattedPrice", formattedPrice);
+            if (registration.getApartmentNumber() != null) {
+                data.put("apartmentNumber", registration.getApartmentNumber());
+            }
+            if (rejectionReason != null) {
+                data.put("rejectionReason", rejectionReason);
+            }
+
+            notificationClient.sendResidentNotification(
+                    residentId,
+                    null, // buildingId - có thể null vì gửi theo residentId
+                    "CARD_REJECTED",
+                    title,
+                    message,
+                    registration.getId(),
+                    "RESIDENT_CARD_REGISTRATION",
+                    data
+            );
+
+            log.info("✅ [ResidentCard] Đã gửi notification rejection cho residentId: {}", residentId);
+        } catch (Exception e) {
+            log.error("❌ [ResidentCard] Không thể gửi notification rejection cho registrationId: {}", 
+                    registration.getId(), e);
         }
     }
 
@@ -265,7 +352,8 @@ public class ResidentCardRegistrationService {
         String returnUrl = StringUtils.hasText(vnpayProperties.getResidentReturnUrl())
                 ? vnpayProperties.getResidentReturnUrl()
                 : vnpayProperties.getReturnUrl();
-        var paymentResult = vnpayService.createPaymentUrlWithRef(orderId, orderInfo, REGISTRATION_FEE, clientIp, returnUrl);
+        BigDecimal registrationFee = cardPricingService.getPrice("RESIDENT");
+        var paymentResult = vnpayService.createPaymentUrlWithRef(orderId, orderInfo, registrationFee, clientIp, returnUrl);
         
         // Save transaction reference to database for fallback lookup
         saved.setVnpayTransactionRef(paymentResult.transactionRef());
@@ -482,23 +570,31 @@ public class ResidentCardRegistrationService {
         // Validate số lượng thẻ cư dân không vượt quá số người trong căn hộ
         validateResidentCardLimitByUnit(dto.unitId());
         
-        // Validate CCCD phải thuộc căn hộ đó và không được trùng với thẻ cư dân đã tồn tại
-        if (StringUtils.hasText(dto.citizenId())) {
-            String normalizedCitizenId = normalize(dto.citizenId());
-            
-            // Kiểm tra CCCD có thuộc căn hộ không
-            validateCitizenIdBelongsToUnit(normalizedCitizenId, dto.unitId());
-            
-            // Kiểm tra CCCD đã được sử dụng chưa
-            if (repository.existsByCitizenId(normalizedCitizenId)) {
-                throw new IllegalStateException(
-                    String.format("CCCD/CMND %s đã được sử dụng để đăng ký thẻ cư dân. " +
-                                "Mỗi CCCD/CMND chỉ được phép đăng ký 1 thẻ cư dân.",
-                                normalizedCitizenId)
-                );
-            }
-            log.debug("✅ [ResidentCard] CCCD {} chưa được sử dụng và thuộc căn hộ", normalizedCitizenId);
+        // Validate CCCD phải là 13 số
+        if (!StringUtils.hasText(dto.citizenId())) {
+            throw new IllegalArgumentException("CCCD/CMND là bắt buộc");
         }
+        
+        // Normalize CCCD: loại bỏ tất cả khoảng trắng và ký tự không phải số
+        String normalizedCitizenId = dto.citizenId().replaceAll("[^0-9]", "");
+        
+        // Validate format: phải đúng 13 số
+        if (normalizedCitizenId.length() != 13) {
+            throw new IllegalArgumentException("CCCD/CMND phải là 13 số");
+        }
+        
+        // Kiểm tra CCCD có thuộc căn hộ không
+        validateCitizenIdBelongsToUnit(normalizedCitizenId, dto.unitId());
+        
+        // Kiểm tra CCCD đã được sử dụng chưa
+        if (repository.existsByCitizenId(normalizedCitizenId)) {
+            throw new IllegalStateException(
+                String.format("CCCD/CMND %s đã được sử dụng để đăng ký thẻ cư dân. " +
+                            "Mỗi CCCD/CMND chỉ được phép đăng ký 1 thẻ cư dân.",
+                            normalizedCitizenId)
+            );
+        }
+        log.debug("✅ [ResidentCard] CCCD {} chưa được sử dụng và thuộc căn hộ", normalizedCitizenId);
     }
 
     /**
@@ -733,6 +829,26 @@ public class ResidentCardRegistrationService {
     public record ResidentCardPaymentResponse(UUID registrationId, String paymentUrl) {}
 
     public record ResidentCardPaymentResult(UUID registrationId, boolean success, String responseCode, boolean signatureValid) {}
+
+    /**
+     * Format BigDecimal price to VND string (e.g., 30000 -> "30.000 VND")
+     */
+    private String formatVnd(BigDecimal amount) {
+        if (amount == null) {
+            return "0 VND";
+        }
+        String digits = amount.toBigInteger().toString();
+        StringBuilder buffer = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            buffer.append(digits.charAt(i));
+            int remaining = digits.length() - i - 1;
+            if (remaining % 3 == 0 && remaining != 0) {
+                buffer.append(".");
+            }
+        }
+        buffer.append(" VND");
+        return buffer.toString();
+    }
 }
 
 

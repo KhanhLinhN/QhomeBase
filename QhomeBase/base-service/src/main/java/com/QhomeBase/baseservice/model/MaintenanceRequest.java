@@ -82,6 +82,21 @@ public class MaintenanceRequest {
     @Builder.Default
     private boolean callAlertSent = false;
 
+    @Column(name = "admin_response", columnDefinition = "TEXT")
+    private String adminResponse;
+
+    @Column(name = "estimated_cost", precision = 15, scale = 2)
+    private java.math.BigDecimal estimatedCost;
+
+    @Column(name = "responded_by")
+    private UUID respondedBy;
+
+    @Column(name = "responded_at")
+    private OffsetDateTime respondedAt;
+
+    @Column(name = "response_status", length = 50)
+    private String responseStatus;
+
     @PrePersist
     public void onCreate() {
         OffsetDateTime now = OffsetDateTime.now();

@@ -31,3 +31,7 @@ QhomeBase/customer-interaction-service/src/main/resources/qhomeapp-firebase-admi
 **/firebase-*.json
 QhomeBase/iam-service/target/classes/com/QhomeBase/iamservice/service/UserService.class
 QHomeApp_Flutter/
+
+# IntelliJ IDEA files (IDE configuration - không nên commit)
+.idea/
+*.iml

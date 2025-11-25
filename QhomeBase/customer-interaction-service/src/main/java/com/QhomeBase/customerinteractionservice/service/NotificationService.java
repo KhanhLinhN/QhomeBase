@@ -2,6 +2,7 @@ package com.QhomeBase.customerinteractionservice.service;
 
 import com.QhomeBase.customerinteractionservice.dto.notification.CreateNotificationRequest;
 import com.QhomeBase.customerinteractionservice.dto.notification.NotificationDetailResponse;
+import com.QhomeBase.customerinteractionservice.dto.notification.NotificationPagedResponse;
 import com.QhomeBase.customerinteractionservice.dto.notification.NotificationResponse;
 import com.QhomeBase.customerinteractionservice.dto.notification.NotificationWebSocketMessage;
 import com.QhomeBase.customerinteractionservice.dto.notification.UpdateNotificationRequest;
@@ -153,14 +154,77 @@ public class NotificationService {
     }
 
     public List<NotificationResponse> getNotificationsForResident(UUID residentId, UUID buildingId) {
-        List<Notification> notifications = notificationRepository.findByScopeOrderByCreatedAtDesc(
+        NotificationPagedResponse pagedResponse = getNotificationsForResidentPaged(residentId, buildingId, 0, 7);
+        return pagedResponse.getContent();
+    }
+
+    public NotificationPagedResponse getNotificationsForResidentPaged(UUID residentId, UUID buildingId, int page, int size) {
+        List<Notification> allNotifications = notificationRepository.findByScopeOrderByCreatedAtDesc(
                 NotificationScope.EXTERNAL
         );
 
-        return notifications.stream()
-                .filter(n -> shouldShowNotificationToResident(n, buildingId))
+        // Filter and sort by createdAt DESC (newest first)
+        List<NotificationResponse> filteredAndSorted = allNotifications.stream()
+                .filter(n -> shouldShowNotificationToResident(n, residentId, buildingId))
+                .sorted((n1, n2) -> {
+                    // Sort by createdAt DESC (newest first, from largest to smallest date)
+                    Instant createdAt1 = n1.getCreatedAt();
+                    Instant createdAt2 = n2.getCreatedAt();
+                    
+                    if (createdAt1 != null && createdAt2 != null) {
+                        return createdAt2.compareTo(createdAt1); // Sort DESC (newest first)
+                    }
+                    if (createdAt1 != null) return -1;
+                    if (createdAt2 != null) return 1;
+                    return 0;
+                })
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+
+        // Calculate pagination
+        long totalElements = filteredAndSorted.size();
+        int totalPages = (int) Math.ceil((double) totalElements / size);
+
+        // Ensure page is within valid range
+        if (page < 0) {
+            page = 0;
+        }
+        if (page >= totalPages && totalPages > 0) {
+            page = totalPages - 1;
+        }
+
+        // Apply pagination
+        int start = page * size;
+        int end = Math.min(start + size, filteredAndSorted.size());
+        List<NotificationResponse> pagedContent = start < filteredAndSorted.size()
+                ? filteredAndSorted.subList(start, end)
+                : new java.util.ArrayList<>();
+
+        return NotificationPagedResponse.builder()
+                .content(pagedContent)
+                .currentPage(page)
+                .pageSize(size)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+                .hasNext(page < totalPages - 1)
+                .hasPrevious(page > 0)
+                .isFirst(page == 0)
+                .isLast(page >= totalPages - 1 || totalPages == 0)
+                .build();
+    }
+
+    /**
+     * Get total count of notifications for resident (all pages, not just current page)
+     * This is used for displaying unread count on home screen
+     */
+    public long getNotificationsCountForResident(UUID residentId, UUID buildingId) {
+        List<Notification> allNotifications = notificationRepository.findByScopeOrderByCreatedAtDesc(
+                NotificationScope.EXTERNAL
+        );
+
+        return allNotifications.stream()
+                .filter(n -> shouldShowNotificationToResident(n, residentId, buildingId))
+                .count();
     }
 
     public List<NotificationResponse> getNotificationsForRole(String role, UUID userId) {
@@ -211,14 +275,20 @@ public class NotificationService {
                 .build();
     }
 
-    private boolean shouldShowNotificationToResident(Notification notification, UUID buildingId) {
+    private boolean shouldShowNotificationToResident(Notification notification, UUID residentId, UUID buildingId) {
         if (notification.getScope() == NotificationScope.INTERNAL) {
             return false;
         }
 
         if (notification.getScope() == NotificationScope.EXTERNAL) {
+            // If notification has targetResidentId, only show to that specific resident
+            if (notification.getTargetResidentId() != null) {
+                return residentId != null && residentId.equals(notification.getTargetResidentId());
+            }
+            
+            // Otherwise, use building-based filtering (for notifications to all residents in building or all buildings)
             if (notification.getTargetBuildingId() == null) {
-                return true;
+                return true; // Show to all buildings
             }
             return buildingId != null && buildingId.equals(notification.getTargetBuildingId());
         }
@@ -270,6 +340,28 @@ public class NotificationService {
             log.error("❌ Error sending WebSocket notification", e);
         }
     }
+    
+    private void sendWebSocketNotificationToResident(Notification notification, UUID residentId, String action) {
+        NotificationWebSocketMessage payload = NotificationWebSocketMessage.of(notification, action);
+        try {
+            // Send to resident-specific channel first (most specific)
+            String residentDestination = "/topic/notifications/resident/" + residentId;
+            messagingTemplate.convertAndSend(residentDestination, payload);
+            log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {} | ResidentId: {}", 
+                    action, residentDestination, notification.getId(), residentId);
+            
+            // Also send to building channel if applicable (for backward compatibility)
+            if (notification.getScope() == NotificationScope.EXTERNAL && notification.getTargetBuildingId() != null) {
+                String buildingDestination = "/topic/notifications/building/" + notification.getTargetBuildingId();
+                messagingTemplate.convertAndSend(buildingDestination, payload);
+                log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, buildingDestination, notification.getId());
+            }
+            
+            log.info("✅ Notification sent successfully via WebSocket to resident {}", residentId);
+        } catch (Exception e) {
+            log.error("❌ Error sending WebSocket notification to resident {}", residentId, e);
+        }
+    }
 
     public void createInternalNotification(com.QhomeBase.customerinteractionservice.dto.notification.InternalNotificationRequest request) {
         // If residentId is provided, send directly to that resident
@@ -294,7 +386,7 @@ public class NotificationService {
                     dataPayload
             );
 
-            // Also save to DB with scope EXTERNAL and targetBuildingId if provided
+            // Also save to DB with scope EXTERNAL and targetResidentId for specific resident
             NotificationScope scope = NotificationScope.EXTERNAL;
             
             Notification notification = Notification.builder()
@@ -302,7 +394,8 @@ public class NotificationService {
                     .title(request.getTitle())
                     .message(request.getMessage())
                     .scope(scope)
-                    .targetBuildingId(request.getBuildingId())
+                    .targetResidentId(request.getResidentId()) // Set targetResidentId for specific resident
+                    .targetBuildingId(null) // Don't set targetBuildingId when targeting specific resident
                     .targetRole(null)
                     .referenceId(request.getReferenceId())
                     .referenceType(request.getReferenceType())
@@ -312,7 +405,10 @@ public class NotificationService {
 
             Notification savedNotification = notificationRepository.save(notification);
             
-            // Send WebSocket notification for real-time update when app is open
+            // Send WebSocket notification to resident-specific channel for real-time update
+            sendWebSocketNotificationToResident(savedNotification, request.getResidentId(), "NOTIFICATION_CREATED");
+            
+            // Also send to general channels (building/external) for clients that subscribe to those channels
             sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
             
             log.info("✅ Created internal notification for residentId: {} | Notification ID: {}", 

@@ -14,7 +14,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
@@ -37,11 +39,17 @@ public class CardStatusUpdateScheduler {
     private final ElevatorCardRegistrationRepository elevatorCardRepository;
     private final RegisterServiceRequestRepository vehicleCardRepository;
 
-    @Value("${card.fee.cycle-days:30}")
+    @Value("${card.fee.cycle-months:30}")
+    private int cycleMonths;
+
+    @Value("${card.fee.cycle-days:900}")
     private int cycleDays;
 
-    @Value("${card.fee.reminder.grace-days:5}")
-    private int graceDays;
+    @Value("${card.status.update.needs-renewal-months:30}")
+    private int needsRenewalMonths;
+
+    @Value("${card.status.update.suspend-after-days:6}")
+    private int suspendAfterDays;
 
     @Value("${card.status.update.enabled:true}")
     private boolean statusUpdateEnabled;
@@ -58,8 +66,6 @@ public class CardStatusUpdateScheduler {
         }
 
         try {
-            LocalDate today = LocalDate.now(ZONE);
-
             int updatedNeedsRenewal = 0;
             int updatedSuspended = 0;
 
@@ -69,24 +75,32 @@ public class CardStatusUpdateScheduler {
             for (ResidentCardRegistration card : residentCards) {
                 if (card.getApprovedAt() == null) continue;
 
+                // Production mode: check months and days
                 LocalDate approvedDate = card.getApprovedAt().atZoneSameInstant(ZONE).toLocalDate();
-                long daysSinceApproval = java.time.temporal.ChronoUnit.DAYS.between(approvedDate, today);
+                LocalDate today = LocalDate.now(ZONE);
+                long monthsSinceApproval = ChronoUnit.MONTHS.between(approvedDate, today);
+                long daysSinceApproval = ChronoUnit.DAYS.between(approvedDate, today);
+                
+                // Sau 30 tháng từ lúc approve: NEEDS_RENEWAL
+                // Sau 30 tháng + 6 ngày từ lúc approve: SUSPENDED
+                long needsRenewalThresholdMonths = needsRenewalMonths; // 30 tháng
+                long suspendedThresholdDays = (needsRenewalMonths * 30L) + suspendAfterDays; // 30 tháng + 6 ngày
 
-                if (daysSinceApproval >= cycleDays + graceDays) {
-                    // Sau 36 ngày (30 + 6): SUSPENDED
+                if (daysSinceApproval >= suspendedThresholdDays) {
+                    // SUSPENDED: Sau 30 tháng + 6 ngày
                     if (!STATUS_SUSPENDED.equals(card.getStatus())) {
                         card.setStatus(STATUS_SUSPENDED);
                         updatedSuspended++;
-                        log.info("🔄 [CardStatusUpdate] Resident card {} chuyển sang SUSPENDED ({} ngày từ khi approve)",
-                                card.getId(), daysSinceApproval);
+                        log.info("🔄 [CardStatusUpdate] Resident card {} chuyển sang SUSPENDED ({} tháng {} ngày từ khi approve)",
+                                card.getId(), monthsSinceApproval, daysSinceApproval % 30);
                     }
-                } else if (daysSinceApproval >= cycleDays) {
-                    // Sau 30 ngày: NEEDS_RENEWAL
+                } else if (monthsSinceApproval >= needsRenewalThresholdMonths) {
+                    // NEEDS_RENEWAL: Sau 30 tháng
                     if (!STATUS_NEEDS_RENEWAL.equals(card.getStatus())) {
                         card.setStatus(STATUS_NEEDS_RENEWAL);
                         updatedNeedsRenewal++;
-                        log.info("🔄 [CardStatusUpdate] Resident card {} chuyển sang NEEDS_RENEWAL ({} ngày từ khi approve)",
-                                card.getId(), daysSinceApproval);
+                        log.info("🔄 [CardStatusUpdate] Resident card {} chuyển sang NEEDS_RENEWAL ({} tháng từ khi approve)",
+                                card.getId(), monthsSinceApproval);
                     }
                 }
             }
@@ -97,24 +111,32 @@ public class CardStatusUpdateScheduler {
             for (ElevatorCardRegistration card : elevatorCards) {
                 if (card.getApprovedAt() == null) continue;
 
+                // Production mode: check months and days
                 LocalDate approvedDate = card.getApprovedAt().atZoneSameInstant(ZONE).toLocalDate();
-                long daysSinceApproval = java.time.temporal.ChronoUnit.DAYS.between(approvedDate, today);
+                LocalDate today = LocalDate.now(ZONE);
+                long monthsSinceApproval = ChronoUnit.MONTHS.between(approvedDate, today);
+                long daysSinceApproval = ChronoUnit.DAYS.between(approvedDate, today);
+                
+                // Sau 30 tháng từ lúc approve: NEEDS_RENEWAL
+                // Sau 30 tháng + 6 ngày từ lúc approve: SUSPENDED
+                long needsRenewalThresholdMonths = needsRenewalMonths; // 30 tháng
+                long suspendedThresholdDays = (needsRenewalMonths * 30L) + suspendAfterDays; // 30 tháng + 6 ngày
 
-                if (daysSinceApproval >= cycleDays + graceDays) {
-                    // Sau 36 ngày (30 + 6): SUSPENDED
+                if (daysSinceApproval >= suspendedThresholdDays) {
+                    // SUSPENDED: Sau 30 tháng + 6 ngày
                     if (!STATUS_SUSPENDED.equals(card.getStatus())) {
                         card.setStatus(STATUS_SUSPENDED);
                         updatedSuspended++;
-                        log.info("🔄 [CardStatusUpdate] Elevator card {} chuyển sang SUSPENDED ({} ngày từ khi approve)",
-                                card.getId(), daysSinceApproval);
+                        log.info("🔄 [CardStatusUpdate] Elevator card {} chuyển sang SUSPENDED ({} tháng {} ngày từ khi approve)",
+                                card.getId(), monthsSinceApproval, daysSinceApproval % 30);
                     }
-                } else if (daysSinceApproval >= cycleDays) {
-                    // Sau 30 ngày: NEEDS_RENEWAL
+                } else if (monthsSinceApproval >= needsRenewalThresholdMonths) {
+                    // NEEDS_RENEWAL: Sau 30 tháng
                     if (!STATUS_NEEDS_RENEWAL.equals(card.getStatus())) {
                         card.setStatus(STATUS_NEEDS_RENEWAL);
                         updatedNeedsRenewal++;
-                        log.info("🔄 [CardStatusUpdate] Elevator card {} chuyển sang NEEDS_RENEWAL ({} ngày từ khi approve)",
-                                card.getId(), daysSinceApproval);
+                        log.info("🔄 [CardStatusUpdate] Elevator card {} chuyển sang NEEDS_RENEWAL ({} tháng từ khi approve)",
+                                card.getId(), monthsSinceApproval);
                     }
                 }
             }
@@ -125,24 +147,32 @@ public class CardStatusUpdateScheduler {
             for (RegisterServiceRequest card : vehicleCards) {
                 if (card.getApprovedAt() == null) continue;
 
+                // Production mode: check months and days
                 LocalDate approvedDate = card.getApprovedAt().atZoneSameInstant(ZONE).toLocalDate();
-                long daysSinceApproval = java.time.temporal.ChronoUnit.DAYS.between(approvedDate, today);
+                LocalDate today = LocalDate.now(ZONE);
+                long monthsSinceApproval = ChronoUnit.MONTHS.between(approvedDate, today);
+                long daysSinceApproval = ChronoUnit.DAYS.between(approvedDate, today);
+                
+                // Sau 30 tháng từ lúc approve: NEEDS_RENEWAL
+                // Sau 30 tháng + 6 ngày từ lúc approve: SUSPENDED
+                long needsRenewalThresholdMonths = needsRenewalMonths; // 30 tháng
+                long suspendedThresholdDays = (needsRenewalMonths * 30L) + suspendAfterDays; // 30 tháng + 6 ngày
 
-                if (daysSinceApproval >= cycleDays + graceDays) {
-                    // Sau 36 ngày (30 + 6): SUSPENDED
+                if (daysSinceApproval >= suspendedThresholdDays) {
+                    // SUSPENDED: Sau 30 tháng + 6 ngày
                     if (!STATUS_SUSPENDED.equals(card.getStatus())) {
                         card.setStatus(STATUS_SUSPENDED);
                         updatedSuspended++;
-                        log.info("🔄 [CardStatusUpdate] Vehicle card {} chuyển sang SUSPENDED ({} ngày từ khi approve)",
-                                card.getId(), daysSinceApproval);
+                        log.info("🔄 [CardStatusUpdate] Vehicle card {} chuyển sang SUSPENDED ({} tháng {} ngày từ khi approve)",
+                                card.getId(), monthsSinceApproval, daysSinceApproval % 30);
                     }
-                } else if (daysSinceApproval >= cycleDays) {
-                    // Sau 30 ngày: NEEDS_RENEWAL
+                } else if (monthsSinceApproval >= needsRenewalThresholdMonths) {
+                    // NEEDS_RENEWAL: Sau 30 tháng
                     if (!STATUS_NEEDS_RENEWAL.equals(card.getStatus())) {
                         card.setStatus(STATUS_NEEDS_RENEWAL);
                         updatedNeedsRenewal++;
-                        log.info("🔄 [CardStatusUpdate] Vehicle card {} chuyển sang NEEDS_RENEWAL ({} ngày từ khi approve)",
-                                card.getId(), daysSinceApproval);
+                        log.info("🔄 [CardStatusUpdate] Vehicle card {} chuyển sang NEEDS_RENEWAL ({} tháng từ khi approve)",
+                                card.getId(), monthsSinceApproval);
                     }
                 }
             }

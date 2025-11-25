@@ -133,7 +133,7 @@ public class ResidentCardRegistrationController {
     }
 
     @PostMapping("/vnpay-url")
-    public ResponseEntity<?> createRegistrationAndPay(@RequestBody ResidentCardRegistrationCreateDto dto,
+    public ResponseEntity<?> createRegistrationAndPay(@Valid @RequestBody ResidentCardRegistrationCreateDto dto,
                                                       @RequestHeader HttpHeaders headers,
                                                       HttpServletRequest request) {
         log.info("📥 [ResidentCard] Nhận request tạo đăng ký và thanh toán: unitId={}, residentId={}", 

@@ -31,10 +31,13 @@ public class CardFeeReminderScheduler {
     @Value("${card.fee.reminder.enabled:true}")
     private boolean remindersEnabled;
 
-    @Value("${card.fee.reminder.grace-days:5}")
+    @Value("${card.fee.reminder.grace-days:6}")
     private int graceDays;
 
-    @Value("${card.fee.cycle-days:30}")
+    @Value("${card.fee.cycle-months:30}")
+    private int cycleMonths;
+
+    @Value("${card.fee.cycle-days:900}")
     private int cycleDays;
 
     /**
@@ -142,10 +145,10 @@ public class CardFeeReminderScheduler {
 
         String title = "Nhắc đóng phí thẻ dịch vụ";
         String message = String.format(
-                "%s đang có %s đến hạn thanh toán sau %d ngày sử dụng. Vui lòng hoàn tất trong %d ngày tới.",
+                "%s đang có %s đến hạn thanh toán sau %d tháng sử dụng. Vui lòng hoàn tất trong %d ngày tới.",
                 unitLabel,
                 countsText,
-                cycleDays,
+                cycleMonths,
                 remainingDays);
 
         Map<String, String> data = new HashMap<>();

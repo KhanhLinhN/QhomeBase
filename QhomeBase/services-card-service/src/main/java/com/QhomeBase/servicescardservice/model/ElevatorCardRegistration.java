@@ -61,8 +61,7 @@ public class ElevatorCardRegistration {
     private String paymentStatus = "UNPAID";
 
     @Column(name = "payment_amount", precision = 14, scale = 2)
-    @Builder.Default
-    private BigDecimal paymentAmount = BigDecimal.valueOf(30000);
+    private BigDecimal paymentAmount;
 
     @Column(name = "payment_date")
     private OffsetDateTime paymentDate;

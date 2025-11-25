@@ -1,6 +1,8 @@
 package com.QhomeBase.servicescardservice.dto;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import java.util.UUID;
 
 public record ResidentCardRegistrationCreateDto(
@@ -18,6 +20,8 @@ public record ResidentCardRegistrationCreateDto(
 
         String buildingName,
 
+        @NotBlank(message = "CCCD/CMND là bắt buộc")
+        @Pattern(regexp = "^[0-9]{13}$", message = "CCCD/CMND phải là 13 số")
         String citizenId,
 
         String phoneNumber,

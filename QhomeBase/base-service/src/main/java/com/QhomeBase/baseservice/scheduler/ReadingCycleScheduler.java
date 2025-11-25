@@ -24,7 +24,19 @@ public class ReadingCycleScheduler {
 
     @PostConstruct
     public void initializeCycles() {
-        ensureCurrentAndNextCycles();
+        // Delay initialization to allow other services (especially finance-billing) to start
+        // This prevents connection refused errors during startup
+        new Thread(() -> {
+            try {
+                Thread.sleep(10000); // Wait 10 seconds for other services to start
+                ensureCurrentAndNextCycles();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("Cycle initialization interrupted", e);
+            } catch (Exception e) {
+                log.error("Failed to initialize cycles during startup", e);
+            }
+        }).start();
     }
 
     @Scheduled(cron = "${meter-reading.cycle.cron:0 0 1 * * *}")

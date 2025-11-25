@@ -77,4 +77,11 @@ public class Invoice {
 
     @Column(name = "paid_at")
     private OffsetDateTime paidAt;
+
+    @Column(name = "reminder_count", nullable = false)
+    @Builder.Default
+    private Integer reminderCount = 0;
+
+    @Column(name = "last_reminder_at")
+    private OffsetDateTime lastReminderAt;
 }

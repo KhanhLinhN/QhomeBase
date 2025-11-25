@@ -5,6 +5,7 @@ import com.QhomeBase.customerinteractionservice.security.UserPrincipal;
 import com.QhomeBase.customerinteractionservice.service.NewsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/news")
 @RequiredArgsConstructor
@@ -71,10 +73,22 @@ public class NewsController {
     }
 
     @GetMapping("/resident")
-    public ResponseEntity<List<NewsDetailResponse>> getNewsForResident(
-            @RequestParam UUID residentId) {
+    public ResponseEntity<?> getNewsForResident(
+            @RequestParam UUID residentId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "7") int size) {
         
-        List<NewsDetailResponse> news = newsService.getNewsForResident(residentId);
+        // Ensure size is 7 as per requirement
+        size = 7;
+        
+        log.info("🔍 [NewsController] getNewsForResident: residentId={}, page={}, size={}", 
+                residentId, page, size);
+        
+        NewsPagedResponse news = newsService.getNewsForResidentPaged(residentId, page, size);
+        
+        log.info("✅ [NewsController] getNewsForResident: returned {} news items", 
+                news.getContent().size());
+        
         return ResponseEntity.ok(news);
     }
 

@@ -9,8 +9,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 
@@ -80,8 +83,13 @@ public class FinanceBillingClient {
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(BillingCycleDto.class)
+                .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
+                        .filter(throwable -> throwable instanceof WebClientRequestException)
+                        .doBeforeRetry(retrySignal -> 
+                            log.warn("Retrying finance service call (attempt {}/3): {}", 
+                                retrySignal.totalRetries() + 1, retrySignal.failure().getMessage())))
                 .doOnSuccess(dto -> log.debug("Finance returned billing cycle {}", dto != null ? dto.getId() : "null"))
-                .doOnError(error -> log.error("Finance billing cycle creation failed", error));
+                .doOnError(error -> log.error("Finance billing cycle creation failed after retries", error));
     }
 
     public Mono<List<BillingCycleDto>> findBillingCyclesByExternalId(UUID externalCycleId) {
@@ -92,6 +100,11 @@ public class FinanceBillingClient {
                 .retrieve()
                 .bodyToFlux(BillingCycleDto.class)
                 .collectList()
-                .doOnError(error -> log.error("Failed to query billing cycles for external id {}", externalCycleId, error));
+                .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
+                        .filter(throwable -> throwable instanceof WebClientRequestException)
+                        .doBeforeRetry(retrySignal -> 
+                            log.warn("Retrying finance service query (attempt {}/3): {}", 
+                                retrySignal.totalRetries() + 1, retrySignal.failure().getMessage())))
+                .doOnError(error -> log.error("Failed to query billing cycles for external id {} after retries", externalCycleId, error));
     }
 }

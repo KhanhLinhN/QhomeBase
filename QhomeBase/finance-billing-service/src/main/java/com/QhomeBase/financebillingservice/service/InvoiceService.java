@@ -11,6 +11,7 @@ import com.QhomeBase.financebillingservice.repository.InvoiceRepository;
 import com.QhomeBase.financebillingservice.repository.ResidentRepository;
 import com.QhomeBase.financebillingservice.repository.ResidentRepository.ResidentContact;
 import com.QhomeBase.financebillingservice.service.vnpay.VnpayService;
+import com.QhomeBase.financebillingservice.client.BaseServiceClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -50,7 +51,8 @@ public class InvoiceService {
     private final VnpayService vnpayService;
     private final VnpayProperties vnpayProperties;
     private final NotificationEmailService emailService;
-    private final BaseServiceClient baseService;
+    private final NotificationClient notificationClient;
+    private final BaseServiceClient baseServiceClient;
 
     private final ConcurrentMap<Long, UUID> orderIdToInvoiceIdMap = new ConcurrentHashMap<>();
 
@@ -316,7 +318,145 @@ public class InvoiceService {
             log.info("Created {} invoice lines for invoice: {}", request.getLines().size(), savedInvoice.getId());
         }
         
+        // Send notification to resident (only for electricity and water invoices)
+        sendInvoiceNotification(savedInvoice);
+        
         return toDto(savedInvoice);
+    }
+    
+    private void sendInvoiceNotification(Invoice invoice) {
+        if (invoice.getPayerUnitId() == null) {
+            log.warn("⚠️ [InvoiceService] Cannot send notification: payerUnitId is null");
+            return;
+        }
+        
+        // Only send notification for electricity and water invoices
+        // Skip notification for card payment invoices (VEHICLE_CARD, ELEVATOR_CARD, RESIDENT_CARD)
+        List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceId(invoice.getId());
+        boolean shouldSendNotification = false;
+        
+        for (InvoiceLine line : lines) {
+            String serviceCode = line.getServiceCode();
+            if (serviceCode != null) {
+                String normalized = serviceCode.trim().toUpperCase();
+                // Only send notification for electricity and water invoices
+                if (normalized.contains("ELECTRICITY") || normalized.contains("WATER")) {
+                    shouldSendNotification = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!shouldSendNotification) {
+            log.debug("ℹ️ [InvoiceService] Skipping notification for invoice {} - not an electricity/water invoice", invoice.getId());
+            return;
+        }
+        
+        try {
+            // Get buildingId from unitId
+            UUID buildingId = null;
+            BaseServiceClient.UnitInfo unitInfo = null;
+            if (invoice.getPayerUnitId() != null) {
+                try {
+                    unitInfo = baseServiceClient.getUnitById(invoice.getPayerUnitId());
+                    if (unitInfo != null && unitInfo.getBuildingId() != null) {
+                        buildingId = unitInfo.getBuildingId();
+                        log.info("✅ [InvoiceService] Resolved buildingId={} from unitId={}", buildingId, invoice.getPayerUnitId());
+                    }
+                } catch (Exception e) {
+                    log.warn("⚠️ [InvoiceService] Failed to get buildingId from unitId {}: {}", invoice.getPayerUnitId(), e.getMessage());
+                }
+            }
+            
+            // Get all residents in the unit (via household)
+            List<UUID> residentIds = new ArrayList<>();
+            if (invoice.getPayerUnitId() != null) {
+                try {
+                    BaseServiceClient.HouseholdInfo household = baseServiceClient.getCurrentHouseholdByUnitId(invoice.getPayerUnitId());
+                    if (household != null && household.getId() != null) {
+                        List<BaseServiceClient.HouseholdMemberInfo> members = baseServiceClient.getActiveMembersByHouseholdId(household.getId());
+                        for (BaseServiceClient.HouseholdMemberInfo member : members) {
+                            if (member.getResidentId() != null) {
+                                residentIds.add(member.getResidentId());
+                            }
+                        }
+                        // Also include primary resident if not already in the list
+                        if (household.getPrimaryResidentId() != null && !residentIds.contains(household.getPrimaryResidentId())) {
+                            residentIds.add(household.getPrimaryResidentId());
+                        }
+                        log.info("✅ [InvoiceService] Found {} residents in unit {} (household {})", 
+                                residentIds.size(), invoice.getPayerUnitId(), household.getId());
+                    } else {
+                        // Fallback: if no household found, use payerResidentId
+                        if (invoice.getPayerResidentId() != null) {
+                            residentIds.add(invoice.getPayerResidentId());
+                            log.warn("⚠️ [InvoiceService] No household found for unit {}, using payerResidentId only", invoice.getPayerUnitId());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("⚠️ [InvoiceService] Failed to get residents for unit {}: {}", invoice.getPayerUnitId(), e.getMessage());
+                    // Fallback: use payerResidentId
+                    if (invoice.getPayerResidentId() != null) {
+                        residentIds.add(invoice.getPayerResidentId());
+                    }
+                }
+            }
+            
+            if (residentIds.isEmpty()) {
+                log.warn("⚠️ [InvoiceService] No residents found for unit {}, cannot send notification", invoice.getPayerUnitId());
+                return;
+            }
+            
+            // Calculate total amount
+            BigDecimal totalAmount = invoiceLineRepository.findByInvoiceId(invoice.getId()).stream()
+                    .map(InvoiceLine::getLineTotal)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            
+            // Format amount
+            NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(new Locale("vi", "VN"));
+            currencyFormat.setMaximumFractionDigits(0);
+            String amountText = currencyFormat.format(totalAmount);
+            
+            // Build notification message
+            String invoiceCode = invoice.getCode() != null ? invoice.getCode() : invoice.getId().toString();
+            String title = "Hóa đơn mới - " + invoiceCode;
+            String message = String.format("Bạn có hóa đơn mới với số tiền %s. Hạn thanh toán: %s", 
+                    amountText,
+                    invoice.getDueDate() != null ? invoice.getDueDate().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) : "N/A");
+            
+            // Prepare data payload
+            Map<String, String> data = new HashMap<>();
+            data.put("invoiceId", invoice.getId().toString());
+            data.put("invoiceCode", invoiceCode);
+            data.put("amount", totalAmount.toString());
+            data.put("dueDate", invoice.getDueDate() != null ? invoice.getDueDate().toString() : "");
+            
+            // Send notification to ALL residents in the unit
+            int successCount = 0;
+            for (UUID residentId : residentIds) {
+                try {
+                    notificationClient.sendResidentNotification(
+                            residentId,
+                            buildingId,
+                            "BILL",
+                            title,
+                            message,
+                            invoice.getId(),
+                            "INVOICE",
+                            data
+                    );
+                    successCount++;
+                } catch (Exception e) {
+                    log.warn("⚠️ [InvoiceService] Failed to send notification to residentId {}: {}", residentId, e.getMessage());
+                }
+            }
+            
+            log.info("✅ [InvoiceService] Sent invoice notification to {}/{} residents in unit {}, buildingId={}, invoiceId={}", 
+                    successCount, residentIds.size(), invoice.getPayerUnitId(), buildingId, invoice.getId());
+        } catch (Exception e) {
+            log.error("❌ [InvoiceService] Failed to send invoice notification for invoiceId={}: {}", 
+                    invoice.getId(), e.getMessage(), e);
+        }
     }
     
     @Transactional

@@ -44,10 +44,16 @@ public class CardFeeReminderService {
 
     private final Set<UUID> vehicleCardsMissingResident = ConcurrentHashMap.newKeySet();
 
-    @Value("${card.fee.cycle-days:30}")
+    @Value("${card.fee.cycle-months:30}")
+    private int cycleMonths;
+
+    @Value("${card.fee.cycle-days:900}")
     private int cycleDays;
 
-    @Value("${card.fee.reminder.grace-days:5}")
+    @Value("${card.fee.reminder.interval-hours:24}")
+    private int reminderIntervalHours;
+
+    @Value("${card.fee.reminder.grace-days:6}")
     private int graceDays;
 
     @Value("${card.fee.reminder.max-per-cycle:6}")
@@ -72,7 +78,8 @@ public class CardFeeReminderService {
             // Lấy approved_at từ card entity để tính cycle (ưu tiên approved_at)
             OffsetDateTime approvedAt = getApprovedAtFromCard(cardType, cardId);
             LocalDate cycleStart = resolveCycleStart(paymentDate, approvedAt, null);
-            LocalDate nextDue = cycleStart.plusDays(getSafeCycleDays());
+            // Tính nextDueDate: cycleStart + 30 tháng (900 ngày)
+            LocalDate nextDue = cycleStart.plusMonths(getSafeCycleMonths());
 
             CardFeeReminderState state = reminderStateRepository
                     .findByCardTypeAndCardId(cardType.name(), cardId)
@@ -128,10 +135,35 @@ public class CardFeeReminderService {
 
         List<CardFeeReminderState> states = reminderStateRepository.findDueStates(safeToday, cutoffDate);
 
-        // Filter out states that were already reminded today
+        // Filter out states that were already reminded
+        // Production mode: check hours (send every 24 hours)
+        OffsetDateTime now = OffsetDateTime.now(DEFAULT_ZONE);
+        
         return states.stream()
-                .filter(state -> state.getLastRemindedAt() == null
-                        || state.getLastRemindedAt().atZoneSameInstant(DEFAULT_ZONE).toLocalDate().isBefore(safeToday))
+                .filter(state -> {
+                    // First, check if card is still active (not cancelled, suspended, or rejected)
+                    // Nếu thẻ bị hủy (CANCELLED) trong khoảng 6 ngày thì không gửi notification nữa
+                    if (!isCardActive(state)) {
+                        return false; // Skip reminder for inactive cards
+                    }
+                    
+                    // Kiểm tra nếu đã gửi đủ số lần reminder tối đa (6 lần)
+                    if (state.getReminderCount() >= maxRemindersPerCycle) {
+                        return false; // Đã gửi đủ 6 lần, không gửi nữa
+                    }
+                    
+                    // Production mode: check hours - send every 24 hours
+                    if (state.getLastRemindedAt() == null) {
+                        // First reminder: check if nextDueDate has passed
+                        return state.getNextDueDate() != null && 
+                               !state.getNextDueDate().isAfter(safeToday);
+                    } else {
+                        // Subsequent reminders: check if at least 24 hours have passed since last reminder
+                        long hoursSinceLastReminder = java.time.Duration.between(
+                                state.getLastRemindedAt(), now).toHours();
+                        return hoursSinceLastReminder >= reminderIntervalHours;
+                    }
+                })
                 .toList();
     }
 
@@ -234,7 +266,7 @@ public class CardFeeReminderService {
                 .apartmentNumber(truncate(card.getApartmentNumber()))
                 .buildingName(truncate(card.getBuildingName()))
                 .cycleStartDate(cycleStart)
-                .nextDueDate(cycleStart.plusDays(getSafeCycleDays()))
+                .nextDueDate(cycleStart.plusMonths(getSafeCycleMonths()))
                 .reminderCount(0)
                 .maxReminders(Math.max(1, maxRemindersPerCycle))
                 .build();
@@ -263,7 +295,7 @@ public class CardFeeReminderService {
                 .apartmentNumber(truncate(card.getApartmentNumber()))
                 .buildingName(truncate(card.getBuildingName()))
                 .cycleStartDate(cycleStart)
-                .nextDueDate(cycleStart.plusDays(getSafeCycleDays()))
+                .nextDueDate(cycleStart.plusMonths(getSafeCycleMonths()))
                 .reminderCount(0)
                 .maxReminders(Math.max(1, maxRemindersPerCycle))
                 .build();
@@ -306,7 +338,7 @@ public class CardFeeReminderService {
                 .apartmentNumber(truncate(card.getApartmentNumber()))
                 .buildingName(truncate(card.getBuildingName()))
                 .cycleStartDate(cycleStart)
-                .nextDueDate(cycleStart.plusDays(getSafeCycleDays()))
+                .nextDueDate(cycleStart.plusMonths(getSafeCycleMonths()))
                 .reminderCount(0)
                 .maxReminders(Math.max(1, maxRemindersPerCycle))
                 .build();
@@ -338,7 +370,7 @@ public class CardFeeReminderService {
         }
         if (state.getCycleStartDate() == null) {
             state.setCycleStartDate(LocalDate.now(DEFAULT_ZONE));
-            state.setNextDueDate(state.getCycleStartDate().plusDays(getSafeCycleDays()));
+            state.setNextDueDate(state.getCycleStartDate().plusMonths(getSafeCycleMonths()));
             changed = true;
         }
         if (state.getMaxReminders() <= 0) {
@@ -373,8 +405,13 @@ public class CardFeeReminderService {
         return LocalDate.now(DEFAULT_ZONE);
     }
 
+    private int getSafeCycleMonths() {
+        // Use cycleMonths (30 months) for production
+        return Math.max(1, cycleMonths);
+    }
+
     private int getSafeCycleDays() {
-        // Allow 0 for test mode (triggers immediately on same day)
+        // Fallback to cycleDays if needed
         return Math.max(0, cycleDays);
     }
 
@@ -388,6 +425,64 @@ public class CardFeeReminderService {
         }
         String trimmed = value.trim();
         return trimmed.length() > 100 ? trimmed.substring(0, 100) : trimmed;
+    }
+
+    /**
+     * Check if card is still active (not cancelled, suspended, or rejected).
+     * Cards that are cancelled, suspended, or rejected should not receive reminders.
+     * Đặc biệt: Nếu thẻ bị hủy (CANCELLED) trong khoảng 6 ngày reminder thì không gửi notification nữa.
+     */
+    private boolean isCardActive(CardFeeReminderState state) {
+        try {
+            CardFeeType cardType = CardFeeType.valueOf(state.getCardType());
+            UUID cardId = state.getCardId();
+            
+            boolean isActive = switch (cardType) {
+                case RESIDENT -> residentCardRepository.findById(cardId)
+                        .map(card -> {
+                            String status = card.getStatus();
+                            // Exclude cancelled, suspended, and rejected cards
+                            return status != null 
+                                && !status.equalsIgnoreCase("CANCELLED")
+                                && !status.equalsIgnoreCase("SUSPENDED")
+                                && !status.equalsIgnoreCase("REJECTED");
+                        })
+                        .orElse(false); // If card not found, consider inactive
+                case ELEVATOR -> elevatorCardRepository.findById(cardId)
+                        .map(card -> {
+                            String status = card.getStatus();
+                            // Exclude cancelled, suspended, and rejected cards
+                            return status != null 
+                                && !status.equalsIgnoreCase("CANCELLED")
+                                && !status.equalsIgnoreCase("SUSPENDED")
+                                && !status.equalsIgnoreCase("REJECTED");
+                        })
+                        .orElse(false); // If card not found, consider inactive
+                case VEHICLE -> vehicleRegistrationRepository.findById(cardId)
+                        .map(card -> {
+                            String status = card.getStatus();
+                            // Exclude cancelled, suspended, and rejected cards
+                            return status != null 
+                                && !status.equalsIgnoreCase("CANCELLED")
+                                && !status.equalsIgnoreCase("SUSPENDED")
+                                && !status.equalsIgnoreCase("REJECTED");
+                        })
+                        .orElse(false); // If card not found, consider inactive
+                default -> false;
+            };
+            
+            // Nếu thẻ bị hủy (CANCELLED) và đang trong khoảng 6 ngày reminder thì không gửi notification
+            if (!isActive && state.getReminderCount() > 0 && state.getReminderCount() < maxRemindersPerCycle) {
+                log.debug("⚠️ [CardFeeReminder] Thẻ {} {} đã bị hủy trong khoảng reminder, không gửi notification nữa", 
+                        state.getCardType(), state.getCardId());
+            }
+            
+            return isActive;
+        } catch (Exception e) {
+            log.warn("⚠️ [CardFeeReminder] Không thể kiểm tra trạng thái card {} {}: {}", 
+                    state.getCardType(), state.getCardId(), e.getMessage());
+            return false; // On error, consider inactive to be safe
+        }
     }
 
     /**

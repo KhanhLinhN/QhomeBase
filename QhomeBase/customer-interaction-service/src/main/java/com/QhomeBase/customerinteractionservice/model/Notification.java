@@ -45,6 +45,9 @@ public class Notification {
     @Column(name = "target_building_id")
     private UUID targetBuildingId;
 
+    @Column(name = "target_resident_id")
+    private UUID targetResidentId;
+
     @Column(name = "reference_id")
     private UUID referenceId;
 
