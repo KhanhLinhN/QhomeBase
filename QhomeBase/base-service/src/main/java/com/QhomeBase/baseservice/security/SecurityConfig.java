@@ -41,6 +41,8 @@ public class SecurityConfig {
                         // Internal service calls - allow customer-interaction-service to get household/unit/building info
                         .requestMatchers("/api/household-members/residents/**").permitAll()
                         .requestMatchers("/api/households/**").permitAll()
+                        // Trello webhook endpoint (public, but should be secured with secret token in production)
+                        .requestMatchers(HttpMethod.POST, "/api/maintenance-requests/trello-webhook").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

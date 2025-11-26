@@ -14,7 +14,9 @@ public record AdminMaintenanceResponseDto(
         @DecimalMin(value = "0.0", message = "Estimated cost must be non-negative")
         BigDecimal estimatedCost,
         
-        String note
+        String note,
+        
+        UUID staffId
 ) {
 }
 

@@ -14,6 +14,7 @@ import com.QhomeBase.baseservice.repository.HouseholdRepository;
 import com.QhomeBase.baseservice.repository.MaintenanceRequestRepository;
 import com.QhomeBase.baseservice.repository.ResidentRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
+import com.QhomeBase.baseservice.service.IamClientService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
@@ -63,6 +64,12 @@ public class MaintenanceRequestService {
     private final HouseholdRepository householdRepository;
     private final HouseholdMemberRepository householdMemberRepository;
     private final NotificationClient notificationClient;
+    private final TrelloService trelloService;
+    private final IamClientService iamClientService;
+    
+    private final String todoListId;
+    private final String inProgressListId;
+    private final String doneListId;
 
     public MaintenanceRequestService(
             MaintenanceRequestRepository maintenanceRequestRepository,
@@ -71,16 +78,26 @@ public class MaintenanceRequestService {
             HouseholdRepository householdRepository,
             HouseholdMemberRepository householdMemberRepository,
             NotificationClient notificationClient,
+            TrelloService trelloService,
+            IamClientService iamClientService,
             @Value("${maintenance.request.working.hours.start:08:00}") String workingStartStr,
-            @Value("${maintenance.request.working.hours.end:18:00}") String workingEndStr) {
+            @Value("${maintenance.request.working.hours.end:18:00}") String workingEndStr,
+            @Value("${trello.list.id.todo:}") String todoListId,
+            @Value("${trello.list.id.inprogress:}") String inProgressListId,
+            @Value("${trello.list.id.done:}") String doneListId) {
         this.maintenanceRequestRepository = maintenanceRequestRepository;
         this.unitRepository = unitRepository;
         this.residentRepository = residentRepository;
         this.householdRepository = householdRepository;
         this.householdMemberRepository = householdMemberRepository;
         this.notificationClient = notificationClient;
+        this.trelloService = trelloService;
+        this.iamClientService = iamClientService;
         this.workingStart = LocalTime.parse(workingStartStr, TIME_FORMATTER);
         this.workingEnd = LocalTime.parse(workingEndStr, TIME_FORMATTER);
+        this.todoListId = todoListId;
+        this.inProgressListId = inProgressListId;
+        this.doneListId = doneListId;
     }
 
     @SuppressWarnings("null")
@@ -187,7 +204,9 @@ public class MaintenanceRequestService {
                 entity.getEstimatedCost(),
                 entity.getRespondedBy(),
                 entity.getRespondedAt(),
-                entity.getResponseStatus()
+                entity.getResponseStatus(),
+                entity.getTrelloCardId(),
+                entity.getAssignedStaffId()
         );
     }
 
@@ -268,11 +287,33 @@ public class MaintenanceRequestService {
         // Set status to PENDING when accepting/responding
         request.setStatus(STATUS_PENDING);
         
+        // Save staff ID if provided
+        if (dto.staffId() != null) {
+            request.setAssignedStaffId(dto.staffId());
+        }
+        
         if (dto.note() != null && !dto.note().isBlank()) {
             request.setNote(dto.note().trim());
         }
 
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
+        
+        // Create Trello card if not exists and assign to staff if staff ID is provided
+        if (saved.getTrelloCardId() == null || saved.getTrelloCardId().isEmpty()) {
+            String cardTitle = String.format("[MR-%s] %s", saved.getId().toString().substring(0, 8), saved.getTitle());
+            String cardDescription = buildTrelloCardDescription(saved);
+            String cardId = trelloService.createCard(saved.getId(), cardTitle, cardDescription, null);
+            if (cardId != null) {
+                saved.setTrelloCardId(cardId);
+                saved = maintenanceRequestRepository.save(saved);
+            }
+        }
+        
+        // Assign Trello card to staff if staff ID is provided
+        if (dto.staffId() != null && saved.getTrelloCardId() != null && !saved.getTrelloCardId().isEmpty()) {
+            assignTrelloCardToStaff(saved.getTrelloCardId(), dto.staffId());
+        }
+        
         notifyMaintenanceResponseReceived(saved);
         log.info("Admin {} responded to maintenance request {} and set status to PENDING", adminId, requestId);
         return toDto(saved);
@@ -311,8 +352,52 @@ public class MaintenanceRequestService {
         }
 
         request.setStatus(STATUS_DONE);
+        
+        // Move Trello card to Done list if exists
+        if (request.getTrelloCardId() != null && !request.getTrelloCardId().isEmpty()) {
+            trelloService.moveCardToList(request.getTrelloCardId(), trelloService.getDoneListId());
+        }
+        
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
         notifyMaintenanceCompleted(saved, dto != null ? dto.note() : null);
+        return toDto(saved);
+    }
+
+    @SuppressWarnings("null")
+    public MaintenanceRequestDto updateStatus(UUID adminId, UUID requestId, String status) {
+        MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
+
+        String normalizedStatus = status.toUpperCase();
+        
+        // Validate status
+        if (!normalizedStatus.equals(STATUS_NEW) && 
+            !normalizedStatus.equals(STATUS_PENDING) && 
+            !normalizedStatus.equals(STATUS_IN_PROGRESS) && 
+            !normalizedStatus.equals(STATUS_DONE) && 
+            !normalizedStatus.equals(STATUS_CANCELLED)) {
+            throw new IllegalArgumentException("Invalid status: " + status);
+        }
+
+        String oldStatus = request.getStatus();
+        request.setStatus(normalizedStatus);
+        
+        // Update Trello card position based on status
+        if (request.getTrelloCardId() != null && !request.getTrelloCardId().isEmpty()) {
+            String targetListId = null;
+            if (normalizedStatus.equals(STATUS_IN_PROGRESS) || normalizedStatus.equals(STATUS_PENDING)) {
+                targetListId = trelloService.getInProgressListId();
+            } else if (normalizedStatus.equals(STATUS_DONE)) {
+                targetListId = trelloService.getDoneListId();
+            }
+            
+            if (targetListId != null) {
+                trelloService.moveCardToList(request.getTrelloCardId(), targetListId);
+            }
+        }
+        
+        MaintenanceRequest saved = maintenanceRequestRepository.save(request);
+        log.info("Admin {} updated maintenance request {} status from {} to {}", adminId, requestId, oldStatus, normalizedStatus);
         return toDto(saved);
     }
 
@@ -338,9 +423,28 @@ public class MaintenanceRequestService {
 
         request.setResponseStatus(RESPONSE_STATUS_APPROVED);
         request.setStatus(STATUS_IN_PROGRESS);
+        
+        // Create Trello card if not exists
+        if (request.getTrelloCardId() == null || request.getTrelloCardId().isEmpty()) {
+            String cardTitle = String.format("[MR-%s] %s", request.getId().toString().substring(0, 8), request.getTitle());
+            String cardDescription = buildTrelloCardDescription(request);
+            String cardId = trelloService.createCard(request.getId(), cardTitle, cardDescription, trelloService.getInProgressListId());
+            if (cardId != null) {
+                request.setTrelloCardId(cardId);
+            }
+        } else {
+            // Move card to IN_PROGRESS list
+            trelloService.moveCardToList(request.getTrelloCardId(), trelloService.getInProgressListId());
+        }
+        
+        // Assign card to staff if staff ID is set
+        if (request.getAssignedStaffId() != null && request.getTrelloCardId() != null && !request.getTrelloCardId().isEmpty()) {
+            assignTrelloCardToStaff(request.getTrelloCardId(), request.getAssignedStaffId());
+        }
+        
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
         notifyMaintenanceResponseApproved(saved);
-        log.info("Resident {} approved response for maintenance request {}", resident.getId(), requestId);
+        log.info("Resident {} approved response for maintenance request {}, status changed to IN_PROGRESS", resident.getId(), requestId);
         return toDto(saved);
     }
 
@@ -528,6 +632,66 @@ public class MaintenanceRequestService {
         );
     }
 
+    private String buildTrelloCardDescription(MaintenanceRequest request) {
+        StringBuilder desc = new StringBuilder();
+        desc.append("**Mô tả:** ").append(request.getDescription()).append("\n\n");
+        desc.append("**Địa điểm:** ").append(request.getLocation()).append("\n");
+        desc.append("**Danh mục:** ").append(request.getCategory()).append("\n");
+        desc.append("**Liên hệ:** ").append(request.getContactName()).append(" - ").append(request.getContactPhone()).append("\n");
+        
+        if (request.getPreferredDatetime() != null) {
+            desc.append("**Thời gian mong muốn:** ").append(request.getPreferredDatetime()).append("\n");
+        }
+        
+        if (request.getEstimatedCost() != null) {
+            desc.append("**Chi phí ước tính:** ").append(String.format("%,.0f", request.getEstimatedCost())).append(" VNĐ\n");
+        }
+        
+        if (request.getAdminResponse() != null && !request.getAdminResponse().isEmpty()) {
+            desc.append("\n**Phản hồi từ admin:** ").append(request.getAdminResponse()).append("\n");
+        }
+        
+        if (request.getNote() != null && !request.getNote().isEmpty()) {
+            desc.append("\n**Ghi chú:** ").append(request.getNote()).append("\n");
+        }
+        
+        desc.append("\n**Request ID:** ").append(request.getId().toString());
+        
+        return desc.toString();
+    }
+
+    /**
+     * Assign Trello card to staff member by getting email from IAM service
+     * @param cardId Trello card ID
+     * @param staffId Staff user ID
+     */
+    private void assignTrelloCardToStaff(String cardId, UUID staffId) {
+        try {
+            // Get staff email from IAM service
+            var accountInfo = iamClientService.getUserAccountInfo(staffId);
+            if (accountInfo == null) {
+                log.warn("Could not find user account info for staff ID: {}", staffId);
+                return;
+            }
+
+            String staffEmail = accountInfo.email();
+            if (staffEmail == null || staffEmail.isEmpty()) {
+                log.warn("Staff ID {} has no email address", staffId);
+                return;
+            }
+
+            // Assign member to Trello card using email
+            boolean assigned = trelloService.assignMemberToCard(cardId, staffEmail);
+            if (assigned) {
+                log.info("Successfully assigned staff {} (email: {}) to Trello card {}", staffId, staffEmail, cardId);
+            } else {
+                log.warn("Failed to assign staff {} (email: {}) to Trello card {}", staffId, staffEmail, cardId);
+            }
+        } catch (Exception e) {
+            log.error("Error assigning Trello card {} to staff {}: {}", cardId, staffId, e.getMessage(), e);
+        }
+    }
+
     private void sendMaintenanceNotification(
             MaintenanceRequest request,
             String title,
@@ -565,6 +729,117 @@ public class MaintenanceRequestService {
                 "MAINTENANCE_REQUEST",
                 data
         );
+    }
+
+    /**
+     * Handle Trello webhook to sync status from Trello to database
+     * @param payload Webhook payload from Trello
+     */
+    @SuppressWarnings("unchecked")
+    public void handleTrelloWebhook(java.util.Map<String, Object> payload) {
+        try {
+            log.debug("Received Trello webhook payload: {}", payload);
+            
+            // Trello webhook structure: { "action": {...}, "model": {...} }
+            java.util.Map<String, Object> action = (java.util.Map<String, Object>) payload.get("action");
+            if (action == null) {
+                log.warn("Trello webhook payload missing action field");
+                return;
+            }
+
+            String actionType = (String) action.get("type");
+            if (actionType == null) {
+                log.warn("Trello webhook action missing type field");
+                return;
+            }
+
+            log.debug("Trello webhook action type: {}", actionType);
+
+            // Handle card movement events (updateCard with listAfter)
+            if (!"updateCard".equals(actionType)) {
+                log.debug("Ignoring Trello webhook action type: {}", actionType);
+                return;
+            }
+
+            java.util.Map<String, Object> data = (java.util.Map<String, Object>) action.get("data");
+            if (data == null) {
+                log.warn("Trello webhook action missing data field");
+                return;
+            }
+
+            // Check if card was moved to a different list
+            java.util.Map<String, Object> listAfter = (java.util.Map<String, Object>) data.get("listAfter");
+            if (listAfter == null) {
+                log.debug("Trello webhook: card update but not moved to different list (no listAfter)");
+                return;
+            }
+
+            java.util.Map<String, Object> card = (java.util.Map<String, Object>) data.get("card");
+            if (card == null) {
+                log.warn("Trello webhook missing card information");
+                return;
+            }
+
+            String cardId = (String) card.get("id");
+            String listId = (String) listAfter.get("id");
+            
+            if (cardId == null || listId == null) {
+                log.warn("Trello webhook missing cardId or listId. cardId: {}, listId: {}", cardId, listId);
+                return;
+            }
+
+            log.info("Trello webhook: card {} moved to list {}", cardId, listId);
+
+            // Find maintenance request by Trello card ID
+            MaintenanceRequest request = maintenanceRequestRepository.findByTrelloCardId(cardId);
+            if (request == null) {
+                log.debug("No maintenance request found for Trello card ID: {}", cardId);
+                return;
+            }
+
+            // Map list ID to status
+            String newStatus = mapListIdToStatus(listId);
+            if (newStatus == null) {
+                log.warn("Unknown Trello list ID: {}. Known lists: todo={}, inprogress={}, done={}", 
+                        listId, todoListId, inProgressListId, doneListId);
+                return;
+            }
+
+            // Only update if status changed
+            if (!newStatus.equalsIgnoreCase(request.getStatus())) {
+                String oldStatus = request.getStatus();
+                request.setStatus(newStatus);
+                maintenanceRequestRepository.save(request);
+                log.info("✅ Updated maintenance request {} status from {} to {} via Trello webhook", 
+                        request.getId(), oldStatus, newStatus);
+            } else {
+                log.debug("Maintenance request {} status unchanged: {}", request.getId(), newStatus);
+            }
+        } catch (ClassCastException e) {
+            log.error("Error parsing Trello webhook payload - type mismatch: {}", e.getMessage(), e);
+        } catch (Exception e) {
+            log.error("Error handling Trello webhook: {}", e.getMessage(), e);
+            // Don't throw exception to avoid webhook retry loop
+        }
+    }
+
+    /**
+     * Map Trello list ID to maintenance request status
+     * @param listId Trello list ID
+     * @return Status string or null if unknown
+     */
+    private String mapListIdToStatus(String listId) {
+        if (listId == null) return null;
+        
+        if (listId.equals(todoListId)) {
+            return STATUS_PENDING;
+        } else if (listId.equals(inProgressListId)) {
+            return STATUS_IN_PROGRESS;
+        } else if (listId.equals(doneListId)) {
+            return STATUS_DONE;
+        }
+        
+        return null;
     }
 }
 

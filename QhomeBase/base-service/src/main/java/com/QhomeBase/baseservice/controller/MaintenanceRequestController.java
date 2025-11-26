@@ -173,5 +173,34 @@ public class MaintenanceRequestController {
         MaintenanceRequestDto request = maintenanceRequestService.getRequestById(requestId);
         return ResponseEntity.ok(request);
     }
+
+    @PatchMapping("/admin/{requestId}/status")
+    @PreAuthorize("@authz.canManageServiceRequests()")
+    public ResponseEntity<MaintenanceRequestDto> updateRequestStatus(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID requestId,
+            @RequestBody java.util.Map<String, String> request) {
+        String status = request.get("status");
+        if (status == null || status.isBlank()) {
+            return ResponseEntity.badRequest().body(null);
+        }
+        MaintenanceRequestDto dto = maintenanceRequestService.updateStatus(
+                principal.uid(),
+                requestId,
+                status
+        );
+        return ResponseEntity.ok(dto);
+    }
+
+    @PostMapping("/trello-webhook")
+    public ResponseEntity<?> handleTrelloWebhook(@RequestBody java.util.Map<String, Object> payload) {
+        try {
+            maintenanceRequestService.handleTrelloWebhook(payload);
+            return ResponseEntity.ok().build();
+        } catch (Exception ex) {
+            log.error("Failed to handle Trello webhook: {}", ex.getMessage(), ex);
+            return ResponseEntity.badRequest().body(java.util.Map.of("message", ex.getMessage()));
+        }
+    }
 }
 

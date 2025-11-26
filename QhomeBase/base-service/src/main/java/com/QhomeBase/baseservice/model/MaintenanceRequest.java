@@ -97,6 +97,12 @@ public class MaintenanceRequest {
     @Column(name = "response_status", length = 50)
     private String responseStatus;
 
+    @Column(name = "trello_card_id")
+    private String trelloCardId;
+
+    @Column(name = "assigned_staff_id")
+    private UUID assignedStaffId;
+
     @PrePersist
     public void onCreate() {
         OffsetDateTime now = OffsetDateTime.now();
