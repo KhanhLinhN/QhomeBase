@@ -16,10 +16,16 @@ import com.QhomeBase.baseservice.repository.ResidentRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import jakarta.persistence.criteria.Predicate;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -39,6 +45,7 @@ public class MaintenanceRequestService {
     private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
     private static final String STATUS_DONE = "DONE";
     private static final String STATUS_CANCELLED = "CANCELLED";
+    private static final String STATUS_NEW = "NEW";
     
     private static final String RESPONSE_STATUS_PENDING_APPROVAL = "PENDING_APPROVAL";
     private static final String RESPONSE_STATUS_APPROVED = "APPROVED";
@@ -131,7 +138,7 @@ public class MaintenanceRequestService {
                 .contactName(contactName)
                 .contactPhone(contactPhone)
                 .note(dto.note())
-                .status(STATUS_PENDING)
+                .status(STATUS_NEW)
                 .build();
 
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
@@ -203,6 +210,19 @@ public class MaintenanceRequestService {
                 .toList();
     }
 
+    public List<MaintenanceRequestDto> getAllRequests() {
+        List<MaintenanceRequest> requests = maintenanceRequestRepository.findAll();
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    public MaintenanceRequestDto getRequestById(UUID requestId) {
+        MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found with id: " + requestId));
+        return toDto(request);
+    }
+
     private void validatePreferredDatetime(OffsetDateTime preferredDatetime) {
         if (preferredDatetime == null) {
             throw new IllegalArgumentException("Preferred datetime is required");
@@ -233,9 +253,8 @@ public class MaintenanceRequestService {
         MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
 
-        if (!STATUS_PENDING.equalsIgnoreCase(request.getStatus())) {
-            throw new IllegalStateException("Only pending requests can receive admin response");
-        }
+        // Allow responding to requests with status PENDING or any status for new workflow
+        // Remove strict status check to allow more flexibility
 
         if (request.getResponseStatus() != null && RESPONSE_STATUS_PENDING_APPROVAL.equalsIgnoreCase(request.getResponseStatus())) {
             throw new IllegalStateException("Request already has a pending response awaiting approval");
@@ -246,6 +265,8 @@ public class MaintenanceRequestService {
         request.setRespondedBy(adminId);
         request.setRespondedAt(OffsetDateTime.now());
         request.setResponseStatus(RESPONSE_STATUS_PENDING_APPROVAL);
+        // Set status to PENDING when accepting/responding
+        request.setStatus(STATUS_PENDING);
         
         if (dto.note() != null && !dto.note().isBlank()) {
             request.setNote(dto.note().trim());
@@ -253,7 +274,7 @@ public class MaintenanceRequestService {
 
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
         notifyMaintenanceResponseReceived(saved);
-        log.info("Admin {} responded to maintenance request {}", adminId, requestId);
+        log.info("Admin {} responded to maintenance request {} and set status to PENDING", adminId, requestId);
         return toDto(saved);
     }
 
@@ -262,13 +283,21 @@ public class MaintenanceRequestService {
         MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
 
-        if (!STATUS_PENDING.equalsIgnoreCase(request.getStatus())) {
-            throw new IllegalStateException("Only pending requests can be moved to in-progress");
+        // For deny action: set status to CANCELLED
+        // This method is used for denying requests
+        request.setStatus(STATUS_CANCELLED);
+        
+        if (dto != null && dto.note() != null && !dto.note().isBlank()) {
+            request.setNote(dto.note().trim());
+        }
+        
+        if (request.getResponseStatus() == null || RESPONSE_STATUS_PENDING_APPROVAL.equalsIgnoreCase(request.getResponseStatus())) {
+            request.setResponseStatus(RESPONSE_STATUS_REJECTED);
         }
 
-        request.setStatus(STATUS_IN_PROGRESS);
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
-        notifyMaintenanceInProgress(saved, dto != null ? dto.note() : null);
+        notifyMaintenanceCancelled(saved);
+        log.info("Admin {} denied maintenance request {} and set status to CANCELLED", adminId, requestId);
         return toDto(saved);
     }
 

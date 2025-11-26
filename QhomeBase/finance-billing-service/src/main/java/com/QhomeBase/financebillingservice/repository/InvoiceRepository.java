@@ -5,6 +5,7 @@ import com.QhomeBase.financebillingservice.model.InvoiceStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.security.core.parameters.P;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -68,4 +69,15 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
             @Param("cycleId") UUID cycleId,
             @Param("serviceCode") String serviceCode,
             @Param("serviceMonth") String serviceMonth);
+
+
+    @Query(value = """
+    select i.*
+    from billing.invoice i
+    join billing.invoice_lines bi on bi.invoice_id = i.id
+    join billing.billing_cycles bc on bc.id = i.cycle_id
+    where bi.service_code = :serviceCode
+    and i.cycle_id = :cycleId
+""", nativeQuery = true)
+    List<Invoice> findByServiceCodeAndAndCycle(@Param("cycleID") UUID cycleID, @Param("serviceCode") String serviceCode);
 }

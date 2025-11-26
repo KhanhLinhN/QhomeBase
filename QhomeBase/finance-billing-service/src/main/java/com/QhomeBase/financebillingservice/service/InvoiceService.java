@@ -1,5 +1,6 @@
 package com.QhomeBase.financebillingservice.service;
 
+import com.QhomeBase.financebillingservice.client.BaseServiceClient;
 import com.QhomeBase.financebillingservice.config.VnpayProperties;
 import com.QhomeBase.financebillingservice.dto.*;
 import com.QhomeBase.financebillingservice.model.Invoice;
@@ -1155,6 +1156,67 @@ public class InvoiceService {
             builder.append(" - ").append(request.getFullName());
         }
         return builder.toString();
+    }
+    public List<String> findServiceDoNotHaveInvoiceInCycle(UUID cycleId, String serviceCode) {
+        if (cycleId == null) {
+            throw new IllegalArgumentException("CycleId cannot be null");
+        }
+        
+        List<Invoice> invoicesInCycle = invoiceRepository.findByCycleId(cycleId);
+        
+        Set<String> servicesWithInvoice = new LinkedHashSet<>();
+        for (Invoice invoice : invoicesInCycle) {
+            List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceId(invoice.getId());
+            for (InvoiceLine line : lines) {
+                if (line.getServiceCode() != null && !line.getServiceCode().isBlank()) {
+                    servicesWithInvoice.add(line.getServiceCode().toUpperCase().trim());
+                }
+            }
+        }
+        
+        List<String> allServices;
+        try {
+            List<BaseServiceClient.ServiceInfo> services = baseService.getAllServices();
+            if (services != null && !services.isEmpty()) {
+                allServices = services.stream()
+                        .map(BaseServiceClient.ServiceInfo::getCode)
+                        .filter(code -> code != null && !code.isBlank())
+                        .map(String::toUpperCase)
+                        .distinct()
+                        .collect(Collectors.toList());
+            } else {
+                allServices = getDefaultServiceList();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch services from base-service, using default list: {}", e.getMessage());
+            allServices = getDefaultServiceList();
+        }
+        
+        List<String> servicesWithoutInvoice = allServices.stream()
+                .map(String::toUpperCase)
+                .filter(service -> !servicesWithInvoice.contains(service))
+                .distinct()
+                .collect(Collectors.toList());
+        
+        if (serviceCode != null && !serviceCode.isBlank()) {
+            String normalizedServiceCode = serviceCode.toUpperCase().trim();
+            if (servicesWithoutInvoice.contains(normalizedServiceCode)) {
+                return List.of(normalizedServiceCode);
+            } else {
+                return List.of();
+            }
+        }
+        
+        return servicesWithoutInvoice;
+    }
+    
+    private List<String> getDefaultServiceList() {
+        return List.of(
+            "ELECTRIC", "ELECTRICITY", "WATER", "MANAGEMENT", 
+            "PARKING", "PARKING_PRORATA", "PARKING_CAR", "PARKING_MOTORBIKE",
+            "INTERNET", "CABLE_TV", "VEHICLE_CARD", 
+            "ELEVATOR_CARD", "RESIDENT_CARD"
+        );
     }
 }
 

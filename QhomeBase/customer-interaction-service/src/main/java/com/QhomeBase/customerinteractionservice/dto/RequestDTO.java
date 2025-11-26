@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 @Data
 @NoArgsConstructor
@@ -19,6 +20,9 @@ public class RequestDTO {
     String title;
     String content;
     String status;
+    String type;
+    BigDecimal fee;
+    String repairedDate;
     String createdAt;
     String updatedAt;
 }

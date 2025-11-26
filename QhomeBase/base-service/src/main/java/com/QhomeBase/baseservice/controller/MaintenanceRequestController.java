@@ -159,5 +159,19 @@ public class MaintenanceRequestController {
         MaintenanceRequestConfigDto config = maintenanceRequestMonitor.getConfig();
         return ResponseEntity.ok(config);
     }
+
+    @GetMapping("/all")
+    @PreAuthorize("@authz.canManageServiceRequests()")
+    public ResponseEntity<List<MaintenanceRequestDto>> getAllRequests() {
+        List<MaintenanceRequestDto> requests = maintenanceRequestService.getAllRequests();
+        return ResponseEntity.ok(requests);
+    }
+
+    @GetMapping("/{requestId}")
+    @PreAuthorize("@authz.canManageServiceRequests()")
+    public ResponseEntity<MaintenanceRequestDto> getRequestById(@PathVariable UUID requestId) {
+        MaintenanceRequestDto request = maintenanceRequestService.getRequestById(requestId);
+        return ResponseEntity.ok(request);
+    }
 }
 
