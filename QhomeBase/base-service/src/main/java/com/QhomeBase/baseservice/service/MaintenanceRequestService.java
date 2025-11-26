@@ -361,7 +361,8 @@ public class MaintenanceRequestService {
             request.setResponseStatus(RESPONSE_STATUS_REJECTED);
         }
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
-        notifyMaintenanceCancelled(saved);
+        // Không gửi notification khi cư dân tự hủy request
+        // notifyMaintenanceCancelled(saved);
         return toDto(saved);
     }
 

@@ -286,7 +286,8 @@ public class CleaningRequestService {
         request.setStatus(STATUS_CANCELLED);
         request.setResendAlertSent(false);
         CleaningRequest saved = cleaningRequestRepository.save(request);
-        notifyCleaningCancelled(saved);
+        // Không gửi notification khi cư dân tự hủy request
+        // notifyCleaningCancelled(saved);
         return toDto(saved);
     }
 
