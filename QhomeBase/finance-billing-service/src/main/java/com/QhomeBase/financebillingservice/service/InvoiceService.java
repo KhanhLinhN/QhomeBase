@@ -11,7 +11,6 @@ import com.QhomeBase.financebillingservice.repository.InvoiceRepository;
 import com.QhomeBase.financebillingservice.repository.ResidentRepository;
 import com.QhomeBase.financebillingservice.repository.ResidentRepository.ResidentContact;
 import com.QhomeBase.financebillingservice.service.vnpay.VnpayService;
-import com.QhomeBase.financebillingservice.client.BaseServiceClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

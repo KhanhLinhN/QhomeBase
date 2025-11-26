@@ -64,7 +64,7 @@ public class ResidentCardRegistrationService {
         String normalizedCitizenId = dto.citizenId() != null 
                 ? dto.citizenId().replaceAll("[^0-9]", "") 
                 : null;
-        
+
         ResidentCardRegistration registration = ResidentCardRegistration.builder()
                 .userId(userId)
                 .unitId(dto.unitId())

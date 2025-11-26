@@ -30,16 +30,25 @@ public class PricingTierService {
     @Transactional
     public PricingTierDto createPricingTier(CreatePricingTierRequest req, UUID createdBy) {
         String serviceCode = req.getServiceCode();
-        List<PricingTier> pricingTierList = pricingTierRepository.findActiveTiersByService(serviceCode);
         
-        if (!pricingTierList.isEmpty()) {
-            PricingTier lastPricingTier = pricingTierList.get(pricingTierList.size() - 1);
+        if (req.getMaxQuantity() != null && req.getMinQuantity().compareTo(req.getMaxQuantity()) >= 0) {
+            throw new IllegalArgumentException(
+                "minQuantity must be < maxQuantity");
+        }
+
+        List<PricingTier> existingTiers = pricingTierRepository.findActiveTiersByService(serviceCode);
+        
+        if (!existingTiers.isEmpty()) {
+            PricingTier lastPricingTier = existingTiers.get(existingTiers.size() - 1);
             BigDecimal lastMaxQuantity = lastPricingTier.getMaxQuantity();
             
-            if (lastMaxQuantity != null && req.getMinQuantity().compareTo(lastMaxQuantity) < 0) {
-                throw new IllegalArgumentException(
-                    String.format("Next tier minQuantity (%s) must be >= previous tier maxQuantity (%s)",
-                        req.getMinQuantity(), lastMaxQuantity));
+            if (lastMaxQuantity != null) {
+                BigDecimal expectedMin = lastMaxQuantity.add(BigDecimal.ONE);
+                if (req.getMinQuantity().compareTo(expectedMin) != 0) {
+                    throw new IllegalArgumentException(
+                        String.format("Bậc tiếp theo phải bắt đầu từ %s (max của bậc trước + 1), không được là %s",
+                            expectedMin, req.getMinQuantity()));
+                }
             }
             
             if (req.getTierOrder() <= lastPricingTier.getTierOrder()) {
@@ -47,12 +56,16 @@ public class PricingTierService {
                     String.format("Next tier order (%d) must be > previous tier order (%d)",
                         req.getTierOrder(), lastPricingTier.getTierOrder()));
             }
+        } else {
+            if (req.getMinQuantity().compareTo(BigDecimal.ONE) != 0 && req.getMinQuantity().compareTo(BigDecimal.ZERO) != 0) {
+                throw new IllegalArgumentException(
+                    String.format("Bậc đầu tiên phải bắt đầu từ 0 hoặc 1, không được là %s",
+                        req.getMinQuantity()));
+            }
         }
-
-        if (req.getMaxQuantity() != null && req.getMinQuantity().compareTo(req.getMaxQuantity()) >= 0) {
-            throw new IllegalArgumentException(
-                "minQuantity must be < maxQuantity");
-        }
+        
+        checkForOverlaps(req.getMinQuantity(), req.getMaxQuantity(), req.getEffectiveFrom(), 
+                        req.getEffectiveUntil(), existingTiers, null);
 
         OffsetDateTime now = OffsetDateTime.now();
         
@@ -109,6 +122,89 @@ public class PricingTierService {
     public PricingTierDto updatePricingTier(UUID id, UpdatePricingTierRequest req, UUID updatedBy) {
         PricingTier tier = pricingTierRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Pricing tier not found: " + id));
+
+        BigDecimal newMinQuantity = req.getMinQuantity() != null ? req.getMinQuantity() : tier.getMinQuantity();
+        BigDecimal newMaxQuantity = req.getMaxQuantity() != null ? req.getMaxQuantity() : tier.getMaxQuantity();
+        LocalDate newEffectiveFrom = req.getEffectiveFrom() != null ? req.getEffectiveFrom() : tier.getEffectiveFrom();
+        LocalDate newEffectiveUntil = req.getEffectiveUntil() != null ? req.getEffectiveUntil() : tier.getEffectiveUntil();
+
+        if (newMaxQuantity != null && newMinQuantity.compareTo(newMaxQuantity) >= 0) {
+            throw new IllegalArgumentException(
+                "minQuantity must be < maxQuantity");
+        }
+
+        List<PricingTier> existingTiers = pricingTierRepository.findActiveTiersByService(tier.getServiceCode());
+        
+        Integer currentTierOrder = req.getTierOrder() != null ? req.getTierOrder() : tier.getTierOrder();
+        
+        PricingTier previousTier = null;
+        PricingTier nextTier = null;
+        
+        for (int i = 0; i < existingTiers.size(); i++) {
+            PricingTier existingTier = existingTiers.get(i);
+            if (existingTier.getId().equals(id)) {
+                if (i > 0) {
+                    previousTier = existingTiers.get(i - 1);
+                }
+                if (i < existingTiers.size() - 1) {
+                    nextTier = existingTiers.get(i + 1);
+                }
+                break;
+            }
+        }
+        
+        if (previousTier == null && currentTierOrder > 1) {
+            for (PricingTier existingTier : existingTiers) {
+                if (existingTier.getId().equals(id)) continue;
+                if (existingTier.getTierOrder() == currentTierOrder - 1) {
+                    previousTier = existingTier;
+                    break;
+                }
+            }
+        }
+        
+        if (nextTier == null) {
+            for (PricingTier existingTier : existingTiers) {
+                if (existingTier.getId().equals(id)) continue;
+                if (existingTier.getTierOrder() == currentTierOrder + 1) {
+                    nextTier = existingTier;
+                    break;
+                }
+            }
+        }
+        
+        if (previousTier != null) {
+            BigDecimal previousMax = previousTier.getMaxQuantity();
+            if (previousMax != null) {
+                BigDecimal expectedMin = previousMax.add(BigDecimal.ONE);
+                if (newMinQuantity.compareTo(expectedMin) != 0) {
+                    throw new IllegalArgumentException(
+                        String.format("Bậc này phải bắt đầu từ %s (max của bậc trước + 1), không được là %s",
+                            expectedMin, newMinQuantity));
+                }
+            }
+        } else {
+            if (newMinQuantity.compareTo(BigDecimal.ONE) != 0 && newMinQuantity.compareTo(BigDecimal.ZERO) != 0) {
+                throw new IllegalArgumentException(
+                    String.format("Bậc đầu tiên phải bắt đầu từ 0 hoặc 1, không được là %s",
+                        newMinQuantity));
+            }
+        }
+        
+        if (nextTier != null) {
+            BigDecimal nextMin = nextTier.getMinQuantity();
+            if (newMaxQuantity != null) {
+                BigDecimal expectedNextMin = newMaxQuantity.add(BigDecimal.ONE);
+                if (nextMin.compareTo(expectedNextMin) != 0) {
+                    throw new IllegalArgumentException(
+                        String.format("Bậc tiếp theo phải bắt đầu từ %s (max của bậc này + 1), hiện tại là %s",
+                            expectedNextMin, nextMin));
+                }
+            }
+        }
+        
+        checkForOverlaps(newMinQuantity, newMaxQuantity, newEffectiveFrom, 
+                        newEffectiveUntil, existingTiers, id);
 
         if (req.getTierOrder() != null) {
             tier.setTierOrder(req.getTierOrder());
@@ -262,5 +358,85 @@ public class PricingTierService {
         }
         
         return lines;
+    }
+
+    private void checkForOverlaps(BigDecimal minQuantity, BigDecimal maxQuantity, 
+                                   LocalDate effectiveFrom, LocalDate effectiveUntil,
+                                   List<PricingTier> existingTiers, UUID excludeId) {
+        for (PricingTier existingTier : existingTiers) {
+            if (excludeId != null && existingTier.getId().equals(excludeId)) {
+                continue;
+            }
+
+            if (!isTierCurrentlyActive(existingTier, effectiveFrom, effectiveUntil)) {
+                continue;
+            }
+
+            BigDecimal existingMin = existingTier.getMinQuantity();
+            BigDecimal existingMax = existingTier.getMaxQuantity();
+
+            if (hasOverlap(minQuantity, maxQuantity, existingMin, existingMax)) {
+                String overlapRange = formatOverlapRange(
+                    minQuantity, maxQuantity, existingMin, existingMax);
+                throw new IllegalArgumentException(
+                    String.format("Khoảng giá bị trùng với Bậc %d (%s). Vui lòng điều chỉnh min/max để tránh trùng lặp.",
+                        existingTier.getTierOrder(), overlapRange));
+            }
+        }
+    }
+
+    private boolean isTierCurrentlyActive(PricingTier tier, LocalDate checkFrom, LocalDate checkUntil) {
+        if (!Boolean.TRUE.equals(tier.getActive())) {
+            return false;
+        }
+
+        LocalDate tierFrom = tier.getEffectiveFrom();
+        LocalDate tierUntil = tier.getEffectiveUntil();
+
+        if (tierFrom == null || checkFrom == null) {
+            return false;
+        }
+
+        LocalDate tierUntilEffective = tierUntil != null ? tierUntil : LocalDate.MAX;
+        LocalDate checkUntilEffective = checkUntil != null ? checkUntil : LocalDate.MAX;
+
+        return !tierFrom.isAfter(checkUntilEffective) && !checkFrom.isAfter(tierUntilEffective);
+    }
+
+    private boolean hasOverlap(BigDecimal min1, BigDecimal max1, BigDecimal min2, BigDecimal max2) {
+        if (max1 == null && max2 == null) {
+            return true;
+        }
+
+        if (max1 == null) {
+            return min1.compareTo(max2) < 0;
+        }
+
+        if (max2 == null) {
+            return min2.compareTo(max1) < 0;
+        }
+
+        return min1.compareTo(max2) < 0 && min2.compareTo(max1) < 0;
+    }
+
+    private String formatOverlapRange(BigDecimal min1, BigDecimal max1, BigDecimal min2, BigDecimal max2) {
+        BigDecimal overlapFrom = min1.max(min2);
+        BigDecimal overlapTo;
+        
+        if (max1 == null && max2 == null) {
+            return String.format("từ %s trở đi", overlapFrom);
+        } else if (max1 == null) {
+            overlapTo = max2;
+        } else if (max2 == null) {
+            overlapTo = max1;
+        } else {
+            overlapTo = max1.min(max2);
+        }
+
+        if (overlapFrom.compareTo(overlapTo) == 0) {
+            return String.format("tại %s", overlapFrom);
+        } else {
+            return String.format("từ %s đến %s", overlapFrom, overlapTo);
+        }
     }
 }
