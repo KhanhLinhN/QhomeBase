@@ -153,6 +153,30 @@ public class CleaningRequestService {
                 .toList();
     }
 
+    /**
+     * Get paginated requests for a resident (all statuses)
+     */
+    public Map<String, Object> getMyRequestsPaged(UUID userId, int limit, int offset) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        
+        List<CleaningRequest> requests = cleaningRequestRepository
+                .findByResidentIdWithPagination(resident.getId(), limit, offset);
+        
+        long total = cleaningRequestRepository.countByResidentId(resident.getId());
+        
+        List<CleaningRequestDto> dtos = requests.stream()
+                .map(this::toDto)
+                .toList();
+        
+        return Map.of(
+                "requests", dtos,
+                "total", total,
+                "limit", limit,
+                "offset", offset
+        );
+    }
+
     public List<CleaningRequestDto> getPendingRequests() {
         List<CleaningRequest> requests = cleaningRequestRepository
                 .findByStatusOrderByCreatedAtAsc(STATUS_PENDING);

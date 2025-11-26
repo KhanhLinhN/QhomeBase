@@ -217,6 +217,14 @@ public class ResidentCardRegistrationService {
 
     private void sendCardApprovalNotification(ResidentCardRegistration registration, String issueMessage) {
         try {
+            // CARD_APPROVED is PRIVATE - only resident who created the request can see
+            UUID residentId = registration.getResidentId();
+            if (residentId == null) {
+                log.warn("⚠️ [ResidentCard] residentId là null, không thể gửi notification cho registrationId: {}", 
+                        registration.getId());
+                return;
+            }
+
             // Get current card price from database
             BigDecimal currentPrice = cardPricingService.getPrice("RESIDENT");
             String formattedPrice = formatVnd(currentPrice);
@@ -236,9 +244,10 @@ public class ResidentCardRegistrationService {
                 data.put("apartmentNumber", registration.getApartmentNumber());
             }
 
+            // Send PRIVATE notification to specific resident (residentId = residentId, buildingId = null)
             notificationClient.sendResidentNotification(
-                    registration.getResidentId(),
-                    null, // buildingId - có thể null vì gửi theo residentId
+                    residentId, // residentId for private notification
+                    null, // buildingId = null for private notification
                     "CARD_APPROVED",
                     title,
                     message,
@@ -247,14 +256,15 @@ public class ResidentCardRegistrationService {
                     data
             );
 
-            log.info("✅ [ResidentCard] Đã gửi notification approval cho residentId: {}", registration.getResidentId());
+            log.info("✅ [ResidentCard] Đã gửi notification approval riêng tư cho residentId: {}", residentId);
         } catch (Exception e) {
-            log.error("❌ [ResidentCard] Không thể gửi notification approval cho residentId: {}", registration.getResidentId(), e);
+            log.error("❌ [ResidentCard] Không thể gửi notification approval cho registrationId: {}", registration.getId(), e);
         }
     }
 
     private void sendCardRejectionNotification(ResidentCardRegistration registration, String rejectionReason) {
         try {
+            // CARD_REJECTED is PRIVATE - only resident who created the request can see
             UUID residentId = registration.getResidentId();
             if (residentId == null) {
                 log.warn("⚠️ [ResidentCard] residentId là null, không thể gửi notification cho registrationId: {}", 
@@ -286,9 +296,10 @@ public class ResidentCardRegistrationService {
                 data.put("rejectionReason", rejectionReason);
             }
 
+            // Send PRIVATE notification to specific resident (residentId = residentId, buildingId = null)
             notificationClient.sendResidentNotification(
-                    residentId,
-                    null, // buildingId - có thể null vì gửi theo residentId
+                    residentId, // residentId for private notification
+                    null, // buildingId = null for private notification
                     "CARD_REJECTED",
                     title,
                     message,
@@ -297,7 +308,7 @@ public class ResidentCardRegistrationService {
                     data
             );
 
-            log.info("✅ [ResidentCard] Đã gửi notification rejection cho residentId: {}", residentId);
+            log.info("✅ [ResidentCard] Đã gửi notification rejection riêng tư cho residentId: {}", residentId);
         } catch (Exception e) {
             log.error("❌ [ResidentCard] Không thể gửi notification rejection cho registrationId: {}", 
                     registration.getId(), e);

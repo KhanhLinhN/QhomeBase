@@ -122,6 +122,7 @@ public class VehicleRegistrationService {
     @SuppressWarnings({"NullAway", "DataFlowIssue"})
     public RegisterServiceRequestDto createRegistration(UUID userId, RegisterServiceRequestCreateDto dto) {
         validatePayload(dto);
+        validateLicensePlateNotDuplicate(dto.licensePlate(), null);
 
         RegisterServiceRequest request = RegisterServiceRequest.builder()
                 .userId(userId)
@@ -172,6 +173,8 @@ public class VehicleRegistrationService {
         }
 
         validatePayload(dto);
+        // Kiểm tra trùng biển số xe (exclude registration hiện tại)
+        validateLicensePlateNotDuplicate(dto.licensePlate(), registrationId);
 
         request.setServiceType(Optional.ofNullable(dto.serviceType()).orElse(SERVICE_TYPE));
         request.setRequestType(resolveRequestType(dto.requestType()));
@@ -372,7 +375,7 @@ public class VehicleRegistrationService {
 
     private void sendVehicleCardApprovalNotification(RegisterServiceRequest registration, String issueMessage) {
         try {
-            // Resolve residentId from userId and unitId
+            // Resolve residentId from userId and unitId - CARD_APPROVED is PRIVATE (only resident who created the request can see)
             UUID residentId = residentUnitLookupService.resolveByUser(registration.getUserId(), registration.getUnitId())
                     .map(ResidentUnitLookupService.AddressInfo::residentId)
                     .orElse(null);
@@ -382,10 +385,6 @@ public class VehicleRegistrationService {
                         registration.getUserId(), registration.getUnitId());
                 return;
             }
-
-            // Resolve buildingId from unitId if needed
-            // Note: AddressInfo doesn't have buildingId, so we pass null and let the notification service handle it
-            UUID buildingId = null;
 
             // Get current card price from database
             BigDecimal currentPrice = cardPricingService.getPrice("VEHICLE");
@@ -410,9 +409,10 @@ public class VehicleRegistrationService {
                 data.put("apartmentNumber", registration.getApartmentNumber());
             }
 
+            // Send PRIVATE notification to specific resident (residentId = residentId, buildingId = null)
             notificationClient.sendResidentNotification(
-                    residentId,
-                    buildingId,
+                    residentId, // residentId for private notification
+                    null, // buildingId = null for private notification
                     "CARD_APPROVED",
                     title,
                     message,
@@ -421,7 +421,7 @@ public class VehicleRegistrationService {
                     data
             );
 
-            log.info("✅ [VehicleRegistration] Đã gửi notification approval cho residentId: {}", residentId);
+            log.info("✅ [VehicleRegistration] Đã gửi notification approval riêng tư cho residentId: {}", residentId);
         } catch (Exception e) {
             log.error("❌ [VehicleRegistration] Không thể gửi notification approval cho registrationId: {}", 
                     registration.getId(), e);
@@ -430,7 +430,7 @@ public class VehicleRegistrationService {
 
     private void sendVehicleCardRejectionNotification(RegisterServiceRequest registration, String rejectionReason) {
         try {
-            // Resolve residentId from userId and unitId
+            // Resolve residentId from userId and unitId - CARD_REJECTED is PRIVATE (only resident who created the request can see)
             UUID residentId = residentUnitLookupService.resolveByUser(registration.getUserId(), registration.getUnitId())
                     .map(ResidentUnitLookupService.AddressInfo::residentId)
                     .orElse(null);
@@ -440,9 +440,6 @@ public class VehicleRegistrationService {
                         registration.getUserId(), registration.getUnitId());
                 return;
             }
-
-            // Resolve buildingId from unitId if needed
-            UUID buildingId = null;
 
             // Get current card price from database
             BigDecimal currentPrice = cardPricingService.getPrice("VEHICLE");
@@ -473,9 +470,10 @@ public class VehicleRegistrationService {
                 data.put("rejectionReason", rejectionReason);
             }
 
+            // Send PRIVATE notification to specific resident (residentId = residentId, buildingId = null)
             notificationClient.sendResidentNotification(
-                    residentId,
-                    buildingId,
+                    residentId, // residentId for private notification
+                    null, // buildingId = null for private notification
                     "CARD_REJECTED",
                     title,
                     message,
@@ -484,7 +482,7 @@ public class VehicleRegistrationService {
                     data
             );
 
-            log.info("✅ [VehicleRegistration] Đã gửi notification rejection cho residentId: {}", residentId);
+            log.info("✅ [VehicleRegistration] Đã gửi notification rejection riêng tư cho residentId: {}", residentId);
         } catch (Exception e) {
             log.error("❌ [VehicleRegistration] Không thể gửi notification rejection cho registrationId: {}", 
                     registration.getId(), e);
@@ -752,6 +750,40 @@ public class VehicleRegistrationService {
         }
         if (dto.vehicleType() == null || dto.vehicleType().isBlank()) {
             throw new IllegalArgumentException("Loại phương tiện là bắt buộc");
+        }
+    }
+
+    /**
+     * Kiểm tra biển số xe đã tồn tại trong database chưa
+     * Chỉ kiểm tra với các registration đã được approve hoặc đã thanh toán (không bị reject/cancel)
+     */
+    private void validateLicensePlateNotDuplicate(String licensePlate, UUID excludeRegistrationId) {
+        if (licensePlate == null || licensePlate.isBlank()) {
+            return; // Đã được validate trong validatePayload
+        }
+
+        String normalizedLicensePlate = normalize(licensePlate);
+        if (normalizedLicensePlate == null || normalizedLicensePlate.isBlank()) {
+            return;
+        }
+
+        List<RegisterServiceRequest> existingRegistrations;
+        if (excludeRegistrationId != null) {
+            // Khi update, exclude registration hiện tại
+            existingRegistrations = requestRepository.findByServiceTypeAndLicensePlateIgnoreCaseExcludingId(
+                    SERVICE_TYPE, normalizedLicensePlate, excludeRegistrationId);
+        } else {
+            // Khi create, kiểm tra tất cả
+            existingRegistrations = requestRepository.findByServiceTypeAndLicensePlateIgnoreCase(
+                    SERVICE_TYPE, normalizedLicensePlate);
+        }
+
+        if (!existingRegistrations.isEmpty()) {
+            String existingStatus = existingRegistrations.get(0).getStatus();
+            String existingPaymentStatus = existingRegistrations.get(0).getPaymentStatus();
+            throw new IllegalArgumentException(
+                    String.format("Biển số xe '%s' đã được đăng ký trong hệ thống. Trạng thái: %s, Thanh toán: %s",
+                            normalizedLicensePlate, existingStatus, existingPaymentStatus));
         }
     }
 

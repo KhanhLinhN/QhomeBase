@@ -186,11 +186,45 @@ public class ContractService {
         return toDto(contract);
     }
 
+    @Transactional(readOnly = true)
     public List<ContractDto> getContractsByUnitId(UUID unitId) {
-        List<Contract> contracts = contractRepository.findByUnitId(unitId);
-        return contracts.stream()
-                .map(this::toDto)
-                .collect(Collectors.toList());
+        try {
+            List<Contract> contracts = contractRepository.findByUnitId(unitId);
+            return contracts.stream()
+                    .map(contract -> {
+                        try {
+                            return toDto(contract);
+                        } catch (Exception e) {
+                            log.error("❌ [ContractService] Lỗi khi convert contract {} sang DTO: {}", 
+                                    contract.getId(), e.getMessage(), e);
+                            // Return a minimal DTO to avoid breaking the entire list
+                            return ContractDto.builder()
+                                    .id(contract.getId())
+                                    .unitId(contract.getUnitId())
+                                    .contractNumber(contract.getContractNumber())
+                                    .contractType(contract.getContractType())
+                                    .startDate(contract.getStartDate())
+                                    .endDate(contract.getEndDate())
+                                    .monthlyRent(contract.getMonthlyRent())
+                                    .purchasePrice(contract.getPurchasePrice())
+                                    .paymentMethod(contract.getPaymentMethod())
+                                    .paymentTerms(contract.getPaymentTerms())
+                                    .purchaseDate(contract.getPurchaseDate())
+                                    .notes(contract.getNotes())
+                                    .status(contract.getStatus())
+                                    .createdBy(contract.getCreatedBy())
+                                    .createdAt(contract.getCreatedAt())
+                                    .updatedAt(contract.getUpdatedAt())
+                                    .updatedBy(contract.getUpdatedBy())
+                                    .files(List.of()) // Empty files list on error
+                                    .build();
+                        }
+                    })
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("❌ [ContractService] Lỗi khi lấy contracts cho unit {}: {}", unitId, e.getMessage(), e);
+            throw new RuntimeException("Không thể lấy danh sách hợp đồng: " + e.getMessage(), e);
+        }
     }
 
     public List<ContractDto> getActiveContracts() {
@@ -330,12 +364,28 @@ public class ContractService {
     }
 
     private ContractDto toDto(Contract contract) {
-        List<ContractFileDto> files = contract.getFiles() != null
-                ? contract.getFiles().stream()
-                        .filter(f -> !f.getIsDeleted())
-                        .map(this::toFileDto)
-                        .collect(Collectors.toList())
-                : List.of();
+        List<ContractFileDto> files = List.of();
+        try {
+            if (contract.getFiles() != null) {
+                files = contract.getFiles().stream()
+                        .filter(f -> f != null && !f.getIsDeleted())
+                        .map(file -> {
+                            try {
+                                return toFileDto(file);
+                            } catch (Exception e) {
+                                log.warn("⚠️ [ContractService] Lỗi khi convert file {} sang DTO: {}", 
+                                        file != null ? file.getId() : "null", e.getMessage());
+                                return null;
+                            }
+                        })
+                        .filter(f -> f != null)
+                        .collect(Collectors.toList());
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ [ContractService] Lỗi khi load files cho contract {}: {}", 
+                    contract.getId(), e.getMessage());
+            // Continue with empty files list
+        }
 
         return ContractDto.builder()
                 .id(contract.getId())

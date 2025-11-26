@@ -86,11 +86,28 @@ public class ElevatorCardRegistrationService {
 
         try {
             // Tự động lấy thông tin từ user context (fullName, apartmentNumber, buildingName)
+            log.debug("🔍 [ElevatorCard] Đang lấy fullName cho residentId: {}, userId: {}, unitId: {}", 
+                    dto.residentId(), userId, dto.unitId());
             applyResolvedAddress(registration, dto.residentId(), dto.unitId(), null, dto.apartmentNumber(), dto.buildingName());
             // Đảm bảo fullName luôn được set từ user context
             if (!StringUtils.hasText(registration.getFullName())) {
-                log.warn("⚠️ [ElevatorCard] Không thể lấy fullName từ user context cho residentId: {}", dto.residentId());
-                throw new IllegalStateException("Không thể lấy thông tin người dùng. Vui lòng thử lại sau.");
+                log.warn("⚠️ [ElevatorCard] Không thể lấy fullName từ user context cho residentId: {}, userId: {}", 
+                        dto.residentId(), userId);
+                // Thử lấy trực tiếp từ DB một lần nữa với logging chi tiết
+                String fullNameFromDb = getResidentFullNameFromDb(dto.residentId());
+                String fullNameFromUser = getResidentFullNameByUserId(userId);
+                log.warn("⚠️ [ElevatorCard] Debug - fullNameFromDb: {}, fullNameFromUser: {}", fullNameFromDb, fullNameFromUser);
+                if (StringUtils.hasText(fullNameFromDb)) {
+                    registration.setFullName(normalize(fullNameFromDb));
+                    log.info("✅ [ElevatorCard] Đã lấy fullName từ DB sau khi retry: {}", fullNameFromDb);
+                } else if (StringUtils.hasText(fullNameFromUser)) {
+                    registration.setFullName(normalize(fullNameFromUser));
+                    log.info("✅ [ElevatorCard] Đã lấy fullName từ userId sau khi retry: {}", fullNameFromUser);
+                } else {
+                    throw new IllegalStateException("Không thể lấy thông tin người dùng. Vui lòng thử lại sau.");
+                }
+            } else {
+                log.debug("✅ [ElevatorCard] Đã lấy fullName thành công: {}", registration.getFullName());
             }
         } catch (IllegalStateException e) {
             throw e; // Re-throw IllegalStateException
@@ -103,9 +120,19 @@ public class ElevatorCardRegistrationService {
             if (!StringUtils.hasText(registration.getBuildingName())) {
                 registration.setBuildingName(normalize(dto.buildingName()));
             }
-            // Nếu không lấy được fullName từ user context, throw error
+            // Nếu không lấy được fullName từ user context, thử lại
             if (!StringUtils.hasText(registration.getFullName())) {
-                throw new IllegalStateException("Không thể lấy thông tin người dùng. Vui lòng thử lại sau.");
+                String fullNameFromDb = getResidentFullNameFromDb(dto.residentId());
+                String fullNameFromUser = getResidentFullNameByUserId(userId);
+                if (StringUtils.hasText(fullNameFromDb)) {
+                    registration.setFullName(normalize(fullNameFromDb));
+                    log.info("✅ [ElevatorCard] Đã lấy fullName từ DB trong catch block: {}", fullNameFromDb);
+                } else if (StringUtils.hasText(fullNameFromUser)) {
+                    registration.setFullName(normalize(fullNameFromUser));
+                    log.info("✅ [ElevatorCard] Đã lấy fullName từ userId trong catch block: {}", fullNameFromUser);
+                } else {
+                    throw new IllegalStateException("Không thể lấy thông tin người dùng. Vui lòng thử lại sau.");
+                }
             }
         }
 
@@ -251,18 +278,12 @@ public class ElevatorCardRegistrationService {
 
     private void sendElevatorCardApprovalNotification(ElevatorCardRegistration registration, String issueMessage) {
         try {
+            // CARD_APPROVED is PRIVATE - only resident who created the request can see
             UUID residentId = registration.getResidentId();
             if (residentId == null) {
                 log.warn("⚠️ [ElevatorCard] residentId là null, không thể gửi notification cho registrationId: {}", 
                         registration.getId());
                 return;
-            }
-
-            // Resolve buildingId from unitId if needed
-            UUID buildingId = null;
-            if (registration.getUnitId() != null) {
-                // Note: AddressInfo doesn't have buildingId, so we pass null and let the notification service handle it
-                buildingId = null;
             }
 
             // Get current card price from database
@@ -287,9 +308,10 @@ public class ElevatorCardRegistrationService {
                 data.put("fullName", registration.getFullName());
             }
 
+            // Send PRIVATE notification to specific resident (residentId = residentId, buildingId = null)
             notificationClient.sendResidentNotification(
-                    residentId,
-                    buildingId,
+                    residentId, // residentId for private notification
+                    null, // buildingId = null for private notification
                     "CARD_APPROVED",
                     title,
                     message,
@@ -298,7 +320,7 @@ public class ElevatorCardRegistrationService {
                     data
             );
 
-            log.info("✅ [ElevatorCard] Đã gửi notification approval cho residentId: {}", residentId);
+            log.info("✅ [ElevatorCard] Đã gửi notification approval riêng tư cho residentId: {}", residentId);
         } catch (Exception e) {
             log.error("❌ [ElevatorCard] Không thể gửi notification approval cho registrationId: {}", 
                     registration.getId(), e);
@@ -307,18 +329,12 @@ public class ElevatorCardRegistrationService {
 
     private void sendElevatorCardRejectionNotification(ElevatorCardRegistration registration, String rejectionReason) {
         try {
+            // CARD_REJECTED is PRIVATE - only resident who created the request can see
             UUID residentId = registration.getResidentId();
             if (residentId == null) {
                 log.warn("⚠️ [ElevatorCard] residentId là null, không thể gửi notification cho registrationId: {}", 
                         registration.getId());
                 return;
-            }
-
-            // Resolve buildingId from unitId if needed
-            UUID buildingId = null;
-            if (registration.getUnitId() != null) {
-                // Note: AddressInfo doesn't have buildingId, so we pass null and let the notification service handle it
-                buildingId = null;
             }
 
             // Get current card price from database
@@ -348,9 +364,10 @@ public class ElevatorCardRegistrationService {
                 data.put("rejectionReason", rejectionReason);
             }
 
+            // Send PRIVATE notification to specific resident (residentId = residentId, buildingId = null)
             notificationClient.sendResidentNotification(
-                    residentId,
-                    buildingId,
+                    residentId, // residentId for private notification
+                    null, // buildingId = null for private notification
                     "CARD_REJECTED",
                     title,
                     message,
@@ -359,7 +376,7 @@ public class ElevatorCardRegistrationService {
                     data
             );
 
-            log.info("✅ [ElevatorCard] Đã gửi notification rejection cho residentId: {}", residentId);
+            log.info("✅ [ElevatorCard] Đã gửi notification rejection riêng tư cho residentId: {}", residentId);
         } catch (Exception e) {
             log.error("❌ [ElevatorCard] Không thể gửi notification rejection cho registrationId: {}", 
                     registration.getId(), e);
@@ -504,17 +521,25 @@ public class ElevatorCardRegistrationService {
 
         if (signatureValid && "00".equals(responseCode) && "00".equals(transactionStatus)) {
             registration.setPaymentStatus("PAID");
-            try {
-                applyResolvedAddress(
-                        registration,
-                        registration.getResidentId(),
-                        registration.getUnitId(),
-                        registration.getFullName(),
-                        registration.getApartmentNumber(),
-                        registration.getBuildingName()
-                );
-            } catch (Exception e) {
-                log.warn("⚠️ [ElevatorCard] Không thể resolve địa chỉ sau thanh toán, giữ nguyên giá trị hiện tại: {}", e.getMessage());
+            // Không cần gọi applyResolvedAddress lại vì đã có đầy đủ thông tin khi tạo registration
+            // Chỉ cần đảm bảo fullName không null
+            if (!StringUtils.hasText(registration.getFullName())) {
+                log.warn("⚠️ [ElevatorCard] fullName is null trong callback, thử lấy lại từ DB");
+                try {
+                    String fullNameFromDb = getResidentFullNameFromDb(registration.getResidentId());
+                    if (StringUtils.hasText(fullNameFromDb)) {
+                        registration.setFullName(fullNameFromDb);
+                        log.info("✅ [ElevatorCard] Đã lấy lại fullName từ DB: {}", fullNameFromDb);
+                    } else {
+                        String fullNameFromUser = getResidentFullNameByUserId(registration.getUserId());
+                        if (StringUtils.hasText(fullNameFromUser)) {
+                            registration.setFullName(fullNameFromUser);
+                            log.info("✅ [ElevatorCard] Đã lấy lại fullName từ userId: {}", fullNameFromUser);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("⚠️ [ElevatorCard] Không thể lấy lại fullName trong callback: {}", e.getMessage());
+                }
             }
             
             registration.setPaymentGateway(PAYMENT_VNPAY);
@@ -530,6 +555,55 @@ public class ElevatorCardRegistrationService {
                 log.info("✅ [ElevatorCard] Gia hạn thành công, thẻ {} đã được set lại status = APPROVED", registration.getId());
                 
                 // Reset reminder cycle sau khi gia hạn (approved_at đã được set ở trên)
+                try {
+                    cardFeeReminderService.resetReminderAfterPayment(
+                            CardFeeReminderService.CardFeeType.ELEVATOR,
+                            registration.getId(),
+                            registration.getUnitId(),
+                            registration.getResidentId(),
+                            registration.getUserId(),
+                            registration.getApartmentNumber(),
+                            registration.getBuildingName(),
+                            payDate // payment_date mới (approved_at sẽ được lấy từ registration.getApprovedAt())
+                    );
+                } catch (Exception e) {
+                    log.error("❌ [ElevatorCard] Lỗi khi reset reminder sau gia hạn: {}", e.getMessage(), e);
+                    // Không throw exception, chỉ log error để không làm gián đoạn quá trình thanh toán
+                }
+            } else {
+                registration.setStatus(STATUS_PENDING_REVIEW);
+            }
+            repository.save(registration);
+
+            log.info("✅ [ElevatorCard] Thanh toán thành công cho đăng ký {}", registration.getId());
+            
+            // Ghi nhận thanh toán vào billing service (có thể fail nhưng không nên làm gián đoạn callback)
+            try {
+                billingClient.recordElevatorCardPayment(
+                        registration.getId(),
+                        registration.getUserId(),
+                        registration.getUnitId(),
+                        registration.getFullName(),
+                        registration.getApartmentNumber(),
+                        registration.getBuildingName(),
+                        registration.getRequestType(),
+                        registration.getNote(),
+                        registration.getPaymentAmount(),
+                        payDate,
+                        txnRef,
+                        params.get("vnp_TransactionNo"),
+                        params.get("vnp_BankCode"),
+                        params.get("vnp_CardType"),
+                        responseCode
+                );
+                log.info("✅ [ElevatorCard] Đã ghi nhận thanh toán vào billing service");
+            } catch (Exception e) {
+                log.error("❌ [ElevatorCard] Lỗi khi ghi nhận thanh toán vào billing service: {}", e.getMessage(), e);
+                // Không throw exception, chỉ log error để không làm gián đoạn quá trình thanh toán
+            }
+
+            // Reset reminder cycle sau khi thanh toán
+            try {
                 cardFeeReminderService.resetReminderAfterPayment(
                         CardFeeReminderService.CardFeeType.ELEVATOR,
                         registration.getId(),
@@ -538,42 +612,13 @@ public class ElevatorCardRegistrationService {
                         registration.getUserId(),
                         registration.getApartmentNumber(),
                         registration.getBuildingName(),
-                        payDate // payment_date mới (approved_at sẽ được lấy từ registration.getApprovedAt())
+                        payDate
                 );
-            } else {
-                registration.setStatus(STATUS_PENDING_REVIEW);
+                log.info("✅ [ElevatorCard] Đã reset reminder cycle");
+            } catch (Exception e) {
+                log.error("❌ [ElevatorCard] Lỗi khi reset reminder cycle: {}", e.getMessage(), e);
+                // Không throw exception, chỉ log error để không làm gián đoạn quá trình thanh toán
             }
-            repository.save(registration);
-
-            log.info("✅ [ElevatorCard] Thanh toán thành công cho đăng ký {}", registration.getId());
-            billingClient.recordElevatorCardPayment(
-                    registration.getId(),
-                    registration.getUserId(),
-                    registration.getUnitId(),
-                    registration.getFullName(),
-                    registration.getApartmentNumber(),
-                    registration.getBuildingName(),
-                    registration.getRequestType(),
-                    registration.getNote(),
-                    registration.getPaymentAmount(),
-                    payDate,
-                    txnRef,
-                    params.get("vnp_TransactionNo"),
-                    params.get("vnp_BankCode"),
-                    params.get("vnp_CardType"),
-                    responseCode
-            );
-
-            cardFeeReminderService.resetReminderAfterPayment(
-                    CardFeeReminderService.CardFeeType.ELEVATOR,
-                    registration.getId(),
-                    registration.getUnitId(),
-                    registration.getResidentId(),
-                    registration.getUserId(),
-                    registration.getApartmentNumber(),
-                    registration.getBuildingName(),
-                    payDate
-            );
 
             orderIdToRegistrationId.remove(orderId);
             return new ElevatorCardPaymentResult(registration.getId(), true, responseCode, true);
@@ -603,10 +648,97 @@ public class ElevatorCardRegistrationService {
             registration.setApartmentNumber(normalize(apartment));
             registration.setBuildingName(normalize(building));
         }, () -> {
-            registration.setFullName(normalize(fallbackFullName));
+            // Nếu không tìm thấy qua resolveByResident, thử lấy fullName trực tiếp từ residents table
+            String fullNameFromDb = getResidentFullNameFromDb(residentId);
+            if (StringUtils.hasText(fullNameFromDb)) {
+                registration.setFullName(normalize(fullNameFromDb));
+                log.debug("✅ [ElevatorCard] Lấy fullName từ residents table cho residentId: {}", residentId);
+            } else {
+                // Nếu không lấy được từ residents table, thử lấy từ userId nếu có
+                if (registration.getUserId() != null) {
+                    String fullNameFromUser = getResidentFullNameByUserId(registration.getUserId());
+                    if (StringUtils.hasText(fullNameFromUser)) {
+                        registration.setFullName(normalize(fullNameFromUser));
+                        log.debug("✅ [ElevatorCard] Lấy fullName từ userId cho residentId: {}", residentId);
+                    } else if (StringUtils.hasText(fallbackFullName)) {
+                        registration.setFullName(normalize(fallbackFullName));
+                        log.debug("✅ [ElevatorCard] Sử dụng fallback fullName cho residentId: {}", residentId);
+                    } else {
+                        log.warn("⚠️ [ElevatorCard] Không thể lấy fullName từ database, userId, hoặc fallback cho residentId: {}", residentId);
+                    }
+                } else if (StringUtils.hasText(fallbackFullName)) {
+                    registration.setFullName(normalize(fallbackFullName));
+                    log.debug("✅ [ElevatorCard] Sử dụng fallback fullName cho residentId: {}", residentId);
+                } else {
+                    log.warn("⚠️ [ElevatorCard] Không thể lấy fullName từ database hoặc fallback cho residentId: {}", residentId);
+                }
+            }
             registration.setApartmentNumber(normalize(fallbackApartment));
             registration.setBuildingName(normalize(fallbackBuilding));
         });
+    }
+    
+    /**
+     * Lấy fullName trực tiếp từ bảng residents
+     */
+    private String getResidentFullNameFromDb(UUID residentId) {
+        if (residentId == null) {
+            return null;
+        }
+        try {
+            MapSqlParameterSource params = new MapSqlParameterSource()
+                    .addValue("residentId", residentId);
+            
+            List<String> results = jdbcTemplate.queryForList("""
+                    SELECT full_name
+                    FROM data.residents
+                    WHERE id = :residentId
+                    LIMIT 1
+                    """, params, String.class);
+            
+            if (results != null && !results.isEmpty()) {
+                String fullName = results.get(0);
+                log.debug("✅ [ElevatorCard] Tìm thấy fullName trong residents table: {} cho residentId: {}", fullName, residentId);
+                return fullName;
+            }
+            log.debug("⚠️ [ElevatorCard] Không tìm thấy fullName trong residents table cho residentId: {}", residentId);
+            return null;
+        } catch (Exception e) {
+            log.warn("⚠️ [ElevatorCard] Lỗi khi lấy fullName từ residents table cho residentId {}: {}", 
+                    residentId, e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Lấy fullName từ residents table thông qua userId
+     */
+    private String getResidentFullNameByUserId(UUID userId) {
+        if (userId == null) {
+            return null;
+        }
+        try {
+            MapSqlParameterSource params = new MapSqlParameterSource()
+                    .addValue("userId", userId);
+            
+            List<String> results = jdbcTemplate.queryForList("""
+                    SELECT full_name
+                    FROM data.residents
+                    WHERE user_id = :userId
+                    LIMIT 1
+                    """, params, String.class);
+            
+            if (results != null && !results.isEmpty()) {
+                String fullName = results.get(0);
+                log.debug("✅ [ElevatorCard] Tìm thấy fullName qua userId: {} cho userId: {}", fullName, userId);
+                return fullName;
+            }
+            log.debug("⚠️ [ElevatorCard] Không tìm thấy fullName qua userId: {}", userId);
+            return null;
+        } catch (Exception e) {
+            log.warn("⚠️ [ElevatorCard] Lỗi khi lấy fullName qua userId {}: {}", userId, e.getMessage());
+            return null;
+        }
     }
 
     private OffsetDateTime parsePayDate(String payDate) {
@@ -645,19 +777,62 @@ public class ElevatorCardRegistrationService {
         Optional<ResidentUnitLookupService.AddressInfo> info = 
                 residentUnitLookupService.resolveByResident(residentId, unitId);
         
-        if (info.isEmpty()) {
-            throw new IllegalArgumentException(
-                String.format("Cư dân không thuộc căn hộ này. Vui lòng kiểm tra lại thông tin căn hộ và cư dân.")
-            );
+        // Nếu resolveByResident tìm thấy, đã OK
+        if (info.isPresent()) {
+            log.debug("✅ [ElevatorCard] Resident {} validated qua resolveByResident cho unit {}", residentId, unitId);
+            return;
         }
         
-        // Kiểm tra thêm: resident phải có trong household của unit đó
+        // Nếu không tìm thấy qua resolveByResident, kiểm tra xem có phải primary resident không
         try {
             MapSqlParameterSource params = new MapSqlParameterSource()
                     .addValue("residentId", residentId)
                     .addValue("unitId", unitId);
             
-            Long count = jdbcTemplate.queryForObject("""
+            // Kiểm tra xem resident có phải là primaryResidentId của unit không
+            Long primaryResidentCount = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*)
+                    FROM data.households h
+                    WHERE h.unit_id = :unitId
+                      AND h.primary_resident_id = :residentId
+                      AND (h.end_date IS NULL OR h.end_date >= CURRENT_DATE)
+                    """, params, Long.class);
+            
+            if (primaryResidentCount != null && primaryResidentCount > 0) {
+                log.debug("✅ [ElevatorCard] Resident {} là primaryResidentId của unit {}, cho phép tiếp tục", residentId, unitId);
+                return; // Primary resident được phép, không cần có trong household_members
+            }
+            
+            // Kiểm tra chi tiết trong household_members
+            List<Map<String, Object>> details = jdbcTemplate.queryForList("""
+                    SELECT 
+                        hm.id as member_id,
+                        hm.resident_id,
+                        hm.left_at,
+                        h.id as household_id,
+                        h.unit_id,
+                        h.end_date,
+                        CASE 
+                            WHEN hm.left_at IS NOT NULL AND hm.left_at < CURRENT_DATE THEN 'RESIDENT_LEFT'
+                            WHEN h.end_date IS NOT NULL AND h.end_date < CURRENT_DATE THEN 'HOUSEHOLD_ENDED'
+                            WHEN hm.id IS NULL THEN 'NOT_IN_HOUSEHOLD'
+                            ELSE 'ACTIVE'
+                        END as status
+                    FROM data.household_members hm
+                    JOIN data.households h ON h.id = hm.household_id
+                    WHERE hm.resident_id = :residentId
+                      AND h.unit_id = :unitId
+                    """, params);
+            
+            if (details.isEmpty()) {
+                log.warn("⚠️ [ElevatorCard] Resident {} không có trong bất kỳ household nào của unit {} và không phải primaryResidentId", residentId, unitId);
+                throw new IllegalArgumentException(
+                    String.format("Cư dân không thuộc căn hộ này. Vui lòng kiểm tra lại thông tin căn hộ và cư dân.")
+                );
+            }
+            
+            // Kiểm tra xem có record nào active không
+            Long activeCount = jdbcTemplate.queryForObject("""
                     SELECT COUNT(*)
                     FROM data.household_members hm
                     JOIN data.households h ON h.id = hm.household_id
@@ -667,16 +842,35 @@ public class ElevatorCardRegistrationService {
                       AND (h.end_date IS NULL OR h.end_date >= CURRENT_DATE)
                     """, params, Long.class);
             
-            if (count == null || count == 0) {
+            if (activeCount == null || activeCount == 0) {
+                // Tìm lý do cụ thể
+                String reason = "không xác định";
+                for (Map<String, Object> detail : details) {
+                    String status = (String) detail.get("status");
+                    if ("RESIDENT_LEFT".equals(status)) {
+                        Object leftAt = detail.get("left_at");
+                        reason = String.format("cư dân đã rời khỏi căn hộ vào ngày %s", leftAt);
+                        break;
+                    } else if ("HOUSEHOLD_ENDED".equals(status)) {
+                        Object endDate = detail.get("end_date");
+                        reason = String.format("hộ gia đình đã kết thúc vào ngày %s", endDate);
+                        break;
+                    }
+                }
+                
+                log.warn("⚠️ [ElevatorCard] Resident {} không active trong unit {} - Lý do: {}", residentId, unitId, reason);
                 throw new IllegalArgumentException(
-                    String.format("Cư dân không thuộc căn hộ này hoặc đã rời khỏi căn hộ. Vui lòng kiểm tra lại.")
+                    String.format("Cư dân không thuộc căn hộ này hoặc đã rời khỏi căn hộ (%s). Vui lòng kiểm tra lại.", reason)
                 );
             }
+            
+            log.debug("✅ [ElevatorCard] Resident {} validated cho unit {}", residentId, unitId);
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            log.warn("⚠️ [ElevatorCard] Không thể validate resident-unit relationship: {}", e.getMessage());
-            // Nếu có lỗi khi query, vẫn cho phép tiếp tục (fallback)
+            log.error("❌ [ElevatorCard] Lỗi khi validate resident-unit relationship: {}", e.getMessage(), e);
+            // Nếu có lỗi khi query, vẫn cho phép tiếp tục (fallback) nhưng log warning
+            log.warn("⚠️ [ElevatorCard] Fallback: cho phép tiếp tục do lỗi query, nhưng nên kiểm tra lại dữ liệu");
         }
     }
 

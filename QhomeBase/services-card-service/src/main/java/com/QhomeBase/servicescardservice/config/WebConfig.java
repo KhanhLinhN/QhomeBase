@@ -12,7 +12,15 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(@NonNull ResourceHandlerRegistry registry) {
+        // Get absolute path to uploads directory
         String uploadPath = Paths.get("uploads").toAbsolutePath().toUri().toString();
+        // Ensure path ends with /
+        if (!uploadPath.endsWith("/")) {
+            uploadPath += "/";
+        }
+        
+        // Handle /uploads/** path
+        // API Gateway will rewrite /api/uploads/** to /uploads/** before forwarding
         registry.addResourceHandler("/uploads/**")
                 .addResourceLocations(uploadPath)
                 .setCachePeriod(3600);

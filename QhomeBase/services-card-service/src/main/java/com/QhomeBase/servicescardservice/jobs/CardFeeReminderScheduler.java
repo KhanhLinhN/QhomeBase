@@ -78,12 +78,29 @@ public class CardFeeReminderScheduler {
             List<CardFeeReminderState> processedStates = new ArrayList<>();
 
             for (ReminderBatch batch : batches) {
+                // IMPORTANT: Gửi notification riêng cho từng resident
+                // Mỗi resident sẽ nhận notification riêng tư về thẻ của họ
                 for (UUID residentId : batch.residentIds) {
                     if (residentId == null) {
                         continue;
                     }
-                    // Gửi realtime notification + FCM push notification
-                    sendReminder(batch, residentId);
+                    // Lọc states chỉ cho resident này
+                    List<CardFeeReminderState> residentStates = batch.states.stream()
+                            .filter(state -> {
+                                UUID stateResidentId = ensureResident(state);
+                                return stateResidentId != null && stateResidentId.equals(residentId);
+                            })
+                            .toList();
+                    
+                    if (residentStates.isEmpty()) {
+                        continue;
+                    }
+                    
+                    // Tạo batch riêng cho resident này với chỉ thẻ của họ
+                    ReminderBatch residentBatch = createResidentBatch(batch, residentId, residentStates);
+                    
+                    // Gửi realtime notification + FCM push notification (riêng tư)
+                    sendReminder(residentBatch, residentId);
                     notificationCount++;
                 }
                 processedStates.addAll(batch.states);
@@ -136,6 +153,31 @@ public class CardFeeReminderScheduler {
         }
 
         return new ArrayList<>(batches.values());
+    }
+
+    private ReminderBatch createResidentBatch(ReminderBatch originalBatch, UUID residentId, List<CardFeeReminderState> residentStates) {
+        Map<CardFeeType, Integer> residentCounts = new EnumMap<>(CardFeeType.class);
+        long maxDaysSinceDue = 0;
+        LocalDate today = LocalDate.now(ZONE);
+        
+        for (CardFeeReminderState state : residentStates) {
+            CardFeeType cardType = parseType(state.getCardType());
+            if (cardType != null) {
+                residentCounts.put(cardType, residentCounts.getOrDefault(cardType, 0) + 1);
+            }
+            maxDaysSinceDue = Math.max(maxDaysSinceDue, reminderService.daysSinceDue(state, today));
+        }
+        
+        ReminderBatch residentBatch = new ReminderBatch(
+                originalBatch.unitId,
+                Set.of(residentId),
+                residentCounts,
+                residentStates,
+                originalBatch.apartmentNumber,
+                originalBatch.buildingName
+        );
+        residentBatch.maxDaysSinceDue = maxDaysSinceDue;
+        return residentBatch;
     }
 
     private void sendReminder(ReminderBatch batch, UUID residentId) {

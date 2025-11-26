@@ -73,4 +73,37 @@ public interface RegisterServiceRequestRepository extends JpaRepository<Register
      * Tìm các thẻ đã duyệt và đã thanh toán để cập nhật trạng thái (NEEDS_RENEWAL, SUSPENDED)
      */
     List<RegisterServiceRequest> findByStatusAndPaymentStatus(String status, String paymentStatus);
+
+    /**
+     * Tìm registration theo biển số xe và service type
+     * Chỉ tìm các registration đã được approve hoặc đã thanh toán (không bị reject/cancel)
+     */
+    @Query("""
+            SELECT r FROM RegisterServiceRequest r
+            WHERE r.serviceType = :serviceType
+              AND UPPER(TRIM(r.licensePlate)) = UPPER(TRIM(:licensePlate))
+              AND UPPER(r.status) NOT IN ('REJECTED', 'CANCELLED')
+              AND (UPPER(r.status) = 'APPROVED' OR UPPER(r.paymentStatus) = 'PAID')
+            """)
+    List<RegisterServiceRequest> findByServiceTypeAndLicensePlateIgnoreCase(
+            @Param("serviceType") String serviceType,
+            @Param("licensePlate") String licensePlate
+    );
+
+    /**
+     * Tìm registration theo biển số xe, service type và exclude một registration ID (dùng khi update)
+     */
+    @Query("""
+            SELECT r FROM RegisterServiceRequest r
+            WHERE r.serviceType = :serviceType
+              AND UPPER(TRIM(r.licensePlate)) = UPPER(TRIM(:licensePlate))
+              AND r.id != :excludeId
+              AND UPPER(r.status) NOT IN ('REJECTED', 'CANCELLED')
+              AND (UPPER(r.status) = 'APPROVED' OR UPPER(r.paymentStatus) = 'PAID')
+            """)
+    List<RegisterServiceRequest> findByServiceTypeAndLicensePlateIgnoreCaseExcludingId(
+            @Param("serviceType") String serviceType,
+            @Param("licensePlate") String licensePlate,
+            @Param("excludeId") UUID excludeId
+    );
 }

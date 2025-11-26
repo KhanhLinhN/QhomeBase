@@ -36,7 +36,6 @@ public class MeterReadingImportService {
     private final BillingCycleRepository billingCycleRepository;
     private final InvoiceRepository invoiceRepository;
     private final BaseServiceClient baseServiceClient;
-    private final NotificationClient notificationClient;
 
     public int importReadings(List<ImportedReadingDto> readings) {
         MeterReadingImportResponse response = importReadingsWithResponse(readings);
@@ -207,13 +206,7 @@ public class MeterReadingImportService {
                 log.info("Created invoice {} for unit={}, readingCycle={}, billingCycle={} with usage={} kWh ({} tiers)",
                         invoice.getId(), unitId, readingCycleId, billingCycleId, totalUsage, invoiceLines.size());
                 
-                // Send notification to resident about new invoice
-                try {
-                    sendInvoiceNotification(residentId, unitId, invoice, serviceCode, totalUsage);
-                } catch (Exception e) {
-                    log.warn("Failed to send notification for invoice {}: {}", invoice.getId(), e.getMessage());
-                    // Don't fail the import if notification fails
-                }
+                // Notification is already sent by InvoiceService.createInvoice() - no need to send again
             } catch (Exception e) {
                 String errorMsg = String.format("Unit %s, Cycle %s: %s", unitId, readingCycleId, e.getMessage());
                 log.error("Error creating invoice for unit={}, cycle={}: {}", unitId, readingCycleId, e.getMessage(), e);
@@ -423,68 +416,6 @@ public class MeterReadingImportService {
         return saved.getId();
     }
 
-    /**
-     * Send notification to resident about new invoice created from meter reading import
-     */
-    private void sendInvoiceNotification(UUID residentId, UUID unitId, InvoiceDto invoice, 
-                                         String serviceCode, BigDecimal totalUsage) {
-        if (residentId == null) {
-            log.warn("Cannot send notification: residentId is null for invoice {}", invoice.getId());
-            return;
-        }
-
-        try {
-            // Get unit info to get buildingId
-            BaseServiceClient.UnitInfo unitInfo = baseServiceClient.getUnitById(unitId);
-            UUID buildingId = unitInfo != null ? unitInfo.getBuildingId() : null;
-
-            // Determine notification type based on service code
-            String notificationType = "BILL";
-            String serviceName = "dịch vụ";
-            if (ServiceCode.ELECTRIC.equals(serviceCode)) {
-                notificationType = "ELECTRICITY";
-                serviceName = "điện";
-            } else if (ServiceCode.WATER.equals(serviceCode)) {
-                notificationType = "WATER";
-                serviceName = "nước";
-            }
-
-            // Format total amount
-            BigDecimal totalAmount = invoice.getTotalAmount() != null ? invoice.getTotalAmount() : BigDecimal.ZERO;
-            String amountStr = String.format("%,.0f", totalAmount.doubleValue());
-            
-            // Create notification title and message
-            String title = String.format("Hóa đơn %s mới", serviceName);
-            String message = String.format("Hóa đơn %s mới đã được tạo với số tiền %s VND. Số lượng sử dụng: %s kWh. Vui lòng thanh toán trước ngày %s.",
-                    serviceName, amountStr, totalUsage.toString(), 
-                    invoice.getDueDate() != null ? invoice.getDueDate().toString() : "hết hạn");
-
-            // Prepare data payload
-            Map<String, String> data = new HashMap<>();
-            data.put("invoiceId", invoice.getId().toString());
-            data.put("amount", totalAmount.toString());
-            data.put("serviceCode", serviceCode);
-            data.put("usage", totalUsage.toString());
-
-            // Send notification
-            notificationClient.sendResidentNotification(
-                    residentId,
-                    buildingId,
-                    notificationType,
-                    title,
-                    message,
-                    invoice.getId(),
-                    "INVOICE",
-                    data
-            );
-
-            log.info("✅ Sent notification to resident {} for invoice {} ({} - {} kWh)",
-                    residentId, invoice.getId(), serviceName, totalUsage);
-        } catch (Exception e) {
-            log.error("❌ Error sending notification for invoice {}: {}", invoice.getId(), e.getMessage(), e);
-            // Don't throw - notification failure shouldn't break import
-        }
-    }
 }
 
 

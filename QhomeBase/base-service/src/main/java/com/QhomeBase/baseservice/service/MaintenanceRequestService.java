@@ -202,6 +202,30 @@ public class MaintenanceRequestService {
                 .toList();
     }
 
+    /**
+     * Get paginated requests for a resident (all statuses)
+     */
+    public Map<String, Object> getMyRequestsPaged(UUID userId, int limit, int offset) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        
+        List<MaintenanceRequest> requests = maintenanceRequestRepository
+                .findByResidentIdWithPagination(resident.getId(), limit, offset);
+        
+        long total = maintenanceRequestRepository.countByResidentId(resident.getId());
+        
+        List<MaintenanceRequestDto> dtos = requests.stream()
+                .map(this::toDto)
+                .toList();
+        
+        return Map.of(
+                "requests", dtos,
+                "total", total,
+                "limit", limit,
+                "offset", offset
+        );
+    }
+
     public List<MaintenanceRequestDto> getPendingRequests() {
         List<MaintenanceRequest> requests = maintenanceRequestRepository
                 .findByStatusOrderByCreatedAtAsc(STATUS_PENDING);

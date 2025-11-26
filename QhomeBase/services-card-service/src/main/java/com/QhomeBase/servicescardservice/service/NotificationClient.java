@@ -63,13 +63,17 @@ public class NotificationClient {
                                          UUID referenceId,
                                          String referenceType,
                                          Map<String, String> data) {
-        if (residentId == null) {
-            log.warn("⚠️ [NotificationClient] residentId null, skip push");
+        // For public notifications (CARD_APPROVED, CARD_REJECTED), residentId can be null
+        // but buildingId must be provided
+        if (residentId == null && buildingId == null) {
+            log.warn("⚠️ [NotificationClient] Both residentId and buildingId are null, skip push");
             return;
         }
         
         Map<String, Object> payload = new HashMap<>();
-        payload.put("residentId", residentId.toString());
+        if (residentId != null) {
+            payload.put("residentId", residentId.toString());
+        }
         if (buildingId != null) {
             payload.put("buildingId", buildingId.toString());
         }

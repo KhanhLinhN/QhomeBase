@@ -41,7 +41,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 var authorities = new ArrayList<SimpleGrantedAuthority>();
                 for (String role : roles) {
-                    authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                    // Normalize role to uppercase to match @PreAuthorize checks (e.g., "RESIDENT")
+                    String normalizedRole = role != null ? role.toUpperCase() : role;
+                    authorities.add(new SimpleGrantedAuthority("ROLE_" + normalizedRole));
                 }
                 for (String perm : perms) {
                     authorities.add(new SimpleGrantedAuthority("PERM_" + perm));

@@ -61,6 +61,11 @@ public class BaseServiceClient {
         }
     }
 
+    public UUID getResidentIdByUserId(UUID userId) {
+        ResidentResponse resident = getResidentByUserId(userId);
+        return resident != null ? resident.id() : null;
+    }
+
     public String fetchResidentNameById(UUID residentId) {
         ResidentResponse resident = getResidentById(residentId);
         return resident != null ? resident.fullName() : null;

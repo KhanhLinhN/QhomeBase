@@ -17,6 +17,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -44,8 +45,17 @@ public class MaintenanceRequestController {
 
     @GetMapping("/my")
     @PreAuthorize("hasRole('RESIDENT')")
-    public ResponseEntity<List<MaintenanceRequestDto>> getMyMaintenanceRequests(
-            @AuthenticationPrincipal UserPrincipal principal) {
+    public ResponseEntity<?> getMyMaintenanceRequests(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) Integer offset) {
+        // If pagination parameters are provided, return paginated response
+        if (limit != null && offset != null) {
+            Map<String, Object> pagedResponse = maintenanceRequestService.getMyRequestsPaged(
+                    principal.uid(), limit, offset);
+            return ResponseEntity.ok(pagedResponse);
+        }
+        // Otherwise, return all requests (backward compatibility)
         List<MaintenanceRequestDto> requests = maintenanceRequestService.getMyRequests(principal.uid());
         return ResponseEntity.ok(requests);
     }

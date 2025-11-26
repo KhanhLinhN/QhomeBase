@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -115,6 +116,105 @@ public class BaseServiceClient {
         } catch (Exception e) {
             log.warn("Error fetching active members for household {} from base-service: {}", householdId, e.getMessage());
             return List.of();
+        }
+    }
+
+    /**
+     * Lấy unitId từ residentId thông qua household member
+     * Trả về unitId của household mà resident này là member (active)
+     */
+    @SuppressWarnings("unchecked")
+    public UUID getUnitIdFromResidentId(UUID residentId) {
+        try {
+            // Lấy household members của resident này
+            // Endpoint trả về List<HouseholdMemberDto> với householdId
+            List<Map<String, Object>> members = (List<Map<String, Object>>) (Object) webClient.get()
+                    .uri("/api/household-members/residents/{residentId}", residentId)
+                    .retrieve()
+                    .bodyToFlux(Map.class)
+                    .collectList()
+                    .block();
+            
+            if (members == null || members.isEmpty()) {
+                log.warn("No household members found for resident {}", residentId);
+                return null;
+            }
+            
+            // Lấy householdId từ member đầu tiên (thường resident chỉ thuộc 1 household tại 1 thời điểm)
+            Map<String, Object> member = members.get(0);
+            if (member == null || !member.containsKey("householdId")) {
+                return null;
+            }
+            
+            Object householdIdObj = member.get("householdId");
+            if (householdIdObj == null) {
+                return null;
+            }
+            
+            UUID householdId;
+            if (householdIdObj instanceof UUID) {
+                householdId = (UUID) householdIdObj;
+            } else if (householdIdObj instanceof String) {
+                householdId = UUID.fromString((String) householdIdObj);
+            } else {
+                return null;
+            }
+            
+            // Lấy household info để lấy unitId
+            ServiceInfo.HouseholdInfo household = getHouseholdById(householdId);
+            if (household != null && household.getUnitId() != null) {
+                return household.getUnitId();
+            }
+            
+            return null;
+        } catch (Exception e) {
+            log.warn("Error fetching unitId from residentId {} from base-service: {}", residentId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Lấy household info theo householdId
+     */
+    @SuppressWarnings("unchecked")
+    private ServiceInfo.HouseholdInfo getHouseholdById(UUID householdId) {
+        try {
+            Map<String, Object> householdMap = (Map<String, Object>) (Object) webClient.get()
+                    .uri("/api/households/{householdId}", householdId)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+            
+            if (householdMap == null) {
+                return null;
+            }
+            
+            ServiceInfo.HouseholdInfo household = new ServiceInfo.HouseholdInfo();
+            
+            Object idObj = householdMap.get("id");
+            if (idObj != null) {
+                UUID id = idObj instanceof UUID ? (UUID) idObj : UUID.fromString(idObj.toString());
+                household.setId(id);
+            }
+            
+            Object unitIdObj = householdMap.get("unitId");
+            if (unitIdObj != null) {
+                UUID unitId = unitIdObj instanceof UUID ? (UUID) unitIdObj : UUID.fromString(unitIdObj.toString());
+                household.setUnitId(unitId);
+            }
+            
+            Object primaryResidentIdObj = householdMap.get("primaryResidentId");
+            if (primaryResidentIdObj != null) {
+                UUID primaryResidentId = primaryResidentIdObj instanceof UUID 
+                        ? (UUID) primaryResidentIdObj 
+                        : UUID.fromString(primaryResidentIdObj.toString());
+                household.setPrimaryResidentId(primaryResidentId);
+            }
+            
+            return household;
+        } catch (Exception e) {
+            log.warn("Error fetching household {} from base-service: {}", householdId, e.getMessage());
+            return null;
         }
     }
 

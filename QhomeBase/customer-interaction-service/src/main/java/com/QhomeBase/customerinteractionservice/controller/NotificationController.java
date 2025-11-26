@@ -69,11 +69,24 @@ public class NotificationController {
     }
 
     @GetMapping("/resident")
+    @PreAuthorize("hasRole('RESIDENT')")
     public ResponseEntity<?> getNotificationsForResident(
-            @RequestParam UUID residentId,
-            @RequestParam UUID buildingId,
+            @RequestParam(required = false) UUID buildingId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "7") int size) {
+            @RequestParam(defaultValue = "7") int size,
+            org.springframework.security.core.Authentication authentication) {
+        
+        // Get userId from authentication
+        com.QhomeBase.customerinteractionservice.security.UserPrincipal principal = 
+            (com.QhomeBase.customerinteractionservice.security.UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        // Get residentId from userId via service
+        UUID residentId = notificationService.getResidentIdFromUserId(userId);
+        if (residentId == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "Resident not found for current user"));
+        }
         
         // Ensure size is 7 as per requirement
         size = 7;
@@ -84,9 +97,22 @@ public class NotificationController {
     }
 
     @GetMapping("/resident/count")
+    @PreAuthorize("hasRole('RESIDENT')")
     public ResponseEntity<Map<String, Long>> getNotificationsCountForResident(
-            @RequestParam UUID residentId,
-            @RequestParam UUID buildingId) {
+            @RequestParam(required = false) UUID buildingId,
+            org.springframework.security.core.Authentication authentication) {
+        
+        // Get userId from authentication
+        com.QhomeBase.customerinteractionservice.security.UserPrincipal principal = 
+            (com.QhomeBase.customerinteractionservice.security.UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        // Get residentId from userId via service
+        UUID residentId = notificationService.getResidentIdFromUserId(userId);
+        if (residentId == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("totalCount", 0L));
+        }
         
         long totalCount = notificationService.getNotificationsCountForResident(residentId, buildingId);
         return ResponseEntity.ok(java.util.Map.of("totalCount", totalCount));
