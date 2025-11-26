@@ -21,6 +21,13 @@ public class BaseServiceClient {
             return webClient.get()
                     .uri("/api/reading-cycles")
                     .retrieve()
+                    .onStatus(status -> status.isError(), response -> {
+                        log.error("Error response from base-service when fetching reading cycles: {}", response.statusCode());
+                        return response.createException().map(ex -> {
+                            log.error("Exception details: {}", ex.getMessage());
+                            return ex;
+                        });
+                    })
                     .bodyToFlux(ReadingCycleDto.class)
                     .collectList()
                     .block();
@@ -35,6 +42,13 @@ public class BaseServiceClient {
             return webClient.get()
                     .uri("/api/reading-cycles/{cycleId}", cycleId)
                     .retrieve()
+                    .onStatus(status -> status.isError(), response -> {
+                        log.error("Error response from base-service when fetching reading cycle {}: {}", cycleId, response.statusCode());
+                        return response.createException().map(ex -> {
+                            log.error("Exception details: {}", ex.getMessage());
+                            return ex;
+                        });
+                    })
                     .bodyToMono(ReadingCycleDto.class)
                     .block();
         } catch (Exception e) {
@@ -60,6 +74,13 @@ public class BaseServiceClient {
             return webClient.get()
                     .uri("/api/services")
                     .retrieve()
+                    .onStatus(status -> status.isError(), response -> {
+                        log.warn("Error response from base-service when fetching services: {}", response.statusCode());
+                        return response.createException().map(ex -> {
+                            log.warn("Exception details: {}", ex.getMessage());
+                            return ex;
+                        });
+                    })
                     .bodyToFlux(ServiceInfo.class)
                     .collectList()
                     .block();
@@ -125,8 +146,7 @@ public class BaseServiceClient {
         public void setCode(String code) { this.code = code; }
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
-
-
+    }
 
     public static class HouseholdInfo {
         private UUID id;

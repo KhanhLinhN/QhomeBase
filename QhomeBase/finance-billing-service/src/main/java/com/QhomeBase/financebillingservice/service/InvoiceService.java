@@ -11,7 +11,6 @@ import com.QhomeBase.financebillingservice.repository.InvoiceRepository;
 import com.QhomeBase.financebillingservice.repository.ResidentRepository;
 import com.QhomeBase.financebillingservice.repository.ResidentRepository.ResidentContact;
 import com.QhomeBase.financebillingservice.service.vnpay.VnpayService;
-import com.QhomeBase.financebillingservice.client.BaseServiceClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -1176,7 +1175,7 @@ public class InvoiceService {
         
         List<String> allServices;
         try {
-            List<BaseServiceClient.ServiceInfo> services = baseService.getAllServices();
+            List<BaseServiceClient.ServiceInfo> services = baseServiceClient.getAllServices();
             if (services != null && !services.isEmpty()) {
                 allServices = services.stream()
                         .map(BaseServiceClient.ServiceInfo::getCode)
