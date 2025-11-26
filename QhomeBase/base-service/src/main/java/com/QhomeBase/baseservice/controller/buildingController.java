@@ -8,6 +8,7 @@ import com.QhomeBase.baseservice.dto.BuildingDeletionCreateReq;
 import com.QhomeBase.baseservice.dto.BuildingDeletionApproveReq;
 import com.QhomeBase.baseservice.dto.BuildingDeletionRejectReq;
 import com.QhomeBase.baseservice.model.Building;
+import com.QhomeBase.baseservice.model.BuildingStatus;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import com.QhomeBase.baseservice.security.AuthzService;
 import com.QhomeBase.baseservice.service.BuildingService;
@@ -70,6 +71,20 @@ public class buildingController {
             BuildingDto updatedBuilding = buildingService.updateBuilding(buildingId, req, auth);
             return ResponseEntity.ok(updatedBuilding);
         } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @PatchMapping("/{buildingId}/status")
+    @PreAuthorize("@authz.canUpdateBuilding()")
+    public ResponseEntity<Void> changeBuildingStatus(
+            @PathVariable("buildingId") UUID buildingId,
+            @RequestParam BuildingStatus status,
+            Authentication auth) {
+        try {
+            buildingService.changeBuildingStatus(buildingId, status, auth);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }
     }

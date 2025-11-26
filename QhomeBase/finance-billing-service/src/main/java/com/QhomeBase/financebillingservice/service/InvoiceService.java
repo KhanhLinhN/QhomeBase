@@ -371,10 +371,10 @@ public class InvoiceService {
             List<UUID> residentIds = new ArrayList<>();
             if (invoice.getPayerUnitId() != null) {
                 try {
-                    BaseServiceClient.HouseholdInfo household = baseServiceClient.getCurrentHouseholdByUnitId(invoice.getPayerUnitId());
+                    BaseServiceClient.ServiceInfo.HouseholdInfo household = baseServiceClient.getCurrentHouseholdByUnitId(invoice.getPayerUnitId());
                     if (household != null && household.getId() != null) {
-                        List<BaseServiceClient.HouseholdMemberInfo> members = baseServiceClient.getActiveMembersByHouseholdId(household.getId());
-                        for (BaseServiceClient.HouseholdMemberInfo member : members) {
+                        List<BaseServiceClient.ServiceInfo.HouseholdMemberInfo> members = baseServiceClient.getActiveMembersByHouseholdId(household.getId());
+                        for (BaseServiceClient.ServiceInfo.HouseholdMemberInfo member : members) {
                             if (member.getResidentId() != null) {
                                 residentIds.add(member.getResidentId());
                             }

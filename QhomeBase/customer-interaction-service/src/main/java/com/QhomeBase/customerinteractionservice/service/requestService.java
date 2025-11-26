@@ -68,6 +68,9 @@ public class requestService {
             entity.getTitle(),
             entity.getContent(),
             entity.getStatus(),
+            entity.getType(),
+            entity.getFee(),
+            entity.getRepairedDate() != null ? entity.getRepairedDate().toString() : null,
             entity.getCreatedAt().toString().replace("T", " "),
             entity.getUpdatedAt() != null ? entity.getUpdatedAt().toString().replace("T", " ") : null
         );
@@ -76,6 +79,13 @@ public class requestService {
     public RequestDTO getRequestById(UUID id) {
         return requestRepository.findById(id).map(this::mapToDto)
                 .orElseThrow(() -> new RuntimeException("Request not found with id: " + id));
+    }
+
+    // Method to get all requests without filter, no pagination
+    public List<RequestDTO> getAllRequests() {
+        return requestRepository.findAll().stream()
+                .map(this::mapToDto)
+                .collect(Collectors.toList());
     }
 
     // Method to get filtered requests with pagination
@@ -161,6 +171,8 @@ public class requestService {
         entity.setStatus(StringUtils.hasText(dto.getStatus()) 
                 ? (dto.getStatus().equalsIgnoreCase("PENDING") ? "Pending" : dto.getStatus())
                 : "Pending");
+        entity.setType(dto.getType());
+        entity.setFee(dto.getFee());
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         entity.setCreatedAt(now);
         entity.setUpdatedAt(now);
@@ -206,6 +218,94 @@ public class requestService {
 
         log.debug("✅ [Request Rate Limit] Resident {}: {} requests/hour, {} requests/day", 
                 residentId, requestsInLastHour, requestsInLastDay);
+    }
+
+    public RequestDTO updateFee(UUID requestId, java.math.BigDecimal fee) {
+        Request request = requestRepository.findById(requestId)
+                .orElseThrow(() -> new RuntimeException("Request not found with id: " + requestId));
+        
+        // Only update fee, type is set during creation and should not be updated here
+        request.setFee(fee);
+        request.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
+        
+        Request updatedRequest = requestRepository.save(request);
+        return mapToDto(updatedRequest);
+    }
+
+    public RequestDTO updateStatus(UUID requestId, String status) {
+        Request request = requestRepository.findById(requestId)
+                .orElseThrow(() -> new RuntimeException("Request not found with id: " + requestId));
+        
+        if (status == null || status.trim().isEmpty()) {
+            throw new IllegalArgumentException("Status cannot be null or empty");
+        }
+        
+        request.setStatus(status);
+        request.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
+        
+        Request updatedRequest = requestRepository.save(request);
+        return mapToDto(updatedRequest);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public RequestDTO acceptOrDenyRequest(UUID requestId, 
+                                          String action, 
+                                          java.math.BigDecimal fee, 
+                                          LocalDate repairedDate, 
+                                          String note, 
+                                          String staffName,
+                                          Authentication authentication) {
+        Request request = requestRepository.findById(requestId)
+                .orElseThrow(() -> new RuntimeException("Request not found with id: " + requestId));
+
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
+        
+        if ("deny".equalsIgnoreCase(action)) {
+            // Deny: update status to Done, create log with note
+            request.setStatus("Done");
+            request.setUpdatedAt(now);
+            Request savedRequest = requestRepository.save(request);
+            
+            // Create log entry
+            ProcessingLog log = new ProcessingLog();
+            log.setRecordId(savedRequest.getId());
+            log.setStaffInChargeName(staffName);
+            log.setContent("Từ chối: " + note);
+            log.setRequestStatus("Done");
+            log.setCreatedAt(now);
+            processingLogRepository.save(log);
+            
+            return mapToDto(savedRequest);
+        } else if ("accept".equalsIgnoreCase(action)) {
+            // Accept: update fee, repairedDate, status, create log
+            if (fee == null || repairedDate == null) {
+                throw new IllegalArgumentException("Fee and repaired date are required for accept action");
+            }
+            
+            request.setFee(fee);
+            request.setRepairedDate(repairedDate);
+            request.setUpdatedAt(now);
+            Request savedRequest = requestRepository.save(request);
+            
+            // Create log entry with format: "<tên staff> sẽ tới sửa chữa vào ngày <ngày> với giá <giá> với ghi chú là: <Note>"
+            String logContent = String.format("%s sẽ tới sửa chữa vào ngày %s với giá %s VND với ghi chú là: %s",
+                    staffName,
+                    repairedDate.toString(),
+                    fee.toPlainString(),
+                    note);
+            
+            ProcessingLog log = new ProcessingLog();
+            log.setRecordId(savedRequest.getId());
+            log.setStaffInChargeName(staffName);
+            log.setContent(logContent);
+            log.setRequestStatus(savedRequest.getStatus());
+            log.setCreatedAt(now);
+            processingLogRepository.save(log);
+            
+            return mapToDto(savedRequest);
+        } else {
+            throw new IllegalArgumentException("Action must be 'accept' or 'deny'");
+        }
     }
 
     private UUID extractUserId(Authentication authentication) {
