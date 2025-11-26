@@ -52,6 +52,9 @@ public class BuildingImportService {
             if (idxName < 0) {
                 throw new IllegalArgumentException("Thiếu cột name");
             }
+            if (idxNumberOfFloors < 0) {
+                throw new IllegalArgumentException("Thiếu cột numberOfFloors (bắt buộc)");
+            }
 
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row r = sheet.getRow(i);
@@ -202,8 +205,14 @@ public class BuildingImportService {
     }
 
     private void validateNumberOfFloors(Integer numberOfFloors, int rowNumber) {
-        if (numberOfFloors != null && numberOfFloors <= 0) {
+        if (numberOfFloors == null) {
+            throw new IllegalArgumentException("Số tầng (row " + rowNumber + ") không được để trống");
+        }
+        if (numberOfFloors <= 0) {
             throw new IllegalArgumentException("Số tầng (row " + rowNumber + ") phải lớn hơn 0");
+        }
+        if (numberOfFloors > 200) {
+            throw new IllegalArgumentException("Số tầng (row " + rowNumber + ") không được vượt quá 200");
         }
     }
 }

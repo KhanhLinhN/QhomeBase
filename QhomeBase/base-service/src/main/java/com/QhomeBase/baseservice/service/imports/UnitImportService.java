@@ -69,8 +69,9 @@ public class UnitImportService {
                 BigDecimal areaM2 = readDecimal(r, idxArea);
                 Integer bedrooms = readInt(r, idxBedrooms);
                 try {
-                    UUID buildingId = resolveBuildingId(buildingCode, excelRow);
-                    validateUnitData(floor, areaM2, bedrooms, excelRow);
+                    Building building = resolveBuilding(buildingCode, excelRow);
+                    UUID buildingId = building.getId();
+                    validateUnitData(floor, areaM2, bedrooms, building, excelRow);
                     var dto = unitService.createUnit(new UnitCreateDto(buildingId, null, floor, areaM2, bedrooms));
                     Unit created = unitRepository.findById(dto.id()).orElseThrow();
                     Unit createdWithBuilding = unitRepository.findByIdWithBuilding(created.getId());
@@ -130,7 +131,7 @@ public class UnitImportService {
         }
     }
 
-    private UUID resolveBuildingId(String buildingCode, int rowNumber) {
+    private Building resolveBuilding(String buildingCode, int rowNumber) {
         if (buildingCode == null || buildingCode.isBlank()) {
             throw new IllegalArgumentException("BuildingCode (row " + rowNumber + ") không được để trống");
         }
@@ -141,7 +142,7 @@ public class UnitImportService {
         if (found.isEmpty()) {
             throw new IllegalArgumentException("Không tìm thấy Building với code: " + buildingCode.trim() + " (row " + rowNumber + ")");
         }
-        return found.map(Building::getId).orElse(null);
+        return found.get();
     }
 
     private int findColumnIndex(Row header, String name) {
@@ -202,18 +203,23 @@ public class UnitImportService {
         }
     }
 
-    private void validateUnitData(Integer floor, BigDecimal areaM2, Integer bedrooms, int rowNumber) {
-        validateFloor(floor, rowNumber);
+    private void validateUnitData(Integer floor, BigDecimal areaM2, Integer bedrooms, Building building, int rowNumber) {
+        validateFloor(floor, building, rowNumber);
         validateAreaM2(areaM2, rowNumber);
         validateBedrooms(bedrooms, rowNumber);
     }
 
-    private void validateFloor(Integer floor, int rowNumber) {
+    private void validateFloor(Integer floor, Building building, int rowNumber) {
         if (floor == null) {
             throw new IllegalArgumentException("Floor (row " + rowNumber + ") không được để trống");
         }
         if (floor < 0) {
             throw new IllegalArgumentException("Floor (row " + rowNumber + ") phải lớn hơn hoặc bằng 0");
+        }
+        if (building.getNumberOfFloors() != null && floor > building.getNumberOfFloors()) {
+            throw new IllegalArgumentException(
+                    String.format("Floor %d (row %d) vượt quá số tầng của tòa nhà %s (%d tầng)", 
+                            floor, rowNumber, building.getCode(), building.getNumberOfFloors()));
         }
         if (floor > 200) {
             throw new IllegalArgumentException("Floor (row " + rowNumber + ") không được vượt quá 200");
