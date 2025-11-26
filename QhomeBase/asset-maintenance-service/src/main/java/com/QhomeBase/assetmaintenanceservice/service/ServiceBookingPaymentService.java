@@ -4,6 +4,7 @@ import com.QhomeBase.assetmaintenanceservice.config.VnpayProperties;
 import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceBookingPaymentResponse;
 import com.QhomeBase.assetmaintenanceservice.dto.service.ServiceBookingPaymentResult;
 import com.QhomeBase.assetmaintenanceservice.model.service.ServiceBooking;
+import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus;
 import com.QhomeBase.assetmaintenanceservice.model.service.enums.ServicePaymentStatus;
 import com.QhomeBase.assetmaintenanceservice.repository.ServiceBookingRepository;
 import com.QhomeBase.assetmaintenanceservice.security.UserPrincipal;
@@ -183,6 +184,9 @@ public class ServiceBookingPaymentService {
     }
 
     private void ensurePayable(ServiceBooking booking) {
+        if (booking.getStatus() == ServiceBookingStatus.CANCELLED) {
+            throw new IllegalStateException("Không thể thanh toán dịch vụ đã bị hủy");
+        }
         if (booking.getPaymentStatus() == ServicePaymentStatus.PAID) {
             throw new IllegalStateException("Đơn đặt dịch vụ đã được thanh toán");
         }

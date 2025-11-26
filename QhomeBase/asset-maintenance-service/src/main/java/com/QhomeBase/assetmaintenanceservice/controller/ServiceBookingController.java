@@ -320,6 +320,13 @@ public class ServiceBookingController {
                 .body(Map.of("message", translateErrorMessage(ex.getMessage())));
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, String>> handleIllegalState(IllegalStateException ex) {
+        return ResponseEntity
+                .badRequest()
+                .body(Map.of("message", ex.getMessage()));
+    }
+
     private String translateErrorMessage(String message) {
         if (message == null || message.isBlank()) {
             return "Yêu cầu đặt dịch vụ không hợp lệ. Vui lòng kiểm tra lại thông tin.";
