@@ -204,12 +204,13 @@ public class MeterReadingImportService {
                 invoiceIds.add(invoice.getId());
                 created++;
                 
-                log.info("Created invoice {} for unit={}, readingCycle={}, billingCycle={} with usage={} kWh ({} tiers)",
-                        invoice.getId(), unitId, readingCycleId, billingCycleId, totalUsage, invoiceLines.size());
+                String unit = resolveUnit(serviceCode, serviceDate);
+                log.info("Created invoice {} for unit={}, readingCycle={}, billingCycle={} with usage={} {} ({} tiers)",
+                        invoice.getId(), unitId, readingCycleId, billingCycleId, totalUsage, unit, invoiceLines.size());
                 
                 // Send notification to resident about new invoice
                 try {
-                    sendInvoiceNotification(residentId, unitId, invoice, serviceCode, totalUsage);
+                    sendInvoiceNotification(residentId, unitId, invoice, serviceCode, totalUsage, serviceDate);
                 } catch (Exception e) {
                     log.warn("Failed to send notification for invoice {}: {}", invoice.getId(), e.getMessage());
                     // Don't fail the import if notification fails
@@ -252,6 +253,7 @@ public class MeterReadingImportService {
     private List<CreateInvoiceLineRequest> calculateInvoiceLines(
             String serviceCode, BigDecimal totalUsage, LocalDate serviceDate, String baseDescription) {
         
+        String unit = resolveUnit(serviceCode, serviceDate);
         List<PricingTier> tiers = pricingTierRepository.findActiveTiersByServiceAndDate(serviceCode, serviceDate);
         
         if (tiers.isEmpty()) {
@@ -260,7 +262,7 @@ public class MeterReadingImportService {
                     .serviceDate(serviceDate)
                     .description(baseDescription)
                     .quantity(totalUsage)
-                    .unit("kWh")
+                    .unit(unit)
                     .unitPrice(unitPrice)
                     .taxRate(BigDecimal.ZERO)
                     .serviceCode(serviceCode)
@@ -291,17 +293,18 @@ public class MeterReadingImportService {
                 BigDecimal tierAmount = applicableQuantity.multiply(tier.getUnitPrice());
                 
                 String maxQtyStr = tier.getMaxQuantity() != null ? tier.getMaxQuantity().toString() : "∞";
-                String tierDescription = String.format("%s (Bậc %d: %s-%s kWh)",
+                String tierDescription = String.format("%s (Bậc %d: %s-%s %s)",
                         baseDescription,
                         tier.getTierOrder(),
                         tier.getMinQuantity(),
-                        maxQtyStr);
+                        maxQtyStr,
+                        unit);
                 
                 CreateInvoiceLineRequest line = CreateInvoiceLineRequest.builder()
                         .serviceDate(serviceDate)
                         .description(tierDescription)
                         .quantity(applicableQuantity)
-                        .unit("kWh")
+                        .unit(unit)
                         .unitPrice(tier.getUnitPrice())
                         .taxRate(BigDecimal.ZERO)
                         .serviceCode(serviceCode)
@@ -312,19 +315,19 @@ public class MeterReadingImportService {
                 lines.add(line);
                 previousMax = tierEffectiveMax;
                 
-                log.debug("Tier {}: {} kWh × {} VND/kWh = {} VND", 
-                        tier.getTierOrder(), applicableQuantity, tier.getUnitPrice(), tierAmount);
+                log.debug("Tier {}: {} {} × {} VND/{} = {} VND", 
+                        tier.getTierOrder(), applicableQuantity, unit, tier.getUnitPrice(), unit, tierAmount);
             }
         }
         
         if (lines.isEmpty()) {
-            log.warn("No tiers matched for usage {} kWh, using simple pricing", totalUsage);
+            log.warn("No tiers matched for usage {} {}, using simple pricing", totalUsage, unit);
             BigDecimal unitPrice = resolveUnitPrice(serviceCode, serviceDate);
             CreateInvoiceLineRequest line = CreateInvoiceLineRequest.builder()
                     .serviceDate(serviceDate)
                     .description(baseDescription)
                     .quantity(totalUsage)
-                    .unit("kWh")
+                    .unit(unit)
                     .unitPrice(unitPrice)
                     .taxRate(BigDecimal.ZERO)
                     .serviceCode(serviceCode)
@@ -370,6 +373,12 @@ public class MeterReadingImportService {
         return pricingRepository.findActivePriceGlobal(serviceCode, date)
                 .map(sp -> sp.getBasePrice())
                 .orElse(BigDecimal.ZERO);
+    }
+    
+    private String resolveUnit(String serviceCode, LocalDate date) {
+        return pricingRepository.findActivePriceGlobal(serviceCode, date)
+                .map(com.QhomeBase.financebillingservice.model.ServicePricing::getUnit)
+                .orElse("kWh");
     }
 
 
@@ -427,7 +436,7 @@ public class MeterReadingImportService {
      * Send notification to resident about new invoice created from meter reading import
      */
     private void sendInvoiceNotification(UUID residentId, UUID unitId, InvoiceDto invoice, 
-                                         String serviceCode, BigDecimal totalUsage) {
+                                         String serviceCode, BigDecimal totalUsage, LocalDate serviceDate) {
         if (residentId == null) {
             log.warn("Cannot send notification: residentId is null for invoice {}", invoice.getId());
             return;
@@ -449,14 +458,17 @@ public class MeterReadingImportService {
                 serviceName = "nước";
             }
 
+            // Get unit for this service
+            String unit = resolveUnit(serviceCode, serviceDate);
+            
             // Format total amount
             BigDecimal totalAmount = invoice.getTotalAmount() != null ? invoice.getTotalAmount() : BigDecimal.ZERO;
             String amountStr = String.format("%,.0f", totalAmount.doubleValue());
             
             // Create notification title and message
             String title = String.format("Hóa đơn %s mới", serviceName);
-            String message = String.format("Hóa đơn %s mới đã được tạo với số tiền %s VND. Số lượng sử dụng: %s kWh. Vui lòng thanh toán trước ngày %s.",
-                    serviceName, amountStr, totalUsage.toString(), 
+            String message = String.format("Hóa đơn %s mới đã được tạo với số tiền %s VND. Số lượng sử dụng: %s %s. Vui lòng thanh toán trước ngày %s.",
+                    serviceName, amountStr, totalUsage.toString(), unit, 
                     invoice.getDueDate() != null ? invoice.getDueDate().toString() : "hết hạn");
 
             // Prepare data payload
@@ -478,8 +490,8 @@ public class MeterReadingImportService {
                     data
             );
 
-            log.info("✅ Sent notification to resident {} for invoice {} ({} - {} kWh)",
-                    residentId, invoice.getId(), serviceName, totalUsage);
+            log.info("✅ Sent notification to resident {} for invoice {} ({} - {} {})",
+                    residentId, invoice.getId(), serviceName, totalUsage, unit);
         } catch (Exception e) {
             log.error("❌ Error sending notification for invoice {}: {}", invoice.getId(), e.getMessage(), e);
             // Don't throw - notification failure shouldn't break import
