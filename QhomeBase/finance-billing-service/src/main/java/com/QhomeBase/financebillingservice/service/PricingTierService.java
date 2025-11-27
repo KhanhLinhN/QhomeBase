@@ -5,6 +5,7 @@ import com.QhomeBase.financebillingservice.dto.CreatePricingTierRequest;
 import com.QhomeBase.financebillingservice.dto.PricingTierDto;
 import com.QhomeBase.financebillingservice.dto.UpdatePricingTierRequest;
 import com.QhomeBase.financebillingservice.model.PricingTier;
+import com.QhomeBase.financebillingservice.model.ServicePricing;
 import com.QhomeBase.financebillingservice.repository.PricingTierRepository;
 import com.QhomeBase.financebillingservice.repository.ServicePricingRepository;
 import lombok.RequiredArgsConstructor;
@@ -291,14 +292,21 @@ public class PricingTierService {
                 .map(sp -> sp.getBasePrice())
                 .orElse(BigDecimal.ZERO);
     }
+    
+    private String resolveUnit(String serviceCode, LocalDate date) {
+        return pricingRepository.findActivePriceGlobal(serviceCode, date)
+                .map(ServicePricing::getUnit)
+                .orElse("kWh");
+    }
 
     @Transactional(readOnly = true)
     public List<CreateInvoiceLineRequest> calculateInvoiceLines(
             String serviceCode, 
             BigDecimal totalUsage, 
-            LocalDate serviceDate, 
+            LocalDate serviceDate,
             String baseDescription) {
         
+        String unit = resolveUnit(serviceCode, serviceDate);
         List<PricingTier> tiers = pricingTierRepository.findActiveTiersByServiceAndDate(serviceCode, serviceDate);
         
         if (tiers.isEmpty()) {
@@ -307,7 +315,7 @@ public class PricingTierService {
                     .serviceDate(serviceDate)
                     .description(baseDescription)
                     .quantity(totalUsage)
-                    .unit("kWh")
+                    .unit(unit)
                     .unitPrice(unitPrice)
                     .taxRate(BigDecimal.ZERO)
                     .serviceCode(serviceCode)
@@ -339,17 +347,18 @@ public class PricingTierService {
                 BigDecimal tierAmount = applicableQuantity.multiply(tier.getUnitPrice());
                 
                 String maxQtyStr = tier.getMaxQuantity() != null ? tier.getMaxQuantity().toString() : "∞";
-                String tierDescription = String.format("%s (Bậc %d: %s-%s kWh)",
+                String tierDescription = String.format("%s (Bậc %d: %s-%s %s)",
                         baseDescription,
                         tier.getTierOrder(),
                         tier.getMinQuantity(),
-                        maxQtyStr);
+                        maxQtyStr,
+                        unit);
                 
                 CreateInvoiceLineRequest line = CreateInvoiceLineRequest.builder()
                         .serviceDate(serviceDate)
                         .description(tierDescription)
                         .quantity(applicableQuantity)
-                        .unit("kWh")
+                        .unit(unit)
                         .unitPrice(tier.getUnitPrice())
                         .taxRate(BigDecimal.ZERO)
                         .serviceCode(serviceCode)
@@ -361,24 +370,25 @@ public class PricingTierService {
                 previousMax = tierEffectiveMax;
                 lastTier = tier;
                 
-                log.debug("Tier {}: {} kWh × {} VND/kWh = {} VND", 
-                        tier.getTierOrder(), applicableQuantity, tier.getUnitPrice(), tierAmount);
+                log.debug("Tier {}: {} {} × {} VND/{} = {} VND", 
+                        tier.getTierOrder(), applicableQuantity, unit, tier.getUnitPrice(), unit, tierAmount);
             }
         }
         
         if (previousMax.compareTo(totalUsage) < 0 && lastTier != null && lastTier.getMaxQuantity() != null) {
             BigDecimal remainingQuantity = totalUsage.subtract(previousMax);
             
-            String tierDescription = String.format("%s (Bậc %d: >%s kWh, dùng giá bậc cuối)",
+            String tierDescription = String.format("%s (Bậc %d: >%s %s, dùng giá bậc cuối)",
                     baseDescription,
                     lastTier.getTierOrder(),
-                    lastTier.getMaxQuantity());
+                    lastTier.getMaxQuantity(),
+                    unit);
             
             CreateInvoiceLineRequest line = CreateInvoiceLineRequest.builder()
                     .serviceDate(serviceDate)
                     .description(tierDescription)
                     .quantity(remainingQuantity)
-                    .unit("kWh")
+                    .unit(unit)
                     .unitPrice(lastTier.getUnitPrice())
                     .taxRate(BigDecimal.ZERO)
                     .serviceCode(serviceCode)
@@ -388,18 +398,18 @@ public class PricingTierService {
             
             lines.add(line);
             
-            log.warn("Usage {} kWh exceeds max tier quantity {} kWh. Using last tier price {} VND/kWh for remaining {} kWh",
-                    totalUsage, lastTier.getMaxQuantity(), lastTier.getUnitPrice(), remainingQuantity);
+            log.warn("Usage {} {} exceeds max tier quantity {} {}. Using last tier price {} VND/{} for remaining {} {}",
+                    totalUsage, unit, lastTier.getMaxQuantity(), unit, lastTier.getUnitPrice(), unit, remainingQuantity, unit);
         }
         
         if (lines.isEmpty()) {
-            log.warn("No tiers matched for usage {} kWh, using simple pricing", totalUsage);
+            log.warn("No tiers matched for usage {} {}, using simple pricing", totalUsage, unit);
             BigDecimal unitPrice = resolveUnitPrice(serviceCode, serviceDate);
             CreateInvoiceLineRequest line = CreateInvoiceLineRequest.builder()
                     .serviceDate(serviceDate)
                     .description(baseDescription)
                     .quantity(totalUsage)
-                    .unit("kWh")
+                    .unit(unit)
                     .unitPrice(unitPrice)
                     .taxRate(BigDecimal.ZERO)
                     .serviceCode(serviceCode)

@@ -12,6 +12,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -25,16 +27,28 @@ public class UnitImportController {
 
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("@authz.canCreateUnits() || @authz.canViewUnits()")
-    public ResponseEntity<UnitImportResponse> importUnits(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<?> importUnits(@RequestParam("file") MultipartFile file) {
         try {
             UnitImportResponse response = unitImportService.importUnits(file);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             log.warn("[ImportUnit] Bad request: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("error", "VALIDATION_ERROR");
+            return ResponseEntity.badRequest().body(errorResponse);
+        } catch (IllegalStateException e) {
+            log.error("[ImportUnit] Illegal state: {}", e.getMessage(), e);
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("error", "PROCESSING_ERROR");
+            return ResponseEntity.badRequest().body(errorResponse);
         } catch (Exception e) {
             log.error("[ImportUnit] Unexpected error", e);
-            return ResponseEntity.internalServerError().build();
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("message", "Lỗi không xác định: " + e.getMessage());
+            errorResponse.put("error", "INTERNAL_ERROR");
+            return ResponseEntity.internalServerError().body(errorResponse);
         }
     }
 

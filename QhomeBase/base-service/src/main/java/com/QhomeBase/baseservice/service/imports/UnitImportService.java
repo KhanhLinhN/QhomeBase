@@ -1,13 +1,7 @@
 package com.QhomeBase.baseservice.service.imports;
 
-import com.QhomeBase.baseservice.dto.UnitCreateDto;
 import com.QhomeBase.baseservice.dto.imports.UnitImportResponse;
 import com.QhomeBase.baseservice.dto.imports.UnitImportRowResult;
-import com.QhomeBase.baseservice.model.Building;
-import com.QhomeBase.baseservice.model.Unit;
-import com.QhomeBase.baseservice.repository.BuildingRepository;
-import com.QhomeBase.baseservice.repository.UnitRepository;
-import com.QhomeBase.baseservice.service.UnitService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
@@ -20,17 +14,12 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@org.springframework.transaction.annotation.Transactional
 public class UnitImportService {
-    private final BuildingRepository buildingRepository;
-    private final UnitRepository unitRepository;
-    private final UnitService unitService;
+    private final UnitImportHelper unitImportHelper;
 
     public UnitImportResponse importUnits(MultipartFile file) {
         if (file == null || file.isEmpty()) {
@@ -69,22 +58,14 @@ public class UnitImportService {
                 BigDecimal areaM2 = readDecimal(r, idxArea);
                 Integer bedrooms = readInt(r, idxBedrooms);
                 try {
-                    UUID buildingId = resolveBuildingId(buildingCode, excelRow);
-                    validateUnitData(floor, areaM2, bedrooms, excelRow);
-                    var dto = unitService.createUnit(new UnitCreateDto(buildingId, null, floor, areaM2, bedrooms));
-                    Unit created = unitRepository.findById(dto.id()).orElseThrow();
-                    Unit createdWithBuilding = unitRepository.findByIdWithBuilding(created.getId());
-
-                    response.getRows().add(UnitImportRowResult.builder()
-                            .rowNumber(excelRow)
-                            .success(true)
-                            .message("OK")
-                            .unitId(createdWithBuilding.getId().toString())
-                            .buildingId(createdWithBuilding.getBuilding().getId().toString())
-                            .buildingCode(createdWithBuilding.getBuilding().getCode())
-                            .code(createdWithBuilding.getCode())
-                            .build());
-                    response.setSuccessCount(response.getSuccessCount() + 1);
+                    UnitImportRowResult rowResult = unitImportHelper.importSingleUnit(
+                            buildingCode, floor, areaM2, bedrooms, excelRow);
+                    response.getRows().add(rowResult);
+                    if (rowResult.isSuccess()) {
+                        response.setSuccessCount(response.getSuccessCount() + 1);
+                    } else {
+                        response.setErrorCount(response.getErrorCount() + 1);
+                    }
                 } catch (Exception ex) {
                     log.warn("Import unit lỗi tại dòng {}: {}", excelRow, ex.getMessage());
                     response.getRows().add(UnitImportRowResult.builder()
@@ -130,19 +111,7 @@ public class UnitImportService {
         }
     }
 
-    private UUID resolveBuildingId(String buildingCode, int rowNumber) {
-        if (buildingCode == null || buildingCode.isBlank()) {
-            throw new IllegalArgumentException("BuildingCode (row " + rowNumber + ") không được để trống");
-        }
-        Optional<Building> found = buildingRepository.findAllByOrderByCodeAsc()
-                .stream()
-                .filter(b -> buildingCode.trim().equalsIgnoreCase(b.getCode()))
-                .findFirst();
-        if (found.isEmpty()) {
-            throw new IllegalArgumentException("Không tìm thấy Building với code: " + buildingCode.trim() + " (row " + rowNumber + ")");
-        }
-        return found.map(Building::getId).orElse(null);
-    }
+
 
     private int findColumnIndex(Row header, String name) {
         if (header == null) return -1;
@@ -202,47 +171,6 @@ public class UnitImportService {
         }
     }
 
-    private void validateUnitData(Integer floor, BigDecimal areaM2, Integer bedrooms, int rowNumber) {
-        validateFloor(floor, rowNumber);
-        validateAreaM2(areaM2, rowNumber);
-        validateBedrooms(bedrooms, rowNumber);
-    }
-
-    private void validateFloor(Integer floor, int rowNumber) {
-        if (floor == null) {
-            throw new IllegalArgumentException("Floor (row " + rowNumber + ") không được để trống");
-        }
-        if (floor < 0) {
-            throw new IllegalArgumentException("Floor (row " + rowNumber + ") phải lớn hơn hoặc bằng 0");
-        }
-        if (floor > 200) {
-            throw new IllegalArgumentException("Floor (row " + rowNumber + ") không được vượt quá 200");
-        }
-    }
-
-    private void validateAreaM2(BigDecimal areaM2, int rowNumber) {
-        if (areaM2 == null) {
-            throw new IllegalArgumentException("AreaM2 (row " + rowNumber + ") không được để trống");
-        }
-        if (areaM2.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("AreaM2 (row " + rowNumber + ") phải lớn hơn 0");
-        }
-        if (areaM2.compareTo(new BigDecimal("10000")) > 0) {
-            throw new IllegalArgumentException("AreaM2 (row " + rowNumber + ") không được vượt quá 10000 m²");
-        }
-    }
-
-    private void validateBedrooms(Integer bedrooms, int rowNumber) {
-        if (bedrooms == null) {
-            throw new IllegalArgumentException("Bedrooms (row " + rowNumber + ") không được để trống");
-        }
-        if (bedrooms < 0) {
-            throw new IllegalArgumentException("Bedrooms (row " + rowNumber + ") phải lớn hơn hoặc bằng 0");
-        }
-        if (bedrooms > 20) {
-            throw new IllegalArgumentException("Bedrooms (row " + rowNumber + ") không được vượt quá 20");
-        }
-    }
 }
 
 
