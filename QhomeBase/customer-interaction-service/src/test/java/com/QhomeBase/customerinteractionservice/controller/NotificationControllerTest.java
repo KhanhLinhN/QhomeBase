@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -25,6 +25,7 @@ import org.springframework.security.core.context.SecurityContext;
 import java.security.Principal;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.time.Instant;
 import java.util.List;
@@ -43,16 +44,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.
                 com.QhomeBase.customerinteractionservice.controller.NotificationControllerTest.SecurityArgResolverConfig.class })
 class NotificationControllerTest {
 
-        @MockBean
+        @MockitoBean
         private NotificationService notificationService;
 
-        @MockBean
+        @MockitoBean
         private NotificationDeviceTokenService notificationDeviceTokenService;
 
-        @MockBean(name = "authz")
+        @MockitoBean(name = "authz")
         private AuthzService authzService;
 
-        @MockBean
+        @MockitoBean
         private JwtAuthFilter jwtAuthFilter;
 
         @Autowired
