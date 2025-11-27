@@ -249,7 +249,7 @@ public class AuthzService {
     }
 
     public boolean canViewNews() {
-        boolean okRole = hasAnyRole(Set.of("ADMIN", "SUPPORTER"));
+        boolean okRole = hasAnyRole(Set.of("ADMIN", "SUPPORTER", "TECHNICIAN"));
         boolean okPerm = hasPerm("content.news.view");
         return okRole || okPerm || isGlobalAdmin();
     }
@@ -290,13 +290,13 @@ public class AuthzService {
     }
 
     public boolean canManageNotifications() {
-        boolean okRole = hasAnyRole(Set.of("ADMIN", "SUPPORTER"));
+        boolean okRole = hasAnyRole(Set.of("ADMIN", "SUPPORTER", "TECHNICIAN"));
         boolean okPerm = hasPerm("content.notification.manage");
         return okRole || okPerm || isGlobalAdmin();
     }
 
     public boolean canViewNotifications() {
-        boolean okRole = hasAnyRole(Set.of("ADMIN", "SUPPORTER", "UNIT_OWNER", "RESIDENT"));
+        boolean okRole = hasAnyRole(Set.of("ADMIN", "SUPPORTER", "TECHNICIAN", "UNIT_OWNER", "RESIDENT"));
         boolean okPerm = hasPerm("content.notification.view");
         return okRole || okPerm || isGlobalAdmin();
     }
