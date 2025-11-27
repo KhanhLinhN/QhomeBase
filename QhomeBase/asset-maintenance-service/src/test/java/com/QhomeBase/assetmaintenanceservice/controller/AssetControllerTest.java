@@ -1,5 +1,7 @@
 package com.QhomeBase.assetmaintenanceservice.controller;
 
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
 import com.QhomeBase.assetmaintenanceservice.dto.asset.AssetResponse;
 import com.QhomeBase.assetmaintenanceservice.dto.asset.CreateAssetRequest;
 import com.QhomeBase.assetmaintenanceservice.dto.asset.UpdateAssetRequest;
@@ -16,7 +18,6 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
@@ -44,16 +45,16 @@ class AssetControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockBean
+    @MockitoBean
     private AssetService assetService;
 
-    @MockBean(name = "authz")
+    @MockitoBean(name = "authz")
     private AuthzService authzService;
 
-    @MockBean
+    @MockitoBean
     private JwtAuthFilter jwtAuthFilter;
 
-    @MockBean
+    @MockitoBean
     private FileStorageService fileStorageService;
 
     private AssetResponse sampleAsset(UUID id, UUID buildingId, UUID unitId, String code, String name) {

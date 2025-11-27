@@ -16,7 +16,7 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -33,138 +33,146 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @WebMvcTest(controllers = UserPermissionController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class UserPermissionControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+        @Autowired
+        private MockMvc mockMvc;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+        @Autowired
+        private ObjectMapper objectMapper;
 
-    @MockBean
-    private UserGrantService userGrantService;
+        @MockitoBean
+        private UserGrantService userGrantService;
 
-    @MockBean(name = "authz")
-    private AuthzService authzService;
+        @MockitoBean(name = "authz")
+        private AuthzService authzService;
 
-    @MockBean
-    private JwtAuthFilter jwtAuthFilter;
+        @MockitoBean
+        private JwtAuthFilter jwtAuthFilter;
 
-    private UUID tenantId;
-    private UUID userId;
+        private UUID tenantId;
+        private UUID userId;
 
-    @BeforeEach
-    void setup() {
-        tenantId = UUID.randomUUID();
-        userId = UUID.randomUUID();
-    }
+        @BeforeEach
+        void setup() {
+                tenantId = UUID.randomUUID();
+                userId = UUID.randomUUID();
+        }
 
-    @Test
-    @WithMockUser
-    @DisplayName("shouldRevokeGrants_whenAuthorized")
-    void shouldRevokeGrants_whenAuthorized() throws Exception {
-        // Arrange
-        Mockito.doNothing().when(userGrantService)
-                .revokeGrantsFromUser(org.mockito.ArgumentMatchers.any(UserPermissionRevokeRequest.class));
-        var body = objectMapper.writeValueAsString(new UserPermissionRevokeRequest(null, null, List.of("perm.a")));
+        @Test
+        @WithMockUser
+        @DisplayName("shouldRevokeGrants_whenAuthorized")
+        void shouldRevokeGrants_whenAuthorized() throws Exception {
+                // Arrange
+                Mockito.doNothing().when(userGrantService)
+                                .revokeGrantsFromUser(
+                                                org.mockito.ArgumentMatchers.any(UserPermissionRevokeRequest.class));
+                var body = objectMapper
+                                .writeValueAsString(new UserPermissionRevokeRequest(null, null, List.of("perm.a")));
 
-        // Act
-        mockMvc.perform(post("/api/user-permissions/revoke-grants/{tenantId}/{userId}", tenantId, userId)
-                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
-                        .user("admin").roles("ADMIN"))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(body))
-                // Assert
-                .andExpect(status().isOk());
+                // Act
+                mockMvc.perform(post("/api/user-permissions/revoke-grants/{tenantId}/{userId}", tenantId, userId)
+                                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                                .user("admin").roles("ADMIN"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(body))
+                                // Assert
+                                .andExpect(status().isOk());
 
-        ArgumentCaptor<UserPermissionRevokeRequest> captor = ArgumentCaptor.forClass(UserPermissionRevokeRequest.class);
-        verify(userGrantService, times(1)).revokeGrantsFromUser(captor.capture());
-        UserPermissionRevokeRequest req = captor.getValue();
-        org.junit.jupiter.api.Assertions.assertEquals(tenantId, req.getTenantId());
-        org.junit.jupiter.api.Assertions.assertEquals(userId, req.getUserId());
-        org.junit.jupiter.api.Assertions.assertEquals(List.of("perm.a"), req.getPermissionCodes());
-    }
+                ArgumentCaptor<UserPermissionRevokeRequest> captor = ArgumentCaptor
+                                .forClass(UserPermissionRevokeRequest.class);
+                verify(userGrantService, times(1)).revokeGrantsFromUser(captor.capture());
+                UserPermissionRevokeRequest req = captor.getValue();
+                org.junit.jupiter.api.Assertions.assertEquals(tenantId, req.getTenantId());
+                org.junit.jupiter.api.Assertions.assertEquals(userId, req.getUserId());
+                org.junit.jupiter.api.Assertions.assertEquals(List.of("perm.a"), req.getPermissionCodes());
+        }
 
-    @Test
-    @WithMockUser
-    @DisplayName("shouldRevokeDenies_whenAuthorized")
-    void shouldRevokeDenies_whenAuthorized() throws Exception {
-        // Arrange
-        Mockito.doNothing().when(userGrantService)
-                .revokeDeniesFromUser(org.mockito.ArgumentMatchers.any(UserPermissionRevokeRequest.class));
-        var body = objectMapper.writeValueAsString(new UserPermissionRevokeRequest(null, null, List.of("perm.x")));
+        @Test
+        @WithMockUser
+        @DisplayName("shouldRevokeDenies_whenAuthorized")
+        void shouldRevokeDenies_whenAuthorized() throws Exception {
+                // Arrange
+                Mockito.doNothing().when(userGrantService)
+                                .revokeDeniesFromUser(
+                                                org.mockito.ArgumentMatchers.any(UserPermissionRevokeRequest.class));
+                var body = objectMapper
+                                .writeValueAsString(new UserPermissionRevokeRequest(null, null, List.of("perm.x")));
 
-        // Act
-        mockMvc.perform(post("/api/user-permissions/revoke-denies/{tenantId}/{userId}", tenantId, userId)
-                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
-                        .user("admin").roles("ADMIN"))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(body))
-                // Assert
-                .andExpect(status().isOk());
+                // Act
+                mockMvc.perform(post("/api/user-permissions/revoke-denies/{tenantId}/{userId}", tenantId, userId)
+                                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                                .user("admin").roles("ADMIN"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(body))
+                                // Assert
+                                .andExpect(status().isOk());
 
-        ArgumentCaptor<UserPermissionRevokeRequest> captor = ArgumentCaptor.forClass(UserPermissionRevokeRequest.class);
-        verify(userGrantService, times(1)).revokeDeniesFromUser(captor.capture());
-        UserPermissionRevokeRequest req = captor.getValue();
-        org.junit.jupiter.api.Assertions.assertEquals(tenantId, req.getTenantId());
-        org.junit.jupiter.api.Assertions.assertEquals(userId, req.getUserId());
-        org.junit.jupiter.api.Assertions.assertEquals(List.of("perm.x"), req.getPermissionCodes());
-    }
+                ArgumentCaptor<UserPermissionRevokeRequest> captor = ArgumentCaptor
+                                .forClass(UserPermissionRevokeRequest.class);
+                verify(userGrantService, times(1)).revokeDeniesFromUser(captor.capture());
+                UserPermissionRevokeRequest req = captor.getValue();
+                org.junit.jupiter.api.Assertions.assertEquals(tenantId, req.getTenantId());
+                org.junit.jupiter.api.Assertions.assertEquals(userId, req.getUserId());
+                org.junit.jupiter.api.Assertions.assertEquals(List.of("perm.x"), req.getPermissionCodes());
+        }
 
-    @Test
-    @WithMockUser
-    @DisplayName("shouldReturnSummary_whenAuthorized")
-    void shouldReturnSummary_whenAuthorized() throws Exception {
-        // Arrange
-        var summary = UserPermissionSummaryDto.builder()
-                .userId(userId)
-                .tenantId(tenantId)
-                .effectivePermissions(List.of("a", "b"))
-                .totalEffectivePermissions(2)
-                .build();
-        Mockito.when(userGrantService.getUserPermissionSummary(userId, tenantId)).thenReturn(summary);
+        @Test
+        @WithMockUser
+        @DisplayName("shouldReturnSummary_whenAuthorized")
+        void shouldReturnSummary_whenAuthorized() throws Exception {
+                // Arrange
+                var summary = UserPermissionSummaryDto.builder()
+                                .userId(userId)
+                                .tenantId(tenantId)
+                                .effectivePermissions(List.of("a", "b"))
+                                .totalEffectivePermissions(2)
+                                .build();
+                Mockito.when(userGrantService.getUserPermissionSummary(userId, tenantId)).thenReturn(summary);
 
-        // Act
-        mockMvc.perform(get("/api/user-permissions/summary/{tenantId}/{userId}", tenantId, userId))
-                // Assert
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userId", is(userId.toString())))
-                .andExpect(jsonPath("$.tenantId", is(tenantId.toString())))
-                .andExpect(jsonPath("$.effectivePermissions", hasSize(2)))
-                .andExpect(jsonPath("$.totalEffectivePermissions", is(2)));
-    }
+                // Act
+                mockMvc.perform(get("/api/user-permissions/summary/{tenantId}/{userId}", tenantId, userId))
+                                // Assert
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.userId", is(userId.toString())))
+                                .andExpect(jsonPath("$.tenantId", is(tenantId.toString())))
+                                .andExpect(jsonPath("$.effectivePermissions", hasSize(2)))
+                                .andExpect(jsonPath("$.totalEffectivePermissions", is(2)));
+        }
 
-    @Test
-    @WithMockUser
-    @DisplayName("shouldReturnActiveGrants_whenAuthorized")
-    void shouldReturnActiveGrants_whenAuthorized() throws Exception {
-        // Arrange
-        Mockito.when(userGrantService.getActiveGrants(userId, tenantId)).thenReturn(List.of("perm.a", "perm.b"));
+        @Test
+        @WithMockUser
+        @DisplayName("shouldReturnActiveGrants_whenAuthorized")
+        void shouldReturnActiveGrants_whenAuthorized() throws Exception {
+                // Arrange
+                Mockito.when(userGrantService.getActiveGrants(userId, tenantId))
+                                .thenReturn(List.of("perm.a", "perm.b"));
 
-        // Act
-        mockMvc.perform(get("/api/user-permissions/grants/{tenantId}/{userId}", tenantId, userId))
-                // Assert
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)))
-                .andExpect(jsonPath("$[0]", is("perm.a")))
-                .andExpect(jsonPath("$[1]", is("perm.b")));
-    }
+                // Act
+                mockMvc.perform(get("/api/user-permissions/grants/{tenantId}/{userId}", tenantId, userId))
+                                // Assert
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$", hasSize(2)))
+                                .andExpect(jsonPath("$[0]", is("perm.a")))
+                                .andExpect(jsonPath("$[1]", is("perm.b")));
+        }
 
-    @Test
-    @WithMockUser
-    @DisplayName("shouldReturnActiveDenies_whenAuthorized")
-    void shouldReturnActiveDenies_whenAuthorized() throws Exception {
-        // Arrange
-        Mockito.when(userGrantService.getActiveDenies(userId, tenantId)).thenReturn(List.of("perm.x"));
+        @Test
+        @WithMockUser
+        @DisplayName("shouldReturnActiveDenies_whenAuthorized")
+        void shouldReturnActiveDenies_whenAuthorized() throws Exception {
+                // Arrange
+                Mockito.when(userGrantService.getActiveDenies(userId, tenantId)).thenReturn(List.of("perm.x"));
 
-        // Act
-        mockMvc.perform(get("/api/user-permissions/denies/{tenantId}/{userId}", tenantId, userId))
-                // Assert
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[0]", is("perm.x")));
-    }
+                // Act
+                mockMvc.perform(get("/api/user-permissions/denies/{tenantId}/{userId}", tenantId, userId))
+                                // Assert
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$", hasSize(1)))
+                                .andExpect(jsonPath("$[0]", is("perm.x")));
+        }
 }

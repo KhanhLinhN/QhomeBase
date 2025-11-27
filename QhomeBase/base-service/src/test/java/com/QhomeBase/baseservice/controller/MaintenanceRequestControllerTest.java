@@ -17,10 +17,11 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.OffsetDateTime;
@@ -46,16 +47,16 @@ class MaintenanceRequestControllerTest {
         @Autowired
         private ObjectMapper objectMapper;
 
-        @MockBean
+        @MockitoBean
         private MaintenanceRequestService maintenanceRequestService;
 
-        @MockBean
+        @MockitoBean
         private MaintenanceRequestMonitor maintenanceRequestMonitor;
 
-        @MockBean
+        @MockitoBean
         private AuthzService authz;
 
-        @MockBean
+        @MockitoBean
         private JwtAuthFilter jwtAuthFilter;
 
         private UsernamePasswordAuthenticationToken authResident;
