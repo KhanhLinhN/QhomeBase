@@ -2,6 +2,7 @@ package com.QhomeBase.baseservice.controller;
 
 import com.QhomeBase.baseservice.dto.AdminMaintenanceResponseDto;
 import com.QhomeBase.baseservice.dto.AdminServiceRequestActionDto;
+import com.QhomeBase.baseservice.dto.AddProgressNoteDto;
 import com.QhomeBase.baseservice.dto.CreateMaintenanceRequestDto;
 import com.QhomeBase.baseservice.dto.MaintenanceRequestConfigDto;
 import com.QhomeBase.baseservice.dto.MaintenanceRequestDto;
@@ -182,6 +183,25 @@ public class MaintenanceRequestController {
     public ResponseEntity<MaintenanceRequestDto> getRequestById(@PathVariable UUID requestId) {
         MaintenanceRequestDto request = maintenanceRequestService.getRequestById(requestId);
         return ResponseEntity.ok(request);
+    }
+
+    @PostMapping("/admin/{requestId}/add-progress-note")
+    @PreAuthorize("@authz.canManageServiceRequests()")
+    public ResponseEntity<MaintenanceRequestDto> addProgressNote(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID requestId,
+            @Valid @RequestBody AddProgressNoteDto request) {
+        try {
+            MaintenanceRequestDto dto = maintenanceRequestService.addProgressNote(
+                    principal.uid(),
+                    requestId,
+                    request.note()
+            );
+            return ResponseEntity.ok(dto);
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            log.warn("Failed to add progress note: {}", ex.getMessage());
+            return ResponseEntity.badRequest().body(null);
+        }
     }
 }
 

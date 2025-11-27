@@ -10,6 +10,7 @@ public record ElevatorCardRegistrationCreateDto(
         String note,
         UUID unitId,
         UUID residentId,
-        String requestType
+        String requestType,
+        String fullName
 ) {}
 

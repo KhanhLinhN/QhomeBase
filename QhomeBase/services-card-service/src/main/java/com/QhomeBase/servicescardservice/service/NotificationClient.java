@@ -35,6 +35,8 @@ public class NotificationClient {
                     .build()
                     .toUri();
 
+            log.info("📤 [NotificationClient] Sending notification to: {} | Payload: {}", uri, payload);
+
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
@@ -48,10 +50,12 @@ public class NotificationClient {
             if (!response.getStatusCode().is2xxSuccessful()) {
                 log.warn("❌ [NotificationClient] Failed to push notification: status={}", response.getStatusCode());
             } else {
-                log.info("✅ [NotificationClient] Notification sent successfully");
+                log.info("✅ [NotificationClient] Notification sent successfully to notification service (will trigger WebSocket realtime)");
             }
         } catch (Exception ex) {
-            log.error("❌ [NotificationClient] Error sending notification", ex);
+            log.error("❌ [NotificationClient] Error sending notification to notification service", ex);
+            // Re-throw để caller biết có lỗi (optional, tùy vào yêu cầu)
+            // throw new RuntimeException("Failed to send notification", ex);
         }
     }
 
@@ -69,6 +73,9 @@ public class NotificationClient {
             log.warn("⚠️ [NotificationClient] Both residentId and buildingId are null, skip push");
             return;
         }
+        
+        log.info("📨 [NotificationClient] Preparing notification: type={}, title={}, residentId={}, referenceId={}", 
+                type, title, residentId, referenceId);
         
         Map<String, Object> payload = new HashMap<>();
         if (residentId != null) {
@@ -90,6 +97,8 @@ public class NotificationClient {
             payload.put("data", data);
         }
         
+        log.info("📤 [NotificationClient] Sending notification (will trigger FCM + WebSocket realtime): type={}, residentId={}", 
+                type, residentId);
         sendNotification(payload);
     }
 }

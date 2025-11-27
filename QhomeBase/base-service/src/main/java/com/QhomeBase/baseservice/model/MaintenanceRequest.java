@@ -97,6 +97,9 @@ public class MaintenanceRequest {
     @Column(name = "response_status", length = 50)
     private String responseStatus;
 
+    @Column(name = "progress_notes", columnDefinition = "TEXT")
+    private String progressNotes;
+
     @PrePersist
     public void onCreate() {
         OffsetDateTime now = OffsetDateTime.now();

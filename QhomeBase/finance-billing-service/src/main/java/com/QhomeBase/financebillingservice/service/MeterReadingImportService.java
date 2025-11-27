@@ -36,7 +36,7 @@ public class MeterReadingImportService {
     private final BillingCycleRepository billingCycleRepository;
     private final InvoiceRepository invoiceRepository;
     private final BaseServiceClient baseServiceClient;
-
+    private final NotificationClient notificationClient;
     public int importReadings(List<ImportedReadingDto> readings) {
         MeterReadingImportResponse response = importReadingsWithResponse(readings);
         return response.getInvoicesCreated();

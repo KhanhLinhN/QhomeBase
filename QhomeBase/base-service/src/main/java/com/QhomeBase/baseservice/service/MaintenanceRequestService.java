@@ -2,6 +2,7 @@ package com.QhomeBase.baseservice.service;
 
 import com.QhomeBase.baseservice.dto.AdminMaintenanceResponseDto;
 import com.QhomeBase.baseservice.dto.AdminServiceRequestActionDto;
+import com.QhomeBase.baseservice.dto.AddProgressNoteDto;
 import com.QhomeBase.baseservice.dto.CreateMaintenanceRequestDto;
 import com.QhomeBase.baseservice.dto.MaintenanceRequestDto;
 import com.QhomeBase.baseservice.model.Household;
@@ -187,7 +188,8 @@ public class MaintenanceRequestService {
                 entity.getEstimatedCost(),
                 entity.getRespondedBy(),
                 entity.getRespondedAt(),
-                entity.getResponseStatus()
+                entity.getResponseStatus(),
+                entity.getProgressNotes()
         );
     }
 
@@ -590,6 +592,39 @@ public class MaintenanceRequestService {
                 "MAINTENANCE_REQUEST",
                 data
         );
+    }
+
+    @SuppressWarnings("null")
+    public MaintenanceRequestDto addProgressNote(UUID staffId, UUID requestId, String note) {
+        MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
+
+        if (!STATUS_IN_PROGRESS.equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Progress notes can only be added when request status is IN_PROGRESS");
+        }
+
+        // Append new note to existing progress notes
+        String existingNotes = request.getProgressNotes();
+        String newNote = note != null ? note.trim() : "";
+        
+        if (newNote.isEmpty()) {
+            throw new IllegalArgumentException("Progress note cannot be empty");
+        }
+
+        // Format: append with timestamp and separator
+        OffsetDateTime now = OffsetDateTime.now();
+        String timestamp = now.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String formattedNote = String.format("[%s] %s", timestamp, newNote);
+        
+        if (existingNotes == null || existingNotes.isBlank()) {
+            request.setProgressNotes(formattedNote);
+        } else {
+            request.setProgressNotes(existingNotes + "\n\n" + formattedNote);
+        }
+
+        MaintenanceRequest saved = maintenanceRequestRepository.save(request);
+        log.info("Staff {} added progress note to maintenance request {}", staffId, requestId);
+        return toDto(saved);
     }
 }
 

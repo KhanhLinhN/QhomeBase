@@ -30,7 +30,8 @@ public record MaintenanceRequestDto(
         BigDecimal estimatedCost,
         UUID respondedBy,
         OffsetDateTime respondedAt,
-        String responseStatus
+        String responseStatus,
+        String progressNotes
 ) {}
 
 

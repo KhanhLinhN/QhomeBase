@@ -51,6 +51,7 @@ public class VehicleRegistrationService {
     private static final String STATUS_PAYMENT_PENDING = "PAYMENT_PENDING";
     private static final String STATUS_PENDING_REVIEW = "PENDING";
     private static final String STATUS_CANCELLED = "CANCELLED";
+    private static final String STATUS_REJECTED = "REJECTED";
     private static final String PAYMENT_VNPAY = "VNPAY";
 
     private final RegisterServiceRequestRepository requestRepository;
@@ -373,6 +374,32 @@ public class VehicleRegistrationService {
         return toDto(saved);
     }
 
+    @Transactional
+    public RegisterServiceRequestDto cancelRegistration(UUID registrationId, UUID adminId, String adminNote) {
+        RegisterServiceRequest registration = requestRepository.findById(registrationId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
+
+        // Admin cancel logic - set status to REJECTED (bị từ chối)
+        // Note: Cư dân hủy sẽ set status = CANCELLED, admin hủy sẽ set status = REJECTED
+        if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
+            throw new IllegalStateException("Đăng ký đã bị từ chối");
+        }
+
+        OffsetDateTime now = OffsetDateTime.now(ZoneId.of("UTC"));
+        registration.setStatus(STATUS_REJECTED);
+        registration.setAdminNote(adminNote);
+        registration.setRejectionReason(adminNote);
+        registration.setUpdatedAt(now);
+
+        RegisterServiceRequest saved = requestRepository.save(registration);
+
+        // Send notification to resident (admin cancel = reject)
+        sendVehicleCardRejectionNotification(saved, adminNote);
+
+        log.info("✅ [VehicleRegistration] Admin {} đã cancel (reject) đăng ký {}", adminId, registrationId);
+        return toDto(saved);
+    }
+
     private void sendVehicleCardApprovalNotification(RegisterServiceRequest registration, String issueMessage) {
         try {
             // Resolve residentId from userId and unitId - CARD_APPROVED is PRIVATE (only resident who created the request can see)
@@ -391,11 +418,30 @@ public class VehicleRegistrationService {
             String formattedPrice = formatVnd(currentPrice);
 
             String title = "Thẻ xe đã được duyệt";
-            String message = issueMessage != null && !issueMessage.isBlank() 
-                    ? issueMessage 
-                    : String.format("Thẻ xe %s của bạn đã được duyệt. Phí đăng ký: %s. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", 
-                            registration.getLicensePlate() != null ? registration.getLicensePlate() : "",
-                            formattedPrice);
+            
+            // Format thời gian cấp thẻ
+            String approvedAtFormatted = "";
+            if (registration.getApprovedAt() != null) {
+                DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm", Locale.forLanguageTag("vi-VN"));
+                approvedAtFormatted = registration.getApprovedAt().atZoneSameInstant(ZoneId.of("Asia/Ho_Chi_Minh"))
+                        .format(dateFormatter);
+            }
+            
+            // Lấy biển số xe
+            String licensePlate = registration.getLicensePlate() != null ? registration.getLicensePlate() : "";
+            
+            String message;
+            if (issueMessage != null && !issueMessage.isBlank()) {
+                message = issueMessage;
+            } else {
+                if (approvedAtFormatted.isEmpty()) {
+                    message = String.format("Thẻ xe %s của bạn đã được duyệt. Phí đăng ký: %s. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", 
+                            licensePlate, formattedPrice);
+                } else {
+                    message = String.format("Thẻ xe %s của bạn đã được duyệt vào lúc %s. Phí đăng ký: %s. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", 
+                            licensePlate, approvedAtFormatted, formattedPrice);
+                }
+            }
 
             Map<String, String> data = new HashMap<>();
             data.put("cardType", "VEHICLE_CARD");
@@ -407,6 +453,12 @@ public class VehicleRegistrationService {
             }
             if (registration.getApartmentNumber() != null) {
                 data.put("apartmentNumber", registration.getApartmentNumber());
+            }
+            if (!approvedAtFormatted.isEmpty()) {
+                data.put("approvedAt", approvedAtFormatted);
+            }
+            if (registration.getApprovedAt() != null) {
+                data.put("approvedAtTimestamp", registration.getApprovedAt().toString());
             }
 
             // Send PRIVATE notification to specific resident (residentId = residentId, buildingId = null)
@@ -488,6 +540,7 @@ public class VehicleRegistrationService {
                     registration.getId(), e);
         }
     }
+
 
     @Transactional
     public RegisterServiceRequestDto markPaymentAsPaid(UUID registrationId, UUID adminId) {

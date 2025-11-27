@@ -14,6 +14,8 @@ public interface ResidentCardRegistrationRepository extends JpaRepository<Reside
     Optional<ResidentCardRegistration> findByIdAndUserId(UUID id, UUID userId);
 
     Optional<ResidentCardRegistration> findByVnpayTransactionRef(String vnpayTransactionRef);
+    
+    List<ResidentCardRegistration> findAllByVnpayTransactionRef(String vnpayTransactionRef);
 
     List<ResidentCardRegistration> findByResidentId(UUID residentId);
 

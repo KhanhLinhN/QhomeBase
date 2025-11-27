@@ -344,12 +344,17 @@ public class NotificationService {
     }
 
     private void sendWebSocketNotification(Notification notification, String action) {
-        NotificationWebSocketMessage payload = NotificationWebSocketMessage.of(notification, action);
         try {
+            log.info("🔔 [NotificationService] Sending WebSocket notification: action={}, notificationId={}, targetResidentId={}", 
+                    action, notification.getId(), notification.getTargetResidentId());
+            
+            NotificationWebSocketMessage payload = NotificationWebSocketMessage.of(notification, action);
+            
             // If notification has targetResidentId, only send to that specific resident
             // Don't broadcast to building/external channels to prevent other residents from receiving it
             if (notification.getTargetResidentId() != null) {
                 String residentDestination = "/topic/notifications/resident/" + notification.getTargetResidentId();
+                log.info("📤 [NotificationService] Sending WebSocket to resident-specific channel: {}", residentDestination);
                 messagingTemplate.convertAndSend(residentDestination, payload);
                 log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {} | ResidentId: {}", 
                         action, residentDestination, notification.getId(), notification.getTargetResidentId());
@@ -466,15 +471,18 @@ public class NotificationService {
 
             Notification savedNotification = notificationRepository.save(notification);
             
+            log.info("📡 [NotificationService] Preparing to send WebSocket notification: residentId={}, notificationId={}, type={}", 
+                    request.getResidentId(), savedNotification.getId(), type);
+            
             // Send WebSocket notification - will automatically route to resident-specific channel
             // since targetResidentId is set, it won't broadcast to building/external channels
             sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
             
-            // Also send push notification
-            notificationPushService.sendPushNotification(savedNotification);
+            // Push notification đã được gửi ở trên (dòng 440) qua sendPushNotificationToResident
+            // Không cần gọi sendPushNotification nữa để tránh gửi trùng
             
-            log.info("✅ Created internal notification for residentId: {} | Notification ID: {} | Type: {}", 
-                    request.getResidentId(), savedNotification.getId(), type);
+            log.info("✅ Created internal notification for residentId: {} | Notification ID: {} | Type: {} | WebSocket sent to /topic/notifications/resident/{}", 
+                    request.getResidentId(), savedNotification.getId(), type, request.getResidentId());
         } else {
             // Fallback to regular notification creation
             CreateNotificationRequest createRequest = CreateNotificationRequest.builder()
