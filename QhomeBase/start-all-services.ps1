@@ -215,15 +215,44 @@ Write-Host "Da start tat ca services!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Moi service se hien thi log trong cua so PowerShell rieng" -ForegroundColor Cyan
 Write-Host ""
+
+# Determine base URL for display
+$baseUrl = $env:VNPAY_BASE_URL
+$isNgrok = $baseUrl -like "https://*.ngrok*" -or $baseUrl -like "https://*.ngrok-free.app*"
+
 Write-Host "Service URLs:" -ForegroundColor Cyan
-Write-Host "   - API Gateway: http://localhost:8989" -ForegroundColor White
-Write-Host "   - IAM Service: http://localhost:8088" -ForegroundColor White
-Write-Host "   - Base Service: http://localhost:8081" -ForegroundColor White
-Write-Host "   - Customer Interaction: http://localhost:8086" -ForegroundColor White
-Write-Host "   - Data Docs: http://localhost:8082" -ForegroundColor White
-Write-Host "   - Services Card: http://localhost:8083" -ForegroundColor White
-Write-Host "   - Asset Maintenance: http://localhost:8084" -ForegroundColor White
-Write-Host "   - Finance Billing: http://localhost:8085" -ForegroundColor White
+if ($isNgrok) {
+    # Using ngrok - show ngrok URL for API Gateway, localhost for individual services
+    Write-Host "   - API Gateway (Public): $baseUrl" -ForegroundColor Green
+    Write-Host "   - API Gateway (Local): http://localhost:8989" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "   Individual Services (Local only):" -ForegroundColor Gray
+    Write-Host "   - IAM Service: http://localhost:8088" -ForegroundColor White
+    Write-Host "   - Base Service: http://localhost:8081" -ForegroundColor White
+    Write-Host "   - Customer Interaction: http://localhost:8086" -ForegroundColor White
+    Write-Host "   - Data Docs: http://localhost:8082" -ForegroundColor White
+    Write-Host "   - Services Card: http://localhost:8083" -ForegroundColor White
+    Write-Host "   - Asset Maintenance: http://localhost:8084" -ForegroundColor White
+    Write-Host "   - Finance Billing: http://localhost:8085" -ForegroundColor White
+    Write-Host ""
+    Write-Host "   Flutter app should connect to: $baseUrl" -ForegroundColor Cyan
+    Write-Host "   VNPay return URLs will use: $baseUrl" -ForegroundColor Cyan
+} else {
+    # Using local IP or localhost
+    Write-Host "   - API Gateway: http://localhost:8989" -ForegroundColor White
+    Write-Host "   - IAM Service: http://localhost:8088" -ForegroundColor White
+    Write-Host "   - Base Service: http://localhost:8081" -ForegroundColor White
+    Write-Host "   - Customer Interaction: http://localhost:8086" -ForegroundColor White
+    Write-Host "   - Data Docs: http://localhost:8082" -ForegroundColor White
+    Write-Host "   - Services Card: http://localhost:8083" -ForegroundColor White
+    Write-Host "   - Asset Maintenance: http://localhost:8084" -ForegroundColor White
+    Write-Host "   - Finance Billing: http://localhost:8085" -ForegroundColor White
+    if ($baseUrl -and $baseUrl -ne "http://localhost:8989") {
+        Write-Host ""
+        Write-Host "   Flutter app should connect to: $baseUrl" -ForegroundColor Cyan
+        Write-Host "   VNPay return URLs will use: $baseUrl" -ForegroundColor Cyan
+    }
+}
 Write-Host ""
 Write-Host "Tip: De stop tat ca services, dong cac cua so PowerShell hoac dung Ctrl+C" -ForegroundColor Yellow
 Write-Host ""

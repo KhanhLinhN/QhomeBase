@@ -13,6 +13,73 @@ Set-Location $scriptDir
 Write-Host "Restarting all services..." -ForegroundColor Cyan
 Write-Host ""
 
+# Step 0: Auto-detect and set VNPAY_BASE_URL from ngrok (if not already set correctly)
+Write-Host "Step 0: Checking VNPAY_BASE_URL..." -ForegroundColor Cyan
+Write-Host ""
+
+$shouldUpdateVnpayUrl = $false
+$currentVnpayUrl = $env:VNPAY_BASE_URL
+
+# Check if ngrok is running and get URL
+$ngrokUrl = $null
+try {
+    $response = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels" -Method Get -ErrorAction Stop
+    if ($response.tunnels -and $response.tunnels.Count -gt 0) {
+        $httpsTunnel = $response.tunnels | Where-Object { $_.public_url -like "https://*" } | Select-Object -First 1
+        if ($httpsTunnel) {
+            $ngrokUrl = $httpsTunnel.public_url.TrimEnd('/')
+        }
+    }
+} catch {
+    # Ngrok not running
+}
+
+if ($ngrokUrl) {
+    # Ngrok is running
+    if ($currentVnpayUrl -ne $ngrokUrl) {
+        Write-Host "  ✅ Ngrok is running: $ngrokUrl" -ForegroundColor Green
+        Write-Host "  ⚠️  Current VNPAY_BASE_URL: $currentVnpayUrl" -ForegroundColor Yellow
+        Write-Host "  🔄 Updating VNPAY_BASE_URL to ngrok URL..." -ForegroundColor Cyan
+        $env:VNPAY_BASE_URL = $ngrokUrl
+        $shouldUpdateVnpayUrl = $true
+        Write-Host "  ✅ VNPAY_BASE_URL updated to: $ngrokUrl" -ForegroundColor Green
+    } else {
+        Write-Host "  ✅ Ngrok is running: $ngrokUrl" -ForegroundColor Green
+        Write-Host "  ✅ VNPAY_BASE_URL already matches ngrok URL" -ForegroundColor Green
+    }
+} else {
+    # Ngrok not running - use IP address or localhost
+    if (-not $currentVnpayUrl -or $currentVnpayUrl -like "*ngrok*") {
+        Write-Host "  ℹ️  Ngrok is not running" -ForegroundColor Gray
+        Write-Host "  🔄 Setting VNPAY_BASE_URL to IP address..." -ForegroundColor Cyan
+        
+        try {
+            $ipAddress = Get-NetIPAddress -AddressFamily IPv4 | 
+                Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } | 
+                Select-Object -First 1 -ExpandProperty IPAddress
+            
+            if ($ipAddress) {
+                $env:VNPAY_BASE_URL = "http://$ipAddress:8989"
+                Write-Host "  ✅ VNPAY_BASE_URL set to: $env:VNPAY_BASE_URL" -ForegroundColor Green
+            } else {
+                $env:VNPAY_BASE_URL = "http://localhost:8989"
+                Write-Host "  ⚠️  Could not find IP address, using localhost: $env:VNPAY_BASE_URL" -ForegroundColor Yellow
+            }
+        } catch {
+            $env:VNPAY_BASE_URL = "http://localhost:8989"
+            Write-Host "  ⚠️  Error getting IP address, using localhost: $env:VNPAY_BASE_URL" -ForegroundColor Yellow
+        }
+        $shouldUpdateVnpayUrl = $true
+    } else {
+        Write-Host "  ℹ️  Ngrok is not running" -ForegroundColor Gray
+        Write-Host "  ✅ VNPAY_BASE_URL already set: $currentVnpayUrl" -ForegroundColor Green
+    }
+}
+
+Write-Host ""
+Write-Host "  📋 Services will use VNPAY_BASE_URL = $env:VNPAY_BASE_URL" -ForegroundColor Cyan
+Write-Host ""
+
 # Service configuration
 $services = @(
     @{Name="IAM Service"; Path="iam-service"; Port=8088; Color="Magenta"},
@@ -382,4 +449,43 @@ Start-ServiceWithLog "API Gateway" "api-gateway" 8989 "DarkMagenta" -DelaySecond
 
 Write-Host ""
 Write-Host "All services have been restarted!" -ForegroundColor Green
+Write-Host ""
+
+# Determine base URL for display
+$baseUrl = $env:VNPAY_BASE_URL
+$isNgrok = $baseUrl -like "https://*.ngrok*" -or $baseUrl -like "https://*.ngrok-free.app*"
+
+Write-Host "Service URLs:" -ForegroundColor Cyan
+if ($isNgrok) {
+    # Using ngrok - show ngrok URL for API Gateway, localhost for individual services
+    Write-Host "   - API Gateway (Public): $baseUrl" -ForegroundColor Green
+    Write-Host "   - API Gateway (Local): http://localhost:8989" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "   Individual Services (Local only):" -ForegroundColor Gray
+    Write-Host "   - IAM Service: http://localhost:8088" -ForegroundColor White
+    Write-Host "   - Base Service: http://localhost:8081" -ForegroundColor White
+    Write-Host "   - Customer Interaction: http://localhost:8086" -ForegroundColor White
+    Write-Host "   - Data Docs: http://localhost:8082" -ForegroundColor White
+    Write-Host "   - Services Card: http://localhost:8083" -ForegroundColor White
+    Write-Host "   - Asset Maintenance: http://localhost:8084" -ForegroundColor White
+    Write-Host "   - Finance Billing: http://localhost:8085" -ForegroundColor White
+    Write-Host ""
+    Write-Host "   Flutter app should connect to: $baseUrl" -ForegroundColor Cyan
+    Write-Host "   VNPay return URLs will use: $baseUrl" -ForegroundColor Cyan
+} else {
+    # Using local IP or localhost
+    Write-Host "   - API Gateway: http://localhost:8989" -ForegroundColor White
+    Write-Host "   - IAM Service: http://localhost:8088" -ForegroundColor White
+    Write-Host "   - Base Service: http://localhost:8081" -ForegroundColor White
+    Write-Host "   - Customer Interaction: http://localhost:8086" -ForegroundColor White
+    Write-Host "   - Data Docs: http://localhost:8082" -ForegroundColor White
+    Write-Host "   - Services Card: http://localhost:8083" -ForegroundColor White
+    Write-Host "   - Asset Maintenance: http://localhost:8084" -ForegroundColor White
+    Write-Host "   - Finance Billing: http://localhost:8085" -ForegroundColor White
+    if ($baseUrl -and $baseUrl -ne "http://localhost:8989") {
+        Write-Host ""
+        Write-Host "   Flutter app should connect to: $baseUrl" -ForegroundColor Cyan
+        Write-Host "   VNPay return URLs will use: $baseUrl" -ForegroundColor Cyan
+    }
+}
 Write-Host ""

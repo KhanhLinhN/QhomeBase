@@ -791,7 +791,7 @@ public class ResidentCardRegistrationService {
         // Validate số lượng thẻ cư dân không vượt quá số người trong căn hộ
         validateResidentCardLimitByUnit(dto.unitId());
         
-        // Validate CCCD phải là 13 số
+        // Validate CCCD phải có ít nhất 12 số
         if (!StringUtils.hasText(dto.citizenId())) {
             throw new IllegalArgumentException("CCCD/CMND là bắt buộc");
         }
@@ -799,9 +799,9 @@ public class ResidentCardRegistrationService {
         // Normalize CCCD: loại bỏ tất cả khoảng trắng và ký tự không phải số
         String normalizedCitizenId = dto.citizenId().replaceAll("[^0-9]", "");
         
-        // Validate format: phải đúng 13 số
-        if (normalizedCitizenId.length() != 13) {
-            throw new IllegalArgumentException("CCCD/CMND phải là 13 số");
+        // Validate format: phải có ít nhất 12 số
+        if (normalizedCitizenId.length() < 12) {
+            throw new IllegalArgumentException("CCCD/CMND phải có ít nhất 12 số");
         }
         
         // Kiểm tra CCCD có thuộc căn hộ không
