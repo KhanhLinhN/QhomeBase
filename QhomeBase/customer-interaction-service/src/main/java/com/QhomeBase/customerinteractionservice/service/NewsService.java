@@ -68,14 +68,22 @@ public class NewsService {
 
         News savedNews = newsRepository.save(news);
 
-        WebSocketNewsMessage wsMessage = WebSocketNewsMessage.created(
-                savedNews.getId(),
-                savedNews.getTitle(),
-                savedNews.getSummary(),
-                savedNews.getCoverImageUrl());
-        notificationService.notifyNewsCreated(wsMessage);
-        if (savedNews.isActive()) {
+        // Chỉ gửi realtime notification và FCM push khi:
+        // 1. status = PUBLISHED
+        // 2. scope = EXTERNAL (cho cư dân)
+        // 3. publishAt <= now (không phải tương lai)
+        if (shouldSendNotificationForNews(savedNews)) {
+            WebSocketNewsMessage wsMessage = WebSocketNewsMessage.created(
+                    savedNews.getId(),
+                    savedNews.getTitle(),
+                    savedNews.getSummary(),
+                    savedNews.getCoverImageUrl());
+            notificationService.notifyNewsCreated(wsMessage);
             notificationPushService.sendNewsCreatedPush(savedNews);
+            log.info("✅ [NewsService] Sent realtime and FCM push notification for news {} (PUBLISHED, EXTERNAL, publishAt <= now)", savedNews.getId());
+        } else {
+            log.info("⏭️ [NewsService] Skipped sending notification for news {} (status={}, scope={}, publishAt={})", 
+                    savedNews.getId(), savedNews.getStatus(), savedNews.getScope(), savedNews.getPublishAt());
         }
 
         return toManagementResponse(savedNews);
@@ -178,14 +186,22 @@ public class NewsService {
 
         News updated = newsRepository.save(news);
 
-        WebSocketNewsMessage wsMessage = WebSocketNewsMessage.updated(
-                updated.getId(),
-                updated.getTitle(),
-                updated.getSummary(),
-                updated.getCoverImageUrl());
-        notificationService.notifyNewsUpdated(wsMessage);
-        if (updated.isActive()) {
+        // Chỉ gửi realtime notification và FCM push khi:
+        // 1. status = PUBLISHED
+        // 2. scope = EXTERNAL (cho cư dân)
+        // 3. publishAt <= now (không phải tương lai)
+        if (shouldSendNotificationForNews(updated)) {
+            WebSocketNewsMessage wsMessage = WebSocketNewsMessage.updated(
+                    updated.getId(),
+                    updated.getTitle(),
+                    updated.getSummary(),
+                    updated.getCoverImageUrl());
+            notificationService.notifyNewsUpdated(wsMessage);
             notificationPushService.sendNewsUpdatedPush(updated);
+            log.info("✅ [NewsService] Sent realtime and FCM push notification for updated news {} (PUBLISHED, EXTERNAL, publishAt <= now)", updated.getId());
+        } else {
+            log.info("⏭️ [NewsService] Skipped sending notification for updated news {} (status={}, scope={}, publishAt={})", 
+                    updated.getId(), updated.getStatus(), updated.getScope(), updated.getPublishAt());
         }
 
         return toManagementResponse(updated);
@@ -484,6 +500,33 @@ public class NewsService {
                 throw new IllegalArgumentException("EXTERNAL news cannot have target_role");
             }
         }
+    }
+
+    /**
+     * Kiểm tra xem có nên gửi notification (realtime + FCM push) cho news không.
+     * Chỉ gửi khi:
+     * 1. status = PUBLISHED
+     * 2. scope = EXTERNAL (cho cư dân)
+     * 3. publishAt <= now (không phải tương lai)
+     */
+    private boolean shouldSendNotificationForNews(News news) {
+        // Chỉ gửi cho news có status PUBLISHED
+        if (news.getStatus() != NewsStatus.PUBLISHED) {
+            return false;
+        }
+        
+        // Chỉ gửi cho news có scope EXTERNAL (cho cư dân)
+        if (news.getScope() != NotificationScope.EXTERNAL) {
+            return false;
+        }
+        
+        // Chỉ gửi khi publishAt <= now (không phải tương lai)
+        Instant now = Instant.now();
+        if (news.getPublishAt() != null && news.getPublishAt().isAfter(now)) {
+            return false; // publishAt là tương lai, không gửi notification
+        }
+        
+        return true;
     }
 
     private NewsManagementResponse toManagementResponse(News news) {

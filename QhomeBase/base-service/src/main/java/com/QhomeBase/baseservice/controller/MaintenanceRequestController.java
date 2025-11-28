@@ -71,6 +71,14 @@ public class MaintenanceRequestController {
         return ResponseEntity.ok(requests);
     }
 
+    @GetMapping("/my/paid")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<List<MaintenanceRequestDto>> getPaidMaintenanceRequests(
+            @AuthenticationPrincipal UserPrincipal principal) {
+        List<MaintenanceRequestDto> requests = maintenanceRequestService.getPaidRequests(principal.uid());
+        return ResponseEntity.ok(requests);
+    }
+
     @GetMapping("/admin/new")
     @PreAuthorize("@authz.canManageServiceRequests()")
     public ResponseEntity<List<MaintenanceRequestDto>> getPendingMaintenanceRequests() {

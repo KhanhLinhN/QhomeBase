@@ -107,12 +107,79 @@ public class BaseServiceClient {
 
     public List<ServiceInfo.HouseholdMemberInfo> getActiveMembersByHouseholdId(UUID householdId) {
         try {
-            return webClient.get()
-                    .uri("/api/household-members/households/{householdId}", householdId)
-                    .retrieve()
-                    .bodyToFlux(ServiceInfo.HouseholdMemberInfo.class)
-                    .collectList()
-                    .block();
+            // Use pagination to avoid DataBufferLimitException
+            // Fetch in batches of 100 members at a time
+            List<ServiceInfo.HouseholdMemberInfo> allMembers = new java.util.ArrayList<>();
+            final int limit = 100;
+            int currentOffset = 0;
+            boolean hasMore = true;
+            
+            while (hasMore) {
+                final int offset = currentOffset; // Make effectively final for lambda
+                @SuppressWarnings("unchecked")
+                java.util.Map<String, Object> response = (java.util.Map<String, Object>) (Object) webClient.get()
+                        .uri(uriBuilder -> uriBuilder
+                                .path("/api/household-members/households/{householdId}")
+                                .queryParam("limit", limit)
+                                .queryParam("offset", offset)
+                                .build(householdId))
+                        .retrieve()
+                        .bodyToMono(java.util.Map.class)
+                        .block();
+                
+                if (response == null) {
+                    break;
+                }
+                
+                @SuppressWarnings("unchecked")
+                List<java.util.Map<String, Object>> membersList = 
+                        (List<java.util.Map<String, Object>>) response.get("members");
+                
+                if (membersList != null) {
+                    for (java.util.Map<String, Object> memberMap : membersList) {
+                        ServiceInfo.HouseholdMemberInfo member = new ServiceInfo.HouseholdMemberInfo();
+                        
+                        Object idObj = memberMap.get("id");
+                        if (idObj != null) {
+                            UUID id = idObj instanceof UUID ? (UUID) idObj : UUID.fromString(idObj.toString());
+                            member.setId(id);
+                        }
+                        
+                        Object householdIdObj = memberMap.get("householdId");
+                        if (householdIdObj != null) {
+                            UUID hId = householdIdObj instanceof UUID ? (UUID) householdIdObj : UUID.fromString(householdIdObj.toString());
+                            member.setHouseholdId(hId);
+                        }
+                        
+                        Object residentIdObj = memberMap.get("residentId");
+                        if (residentIdObj != null) {
+                            UUID rId = residentIdObj instanceof UUID ? (UUID) residentIdObj : UUID.fromString(residentIdObj.toString());
+                            member.setResidentId(rId);
+                        }
+                        
+                        Object residentNameObj = memberMap.get("residentName");
+                        if (residentNameObj != null) {
+                            member.setResidentName(residentNameObj.toString());
+                        }
+                        
+                        Object isPrimaryObj = memberMap.get("isPrimary");
+                        if (isPrimaryObj != null) {
+                            member.setIsPrimary(Boolean.TRUE.equals(isPrimaryObj) || 
+                                              (isPrimaryObj instanceof Boolean && (Boolean) isPrimaryObj));
+                        }
+                        
+                        allMembers.add(member);
+                    }
+                }
+                
+                // Check if there are more members to fetch
+                Object totalObj = response.get("total");
+                long total = totalObj instanceof Number ? ((Number) totalObj).longValue() : 0;
+                currentOffset += limit;
+                hasMore = currentOffset < total;
+            }
+            
+            return allMembers;
         } catch (Exception e) {
             log.warn("Error fetching active members for household {} from base-service: {}", householdId, e.getMessage());
             return List.of();

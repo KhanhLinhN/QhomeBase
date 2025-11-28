@@ -263,6 +263,19 @@ public class MaintenanceRequestService {
                 .toList();
     }
 
+    /**
+     * Get paid maintenance requests for a resident
+     */
+    public List<MaintenanceRequestDto> getPaidRequests(UUID userId) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        List<MaintenanceRequest> requests = maintenanceRequestRepository
+                .findByResidentIdAndPaymentStatusPaid(resident.getId());
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
     public List<MaintenanceRequestDto> getAllRequests() {
         List<MaintenanceRequest> requests = maintenanceRequestRepository.findAll();
         return requests.stream()

@@ -177,6 +177,20 @@ public class CleaningRequestService {
         );
     }
 
+    /**
+     * Get completed (paid) cleaning requests for a resident
+     * Note: Cleaning requests don't have paymentStatus, so we use status = DONE
+     */
+    public List<CleaningRequestDto> getPaidRequests(UUID userId) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        List<CleaningRequest> requests = cleaningRequestRepository
+                .findByResidentIdAndStatusDone(resident.getId());
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
     public List<CleaningRequestDto> getPendingRequests() {
         List<CleaningRequest> requests = cleaningRequestRepository
                 .findByStatusOrderByCreatedAtAsc(STATUS_PENDING);

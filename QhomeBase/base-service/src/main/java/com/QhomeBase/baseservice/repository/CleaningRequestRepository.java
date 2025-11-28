@@ -60,5 +60,11 @@ public interface CleaningRequestRepository extends JpaRepository<CleaningRequest
             @Param("status") String status,
             @Param("noResendDeadline") OffsetDateTime noResendDeadline,
             @Param("today") LocalDate today);
+
+    @Query("select c from CleaningRequest c " +
+            "where c.residentId = :residentId " +
+            "and c.status = 'DONE' " +
+            "order by c.updatedAt desc")
+    List<CleaningRequest> findByResidentIdAndStatusDone(@Param("residentId") UUID residentId);
 }
 

@@ -55,8 +55,17 @@ public class NotificationService {
 
         Notification savedNotification = notificationRepository.save(notification);
 
-        sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
-        notificationPushService.sendPushNotification(savedNotification);
+        // Chỉ gửi realtime notification và FCM push khi:
+        // 1. scope = EXTERNAL (riêng tư cho cư dân)
+        // 2. createdAt = today (không phải tương lai)
+        if (shouldSendNotification(savedNotification)) {
+            sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
+            notificationPushService.sendPushNotification(savedNotification);
+            log.info("✅ [NotificationService] Sent realtime and FCM push notification for notification {} (EXTERNAL, createdAt = today)", savedNotification.getId());
+        } else {
+            log.info("⏭️ [NotificationService] Skipped sending notification for notification {} (scope={}, createdAt={})", 
+                    savedNotification.getId(), savedNotification.getScope(), savedNotification.getCreatedAt());
+        }
 
         return toResponse(savedNotification);
     }
@@ -105,8 +114,17 @@ public class NotificationService {
 
         Notification updatedNotification = notificationRepository.save(notification);
 
-        sendWebSocketNotification(updatedNotification, "NOTIFICATION_UPDATED");
-        notificationPushService.sendPushNotification(updatedNotification);
+        // Chỉ gửi realtime notification và FCM push khi:
+        // 1. scope = EXTERNAL (riêng tư cho cư dân)
+        // 2. createdAt = today (không phải tương lai)
+        if (shouldSendNotification(updatedNotification)) {
+            sendWebSocketNotification(updatedNotification, "NOTIFICATION_UPDATED");
+            notificationPushService.sendPushNotification(updatedNotification);
+            log.info("✅ [NotificationService] Sent realtime and FCM push notification for updated notification {} (EXTERNAL, createdAt = today)", updatedNotification.getId());
+        } else {
+            log.info("⏭️ [NotificationService] Skipped sending notification for updated notification {} (scope={}, createdAt={})", 
+                    updatedNotification.getId(), updatedNotification.getScope(), updatedNotification.getCreatedAt());
+        }
 
         return toResponse(updatedNotification);
     }
@@ -239,6 +257,38 @@ public class NotificationService {
         return notifications.stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Kiểm tra xem có nên gửi notification (realtime + FCM push) không.
+     * Chỉ gửi khi:
+     * 1. scope = EXTERNAL (riêng tư cho cư dân)
+     * 2. createdAt = today (không phải tương lai)
+     */
+    private boolean shouldSendNotification(Notification notification) {
+        // Chỉ gửi cho notification có scope EXTERNAL (cho cư dân)
+        if (notification.getScope() != NotificationScope.EXTERNAL) {
+            return false;
+        }
+        
+        // Chỉ gửi khi createdAt là hôm nay (không phải tương lai)
+        Instant now = Instant.now();
+        Instant createdAt = notification.getCreatedAt();
+        if (createdAt == null) {
+            return false;
+        }
+        
+        // Kiểm tra createdAt không phải tương lai
+        if (createdAt.isAfter(now)) {
+            return false; // createdAt là tương lai, không gửi notification
+        }
+        
+        // Kiểm tra createdAt là cùng ngày với hiện tại
+        // So sánh ngày (không tính giờ)
+        java.time.LocalDate createdAtDate = java.time.LocalDate.ofInstant(createdAt, java.time.ZoneId.systemDefault());
+        java.time.LocalDate nowDate = java.time.LocalDate.ofInstant(now, java.time.ZoneId.systemDefault());
+        
+        return createdAtDate.equals(nowDate);
     }
 
     private void validateNotificationScope(NotificationScope scope, String targetRole, UUID targetBuildingId) {

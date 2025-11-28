@@ -66,6 +66,14 @@ public class CleaningRequestController {
         return ResponseEntity.ok(requests);
     }
 
+    @GetMapping("/my/paid")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<List<CleaningRequestDto>> getPaidCleaningRequests(
+            @AuthenticationPrincipal UserPrincipal principal) {
+        List<CleaningRequestDto> requests = cleaningRequestService.getPaidRequests(principal.uid());
+        return ResponseEntity.ok(requests);
+    }
+
     @PostMapping("/{requestId}/resend")
     @PreAuthorize("hasRole('RESIDENT')")
     public ResponseEntity<CleaningRequestDto> resendCleaningRequest(
