@@ -53,5 +53,7 @@ public interface MaintenanceRequestRepository extends JpaRepository<MaintenanceR
             @Param("status") String status,
             @Param("deadline") OffsetDateTime deadline,
             @Param("today") OffsetDateTime today);
+
+    java.util.Optional<MaintenanceRequest> findByVnpayTransactionRef(String vnpayTransactionRef);
 }
 

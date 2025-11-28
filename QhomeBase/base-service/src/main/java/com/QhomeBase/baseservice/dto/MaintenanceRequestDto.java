@@ -31,7 +31,11 @@ public record MaintenanceRequestDto(
         UUID respondedBy,
         OffsetDateTime respondedAt,
         String responseStatus,
-        String progressNotes
+        String progressNotes,
+        String paymentStatus,
+        BigDecimal paymentAmount,
+        OffsetDateTime paymentDate,
+        String paymentGateway
 ) {}
 
 

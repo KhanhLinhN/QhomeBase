@@ -30,8 +30,13 @@ public class NotificationWebSocketMessage {
     private String actionUrl;
     private String iconUrl;
     private Instant createdAt;
+    private Boolean isRead;
+    private Instant readAt;
+    private UUID targetResidentId;
 
     public static NotificationWebSocketMessage of(Notification notification, String eventType) {
+        // For new notifications, isRead is always false (unread)
+        // Read status is tracked client-side in Flutter via NotificationReadStore
         return NotificationWebSocketMessage.builder()
                 .eventType(eventType)
                 .notificationId(notification.getId())
@@ -46,6 +51,9 @@ public class NotificationWebSocketMessage {
                 .actionUrl(notification.getActionUrl())
                 .iconUrl(notification.getIconUrl())
                 .createdAt(notification.getCreatedAt() != null ? notification.getCreatedAt() : Instant.now())
+                .isRead(false) // New notifications are always unread
+                .readAt(null) // New notifications don't have readAt
+                .targetResidentId(notification.getTargetResidentId())
                 .build();
     }
 }
