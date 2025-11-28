@@ -18,7 +18,7 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -40,177 +40,180 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc(addFilters = false)
 class UserControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+        @Autowired
+        private MockMvc mockMvc;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+        @Autowired
+        private ObjectMapper objectMapper;
 
-    @MockBean
-    private UserService userService;
+        @MockitoBean
+        private UserService userService;
 
-    @MockBean
-    private StaffImportService staffImportService;
+        @MockitoBean
+        private StaffImportService staffImportService;
 
-    @MockBean
-    private com.QhomeBase.iamservice.repository.RolePermissionRepository rolePermissionRepository;
+        @MockitoBean
+        private com.QhomeBase.iamservice.repository.RolePermissionRepository rolePermissionRepository;
 
-    @MockBean
-    private com.QhomeBase.iamservice.repository.UserRepository userRepository;
+        @MockitoBean
+        private com.QhomeBase.iamservice.repository.UserRepository userRepository;
 
-    @MockBean
-    private BaseServiceClient baseServiceClient;
+        @MockitoBean
+        private BaseServiceClient baseServiceClient;
 
-    @MockBean(name = "authz")
-    private AuthzService authzService;
+        @MockitoBean(name = "authz")
+        private AuthzService authzService;
 
-    @MockBean
-    private JwtAuthFilter jwtAuthFilter;
+        @MockitoBean
+        private JwtAuthFilter jwtAuthFilter;
 
-    @Test
-    @DisplayName("shouldReturnUserInfo_whenAuthorizedAndUserExists")
-    void shouldReturnUserInfo_whenAuthorizedAndUserExists() throws Exception {
-        UUID userId = UUID.randomUUID();
-        User user = User.builder()
-                .id(userId)
-                .username("john")
-                .email("john@example.com")
-                .passwordHash("hash")
-                .active(true)
-                .roles(List.of(UserRole.ADMIN, UserRole.TECHNICIAN))
-                .build();
-        Mockito.when(userService.findUserWithRolesById(userId)).thenReturn(Optional.of(user));
-        Mockito.when(rolePermissionRepository.findPermissionCodesByRole("ADMIN")).thenReturn(List.of("iam.user.read", "iam.user.create"));
-        Mockito.when(rolePermissionRepository.findPermissionCodesByRole("TECHNICIAN")).thenReturn(List.of("iam.user.read"));
-        Mockito.when(authzService.canViewUser(userId)).thenReturn(true);
+        @Test
+        @DisplayName("shouldReturnUserInfo_whenAuthorizedAndUserExists")
+        void shouldReturnUserInfo_whenAuthorizedAndUserExists() throws Exception {
+                UUID userId = UUID.randomUUID();
+                User user = User.builder()
+                                .id(userId)
+                                .username("john")
+                                .email("john@example.com")
+                                .passwordHash("hash")
+                                .active(true)
+                                .roles(List.of(UserRole.ADMIN, UserRole.TECHNICIAN))
+                                .build();
+                Mockito.when(userService.findUserWithRolesById(userId)).thenReturn(Optional.of(user));
+                Mockito.when(rolePermissionRepository.findPermissionCodesByRole("ADMIN"))
+                                .thenReturn(List.of("iam.user.read", "iam.user.create"));
+                Mockito.when(rolePermissionRepository.findPermissionCodesByRole("TECHNICIAN"))
+                                .thenReturn(List.of("iam.user.read"));
+                Mockito.when(authzService.canViewUser(userId)).thenReturn(true);
 
-        mockMvc.perform(get("/api/users/{userId}", userId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.username", is("john")))
-                .andExpect(jsonPath("$.email", is("john@example.com")))
-                .andExpect(jsonPath("$.roles", containsInAnyOrder("admin", "technician")))
-                .andExpect(jsonPath("$.permissions", containsInAnyOrder("iam.user.read", "iam.user.create")));
-    }
+                mockMvc.perform(get("/api/users/{userId}", userId))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.username", is("john")))
+                                .andExpect(jsonPath("$.email", is("john@example.com")))
+                                .andExpect(jsonPath("$.roles", containsInAnyOrder("admin", "technician")))
+                                .andExpect(jsonPath("$.permissions",
+                                                containsInAnyOrder("iam.user.read", "iam.user.create")));
+        }
 
-    @Test
-    @DisplayName("shouldReturnNotFound_whenGetUserInfoNotFound")
-    void shouldReturnNotFound_whenGetUserInfoNotFound() throws Exception {
-        UUID userId = UUID.randomUUID();
-        Mockito.when(userService.findUserWithRolesById(userId)).thenReturn(Optional.empty());
-        Mockito.when(authzService.canViewUser(userId)).thenReturn(true);
+        @Test
+        @DisplayName("shouldReturnNotFound_whenGetUserInfoNotFound")
+        void shouldReturnNotFound_whenGetUserInfoNotFound() throws Exception {
+                UUID userId = UUID.randomUUID();
+                Mockito.when(userService.findUserWithRolesById(userId)).thenReturn(Optional.empty());
+                Mockito.when(authzService.canViewUser(userId)).thenReturn(true);
 
-        mockMvc.perform(get("/api/users/{userId}", userId))
-                .andExpect(status().isNotFound());
-    }
+                mockMvc.perform(get("/api/users/{userId}", userId))
+                                .andExpect(status().isNotFound());
+        }
 
-    @Test
-    @DisplayName("shouldReturnUserStatus_whenAuthorized")
-    void shouldReturnUserStatus_whenAuthorized() throws Exception {
-        UUID userId = UUID.randomUUID();
-        User user = User.builder()
-                .id(userId)
-                .username("john")
-                .email("john@example.com")
-                .passwordHash("hash")
-                .active(true)
-                .failedLoginAttempts(2)
-                .lastLogin(LocalDateTime.now())
-                .build();
-        Mockito.when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        Mockito.when(authzService.canViewUser(userId)).thenReturn(true);
+        @Test
+        @DisplayName("shouldReturnUserStatus_whenAuthorized")
+        void shouldReturnUserStatus_whenAuthorized() throws Exception {
+                UUID userId = UUID.randomUUID();
+                User user = User.builder()
+                                .id(userId)
+                                .username("john")
+                                .email("john@example.com")
+                                .passwordHash("hash")
+                                .active(true)
+                                .failedLoginAttempts(2)
+                                .lastLogin(LocalDateTime.now())
+                                .build();
+                Mockito.when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+                Mockito.when(authzService.canViewUser(userId)).thenReturn(true);
 
-        mockMvc.perform(get("/api/users/{userId}/status", userId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.active", is(true)))
-                .andExpect(jsonPath("$.failedLoginAttempts", is(2)))
-                .andExpect(jsonPath("$.accountLocked", is(false)))
-                .andExpect(jsonPath("$.lastLogin").exists());
-    }
+                mockMvc.perform(get("/api/users/{userId}/status", userId))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.active", is(true)))
+                                .andExpect(jsonPath("$.failedLoginAttempts", is(2)))
+                                .andExpect(jsonPath("$.accountLocked", is(false)))
+                                .andExpect(jsonPath("$.lastLogin").exists());
+        }
 
-    @Test
-    @DisplayName("shouldUpdatePassword_whenAuthorized")
-    void shouldUpdatePassword_whenAuthorized() throws Exception {
-        UUID userId = UUID.randomUUID();
-        Mockito.doNothing().when(userService).updatePassword(userId, "StrongPass123");
-        Mockito.when(authzService.canUpdateUser(userId)).thenReturn(true);
+        @Test
+        @DisplayName("shouldUpdatePassword_whenAuthorized")
+        void shouldUpdatePassword_whenAuthorized() throws Exception {
+                UUID userId = UUID.randomUUID();
+                Mockito.doNothing().when(userService).updatePassword(userId, "StrongPass123");
+                Mockito.when(authzService.canUpdateUser(userId)).thenReturn(true);
 
-        String body = objectMapper.writeValueAsString(new UpdatePasswordRequest("StrongPass123"));
+                String body = objectMapper.writeValueAsString(new UpdatePasswordRequest("StrongPass123"));
 
-        mockMvc.perform(patch("/api/users/{userId}/password", userId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isNoContent());
-    }
+                mockMvc.perform(patch("/api/users/{userId}/password", userId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(body))
+                                .andExpect(status().isNoContent());
+        }
 
-    @Test
-    @DisplayName("shouldReturnBadRequest_whenUpdatePasswordTooShort")
-    void shouldReturnBadRequest_whenUpdatePasswordTooShort() throws Exception {
-        UUID userId = UUID.randomUUID();
-        Mockito.when(authzService.canUpdateUser(userId)).thenReturn(true);
+        @Test
+        @DisplayName("shouldReturnBadRequest_whenUpdatePasswordTooShort")
+        void shouldReturnBadRequest_whenUpdatePasswordTooShort() throws Exception {
+                UUID userId = UUID.randomUUID();
+                Mockito.when(authzService.canUpdateUser(userId)).thenReturn(true);
 
-        String body = objectMapper.writeValueAsString(new UpdatePasswordRequest("short"));
+                String body = objectMapper.writeValueAsString(new UpdatePasswordRequest("short"));
 
-        mockMvc.perform(put("/api/users/{userId}/password", userId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isBadRequest());
-    }
+                mockMvc.perform(put("/api/users/{userId}/password", userId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(body))
+                                .andExpect(status().isBadRequest());
+        }
 
-    @Test
-    @WithMockUser(roles = "ADMIN")
-    @DisplayName("shouldCreateUserForResident_whenAdminRole")
-    void shouldCreateUserForResident_whenAdminRole() throws Exception {
-        UUID residentId = UUID.randomUUID();
-        var req = new CreateUserForResidentDto("newresident", "res@example.com", "Password123", false, residentId);
-        User created = User.builder()
-                .id(UUID.randomUUID())
-                .username("newresident")
-                .email("res@example.com")
-                .passwordHash("hash")
-                .active(true)
-                .roles(List.of(UserRole.RESIDENT))
-                .build();
-        Mockito.when(userService.createUserForResident("newresident", "res@example.com", "Password123", residentId))
-                .thenReturn(created);
+        @Test
+        @WithMockUser(roles = "ADMIN")
+        @DisplayName("shouldCreateUserForResident_whenAdminRole")
+        void shouldCreateUserForResident_whenAdminRole() throws Exception {
+                UUID residentId = UUID.randomUUID();
+                var req = new CreateUserForResidentDto("newresident", "res@example.com", "Password123", false,
+                                residentId);
+                User created = User.builder()
+                                .id(UUID.randomUUID())
+                                .username("newresident")
+                                .email("res@example.com")
+                                .passwordHash("hash")
+                                .active(true)
+                                .roles(List.of(UserRole.RESIDENT))
+                                .build();
+                Mockito.when(userService.createUserForResident("newresident", "res@example.com", "Password123",
+                                residentId))
+                                .thenReturn(created);
 
-        String body = objectMapper.writeValueAsString(req);
+                String body = objectMapper.writeValueAsString(req);
 
-        mockMvc.perform(post("/api/users/create-for-resident")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.username", is("newresident")))
-                .andExpect(jsonPath("$.email", is("res@example.com")))
-                .andExpect(jsonPath("$.roles", contains("resident")))
-                .andExpect(jsonPath("$.active", is(true)));
-    }
+                mockMvc.perform(post("/api/users/create-for-resident")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(body))
+                                .andExpect(status().isCreated())
+                                .andExpect(jsonPath("$.username", is("newresident")))
+                                .andExpect(jsonPath("$.email", is("res@example.com")))
+                                .andExpect(jsonPath("$.roles", contains("resident")))
+                                .andExpect(jsonPath("$.active", is(true)));
+        }
 
-    @Test
-    @DisplayName("shouldImportStaffAccounts_whenAuthorized")
-    void shouldImportStaffAccounts_whenAuthorized() throws Exception {
-        Mockito.when(authzService.canCreateUser()).thenReturn(true);
+        @Test
+        @DisplayName("shouldImportStaffAccounts_whenAuthorized")
+        void shouldImportStaffAccounts_whenAuthorized() throws Exception {
+                Mockito.when(authzService.canCreateUser()).thenReturn(true);
 
-        MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "staff.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                new byte[]{1, 2, 3}
-        );
-        StaffImportResponse response = new StaffImportResponse(
-                1,
-                1,
-                0,
-                List.of(new StaffImportRowResult(1, "john", "john@example.com", List.of("technician"), true, UUID.randomUUID(), "Created"))
-        );
-        Mockito.when(staffImportService.importStaffAccounts(any())).thenReturn(response);
+                MockMultipartFile file = new MockMultipartFile(
+                                "file",
+                                "staff.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                new byte[] { 1, 2, 3 });
+                StaffImportResponse response = new StaffImportResponse(
+                                1,
+                                1,
+                                0,
+                                List.of(new StaffImportRowResult(1, "john", "john@example.com", List.of("technician"),
+                                                true, UUID.randomUUID(), "Created")));
+                Mockito.when(staffImportService.importStaffAccounts(any())).thenReturn(response);
 
-        mockMvc.perform(multipart("/api/users/staff/import").file(file))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalRows", is(1)))
-                .andExpect(jsonPath("$.successCount", is(1)))
-                .andExpect(jsonPath("$.failureCount", is(0)))
-                .andExpect(jsonPath("$.rows[0].username", is("john")));
-        verify(staffImportService, times(1)).importStaffAccounts(any());
-    }
+                mockMvc.perform(multipart("/api/users/staff/import").file(file))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.totalRows", is(1)))
+                                .andExpect(jsonPath("$.successCount", is(1)))
+                                .andExpect(jsonPath("$.failureCount", is(0)))
+                                .andExpect(jsonPath("$.rows[0].username", is("john")));
+                verify(staffImportService, times(1)).importStaffAccounts(any());
+        }
 }
-

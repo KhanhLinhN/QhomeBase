@@ -1,5 +1,7 @@
 package com.QhomeBase.baseservice.controller;
 
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
 import com.QhomeBase.baseservice.model.Service;
 import com.QhomeBase.baseservice.model.ServiceType;
 import com.QhomeBase.baseservice.model.ServiceUnit;
@@ -10,7 +12,7 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.OffsetDateTime;
@@ -29,10 +31,10 @@ class ServiceControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private ServiceRepository serviceRepository;
 
-    @MockBean
+    @MockitoBean
     private JwtAuthFilter jwtAuthFilter;
 
     private Service sample(UUID id, String code, boolean active) {
@@ -113,4 +115,3 @@ class ServiceControllerTest {
                 .andExpect(jsonPath("$[0].code").value("ACTIVE1"));
     }
 }
-

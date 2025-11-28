@@ -1,5 +1,7 @@
 package com.QhomeBase.baseservice.controller;
 
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
 import com.QhomeBase.baseservice.dto.MeterCreateReq;
 import com.QhomeBase.baseservice.dto.MeterDto;
 import com.QhomeBase.baseservice.dto.MeterUpdateReq;
@@ -12,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,10 +34,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(SecurityConfig.class)
 class MeterControllerTest {
 
-        @MockBean
+        @MockitoBean
         private MeterService meterService;
 
-        @MockBean
+        @MockitoBean
         private JwtAuthFilter jwtAuthFilter;
 
         @Autowired

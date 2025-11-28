@@ -1,5 +1,7 @@
 package com.QhomeBase.financebillingservice.controller;
 
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
 import com.QhomeBase.financebillingservice.dto.BillingCycleDto;
 import com.QhomeBase.financebillingservice.dto.CreateBillingCycleRequest;
 import com.QhomeBase.financebillingservice.dto.ReadingCycleDto;
@@ -10,7 +12,7 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -35,7 +37,7 @@ class BillingCycleControllerTest {
         @Autowired
         private ObjectMapper objectMapper;
 
-        @MockBean
+        @MockitoBean
         private BillingCycleService billingCycleService;
 
         @Test
