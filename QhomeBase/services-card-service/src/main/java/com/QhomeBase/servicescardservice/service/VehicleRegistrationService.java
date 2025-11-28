@@ -324,7 +324,7 @@ public class VehicleRegistrationService {
     }
 
     @Transactional
-    public RegisterServiceRequestDto approveRegistration(UUID registrationId, UUID adminId, String adminNote, String issueMessage) {
+    public RegisterServiceRequestDto approveRegistration(UUID registrationId, UUID adminId, String adminNote, String issueMessage, OffsetDateTime issueTime) {
         RegisterServiceRequest registration = requestRepository.findById(registrationId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
 
@@ -368,7 +368,7 @@ public class VehicleRegistrationService {
         }
 
         // Send notification to resident
-        sendVehicleCardApprovalNotification(saved, issueMessage);
+        sendVehicleCardApprovalNotification(saved, issueMessage, issueTime);
 
         log.info("✅ [VehicleRegistration] Admin {} đã approve đăng ký {}", adminId, registrationId);
         return toDto(saved);
@@ -400,7 +400,7 @@ public class VehicleRegistrationService {
         return toDto(saved);
     }
 
-    private void sendVehicleCardApprovalNotification(RegisterServiceRequest registration, String issueMessage) {
+    private void sendVehicleCardApprovalNotification(RegisterServiceRequest registration, String issueMessage, OffsetDateTime issueTime) {
         try {
             // Resolve residentId from userId and unitId - CARD_APPROVED is PRIVATE (only resident who created the request can see)
             UUID residentId = residentUnitLookupService.resolveByUser(registration.getUserId(), registration.getUnitId())
@@ -419,11 +419,12 @@ public class VehicleRegistrationService {
 
             String title = "Thẻ xe đã được duyệt";
             
-            // Format thời gian cấp thẻ
-            String approvedAtFormatted = "";
-            if (registration.getApprovedAt() != null) {
+            // Format thời gian nhận thẻ (từ issueTime nếu có, nếu không thì dùng approvedAt)
+            String issueTimeFormatted = "";
+            OffsetDateTime timeToUse = issueTime != null ? issueTime : registration.getApprovedAt();
+            if (timeToUse != null) {
                 DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm", Locale.forLanguageTag("vi-VN"));
-                approvedAtFormatted = registration.getApprovedAt().atZoneSameInstant(ZoneId.of("Asia/Ho_Chi_Minh"))
+                issueTimeFormatted = timeToUse.atZoneSameInstant(ZoneId.of("Asia/Ho_Chi_Minh"))
                         .format(dateFormatter);
             }
             
@@ -434,12 +435,12 @@ public class VehicleRegistrationService {
             if (issueMessage != null && !issueMessage.isBlank()) {
                 message = issueMessage;
             } else {
-                if (approvedAtFormatted.isEmpty()) {
-                    message = String.format("Thẻ xe %s của bạn đã được duyệt. Phí đăng ký: %s. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", 
-                            licensePlate, formattedPrice);
+                // Tự động tạo message: "Thẻ xe với biển số (biển số) được tạo thành công và sẽ nhận vào (ngày giờ)"
+                if (issueTimeFormatted.isEmpty()) {
+                    message = String.format("Thẻ xe với biển số %s được tạo thành công.", licensePlate);
                 } else {
-                    message = String.format("Thẻ xe %s của bạn đã được duyệt vào lúc %s. Phí đăng ký: %s. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", 
-                            licensePlate, approvedAtFormatted, formattedPrice);
+                    message = String.format("Thẻ xe với biển số %s được tạo thành công và sẽ nhận vào %s.", 
+                            licensePlate, issueTimeFormatted);
                 }
             }
 
@@ -454,11 +455,11 @@ public class VehicleRegistrationService {
             if (registration.getApartmentNumber() != null) {
                 data.put("apartmentNumber", registration.getApartmentNumber());
             }
-            if (!approvedAtFormatted.isEmpty()) {
-                data.put("approvedAt", approvedAtFormatted);
+            if (!issueTimeFormatted.isEmpty()) {
+                data.put("issueTime", issueTimeFormatted);
             }
-            if (registration.getApprovedAt() != null) {
-                data.put("approvedAtTimestamp", registration.getApprovedAt().toString());
+            if (timeToUse != null) {
+                data.put("issueTimeTimestamp", timeToUse.toString());
             }
 
             // Send PRIVATE notification to specific resident (residentId = residentId, buildingId = null)

@@ -241,7 +241,8 @@ public class VehicleRegistrationController {
             UUID regUuid = UUID.fromString(registrationId);
             String adminNote = request != null ? request.getNote() : null;
             String issueMessage = request != null ? request.getIssueMessage() : null;
-            RegisterServiceRequestDto dto = registrationService.approveRegistration(regUuid, adminId, adminNote, issueMessage);
+            java.time.OffsetDateTime issueTime = request != null ? request.getIssueTime() : null;
+            RegisterServiceRequestDto dto = registrationService.approveRegistration(regUuid, adminId, adminNote, issueMessage, issueTime);
             return ResponseEntity.ok(toResponse(dto));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));

@@ -191,7 +191,7 @@ public class ResidentCardRegistrationService {
             }
 
             // Send notification to resident
-            sendCardApprovalNotification(saved, request.issueMessage());
+            sendCardApprovalNotification(saved, request.issueMessage(), request.issueTime());
 
             log.info("✅ [ResidentCard] Admin {} đã approve đăng ký {}", adminId, registrationId);
             return toDto(saved);
@@ -235,7 +235,7 @@ public class ResidentCardRegistrationService {
         }
     }
 
-    private void sendCardApprovalNotification(ResidentCardRegistration registration, String issueMessage) {
+    private void sendCardApprovalNotification(ResidentCardRegistration registration, String issueMessage, OffsetDateTime issueTime) {
         try {
             // CARD_APPROVED is PRIVATE - only resident who created the request can see
             // Get residentId from userId (người tạo request) instead of residentId (người được đăng ký thẻ)
@@ -265,11 +265,12 @@ public class ResidentCardRegistrationService {
 
             String title = "Thẻ cư dân đã được duyệt";
             
-            // Format thời gian cấp thẻ
-            String approvedAtFormatted = "";
-            if (registration.getApprovedAt() != null) {
+            // Format thời gian nhận thẻ (từ issueTime nếu có, nếu không thì dùng approvedAt)
+            String issueTimeFormatted = "";
+            OffsetDateTime timeToUse = issueTime != null ? issueTime : registration.getApprovedAt();
+            if (timeToUse != null) {
                 DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm", Locale.forLanguageTag("vi-VN"));
-                approvedAtFormatted = registration.getApprovedAt().atZoneSameInstant(ZoneId.of("Asia/Ho_Chi_Minh"))
+                issueTimeFormatted = timeToUse.atZoneSameInstant(ZoneId.of("Asia/Ho_Chi_Minh"))
                         .format(dateFormatter);
             }
             
@@ -277,12 +278,12 @@ public class ResidentCardRegistrationService {
             if (issueMessage != null && !issueMessage.isBlank()) {
                 message = issueMessage;
             } else {
-                if (approvedAtFormatted.isEmpty()) {
-                    message = String.format("Thẻ cư dân của %s đã được duyệt. Phí đăng ký: %s. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", 
-                            residentFullName, formattedPrice);
+                // Tự động tạo message: "Thẻ cư dân của (họ và tên) đã chấp nhận và cư dân sẽ nhận vào (ngày giờ)"
+                if (issueTimeFormatted.isEmpty()) {
+                    message = String.format("Thẻ cư dân của %s đã chấp nhận.", residentFullName);
                 } else {
-                    message = String.format("Thẻ cư dân của %s đã được duyệt vào lúc %s. Phí đăng ký: %s. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", 
-                            residentFullName, approvedAtFormatted, formattedPrice);
+                    message = String.format("Thẻ cư dân của %s đã chấp nhận và cư dân sẽ nhận vào %s.", 
+                            residentFullName, issueTimeFormatted);
                 }
             }
 
@@ -297,11 +298,11 @@ public class ResidentCardRegistrationService {
             if (residentFullName != null) {
                 data.put("fullName", residentFullName);
             }
-            if (!approvedAtFormatted.isEmpty()) {
-                data.put("approvedAt", approvedAtFormatted);
+            if (!issueTimeFormatted.isEmpty()) {
+                data.put("issueTime", issueTimeFormatted);
             }
-            if (registration.getApprovedAt() != null) {
-                data.put("approvedAtTimestamp", registration.getApprovedAt().toString());
+            if (timeToUse != null) {
+                data.put("issueTimeTimestamp", timeToUse.toString());
             }
 
             // Send PRIVATE notification to requester (người tạo request) only

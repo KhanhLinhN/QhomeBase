@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.OffsetDateTime;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -19,5 +21,7 @@ public class VehicleRegistrationAdminDecisionRequest {
 
     @Size(max = 2000, message = "Thông điệp gửi cư dân không được vượt quá 2000 ký tự")
     private String issueMessage;
+
+    private OffsetDateTime issueTime;
 }
 
