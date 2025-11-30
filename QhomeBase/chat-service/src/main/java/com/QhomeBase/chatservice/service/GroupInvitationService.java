@@ -239,58 +239,102 @@ public class GroupInvitationService {
 
         List<GroupInvitation> invitations = new ArrayList<>();
 
-        // First, try to find by residentId (if invitation was created after resident was found)
-        List<GroupInvitation> byResidentId = invitationRepository.findPendingInvitationsByResidentId(residentId);
-        invitations.addAll(byResidentId);
-        log.debug("Found {} invitations by residentId: {}", byResidentId.size(), residentId);
-
-        // Also try to find by phone number (for invitations created before resident was found)
+        // Get resident phone first (needed for phone-based search)
         Map<String, Object> residentInfo = residentInfoService.getResidentInfo(residentId);
         String phone = residentInfo != null ? (String) residentInfo.get("phone") : null;
         
+        log.info("Getting pending invitations for residentId: {}, phone: {}", residentId, phone);
+
+        // First, try to find by residentId (if invitation was created after resident was found)
+        List<GroupInvitation> byResidentId = invitationRepository.findPendingInvitationsByResidentId(residentId);
+        log.info("Found {} invitations by residentId: {}", byResidentId.size(), residentId);
+        
+        // Debug: Log all pending invitations for this residentId
+        if (!byResidentId.isEmpty()) {
+            for (GroupInvitation inv : byResidentId) {
+                log.info("Found invitation by residentId - ID: {}, Phone: {}, GroupId: {}, Status: {}, InviteeResidentId: {}", 
+                    inv.getId(), inv.getInviteePhone(), inv.getGroupId(), inv.getStatus(), inv.getInviteeResidentId());
+                if (!invitations.contains(inv)) {
+                    invitations.add(inv);
+                }
+            }
+        }
+
+        // Also try to find by phone number (for invitations created before resident was found, 
+        // or when inviteeResidentId doesn't match current residentId)
         if (phone != null && !phone.isEmpty()) {
             // Normalize phone number (remove all non-digit characters)
             String normalizedPhone = phone.replaceAll("[^0-9]", "");
             
-            log.debug("Looking for invitations with phone: {} (normalized: {})", phone, normalizedPhone);
+            log.info("Looking for invitations with phone: {} (normalized: {}) for residentId: {}", phone, normalizedPhone, residentId);
             
-            // Try exact match
+            // Try all possible formats that could have been stored
+            // Format 1: Exact match (as stored in user DB)
             List<GroupInvitation> byPhone = invitationRepository.findPendingInvitationsByPhone(normalizedPhone);
+            log.info("Found {} invitations with exact phone match: {}", byPhone.size(), normalizedPhone);
+            for (GroupInvitation inv : byPhone) {
+                log.info("  - Invitation ID: {}, Phone: {}, InviteeResidentId: {}", inv.getId(), inv.getInviteePhone(), inv.getInviteeResidentId());
+            }
             
-            // Also try with leading zero (Vietnamese phone format: 0123456789)
+            // Format 2: With leading zero (if phone doesn't start with 0)
             String withLeadingZero = normalizedPhone.startsWith("0") ? normalizedPhone : "0" + normalizedPhone;
             List<GroupInvitation> byPhoneWithZero = invitationRepository.findPendingInvitationsByPhone(withLeadingZero);
+            log.info("Found {} invitations with leading zero: {}", byPhoneWithZero.size(), withLeadingZero);
+            for (GroupInvitation inv : byPhoneWithZero) {
+                log.info("  - Invitation ID: {}, Phone: {}, InviteeResidentId: {}", inv.getId(), inv.getInviteePhone(), inv.getInviteeResidentId());
+            }
             
-            // Also try without leading zero (if phone starts with 0)
+            // Format 3: Without leading zero (storage format - this is how invitations are stored)
             String withoutLeadingZero = normalizedPhone.startsWith("0") && normalizedPhone.length() > 1 
                 ? normalizedPhone.substring(1) 
                 : normalizedPhone;
             List<GroupInvitation> byPhoneWithoutZero = invitationRepository.findPendingInvitationsByPhone(withoutLeadingZero);
+            log.info("Found {} invitations without leading zero (storage format): {}", byPhoneWithoutZero.size(), withoutLeadingZero);
+            for (GroupInvitation inv : byPhoneWithoutZero) {
+                log.info("  - Invitation ID: {}, Phone: {}, InviteeResidentId: {}", inv.getId(), inv.getInviteePhone(), inv.getInviteeResidentId());
+            }
             
             // Merge results, avoiding duplicates
             for (GroupInvitation inv : byPhone) {
                 if (!invitations.contains(inv)) {
                     invitations.add(inv);
+                    log.info("Added invitation {} by exact phone match (Phone: {}, InviteeResidentId: {})", 
+                        inv.getId(), inv.getInviteePhone(), inv.getInviteeResidentId());
                 }
             }
             for (GroupInvitation inv : byPhoneWithZero) {
                 if (!invitations.contains(inv)) {
                     invitations.add(inv);
+                    log.info("Added invitation {} by phone with leading zero (Phone: {}, InviteeResidentId: {})", 
+                        inv.getId(), inv.getInviteePhone(), inv.getInviteeResidentId());
                 }
             }
             for (GroupInvitation inv : byPhoneWithoutZero) {
                 if (!invitations.contains(inv)) {
                     invitations.add(inv);
+                    log.info("Added invitation {} by phone without leading zero (Phone: {}, InviteeResidentId: {})", 
+                        inv.getId(), inv.getInviteePhone(), inv.getInviteeResidentId());
                 }
             }
             
-            log.debug("Found {} invitations by phone (total unique: {})", 
+            log.info("Found {} invitations by phone (total unique after merge: {})", 
                 byPhone.size() + byPhoneWithZero.size() + byPhoneWithoutZero.size(), invitations.size());
         } else {
             log.warn("Phone number not found for residentId: {}", residentId);
         }
 
         log.info("Total pending invitations found for residentId {}: {}", residentId, invitations.size());
+        
+        // Final debug: Log all found invitations
+        if (!invitations.isEmpty()) {
+            log.info("Final invitation list:");
+            for (GroupInvitation inv : invitations) {
+                log.info("  - ID: {}, Phone: {}, InviteeResidentId: {}, GroupId: {}, Status: {}", 
+                    inv.getId(), inv.getInviteePhone(), inv.getInviteeResidentId(), inv.getGroupId(), inv.getStatus());
+            }
+        } else {
+            log.warn("No invitations found for residentId: {}, phone: {}", residentId, phone);
+        }
 
         return invitations.stream()
                 .map(this::toInvitationResponse)

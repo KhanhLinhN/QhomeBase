@@ -27,6 +27,13 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
             @Param("after") OffsetDateTime after
     );
 
+    @Query("SELECT m FROM Message m WHERE m.groupId = :groupId AND m.createdAt > :after AND m.senderId != :excludeSenderId AND m.isDeleted = false ORDER BY m.createdAt ASC")
+    List<Message> findNewMessagesByGroupIdAfterExcludingSender(
+            @Param("groupId") UUID groupId,
+            @Param("after") OffsetDateTime after,
+            @Param("excludeSenderId") UUID excludeSenderId
+    );
+
     @Query("SELECT COUNT(m) FROM Message m WHERE m.groupId = :groupId AND m.isDeleted = false")
     Long countByGroupId(@Param("groupId") UUID groupId);
 

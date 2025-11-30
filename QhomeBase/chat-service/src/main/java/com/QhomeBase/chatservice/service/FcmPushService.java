@@ -92,40 +92,29 @@ public class FcmPushService {
 
     public void sendPushToResident(UUID residentId, String title, String body, Map<String, String> data) {
         try {
-            String accessToken = getCurrentAccessToken();
-            if (accessToken == null || accessToken.isEmpty()) {
-                log.warn("No access token available for sending FCM push to resident: {}", residentId);
-                return;
-            }
-
-            // Call customer-interaction-service to send push notification
-            // The service has a method sendPushNotificationToResident that we can use
-            // For now, we'll create a notification and let the service handle FCM
-            String url = customerInteractionServiceUrl + "/api/notifications";
+            // Use push-only endpoint which only sends FCM push without saving to notification table
+            // This is for chat messages that should appear in chat screen, not in notification list
+            String url = customerInteractionServiceUrl + "/api/notifications/push-only";
             
             Map<String, Object> request = new HashMap<>();
-            request.put("type", "SYSTEM");
+            request.put("residentId", residentId.toString());
             request.put("title", title);
             request.put("message", body);
-            request.put("scope", "EXTERNAL");
-            request.put("targetResidentId", residentId.toString());
             if (data != null) {
-                request.put("referenceId", data.get("groupId"));
-                request.put("referenceType", "GROUP_CHAT");
+                request.put("data", data);
             }
 
             webClient
                     .post()
                     .uri(url)
-                    .header("Authorization", "Bearer " + accessToken)
                     .bodyValue(request)
                     .retrieve()
-                    .bodyToMono(Map.class)
+                    .bodyToMono(Void.class)
                     .block();
 
-            log.debug("Sent FCM push notification to resident: {}", residentId);
+            log.debug("Sent FCM push-only notification to resident: {} (not saved to DB)", residentId);
         } catch (Exception e) {
-            log.error("Error sending FCM push to resident {}: {}", residentId, e.getMessage());
+            log.error("Error sending FCM push to resident {}: {}", residentId, e.getMessage(), e);
         }
     }
 

@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -163,6 +164,29 @@ public class NotificationController {
         
         notificationService.createInternalNotification(request);
         return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
+    @PostMapping("/push-only")
+    public ResponseEntity<Void> sendPushOnly(
+            @RequestBody Map<String, Object> request) {
+        
+        UUID residentId = request.get("residentId") != null 
+            ? UUID.fromString(request.get("residentId").toString()) 
+            : null;
+        String title = (String) request.get("title");
+        String body = (String) request.get("message");
+        
+        @SuppressWarnings("unchecked")
+        Map<String, String> data = request.get("data") != null 
+            ? (Map<String, String>) request.get("data") 
+            : new HashMap<>();
+        
+        if (residentId == null || title == null || body == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+        notificationService.sendPushOnly(residentId, title, body, data);
+        return ResponseEntity.ok().build();
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

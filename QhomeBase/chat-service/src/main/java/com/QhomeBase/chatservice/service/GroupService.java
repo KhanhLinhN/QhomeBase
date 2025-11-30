@@ -279,12 +279,12 @@ public class GroupService {
         GroupMember currentMember = groupMemberRepository.findByGroupIdAndResidentId(group.getId(), currentResidentId).orElse(null);
         if (currentMember != null) {
             userRole = currentMember.getRole();
-            // Calculate unread count (messages after lastReadAt)
-            if (currentMember.getLastReadAt() != null) {
-                unreadCount = messageService.countUnreadMessages(group.getId(), currentMember.getLastReadAt());
-            } else {
-                unreadCount = messageService.countUnreadMessages(group.getId(), null);
-            }
+            // Calculate unread count (messages after lastReadAt, excluding own messages)
+            unreadCount = messageService.countUnreadMessages(
+                group.getId(), 
+                currentMember.getLastReadAt(), 
+                currentResidentId // Exclude messages sent by current user
+            );
         }
 
         List<GroupMemberResponse> memberResponses = members.stream()

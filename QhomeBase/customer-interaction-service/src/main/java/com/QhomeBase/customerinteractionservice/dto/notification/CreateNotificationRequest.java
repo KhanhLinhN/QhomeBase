@@ -33,6 +33,8 @@ public class CreateNotificationRequest {
 
     private UUID targetBuildingId;
 
+    private UUID targetResidentId;
+
     private UUID referenceId;
 
     private String referenceType;

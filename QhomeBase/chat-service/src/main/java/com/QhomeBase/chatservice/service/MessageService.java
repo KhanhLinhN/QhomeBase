@@ -87,10 +87,23 @@ public class MessageService {
         }
 
         message = messageRepository.save(message);
+        
+        // Flush to ensure createdAt is set by @CreationTimestamp
+        messageRepository.flush();
 
-        // Update last read time for sender (they just sent a message, so they've read it)
-        member.setLastReadAt(OffsetDateTime.now());
+        // Update last read time for sender to slightly after the message's createdAt time
+        // This ensures the message they just sent is considered as read
+        // Add 1 millisecond to avoid any timing edge cases where createdAt equals lastReadAt
+        OffsetDateTime createdAt = message.getCreatedAt();
+        if (createdAt == null) {
+            // Fallback to current time if createdAt is still null (shouldn't happen after flush)
+            createdAt = OffsetDateTime.now();
+            log.warn("Message {} createdAt was null after flush, using current time", message.getId());
+        }
+        OffsetDateTime lastReadTime = createdAt.plusNanos(1_000_000); // Add 1 millisecond
+        member.setLastReadAt(lastReadTime);
         groupMemberRepository.save(member);
+        log.debug("Updated lastReadAt for sender {} in group {} to {}", residentId, groupId, lastReadTime);
 
         MessageResponse response = toMessageResponse(message);
         
@@ -214,11 +227,37 @@ public class MessageService {
         notificationService.notifyMessageDeleted(groupId, messageId);
     }
 
-    public Long countUnreadMessages(UUID groupId, OffsetDateTime lastReadAt) {
+    public Long countUnreadMessages(UUID groupId, OffsetDateTime lastReadAt, UUID excludeSenderId) {
         if (lastReadAt == null) {
-            return messageRepository.countByGroupId(groupId);
+            // If never read, count all messages except own messages
+            if (excludeSenderId != null) {
+                // Use a very old but valid timestamp instead of OffsetDateTime.MIN
+                // PostgreSQL timestamp range: 4713 BC to 294276 AD
+                // Use year 1970-01-01 as a safe minimum
+                OffsetDateTime minValidDate = OffsetDateTime.of(1970, 1, 1, 0, 0, 0, 0, java.time.ZoneOffset.UTC);
+                long count = (long) messageRepository.findNewMessagesByGroupIdAfterExcludingSender(
+                    groupId, minValidDate, excludeSenderId).size();
+                log.debug("Counted {} unread messages for group {} (never read, excluding sender {})", 
+                    count, groupId, excludeSenderId);
+                return count;
+            }
+            long count = messageRepository.countByGroupId(groupId);
+            log.debug("Counted {} unread messages for group {} (never read, no exclude)", count, groupId);
+            return count;
         }
-        return (long) messageRepository.findNewMessagesByGroupIdAfter(groupId, lastReadAt).size();
+        // Count messages after lastReadAt, excluding own messages
+        // Use >= instead of > to ensure messages created at the same time as lastReadAt are not counted
+        // But actually, we want > to exclude the message that set lastReadAt
+        if (excludeSenderId != null) {
+            long count = (long) messageRepository.findNewMessagesByGroupIdAfterExcludingSender(
+                groupId, lastReadAt, excludeSenderId).size();
+            log.debug("Counted {} unread messages for group {} (lastReadAt: {}, excluding sender {})", 
+                count, groupId, lastReadAt, excludeSenderId);
+            return count;
+        }
+        long count = (long) messageRepository.findNewMessagesByGroupIdAfter(groupId, lastReadAt).size();
+        log.debug("Counted {} unread messages for group {} (lastReadAt: {})", count, groupId, lastReadAt);
+        return count;
     }
 
     @Transactional
@@ -251,7 +290,8 @@ public class MessageService {
             return 0L;
         }
 
-        return countUnreadMessages(groupId, member.getLastReadAt());
+        // Exclude messages sent by the current user when counting unread
+        return countUnreadMessages(groupId, member.getLastReadAt(), residentId);
     }
 
     private MessageResponse toMessageResponse(Message message) {
