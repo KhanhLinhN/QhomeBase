@@ -38,6 +38,7 @@
         <module>staff-work-service</module>
         <module>iam-service</module>
         <module>marketplace-service</module>
+        <module>chat-service</module>
         <module>api-gateway</module>
     </modules>
 

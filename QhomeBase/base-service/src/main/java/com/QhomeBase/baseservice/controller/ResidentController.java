@@ -182,6 +182,20 @@ public class ResidentController {
         }
     }
 
+    @GetMapping("/by-phone/{phone}")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<ResidentDto> getResidentByPhone(@PathVariable String phone) {
+        try {
+            // Normalize phone number (remove spaces, dashes, etc.)
+            String normalizedPhone = phone.replaceAll("[^0-9]", "");
+            ResidentDto resident = residentService.getByPhone(normalizedPhone);
+            return ResponseEntity.ok(resident);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to get resident by phone {}: {}", phone, e.getMessage());
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     @GetMapping("/me")
     @PreAuthorize("hasRole('RESIDENT')")
     public ResponseEntity<ResidentDto> getMyResident(Authentication authentication) {

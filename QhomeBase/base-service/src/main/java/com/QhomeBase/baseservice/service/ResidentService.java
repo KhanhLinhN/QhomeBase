@@ -75,6 +75,16 @@ public class ResidentService {
         return toDto(resident);
     }
 
+    public ResidentDto getByPhone(String phone) {
+        if (!StringUtils.hasText(phone)) {
+            throw new IllegalArgumentException("Phone number is required");
+        }
+        String normalizedPhone = phone.replaceAll("[^0-9]", "");
+        Resident resident = residentRepository.findByPhone(normalizedPhone)
+                .orElseThrow(() -> new IllegalArgumentException("Resident not found for phone: " + phone));
+        return toDto(resident);
+    }
+
     public boolean existsEmail(String email, UUID excludeId) {
         if (!StringUtils.hasText(email)) {
             return false;
