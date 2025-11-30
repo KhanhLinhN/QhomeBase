@@ -31,11 +31,12 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/categories").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/posts").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/posts/{id}").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/posts/{id}/comments").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll() // Public access to images
+                        // Marketplace endpoints require RESIDENT role
+                        .requestMatchers(HttpMethod.GET, "/categories").hasRole("RESIDENT")
+                        .requestMatchers(HttpMethod.GET, "/posts").hasRole("RESIDENT")
+                        .requestMatchers(HttpMethod.GET, "/posts/{id}").hasRole("RESIDENT")
+                        .requestMatchers(HttpMethod.GET, "/posts/{id}/comments").hasRole("RESIDENT")
+                        .requestMatchers(HttpMethod.GET, "/uploads/**").hasRole("RESIDENT") // Images require authentication
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

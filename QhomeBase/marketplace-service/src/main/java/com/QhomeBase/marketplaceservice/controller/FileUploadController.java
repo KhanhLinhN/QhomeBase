@@ -10,6 +10,7 @@ import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.file.Path;
@@ -24,6 +25,7 @@ public class FileUploadController {
     private final FileStorageService fileStorageService;
 
     @GetMapping("/{postId}/{fileName:.+}")
+    @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Get image", description = "Get uploaded image file")
     public ResponseEntity<Resource> getImage(
             @PathVariable String postId,

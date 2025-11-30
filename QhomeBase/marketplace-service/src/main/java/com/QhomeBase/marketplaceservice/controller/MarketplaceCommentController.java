@@ -42,6 +42,7 @@ public class MarketplaceCommentController {
     private final ResidentInfoService residentInfoService;
 
     @GetMapping
+    @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Get comments", description = "Get paginated comments for a post")
     public ResponseEntity<CommentPagedResponse> getComments(
             @PathVariable UUID postId,

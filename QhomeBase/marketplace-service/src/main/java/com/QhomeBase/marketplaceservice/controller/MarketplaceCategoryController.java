@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,6 +25,7 @@ public class MarketplaceCategoryController {
     private final MarketplaceMapper mapper;
 
     @GetMapping
+    @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Get all categories", description = "Get all active marketplace categories")
     public ResponseEntity<List<CategoryResponse>> getCategories() {
         List<CategoryResponse> categories = categoryService.getAllActiveCategories().stream()

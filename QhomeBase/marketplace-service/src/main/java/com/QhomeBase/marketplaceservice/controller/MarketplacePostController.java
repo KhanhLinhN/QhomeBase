@@ -50,6 +50,7 @@ public class MarketplacePostController {
     private final MarketplacePostImageRepository imageRepository;
 
     @GetMapping
+    @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Get posts with filters", description = "Get paginated list of posts with optional filters")
     public ResponseEntity<PostPagedResponse> getPosts(
             @RequestParam UUID buildingId,
@@ -69,15 +70,28 @@ public class MarketplacePostController {
         );
 
         // Check liked status for each post if user is authenticated
+        // Note: Public access - anyone can view posts, but only authenticated users can see their like status
         List<Boolean> likedStatuses = new ArrayList<>();
-        final UUID userId;
         if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal) {
-            userId = ((UserPrincipal) authentication.getPrincipal()).uid();
-            likedStatuses = posts.getContent().stream()
-                    .map(post -> likeService.isLikedByUser(post.getId(), userId))
-                    .collect(Collectors.toList());
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID userId = principal.uid();
+            String accessToken = principal.token();
+            
+            // Get residentId from userId
+            UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+            if (residentId != null) {
+                final UUID finalResidentId = residentId;
+                likedStatuses = posts.getContent().stream()
+                        .map(post -> likeService.isLikedByUser(post.getId(), finalResidentId))
+                        .collect(Collectors.toList());
+            } else {
+                // If cannot get residentId, set all to false
+                likedStatuses = posts.getContent().stream()
+                        .map(post -> false)
+                        .collect(Collectors.toList());
+            }
         } else {
-            userId = null;
+            // Not authenticated - all posts are not liked
             likedStatuses = posts.getContent().stream()
                     .map(post -> false)
                     .collect(Collectors.toList());
@@ -88,6 +102,7 @@ public class MarketplacePostController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Get post by ID", description = "Get detailed information about a specific post")
     public ResponseEntity<PostResponse> getPostById(
             @PathVariable UUID id,
@@ -109,11 +124,18 @@ public class MarketplacePostController {
                 post.getViewCount()
         );
         
-        // Check if liked
+        // Check if liked (public access - anyone can view, but only authenticated users see their like status)
         boolean isLiked = false;
         if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal) {
-            UUID userId = ((UserPrincipal) authentication.getPrincipal()).uid();
-            isLiked = likeService.isLikedByUser(id, userId);
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID userId = principal.uid();
+            String accessToken = principal.token();
+            
+            // Get residentId from userId
+            UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+            if (residentId != null) {
+                isLiked = likeService.isLikedByUser(id, residentId);
+            }
         }
 
         PostResponse response = mapper.toPostResponse(post, isLiked);
