@@ -16,6 +16,7 @@ public class ResidentInfoResponse {
     private String name;
     private String avatarUrl;
     private String unitNumber;
-    private UUID buildingId; // NEW: Add buildingId
+    private UUID buildingId;
+    private String buildingName; // Building name (e.g., "Tòa A", "Tòa B")
 }
 

@@ -25,8 +25,7 @@ public class FileUploadController {
     private final FileStorageService fileStorageService;
 
     @GetMapping("/{postId}/{fileName:.+}")
-    @PreAuthorize("hasRole('RESIDENT')")
-    @Operation(summary = "Get image", description = "Get uploaded image file")
+    @Operation(summary = "Get image", description = "Get uploaded image file (public access for marketplace posts)")
     public ResponseEntity<Resource> getImage(
             @PathVariable String postId,
             @PathVariable String fileName) {

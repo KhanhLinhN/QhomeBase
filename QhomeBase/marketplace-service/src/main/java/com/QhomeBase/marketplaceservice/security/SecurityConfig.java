@@ -36,7 +36,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/posts").hasRole("RESIDENT")
                         .requestMatchers(HttpMethod.GET, "/posts/{id}").hasRole("RESIDENT")
                         .requestMatchers(HttpMethod.GET, "/posts/{id}/comments").hasRole("RESIDENT")
-                        .requestMatchers(HttpMethod.GET, "/uploads/**").hasRole("RESIDENT") // Images require authentication
+                        .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll() // Images are public for marketplace posts
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

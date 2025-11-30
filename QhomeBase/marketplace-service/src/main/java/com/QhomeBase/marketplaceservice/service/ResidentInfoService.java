@@ -259,12 +259,14 @@ public class ResidentInfoService {
             
             String unitNumber = null;
             UUID buildingId = null;
+            String buildingName = null;
             
-            // If we have userId, try to get unit info from /api/residents/my-units
-            if (userId != null && accessToken != null && !accessToken.isEmpty()) {
+            // Get unit info for this specific resident (not the current logged-in user)
+            // Use /api/residents/{residentId}/units endpoint
+            if (accessToken != null && !accessToken.isEmpty()) {
                 try {
-                    String unitsUrl = baseServiceUrl + "/api/residents/my-units";
-                    log.debug("Calling URL to get units: {}", unitsUrl);
+                    String unitsUrl = baseServiceUrl + "/api/residents/" + residentId + "/units";
+                    log.debug("Calling URL to get units for resident {}: {}", residentId, unitsUrl);
                     
                     List<Map<String, Object>> units = webClient
                             .get()
@@ -285,10 +287,41 @@ public class ResidentInfoService {
                                 log.warn("Failed to parse buildingId from units: {}", buildingIdObj);
                             }
                         }
-                        log.info("Extracted from /api/residents/my-units: unitNumber={}, buildingId={}", unitNumber, buildingId);
+                        
+                        // Get building name from unit response (UnitDto already includes buildingName)
+                        buildingName = getStringValue(firstUnit, "buildingName");
+                        if (buildingName == null || buildingName.isEmpty()) {
+                            // Fallback: Get building name from /api/buildings/{buildingId} if not in unit response
+                            if (buildingId != null) {
+                                try {
+                                    String buildingUrl = baseServiceUrl + "/api/buildings/" + buildingId;
+                                    log.debug("Calling URL to get building: {}", buildingUrl);
+                                    
+                                    Map<String, Object> building = webClient
+                                            .get()
+                                            .uri(buildingUrl)
+                                            .header("Authorization", "Bearer " + accessToken)
+                                            .retrieve()
+                                            .bodyToMono(Map.class)
+                                            .block();
+                                    
+                                    if (building != null) {
+                                        buildingName = getStringValue(building, "name");
+                                        log.info("Extracted building name from building endpoint: {}", buildingName);
+                                    }
+                                } catch (Exception e) {
+                                    log.warn("Failed to get building name for buildingId {}: {}", buildingId, e.getMessage());
+                                }
+                            }
+                        } else {
+                            log.info("Extracted building name from unit response: {}", buildingName);
+                        }
+                        
+                        log.info("Extracted from /api/residents/{}/units: unitNumber={}, buildingId={}, buildingName={}", 
+                                residentId, unitNumber, buildingId, buildingName);
                     }
                 } catch (Exception e) {
-                    log.warn("Failed to get unit info from /api/residents/my-units: {}", e.getMessage());
+                    log.warn("Failed to get unit info from /api/residents/{}/units: {}", residentId, e.getMessage());
                 }
             }
 
@@ -297,11 +330,12 @@ public class ResidentInfoService {
                     .name(fullName)
                     .avatarUrl(null) // TODO: Add avatar URL if available
                     .unitNumber(unitNumber)
-                    .buildingId(buildingId) // NEW: Add buildingId
+                    .buildingId(buildingId)
+                    .buildingName(buildingName)
                     .build();
             
-            log.info("Built ResidentInfoResponse for {}: name={}, unitNumber={}, buildingId={}", 
-                    residentId, result.getName(), result.getUnitNumber(), result.getBuildingId());
+            log.info("Built ResidentInfoResponse for {}: name={}, unitNumber={}, buildingId={}, buildingName={}", 
+                    residentId, result.getName(), result.getUnitNumber(), result.getBuildingId(), result.getBuildingName());
             return result;
 
         } catch (WebClientResponseException.Forbidden e) {

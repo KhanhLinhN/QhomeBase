@@ -27,9 +27,7 @@ public class PostResponse {
     private ContactInfoResponse contactInfo;
     private String location;
     private Long viewCount;
-    private Long likeCount;
     private Long commentCount;
-    private Boolean isLiked;
     private List<PostImageResponse> images;
     private ResidentInfoResponse author;
     private OffsetDateTime createdAt;

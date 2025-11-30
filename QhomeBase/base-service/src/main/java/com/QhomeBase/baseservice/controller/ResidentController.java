@@ -144,6 +144,20 @@ public class ResidentController {
         }
     }
 
+    @GetMapping("/{residentId}/units")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<List<UnitDto>> getUnitsByResidentId(
+            @PathVariable UUID residentId,
+            Authentication authentication) {
+        try {
+            List<UnitDto> units = residentAccountService.getUnitsByResidentId(residentId);
+            return ResponseEntity.ok(units);
+        } catch (Exception e) {
+            log.warn("Failed to get units for resident {}: {}", residentId, e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
     @GetMapping("/{residentId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORTER', 'RESIDENT')")
     public ResponseEntity<ResidentDto> getResidentById(@PathVariable UUID residentId) {

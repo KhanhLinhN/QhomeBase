@@ -43,7 +43,7 @@ public class MarketplacePostService {
     /**
      * Get posts with filters - cached for 2 minutes
      */
-    @Cacheable(value = "postList", key = "#buildingId + '_' + #status + '_' + (#category != null ? #category : 'all') + '_' + #page + '_' + #size + '_' + (#sortBy != null ? #sortBy : 'newest')")
+    @Cacheable(value = "postList", key = "(#buildingId != null ? #buildingId : 'all') + '_' + #status + '_' + (#category != null ? #category : 'all') + '_' + #page + '_' + #size + '_' + (#sortBy != null ? #sortBy : 'newest')")
     @Transactional(readOnly = true)
     public Page<MarketplacePost> getPosts(
             UUID buildingId,

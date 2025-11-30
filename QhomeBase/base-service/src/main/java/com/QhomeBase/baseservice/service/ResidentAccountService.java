@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -684,7 +685,54 @@ public class ResidentAccountService {
         }
     }
 
+    /**
+     * Get units for a specific resident by residentId
+     */
     @Transactional(readOnly = true)
+    public List<UnitDto> getUnitsByResidentId(UUID residentId) {
+        List<HouseholdMember> members = householdMemberRepository.findActiveMembersByResidentId(residentId);
+        if (members.isEmpty()) {
+            return Collections.emptyList();
+        }
+        
+        List<Unit> units = new ArrayList<>();
+        for (HouseholdMember member : members) {
+            Household household = householdRepository.findById(member.getHouseholdId()).orElse(null);
+            if (household != null && household.getUnitId() != null) {
+                // Check if household is still active
+                if (household.getEndDate() == null || household.getEndDate().isAfter(LocalDate.now())) {
+                    Unit unit = unitRepository.findByIdWithBuilding(household.getUnitId());
+                    if (unit != null) {
+                        units.add(unit);
+                    }
+                }
+            }
+        }
+        
+        return units.stream()
+                .map(unit -> {
+                    UUID primaryResidentId = householdRepository.findCurrentHouseholdByUnitId(unit.getId())
+                            .map(Household::getPrimaryResidentId)
+                            .orElse(null);
+                    
+                    return new UnitDto(
+                            unit.getId(),
+                            unit.getBuilding().getId(),
+                            unit.getBuilding().getCode(),
+                            unit.getBuilding().getName(),
+                            unit.getCode(),
+                            unit.getFloor(),
+                            unit.getAreaM2(),
+                            unit.getBedrooms(),
+                            unit.getStatus(),
+                            primaryResidentId,
+                            unit.getCreatedAt(),
+                            unit.getUpdatedAt()
+                    );
+                })
+                .collect(Collectors.toList());
+    }
+    
     public List<UnitDto> getMyUnits(UUID userId) {
         List<Unit> units = unitRepository.findAllUnitsByUserId(userId);
         

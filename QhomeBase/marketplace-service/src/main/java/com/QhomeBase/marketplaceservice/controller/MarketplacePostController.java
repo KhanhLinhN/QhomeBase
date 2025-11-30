@@ -23,10 +23,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
@@ -39,7 +37,6 @@ public class MarketplacePostController {
 
     private final MarketplacePostService postService;
     private final MarketplaceNotificationService notificationService;
-    private final MarketplaceLikeService likeService;
     private final MarketplaceCategoryService categoryService;
     private final RateLimitService rateLimitService;
     private final ImageProcessingService imageProcessingService;
@@ -53,7 +50,7 @@ public class MarketplacePostController {
     @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Get posts with filters", description = "Get paginated list of posts with optional filters")
     public ResponseEntity<PostPagedResponse> getPosts(
-            @RequestParam UUID buildingId,
+            @RequestParam(required = false) UUID buildingId,
             @RequestParam(defaultValue = "ACTIVE") String status,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) BigDecimal minPrice,
@@ -69,35 +66,7 @@ public class MarketplacePostController {
                 buildingId, postStatus, category, minPrice, maxPrice, search, sortBy, page, size
         );
 
-        // Check liked status for each post if user is authenticated
-        // Note: Public access - anyone can view posts, but only authenticated users can see their like status
-        List<Boolean> likedStatuses = new ArrayList<>();
-        if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal) {
-            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
-            UUID userId = principal.uid();
-            String accessToken = principal.token();
-            
-            // Get residentId from userId
-            UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
-            if (residentId != null) {
-                final UUID finalResidentId = residentId;
-                likedStatuses = posts.getContent().stream()
-                        .map(post -> likeService.isLikedByUser(post.getId(), finalResidentId))
-                        .collect(Collectors.toList());
-            } else {
-                // If cannot get residentId, set all to false
-                likedStatuses = posts.getContent().stream()
-                        .map(post -> false)
-                        .collect(Collectors.toList());
-            }
-        } else {
-            // Not authenticated - all posts are not liked
-            likedStatuses = posts.getContent().stream()
-                    .map(post -> false)
-                    .collect(Collectors.toList());
-        }
-
-        PostPagedResponse response = mapper.toPostPagedResponse(posts, likedStatuses);
+        PostPagedResponse response = mapper.toPostPagedResponse(posts);
         return ResponseEntity.ok(response);
     }
 
@@ -119,26 +88,12 @@ public class MarketplacePostController {
         // Send realtime stats update
         notificationService.notifyPostStatsUpdate(
                 id, 
-                post.getLikeCount(), 
+                0L, // likeCount removed
                 post.getCommentCount(), 
                 post.getViewCount()
         );
-        
-        // Check if liked (public access - anyone can view, but only authenticated users see their like status)
-        boolean isLiked = false;
-        if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal) {
-            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
-            UUID userId = principal.uid();
-            String accessToken = principal.token();
-            
-            // Get residentId from userId
-            UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
-            if (residentId != null) {
-                isLiked = likeService.isLikedByUser(id, residentId);
-            }
-        }
 
-        PostResponse response = mapper.toPostResponse(post, isLiked);
+        PostResponse response = mapper.toPostResponse(post);
         return ResponseEntity.ok(response);
     }
 
@@ -235,12 +190,12 @@ public class MarketplacePostController {
         // Send initial stats
         notificationService.notifyPostStatsUpdate(
                 saved.getId(), 
-                saved.getLikeCount(), 
+                0L, // likeCount removed
                 saved.getCommentCount(), 
                 saved.getViewCount()
         );
 
-        PostResponse response = mapper.toPostResponse(saved, false);
+        PostResponse response = mapper.toPostResponse(saved);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -359,7 +314,7 @@ public class MarketplacePostController {
             }
         }
 
-        PostResponse response = mapper.toPostResponse(updated, false);
+        PostResponse response = mapper.toPostResponse(updated);
         return ResponseEntity.ok(response);
     }
 
@@ -421,7 +376,7 @@ public class MarketplacePostController {
         // Notify status change
         // notificationService.notifyPostStatusChange(id, status.name());
 
-        PostResponse response = mapper.toPostResponse(updated, false);
+        PostResponse response = mapper.toPostResponse(updated);
         return ResponseEntity.ok(response);
     }
 
@@ -448,11 +403,7 @@ public class MarketplacePostController {
         PostStatus postStatus = status != null ? PostStatus.valueOf(status.toUpperCase()) : null;
         Page<MarketplacePost> posts = postService.getMyPosts(residentId, postStatus, page, size);
 
-        List<Boolean> likedStatuses = posts.getContent().stream()
-                .map(post -> likeService.isLikedByUser(post.getId(), userId))
-                .collect(Collectors.toList());
-
-        PostPagedResponse response = mapper.toPostPagedResponse(posts, likedStatuses);
+        PostPagedResponse response = mapper.toPostPagedResponse(posts);
         return ResponseEntity.ok(response);
     }
 }

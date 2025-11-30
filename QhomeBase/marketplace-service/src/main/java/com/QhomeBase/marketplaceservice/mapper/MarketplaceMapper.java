@@ -20,7 +20,7 @@ public class MarketplaceMapper {
 
     private final ResidentInfoService residentInfoService;
 
-    public PostResponse toPostResponse(MarketplacePost post, boolean isLiked) {
+    public PostResponse toPostResponse(MarketplacePost post) {
         // Fetch resident info for author
         ResidentInfoResponse author = null;
         try {
@@ -58,9 +58,7 @@ public class MarketplaceMapper {
                 .contactInfo(toContactInfoResponse(post.getContactInfo()))
                 .location(post.getLocation())
                 .viewCount(post.getViewCount())
-                .likeCount(post.getLikeCount())
                 .commentCount(post.getCommentCount())
-                .isLiked(isLiked)
                 .images(post.getImages().stream()
                         .map(this::toPostImageResponse)
                         .collect(Collectors.toList()))
@@ -139,13 +137,10 @@ public class MarketplaceMapper {
                 .build();
     }
 
-    public PostPagedResponse toPostPagedResponse(Page<MarketplacePost> page, List<Boolean> likedStatuses) {
-        List<PostResponse> content = new ArrayList<>();
-        for (int i = 0; i < page.getContent().size(); i++) {
-            MarketplacePost post = page.getContent().get(i);
-            boolean isLiked = i < likedStatuses.size() ? likedStatuses.get(i) : false;
-            content.add(toPostResponse(post, isLiked));
-        }
+    public PostPagedResponse toPostPagedResponse(Page<MarketplacePost> page) {
+        List<PostResponse> content = page.getContent().stream()
+                .map(this::toPostResponse)
+                .collect(Collectors.toList());
 
         return PostPagedResponse.builder()
                 .content(content)

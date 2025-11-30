@@ -47,7 +47,8 @@ public interface MarketplacePostRepository extends JpaRepository<MarketplacePost
         Pageable pageable
     );
 
-    @Query(value = "SELECT * FROM marketplace.marketplace_posts p WHERE p.building_id = :buildingId " +
+    @Query(value = "SELECT * FROM marketplace.marketplace_posts p WHERE " +
+           "(:buildingId IS NULL OR p.building_id = :buildingId) " +
            "AND p.status = CAST(:status AS marketplace.post_status) " +
            "AND (:category IS NULL OR p.category = :category) " +
            "AND (:minPrice IS NULL OR p.price >= :minPrice) " +
@@ -62,7 +63,8 @@ public interface MarketplacePostRepository extends JpaRepository<MarketplacePost
            "CASE WHEN :sortBy = 'price_desc' THEN p.price END DESC NULLS LAST, " +
            "CASE WHEN :sortBy = 'popular' THEN p.like_count END DESC NULLS LAST, " +
            "p.created_at DESC",
-           countQuery = "SELECT COUNT(*) FROM marketplace.marketplace_posts p WHERE p.building_id = :buildingId " +
+           countQuery = "SELECT COUNT(*) FROM marketplace.marketplace_posts p WHERE " +
+           "(:buildingId IS NULL OR p.building_id = :buildingId) " +
            "AND p.status = CAST(:status AS marketplace.post_status) " +
            "AND (:category IS NULL OR p.category = :category) " +
            "AND (:minPrice IS NULL OR p.price >= :minPrice) " +
