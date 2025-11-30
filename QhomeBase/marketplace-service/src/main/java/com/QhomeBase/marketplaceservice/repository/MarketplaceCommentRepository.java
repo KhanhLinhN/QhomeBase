@@ -1,0 +1,26 @@
+package com.QhomeBase.marketplaceservice.repository;
+
+import com.QhomeBase.marketplaceservice.model.MarketplaceComment;
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.UUID;
+
+@Repository
+public interface MarketplaceCommentRepository extends JpaRepository<MarketplaceComment, UUID> {
+
+    @EntityGraph(attributePaths = {"replies"})
+    List<MarketplaceComment> findByPostIdAndParentCommentIsNullOrderByCreatedAtAsc(UUID postId);
+
+    List<MarketplaceComment> findByParentCommentIdOrderByCreatedAtAsc(UUID parentCommentId);
+
+    Long countByPostId(UUID postId);
+
+    @Query("SELECT COUNT(c) FROM MarketplaceComment c WHERE c.post.id = :postId AND c.deletedAt IS NULL")
+    Long countActiveCommentsByPostId(@Param("postId") UUID postId);
+}
+

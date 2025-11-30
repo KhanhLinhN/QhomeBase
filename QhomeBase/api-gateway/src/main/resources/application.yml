@@ -103,6 +103,13 @@ spring:
             - Path=/api/customer-interaction/**
           filters:
             - StripPrefix=0
+        # Marketplace Service Routes (must be before base-service catch-all)
+        - id: marketplace-service
+          uri: ${marketplace.service.url:http://localhost:8089}
+          predicates:
+            - Path=/api/marketplace/**
+          filters:
+            - StripPrefix=2
         # Staff Work Service Routes (must be before base-service catch-all)
         - id: staff-work-service
           uri: ${staff-work.service.url:http://localhost:8087}
