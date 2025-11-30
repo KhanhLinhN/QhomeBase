@@ -103,5 +103,17 @@ public class ChatNotificationService {
         log.info("Sending GROUP_UPDATED to group {} via WebSocket", groupId);
         messagingTemplate.convertAndSend(destination, wsMessage);
     }
+
+    public void notifyGroupDeleted(UUID groupId) {
+        WebSocketMessage wsMessage = WebSocketMessage.builder()
+                .type("GROUP_DELETED")
+                .groupId(groupId)
+                .timestamp(OffsetDateTime.now())
+                .build();
+
+        String destination = "/topic/chat/" + groupId;
+        log.info("Sending GROUP_DELETED to group {} via WebSocket", groupId);
+        messagingTemplate.convertAndSend(destination, wsMessage);
+    }
 }
 

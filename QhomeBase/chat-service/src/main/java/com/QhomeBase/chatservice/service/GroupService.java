@@ -150,21 +150,25 @@ public class GroupService {
         Group group = groupRepository.findActiveGroupById(groupId)
                 .orElseThrow(() -> new RuntimeException("Group not found: " + groupId));
 
-        // Check if user is ADMIN
+        // Check if user is a member of the group
         GroupMember member = groupMemberRepository.findByGroupIdAndResidentId(groupId, residentId)
                 .orElseThrow(() -> new RuntimeException("You are not a member of this group"));
 
-        if (!"ADMIN".equals(member.getRole())) {
-            throw new RuntimeException("Only admins can update group");
-        }
-
+        // All members can update group name
+        // Only admins can update description and avatar
         if (request.getName() != null) {
             group.setName(request.getName());
         }
         if (request.getDescription() != null) {
+            if (!"ADMIN".equals(member.getRole())) {
+                throw new RuntimeException("Only admins can update group description");
+            }
             group.setDescription(request.getDescription());
         }
         if (request.getAvatarUrl() != null) {
+            if (!"ADMIN".equals(member.getRole())) {
+                throw new RuntimeException("Only admins can update group avatar");
+            }
             group.setAvatarUrl(request.getAvatarUrl());
         }
 
@@ -255,7 +259,20 @@ public class GroupService {
         }
 
         UUID removedMemberId = memberToRemove.getResidentId();
+        
+        // Get member name before deleting
+        Map<String, Object> memberInfo = residentInfoService.getResidentInfo(removedMemberId);
+        String memberName = memberInfo != null ? (String) memberInfo.get("fullName") : "Một thành viên";
+        
         groupMemberRepository.delete(memberToRemove);
+        
+        // Create system message
+        String systemMessageContent = memberName + " đã rời khỏi nhóm";
+        try {
+            messageService.createSystemMessage(groupId, systemMessageContent);
+        } catch (Exception e) {
+            log.warn("Failed to create system message for member leave: {}", e.getMessage());
+        }
         
         // Notify via WebSocket
         notificationService.notifyMemberRemoved(groupId, removedMemberId);
@@ -269,6 +286,30 @@ public class GroupService {
             throw new RuntimeException("Resident not found for user: " + userId);
         }
         removeMember(groupId, residentId, userId);
+    }
+
+    @Transactional
+    public void deleteGroup(UUID groupId, UUID userId) {
+        String accessToken = getCurrentAccessToken();
+        UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+        if (residentId == null) {
+            throw new RuntimeException("Resident not found for user: " + userId);
+        }
+
+        Group group = groupRepository.findActiveGroupById(groupId)
+                .orElseThrow(() -> new RuntimeException("Group not found: " + groupId));
+
+        // Only the creator (owner) can delete the group
+        if (!group.getCreatedBy().equals(residentId)) {
+            throw new RuntimeException("Only the group creator can delete the group");
+        }
+
+        // Soft delete: mark group as inactive
+        group.setIsActive(false);
+        groupRepository.save(group);
+
+        // Notify via WebSocket
+        notificationService.notifyGroupDeleted(groupId);
     }
 
     private GroupResponse toGroupResponse(Group group, UUID currentResidentId) {

@@ -123,5 +123,19 @@ public class GroupController {
         groupService.leaveGroup(groupId, userId);
         return ResponseEntity.ok().build();
     }
+
+    @DeleteMapping("/{groupId}")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Delete group", description = "Delete the group. Only the group creator can delete the group.")
+    public ResponseEntity<Void> deleteGroup(
+            @PathVariable UUID groupId,
+            Authentication authentication) {
+        
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        groupService.deleteGroup(groupId, userId);
+        return ResponseEntity.ok().build();
+    }
 }
 

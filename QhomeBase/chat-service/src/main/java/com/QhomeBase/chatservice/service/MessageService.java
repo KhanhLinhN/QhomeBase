@@ -260,6 +260,38 @@ public class MessageService {
         return count;
     }
 
+    /**
+     * Create a system message in the group
+     * @param groupId The group ID
+     * @param content The system message content
+     * @return The created message response
+     */
+    @Transactional
+    public MessageResponse createSystemMessage(UUID groupId, String content) {
+        Group group = groupRepository.findActiveGroupById(groupId)
+                .orElseThrow(() -> new RuntimeException("Group not found: " + groupId));
+
+        Message message = Message.builder()
+                .group(group)
+                .groupId(groupId)
+                .senderId(null) // System messages have no sender
+                .content(content)
+                .messageType("SYSTEM")
+                .isEdited(false)
+                .isDeleted(false)
+                .build();
+
+        message = messageRepository.save(message);
+        messageRepository.flush();
+
+        MessageResponse response = toMessageResponse(message);
+        
+        // Notify via WebSocket
+        notificationService.notifyNewMessage(groupId, response);
+        
+        return response;
+    }
+
     @Transactional
     public void markMessagesAsRead(UUID groupId, UUID userId) {
         String accessToken = getCurrentAccessToken();
@@ -295,16 +327,23 @@ public class MessageService {
     }
 
     private MessageResponse toMessageResponse(Message message) {
-        Map<String, Object> senderInfo = residentInfoService.getResidentInfo(message.getSenderId());
-        String senderName = senderInfo != null ? (String) senderInfo.get("fullName") : null;
-        String senderAvatar = null; // TODO: Get avatar from sender info
+        Map<String, Object> senderInfo = null;
+        String senderName = null;
+        String senderAvatarUrl = null;
+        
+        // System messages have no sender
+        if (message.getSenderId() != null && !"SYSTEM".equals(message.getMessageType())) {
+            senderInfo = residentInfoService.getResidentInfo(message.getSenderId());
+            senderName = senderInfo != null ? (String) senderInfo.get("fullName") : null;
+            senderAvatarUrl = senderInfo != null ? (String) senderInfo.get("avatarUrl") : null;
+        }
 
         MessageResponse.MessageResponseBuilder builder = MessageResponse.builder()
                 .id(message.getId())
                 .groupId(message.getGroupId())
                 .senderId(message.getSenderId())
                 .senderName(senderName)
-                .senderAvatar(senderAvatar)
+                .senderAvatar(senderAvatarUrl)
                 .content(message.getContent())
                 .messageType(message.getMessageType())
                 .imageUrl(message.getImageUrl())
