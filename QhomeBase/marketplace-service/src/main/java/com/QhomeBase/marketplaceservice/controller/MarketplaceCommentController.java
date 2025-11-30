@@ -1,5 +1,6 @@
 package com.QhomeBase.marketplaceservice.controller;
 
+import com.QhomeBase.marketplaceservice.dto.CommentPagedResponse;
 import com.QhomeBase.marketplaceservice.dto.CommentResponse;
 import com.QhomeBase.marketplaceservice.dto.CreateCommentRequest;
 import com.QhomeBase.marketplaceservice.mapper.MarketplaceMapper;
@@ -15,6 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -40,12 +42,26 @@ public class MarketplaceCommentController {
     private final ResidentInfoService residentInfoService;
 
     @GetMapping
-    @Operation(summary = "Get comments", description = "Get all comments for a post")
-    public ResponseEntity<List<CommentResponse>> getComments(@PathVariable UUID postId) {
-        List<MarketplaceComment> comments = commentService.getComments(postId);
-        List<CommentResponse> response = comments.stream()
+    @Operation(summary = "Get comments", description = "Get paginated comments for a post")
+    public ResponseEntity<CommentPagedResponse> getComments(
+            @PathVariable UUID postId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        Page<MarketplaceComment> commentsPage = commentService.getComments(postId, page, size);
+        List<CommentResponse> content = commentsPage.getContent().stream()
                 .map(mapper::toCommentResponse)
                 .collect(Collectors.toList());
+        
+        CommentPagedResponse response = CommentPagedResponse.builder()
+                .content(content)
+                .currentPage(commentsPage.getNumber())
+                .pageSize(commentsPage.getSize())
+                .totalElements(commentsPage.getTotalElements())
+                .totalPages(commentsPage.getTotalPages())
+                .hasNext(commentsPage.hasNext())
+                .hasPrevious(commentsPage.hasPrevious())
+                .build();
+        
         return ResponseEntity.ok(response);
     }
 

@@ -6,7 +6,11 @@ import com.QhomeBase.marketplaceservice.repository.MarketplaceCommentRepository;
 import com.QhomeBase.marketplaceservice.repository.MarketplacePostRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.Hibernate;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,24 +27,38 @@ public class MarketplaceCommentService {
     private final MarketplaceNotificationService notificationService;
 
     /**
-     * Get comments for a post
+     * Get comments for a post (all comments, no pagination)
      */
     @Transactional(readOnly = true)
     public List<MarketplaceComment> getComments(UUID postId) {
         List<MarketplaceComment> comments = commentRepository.findByPostIdAndParentCommentIsNullOrderByCreatedAtAsc(postId);
-        // Force initialization of replies collection within transaction
-        comments.forEach(comment -> {
-            if (comment.getReplies() != null) {
-                comment.getReplies().size(); // Force initialization
-                // Also initialize nested replies
-                comment.getReplies().forEach(reply -> {
-                    if (reply.getReplies() != null) {
-                        reply.getReplies().size();
-                    }
-                });
-            }
-        });
+        // Force initialization of all nested replies recursively within transaction
+        comments.forEach(this::initializeReplies);
         return comments;
+    }
+
+    /**
+     * Get paginated comments for a post
+     */
+    @Transactional(readOnly = true)
+    public Page<MarketplaceComment> getComments(UUID postId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<MarketplaceComment> commentsPage = commentRepository.findByPostIdAndParentCommentIsNullOrderByCreatedAtAsc(postId, pageable);
+        // Force initialization of all nested replies recursively within transaction
+        commentsPage.getContent().forEach(this::initializeReplies);
+        return commentsPage;
+    }
+
+    /**
+     * Recursively initialize all nested replies to prevent LazyInitializationException
+     */
+    private void initializeReplies(MarketplaceComment comment) {
+        if (comment.getReplies() != null) {
+            // Force initialization of the replies collection
+            Hibernate.initialize(comment.getReplies());
+            // Recursively initialize nested replies
+            comment.getReplies().forEach(this::initializeReplies);
+        }
     }
 
     /**

@@ -1,6 +1,8 @@
 package com.QhomeBase.marketplaceservice.repository;
 
 import com.QhomeBase.marketplaceservice.model.MarketplaceComment;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -16,11 +18,14 @@ public interface MarketplaceCommentRepository extends JpaRepository<MarketplaceC
     @EntityGraph(attributePaths = {"replies"})
     List<MarketplaceComment> findByPostIdAndParentCommentIsNullOrderByCreatedAtAsc(UUID postId);
 
+    @EntityGraph(attributePaths = {"replies"})
+    Page<MarketplaceComment> findByPostIdAndParentCommentIsNullOrderByCreatedAtAsc(UUID postId, Pageable pageable);
+
     List<MarketplaceComment> findByParentCommentIdOrderByCreatedAtAsc(UUID parentCommentId);
 
     Long countByPostId(UUID postId);
 
-    @Query("SELECT COUNT(c) FROM MarketplaceComment c WHERE c.post.id = :postId AND c.deletedAt IS NULL")
-    Long countActiveCommentsByPostId(@Param("postId") UUID postId);
+    @Query("SELECT COUNT(c) FROM MarketplaceComment c WHERE c.post.id = :postId AND c.deletedAt IS NULL AND c.parentComment IS NULL")
+    Long countActiveTopLevelCommentsByPostId(@Param("postId") UUID postId);
 }
 
