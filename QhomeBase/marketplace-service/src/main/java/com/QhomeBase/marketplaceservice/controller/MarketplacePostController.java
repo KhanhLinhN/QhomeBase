@@ -3,7 +3,9 @@ package com.QhomeBase.marketplaceservice.controller;
 import com.QhomeBase.marketplaceservice.dto.*;
 import com.QhomeBase.marketplaceservice.mapper.MarketplaceMapper;
 import com.QhomeBase.marketplaceservice.model.MarketplacePost;
+import com.QhomeBase.marketplaceservice.model.MarketplacePostImage;
 import com.QhomeBase.marketplaceservice.model.PostStatus;
+import com.QhomeBase.marketplaceservice.repository.MarketplacePostImageRepository;
 import com.QhomeBase.marketplaceservice.security.UserPrincipal;
 import com.QhomeBase.marketplaceservice.service.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,6 +47,7 @@ public class MarketplacePostController {
     private final AsyncImageProcessingService asyncImageProcessingService;
     private final MarketplaceMapper mapper;
     private final ResidentInfoService residentInfoService;
+    private final MarketplacePostImageRepository imageRepository;
 
     @GetMapping
     @Operation(summary = "Get posts with filters", description = "Get paginated list of posts with optional filters")
@@ -230,9 +233,17 @@ public class MarketplacePostController {
         
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
+        String accessToken = principal.token();
+
+        // Get residentId from userId
+        UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+        if (residentId == null) {
+            log.error("Resident not found for userId: {}", userId);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
 
         MarketplacePost post = postService.getPostById(id);
-        if (!post.getResidentId().equals(userId)) {
+        if (!post.getResidentId().equals(residentId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
@@ -247,7 +258,59 @@ public class MarketplacePostController {
 
         // Handle image deletion
         if (request.getImagesToDelete() != null && !request.getImagesToDelete().isEmpty()) {
-            // TODO: Delete images from storage
+            for (String imageIdStr : request.getImagesToDelete()) {
+                try {
+                    UUID imageId = UUID.fromString(imageIdStr);
+                    // Find image in database
+                    var imageOpt = imageRepository.findById(imageId);
+                    if (imageOpt.isPresent()) {
+                        MarketplacePostImage image = imageOpt.get();
+                        // Verify image belongs to this post
+                        if (image.getPost().getId().equals(id)) {
+                            // Delete from database
+                            imageRepository.delete(image);
+                            log.info("Deleted image from database: {}", imageId);
+                            
+                            // Delete from storage
+                            // Extract filename from imageUrl (format: /api/marketplace/uploads/{postId}/{fileName})
+                            String imageUrl = image.getImageUrl();
+                            if (imageUrl != null && imageUrl.contains("/uploads/")) {
+                                String[] parts = imageUrl.split("/uploads/");
+                                if (parts.length > 1) {
+                                    String filePath = parts[1]; // {postId}/{fileName}
+                                    String[] pathParts = filePath.split("/");
+                                    if (pathParts.length > 1) {
+                                        String fileName = pathParts[1];
+                                        fileStorageService.deleteImage(id.toString(), fileName);
+                                        log.info("Deleted image file from storage: {}", fileName);
+                                    }
+                                }
+                            }
+                            
+                            // Also delete thumbnail if exists
+                            String thumbnailUrl = image.getThumbnailUrl();
+                            if (thumbnailUrl != null && thumbnailUrl.contains("/uploads/")) {
+                                String[] parts = thumbnailUrl.split("/uploads/");
+                                if (parts.length > 1) {
+                                    String filePath = parts[1];
+                                    String[] pathParts = filePath.split("/");
+                                    if (pathParts.length > 1) {
+                                        String fileName = pathParts[1];
+                                        fileStorageService.deleteImage(id.toString(), fileName);
+                                        log.info("Deleted thumbnail file from storage: {}", fileName);
+                                    }
+                                }
+                            }
+                        } else {
+                            log.warn("Image {} does not belong to post {}", imageId, id);
+                        }
+                    } else {
+                        log.warn("Image not found in database: {}", imageId);
+                    }
+                } catch (Exception e) {
+                    log.error("Error deleting image {}: {}", imageIdStr, e.getMessage(), e);
+                }
+            }
         }
 
         // Handle new images

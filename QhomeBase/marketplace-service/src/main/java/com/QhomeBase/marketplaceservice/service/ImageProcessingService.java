@@ -23,8 +23,8 @@ public class ImageProcessingService {
     private static final int THUMBNAIL_SIZE = 200;
     private static final int MEDIUM_SIZE = 400;
     private static final int LARGE_SIZE = 1200; // Increased for better quality
-    private static final int MAX_ORIGINAL_SIZE = 2048; // Max size for original (only resize if larger)
-    private static final double QUALITY = 0.95; // Increased quality (0.95 = 95% quality)
+    private static final int MAX_ORIGINAL_SIZE = 4096; // Increased max size for original (only resize if larger)
+    private static final double QUALITY = 1.0; // Maximum quality (1.0 = 100% quality, no compression)
     private static final double THUMBNAIL_QUALITY = 0.85; // Lower quality for thumbnails only
 
     /**
