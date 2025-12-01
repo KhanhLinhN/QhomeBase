@@ -11,7 +11,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -51,6 +53,43 @@ public class FileUploadController {
         } catch (IOException e) {
             log.error("Error uploading image: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(Map.of("error", "Failed to upload image"));
+        }
+    }
+
+    @PostMapping("/{groupId}/images")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Upload multiple images for chat messages", description = "Upload multiple image files for chat messages. Each image will be sent as a separate message.")
+    public ResponseEntity<Map<String, Object>> uploadImages(
+            @PathVariable UUID groupId,
+            @RequestParam("files") MultipartFile[] files) {
+        
+        try {
+            // Validate files
+            if (files == null || files.length == 0) {
+                return ResponseEntity.badRequest().body(Map.of("error", "At least one file is required"));
+            }
+
+            // Validate all files are images
+            for (MultipartFile file : files) {
+                if (file.isEmpty()) {
+                    return ResponseEntity.badRequest().body(Map.of("error", "One or more files are empty"));
+                }
+                String contentType = file.getContentType();
+                if (contentType == null || !contentType.startsWith("image/")) {
+                    return ResponseEntity.badRequest().body(Map.of("error", "All files must be images"));
+                }
+            }
+
+            // Upload images
+            List<String> imageUrls = fileStorageService.uploadImages(List.of(files), groupId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("imageUrls", imageUrls);
+            response.put("count", imageUrls.size());
+            return ResponseEntity.ok(response);
+        } catch (IOException e) {
+            log.error("Error uploading images: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to upload images"));
         }
     }
 

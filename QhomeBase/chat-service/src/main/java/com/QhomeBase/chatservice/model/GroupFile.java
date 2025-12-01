@@ -50,8 +50,11 @@ public class GroupFile {
     @Column(name = "file_size", nullable = false)
     private Long fileSize;
 
-    @Column(name = "file_type", length = 100)
-    private String fileType; // mimeType
+    @Column(name = "file_type", length = 50)
+    private String fileType; // IMAGE, AUDIO, VIDEO, DOCUMENT
+
+    @Column(name = "mime_type", length = 100)
+    private String mimeType; // Actual mime type (e.g., image/jpeg, image/png, application/pdf)
 
     @Column(name = "file_url", nullable = false, length = 500)
     private String fileUrl;

@@ -10,6 +10,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -57,6 +59,27 @@ public class FileStorageService {
         log.info("Uploaded image URL: {}", imageUrl);
         log.info("Full file path: {}", filePath.toAbsolutePath());
         return imageUrl;
+    }
+
+    /**
+     * Upload multiple images for chat messages
+     */
+    public List<String> uploadImages(List<MultipartFile> files, UUID groupId) throws IOException {
+        log.info("Uploading {} images for group: {}", files.size(), groupId);
+        
+        List<String> imageUrls = new ArrayList<>();
+        for (MultipartFile file : files) {
+            try {
+                String imageUrl = uploadImage(file, groupId);
+                imageUrls.add(imageUrl);
+            } catch (IOException e) {
+                log.error("Error uploading image {}: {}", file.getOriginalFilename(), e.getMessage(), e);
+                throw new IOException("Failed to upload image: " + file.getOriginalFilename(), e);
+            }
+        }
+        
+        log.info("Successfully uploaded {} images", imageUrls.size());
+        return imageUrls;
     }
 
     /**

@@ -21,7 +21,8 @@ public class GroupFileResponse {
     private String senderAvatar;
     private String fileName;
     private Long fileSize;
-    private String fileType; // mimeType
+    private String fileType; // IMAGE, AUDIO, VIDEO, DOCUMENT (legacy)
+    private String mimeType; // Actual mime type (e.g., image/jpeg, image/png, application/pdf)
     private String fileUrl;
     private OffsetDateTime createdAt;
 }

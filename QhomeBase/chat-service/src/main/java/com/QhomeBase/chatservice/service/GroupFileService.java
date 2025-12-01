@@ -20,7 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.QhomeBase.chatservice.dto.GroupFilePagedResponse;
-import org.springframework.data.domain.Page;
 
 import java.util.Map;
 import java.util.UUID;
@@ -101,6 +100,16 @@ public class GroupFileService {
             return null;
         }
 
+        // Determine fileType from messageType and mimeType
+        String fileType = "DOCUMENT";
+        if ("IMAGE".equals(message.getMessageType())) {
+            fileType = "IMAGE";
+        } else if ("AUDIO".equals(message.getMessageType())) {
+            fileType = "AUDIO";
+        } else if ("VIDEO".equals(message.getMessageType())) {
+            fileType = "VIDEO";
+        }
+        
         GroupFile groupFile = GroupFile.builder()
                 .group(message.getGroup())
                 .groupId(message.getGroupId())
@@ -109,7 +118,8 @@ public class GroupFileService {
                 .senderId(message.getSenderId())
                 .fileName(message.getFileName() != null ? message.getFileName() : "file")
                 .fileSize(message.getFileSize() != null ? message.getFileSize() : 0L)
-                .fileType(message.getMimeType())
+                .fileType(fileType)
+                .mimeType(message.getMimeType())
                 .fileUrl(fileUrl)
                 .build();
 
@@ -127,6 +137,46 @@ public class GroupFileService {
         String senderName = senderInfo != null ? (String) senderInfo.get("fullName") : "Người dùng";
         String senderAvatarUrl = senderInfo != null ? (String) senderInfo.get("avatarUrl") : null;
 
+        // Determine mimeType: prefer mimeType field, fallback to fileType if it looks like a mime type
+        String mimeType = groupFile.getMimeType();
+        if (mimeType == null || mimeType.isEmpty()) {
+            // If fileType is a mime type (contains '/'), use it as mimeType
+            String fileType = groupFile.getFileType();
+            if (fileType != null && fileType.contains("/")) {
+                mimeType = fileType;
+            } else {
+                // Otherwise, try to infer from fileType enum
+                if ("IMAGE".equals(fileType)) {
+                    // Try to infer from file name extension
+                    String fileName = groupFile.getFileName();
+                    if (fileName != null) {
+                        String lowerFileName = fileName.toLowerCase();
+                        if (lowerFileName.endsWith(".jpg") || lowerFileName.endsWith(".jpeg")) {
+                            mimeType = "image/jpeg";
+                        } else if (lowerFileName.endsWith(".png")) {
+                            mimeType = "image/png";
+                        } else if (lowerFileName.endsWith(".gif")) {
+                            mimeType = "image/gif";
+                        } else if (lowerFileName.endsWith(".webp")) {
+                            mimeType = "image/webp";
+                        } else if (lowerFileName.endsWith(".heic")) {
+                            mimeType = "image/heic";
+                        } else {
+                            mimeType = "image/jpeg"; // Default for IMAGE type
+                        }
+                    } else {
+                        mimeType = "image/jpeg"; // Default for IMAGE type
+                    }
+                } else if ("AUDIO".equals(fileType)) {
+                    mimeType = "audio/mpeg"; // Default for AUDIO type
+                } else if ("VIDEO".equals(fileType)) {
+                    mimeType = "video/mp4"; // Default for VIDEO type
+                } else {
+                    mimeType = "application/octet-stream"; // Default for DOCUMENT type
+                }
+            }
+        }
+        
         return GroupFileResponse.builder()
                 .id(groupFile.getId())
                 .groupId(groupFile.getGroupId())
@@ -137,6 +187,7 @@ public class GroupFileService {
                 .fileName(groupFile.getFileName())
                 .fileSize(groupFile.getFileSize())
                 .fileType(groupFile.getFileType())
+                .mimeType(mimeType)
                 .fileUrl(groupFile.getFileUrl())
                 .createdAt(groupFile.getCreatedAt())
                 .build();
