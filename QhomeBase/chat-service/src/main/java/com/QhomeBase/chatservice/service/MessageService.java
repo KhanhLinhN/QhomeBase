@@ -59,6 +59,9 @@ public class MessageService {
         if ("IMAGE".equals(messageType) && (request.getImageUrl() == null || request.getImageUrl().isEmpty())) {
             throw new RuntimeException("Image message must have imageUrl");
         }
+        if ("AUDIO".equals(messageType) && (request.getFileUrl() == null || request.getFileUrl().isEmpty())) {
+            throw new RuntimeException("Audio message must have fileUrl");
+        }
         if ("FILE".equals(messageType) && (request.getFileUrl() == null || request.getFileUrl().isEmpty())) {
             throw new RuntimeException("File message must have fileUrl");
         }
@@ -168,7 +171,12 @@ public class MessageService {
             throw new RuntimeException("Message does not belong to this group");
         }
 
-        if (!message.getSenderId().equals(residentId)) {
+        // System messages cannot be edited
+        if ("SYSTEM".equals(message.getMessageType())) {
+            throw new RuntimeException("System messages cannot be edited");
+        }
+
+        if (message.getSenderId() == null || !message.getSenderId().equals(residentId)) {
             throw new RuntimeException("You can only edit your own messages");
         }
 
@@ -211,13 +219,22 @@ public class MessageService {
         GroupMember member = groupMemberRepository.findByGroupIdAndResidentId(groupId, residentId)
                 .orElseThrow(() -> new RuntimeException("You are not a member of this group"));
 
-        boolean canDelete = message.getSenderId().equals(residentId) ||
-                           "ADMIN".equals(member.getRole()) ||
-                           "MODERATOR".equals(member.getRole());
-
-        if (!canDelete) {
-            throw new RuntimeException("You don't have permission to delete this message");
+        // System messages can only be deleted by admins/moderators
+        if ("SYSTEM".equals(message.getMessageType())) {
+            boolean canDelete = "ADMIN".equals(member.getRole()) ||
+                               "MODERATOR".equals(member.getRole());
+            if (!canDelete) {
+                throw new RuntimeException("Only admins and moderators can delete system messages");
+            }
+        } else {
+            boolean canDelete = (message.getSenderId() != null && message.getSenderId().equals(residentId)) ||
+                               "ADMIN".equals(member.getRole()) ||
+                               "MODERATOR".equals(member.getRole());
+            if (!canDelete) {
+                throw new RuntimeException("You don't have permission to delete this message");
+            }
         }
+
 
         message.setIsDeleted(true);
         message.setContent(null); // Clear content for deleted messages

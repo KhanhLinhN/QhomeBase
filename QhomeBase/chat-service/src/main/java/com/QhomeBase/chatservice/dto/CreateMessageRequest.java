@@ -11,11 +11,11 @@ public class CreateMessageRequest {
     @Size(max = 5000, message = "Message content must not exceed 5000 characters")
     private String content;
     
-    private String messageType; // TEXT, IMAGE, FILE
+    private String messageType; // TEXT, IMAGE, AUDIO, FILE, SYSTEM
     
     private String imageUrl;
     
-    private String fileUrl;
+    private String fileUrl; // For both audio and file messages
     
     private String fileName;
     

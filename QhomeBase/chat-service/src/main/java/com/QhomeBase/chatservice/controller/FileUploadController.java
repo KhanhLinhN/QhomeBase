@@ -54,9 +54,40 @@ public class FileUploadController {
         }
     }
 
+    @PostMapping("/{groupId}/audio")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Upload audio for chat message", description = "Upload an audio file (voice message) for a chat message")
+    public ResponseEntity<Map<String, String>> uploadAudio(
+            @PathVariable UUID groupId,
+            @RequestParam("file") MultipartFile file) {
+        
+        try {
+            // Validate file
+            if (file.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "File is empty"));
+            }
+
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.startsWith("audio/")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "File must be an audio file"));
+            }
+
+            // Upload audio
+            String audioUrl = fileStorageService.uploadAudio(file, groupId);
+
+            Map<String, String> response = new HashMap<>();
+            response.put("audioUrl", audioUrl);
+            response.put("fileSize", String.valueOf(file.getSize()));
+            return ResponseEntity.ok(response);
+        } catch (IOException e) {
+            log.error("Error uploading audio: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to upload audio"));
+        }
+    }
+
     @PostMapping("/{groupId}/file")
     @PreAuthorize("hasRole('RESIDENT')")
-    @Operation(summary = "Upload file for chat message", description = "Upload a file for a chat message")
+    @Operation(summary = "Upload file for chat message", description = "Upload a file (document, PDF, zip, etc.) for a chat message")
     public ResponseEntity<Map<String, String>> uploadFile(
             @PathVariable UUID groupId,
             @RequestParam("file") MultipartFile file) {
@@ -65,6 +96,12 @@ public class FileUploadController {
             // Validate file
             if (file.isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "File is empty"));
+            }
+
+            // Validate file size (max 50MB)
+            long maxSize = 50 * 1024 * 1024; // 50MB
+            if (file.getSize() > maxSize) {
+                return ResponseEntity.badRequest().body(Map.of("error", "File size exceeds 50MB limit"));
             }
 
             // Upload file

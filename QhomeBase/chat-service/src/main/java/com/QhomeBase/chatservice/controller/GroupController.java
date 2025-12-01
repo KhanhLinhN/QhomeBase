@@ -38,7 +38,7 @@ public class GroupController {
 
     @GetMapping("/{groupId}")
     @PreAuthorize("hasRole('RESIDENT')")
-    @Operation(summary = "Get group by ID", description = "Get detailed information about a specific group")
+    @Operation(summary = "Get group by ID", description = "Get detailed information about a specific group including all members. All group members (ADMIN, MODERATOR, MEMBER) can view the member list.")
     public ResponseEntity<GroupResponse> getGroupById(
             @PathVariable UUID groupId,
             Authentication authentication) {

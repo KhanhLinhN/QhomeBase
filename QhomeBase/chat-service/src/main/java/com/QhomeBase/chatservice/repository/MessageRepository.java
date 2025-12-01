@@ -21,13 +21,13 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
             Pageable pageable
     );
 
-    @Query("SELECT m FROM Message m WHERE m.groupId = :groupId AND m.createdAt > :after AND m.isDeleted = false ORDER BY m.createdAt ASC")
+    @Query("SELECT m FROM Message m WHERE m.groupId = :groupId AND m.createdAt > :after AND m.messageType != 'SYSTEM' AND m.isDeleted = false ORDER BY m.createdAt ASC")
     List<Message> findNewMessagesByGroupIdAfter(
             @Param("groupId") UUID groupId,
             @Param("after") OffsetDateTime after
     );
 
-    @Query("SELECT m FROM Message m WHERE m.groupId = :groupId AND m.createdAt > :after AND m.senderId != :excludeSenderId AND m.isDeleted = false ORDER BY m.createdAt ASC")
+    @Query("SELECT m FROM Message m WHERE m.groupId = :groupId AND m.createdAt > :after AND m.senderId != :excludeSenderId AND m.messageType != 'SYSTEM' AND m.isDeleted = false ORDER BY m.createdAt ASC")
     List<Message> findNewMessagesByGroupIdAfterExcludingSender(
             @Param("groupId") UUID groupId,
             @Param("after") OffsetDateTime after,

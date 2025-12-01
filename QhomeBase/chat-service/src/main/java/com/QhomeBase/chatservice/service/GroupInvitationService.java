@@ -355,16 +355,29 @@ public class GroupInvitationService {
         GroupInvitation invitation = invitationRepository.findByIdAndStatus(invitationId, "PENDING")
                 .orElseThrow(() -> new RuntimeException("Invitation not found or already processed"));
 
-        // Verify phone number matches
-        Map<String, Object> residentInfo = residentInfoService.getResidentInfo(residentId);
-        String phone = residentInfo != null ? (String) residentInfo.get("phone") : null;
-        if (phone == null) {
-            throw new RuntimeException("Phone number not found for resident");
-        }
+        // Verify this invitation is for the current user
+        // First check by residentId (most reliable)
+        if (invitation.getInviteeResidentId() != null) {
+            if (!invitation.getInviteeResidentId().equals(residentId)) {
+                throw new RuntimeException("This invitation is not for you");
+            }
+        } else {
+            // Fallback: check by phone number if residentId is not set (for old invitations)
+            Map<String, Object> residentInfo = residentInfoService.getResidentInfo(residentId);
+            String phone = residentInfo != null ? (String) residentInfo.get("phone") : null;
+            if (phone == null) {
+                throw new RuntimeException("Phone number not found for resident");
+            }
 
-        String normalizedPhone = phone.replaceAll("[^0-9]", "");
-        if (!normalizedPhone.equals(invitation.getInviteePhone())) {
-            throw new RuntimeException("This invitation is not for you");
+            String normalizedPhone = phone.replaceAll("[^0-9]", "");
+            // Remove leading zero for comparison (storage format)
+            String phoneForComparison = normalizedPhone.startsWith("0") && normalizedPhone.length() > 1
+                ? normalizedPhone.substring(1)
+                : normalizedPhone;
+            
+            if (!phoneForComparison.equals(invitation.getInviteePhone())) {
+                throw new RuntimeException("This invitation is not for you");
+            }
         }
 
         // Check if already a member
@@ -419,16 +432,29 @@ public class GroupInvitationService {
         GroupInvitation invitation = invitationRepository.findByIdAndStatus(invitationId, "PENDING")
                 .orElseThrow(() -> new RuntimeException("Invitation not found or already processed"));
 
-        // Verify phone number matches
-        Map<String, Object> residentInfo = residentInfoService.getResidentInfo(residentId);
-        String phone = residentInfo != null ? (String) residentInfo.get("phone") : null;
-        if (phone == null) {
-            throw new RuntimeException("Phone number not found for resident");
-        }
+        // Verify this invitation is for the current user
+        // First check by residentId (most reliable)
+        if (invitation.getInviteeResidentId() != null) {
+            if (!invitation.getInviteeResidentId().equals(residentId)) {
+                throw new RuntimeException("This invitation is not for you");
+            }
+        } else {
+            // Fallback: check by phone number if residentId is not set (for old invitations)
+            Map<String, Object> residentInfo = residentInfoService.getResidentInfo(residentId);
+            String phone = residentInfo != null ? (String) residentInfo.get("phone") : null;
+            if (phone == null) {
+                throw new RuntimeException("Phone number not found for resident");
+            }
 
-        String normalizedPhone = phone.replaceAll("[^0-9]", "");
-        if (!normalizedPhone.equals(invitation.getInviteePhone())) {
-            throw new RuntimeException("This invitation is not for you");
+            String normalizedPhone = phone.replaceAll("[^0-9]", "");
+            // Remove leading zero for comparison (storage format)
+            String phoneForComparison = normalizedPhone.startsWith("0") && normalizedPhone.length() > 1
+                ? normalizedPhone.substring(1)
+                : normalizedPhone;
+            
+            if (!phoneForComparison.equals(invitation.getInviteePhone())) {
+                throw new RuntimeException("This invitation is not for you");
+            }
         }
 
         invitation.setStatus("DECLINED");

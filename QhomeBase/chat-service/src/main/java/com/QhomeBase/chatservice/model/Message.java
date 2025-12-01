@@ -35,15 +35,15 @@ public class Message {
     @Column(name = "group_id", insertable = false, updatable = false)
     private UUID groupId;
 
-    @Column(name = "sender_id", nullable = false)
-    private UUID senderId;
+    @Column(name = "sender_id", nullable = true)
+    private UUID senderId; // Null for system messages
 
     @Column(name = "content", columnDefinition = "TEXT")
     private String content;
 
     @Column(name = "message_type", nullable = false, length = 50)
     @Builder.Default
-    private String messageType = "TEXT"; // TEXT, IMAGE, FILE, SYSTEM
+    private String messageType = "TEXT"; // TEXT, IMAGE, AUDIO, FILE, SYSTEM
 
     @Column(name = "image_url")
     private String imageUrl;

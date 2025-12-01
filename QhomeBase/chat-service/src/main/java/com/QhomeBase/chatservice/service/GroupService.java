@@ -106,7 +106,8 @@ public class GroupService {
         Group group = groupRepository.findActiveGroupById(groupId)
                 .orElseThrow(() -> new RuntimeException("Group not found: " + groupId));
 
-        // Check if user is a member
+        // Check if user is a member (any role: ADMIN, MODERATOR, or MEMBER)
+        // All members can view the group details including the full member list
         GroupMember member = groupMemberRepository.findByGroupIdAndResidentId(groupId, residentId)
                 .orElseThrow(() -> new RuntimeException("You are not a member of this group"));
 
@@ -313,6 +314,8 @@ public class GroupService {
     }
 
     private GroupResponse toGroupResponse(Group group, UUID currentResidentId) {
+        // Get all members of the group (ADMIN, MODERATOR, MEMBER) - no role filtering
+        // All group members can see all other members
         List<GroupMember> members = groupMemberRepository.findByGroupId(group.getId());
         
         String userRole = null;

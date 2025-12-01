@@ -42,6 +42,25 @@ public class FileStorageService {
     }
 
     /**
+     * Upload audio file for chat message
+     */
+    public String uploadAudio(MultipartFile file, UUID groupId) throws IOException {
+        log.info("Uploading audio for group: {}", groupId);
+        
+        // Create directory if not exists
+        Path uploadPath = Paths.get(uploadDirectory, groupId.toString(), "audio");
+        Files.createDirectories(uploadPath);
+
+        String fileName = UUID.randomUUID().toString() + ".m4a"; // Default to m4a for voice messages
+        Path filePath = uploadPath.resolve(fileName);
+        Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+        String audioUrl = getAudioUrl(groupId.toString(), fileName);
+        log.info("Uploaded audio: {}", audioUrl);
+        return audioUrl;
+    }
+
+    /**
      * Upload file for chat message
      */
     public String uploadFile(MultipartFile file, UUID groupId) throws IOException {
@@ -97,6 +116,13 @@ public class FileStorageService {
             return cdnBaseUrl + "/chat/" + groupId + "/" + fileName;
         }
         return "/uploads/chat/" + groupId + "/" + fileName;
+    }
+
+    private String getAudioUrl(String groupId, String fileName) {
+        if (cdnBaseUrl != null && !cdnBaseUrl.isEmpty()) {
+            return cdnBaseUrl + "/chat/" + groupId + "/audio/" + fileName;
+        }
+        return "/uploads/chat/" + groupId + "/audio/" + fileName;
     }
 
     private String getFileUrl(String groupId, String fileName) {
