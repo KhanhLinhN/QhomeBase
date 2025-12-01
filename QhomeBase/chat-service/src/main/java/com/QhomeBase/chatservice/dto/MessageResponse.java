@@ -24,6 +24,7 @@ public class MessageResponse {
     private String fileUrl;
     private String fileName;
     private Long fileSize;
+    private String mimeType;
     private UUID replyToMessageId;
     private MessageResponse replyToMessage; // Full reply message if exists
     private Boolean isEdited;

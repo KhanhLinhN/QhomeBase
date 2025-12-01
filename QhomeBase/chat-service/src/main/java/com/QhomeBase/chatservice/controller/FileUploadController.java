@@ -107,11 +107,13 @@ public class FileUploadController {
             // Upload file
             String fileUrl = fileStorageService.uploadFile(file, groupId);
             String fileName = file.getOriginalFilename();
+            String contentType = file.getContentType();
 
             Map<String, String> response = new HashMap<>();
             response.put("fileUrl", fileUrl);
             response.put("fileName", fileName != null ? fileName : "file");
             response.put("fileSize", String.valueOf(file.getSize()));
+            response.put("mimeType", contentType != null ? contentType : "application/octet-stream");
             return ResponseEntity.ok(response);
         } catch (IOException e) {
             log.error("Error uploading file: {}", e.getMessage(), e);

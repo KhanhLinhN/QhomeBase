@@ -57,6 +57,9 @@ public class Message {
     @Column(name = "file_size")
     private Long fileSize;
 
+    @Column(name = "mime_type", length = 100)
+    private String mimeType;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reply_to_message_id")
     private Message replyToMessage;

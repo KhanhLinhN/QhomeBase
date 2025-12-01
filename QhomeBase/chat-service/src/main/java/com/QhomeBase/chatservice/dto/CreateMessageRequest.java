@@ -21,6 +21,8 @@ public class CreateMessageRequest {
     
     private Long fileSize;
     
+    private String mimeType;
+    
     private UUID replyToMessageId; // For replying to a message
 }
 
