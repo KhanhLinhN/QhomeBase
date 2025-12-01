@@ -35,6 +35,7 @@ public class MessageService {
     private final ResidentInfoService residentInfoService;
     private final ChatNotificationService notificationService;
     private final FcmPushService fcmPushService;
+    private final com.QhomeBase.chatservice.service.GroupFileService groupFileService;
 
     @Transactional
     public MessageResponse createMessage(UUID groupId, CreateMessageRequest request, UUID userId) {
@@ -110,6 +111,16 @@ public class MessageService {
         log.debug("Updated lastReadAt for sender {} in group {} to {}", residentId, groupId, lastReadTime);
 
         MessageResponse response = toMessageResponse(message);
+        
+        // Save file metadata if this is a file/image/audio message
+        if ("FILE".equals(messageType) || "IMAGE".equals(messageType) || "AUDIO".equals(messageType)) {
+            try {
+                groupFileService.saveFileMetadata(message);
+            } catch (Exception e) {
+                log.warn("Failed to save file metadata for message {}: {}", message.getId(), e.getMessage());
+                // Don't fail the message creation if file metadata save fails
+            }
+        }
         
         // Notify via WebSocket
         notificationService.notifyNewMessage(groupId, response);

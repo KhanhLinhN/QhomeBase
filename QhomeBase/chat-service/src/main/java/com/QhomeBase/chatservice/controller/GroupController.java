@@ -21,6 +21,7 @@ import java.util.UUID;
 public class GroupController {
 
     private final GroupService groupService;
+    private final com.QhomeBase.chatservice.service.GroupFileService groupFileService;
 
     @PostMapping
     @PreAuthorize("hasRole('RESIDENT')")
@@ -136,6 +137,23 @@ public class GroupController {
         
         groupService.deleteGroup(groupId, userId);
         return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/{groupId}/files")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Get group files", description = "Get paginated list of all files sent in the group, sorted by createdAt descending")
+    public ResponseEntity<com.QhomeBase.chatservice.dto.GroupFilePagedResponse> getGroupFiles(
+            @PathVariable UUID groupId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication) {
+        
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        com.QhomeBase.chatservice.dto.GroupFilePagedResponse response = 
+            groupFileService.getGroupFiles(groupId, userId, page, size);
+        return ResponseEntity.ok(response);
     }
 }
 
