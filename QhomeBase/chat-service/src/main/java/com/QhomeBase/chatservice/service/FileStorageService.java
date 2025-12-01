@@ -27,17 +27,35 @@ public class FileStorageService {
      */
     public String uploadImage(MultipartFile file, UUID groupId) throws IOException {
         log.info("Uploading image for group: {}", groupId);
+        log.info("Upload directory: {}", uploadDirectory);
         
         // Create directory if not exists
         Path uploadPath = Paths.get(uploadDirectory, groupId.toString());
         Files.createDirectories(uploadPath);
+        log.info("Created upload path: {}", uploadPath.toAbsolutePath());
 
-        String fileName = UUID.randomUUID().toString() + ".jpg";
+        // Preserve original file extension
+        String originalFileName = file.getOriginalFilename();
+        String extension = ".jpg"; // default
+        if (originalFileName != null && originalFileName.contains(".")) {
+            extension = originalFileName.substring(originalFileName.lastIndexOf("."));
+        }
+        
+        String fileName = UUID.randomUUID().toString() + extension;
         Path filePath = uploadPath.resolve(fileName);
+        log.info("Saving file to: {}", filePath.toAbsolutePath());
+        
         Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+        
+        // Verify file was saved
+        if (!Files.exists(filePath)) {
+            throw new IOException("File was not saved successfully: " + filePath);
+        }
+        log.info("File saved successfully, size: {} bytes", Files.size(filePath));
 
         String imageUrl = getImageUrl(groupId.toString(), fileName);
-        log.info("Uploaded image: {}", imageUrl);
+        log.info("Uploaded image URL: {}", imageUrl);
+        log.info("Full file path: {}", filePath.toAbsolutePath());
         return imageUrl;
     }
 

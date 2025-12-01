@@ -117,6 +117,13 @@ spring:
             - Path=/api/chat/**
           filters:
             - StripPrefix=2
+        # Chat Service - Uploads (must be before base-service catch-all)
+        - id: chat-service-uploads
+          uri: ${chat.service.url:http://localhost:8090}
+          predicates:
+            - Path=/uploads/chat/**
+          filters:
+            - StripPrefix=0
         # Staff Work Service Routes (must be before base-service catch-all)
         - id: staff-work-service
           uri: ${staff-work.service.url:http://localhost:8087}
