@@ -11,18 +11,20 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.UUID;
 
 @Repository
 public interface MarketplacePostRepository extends JpaRepository<MarketplacePost, UUID> {
 
+    // Use EntityGraph to avoid Hibernate warning about collection fetch with pagination
+    @EntityGraph(attributePaths = {}, type = EntityGraph.EntityGraphType.LOAD)
     Page<MarketplacePost> findByBuildingIdAndStatusOrderByCreatedAtDesc(
         UUID buildingId, 
         PostStatus status, 
         Pageable pageable
     );
 
+    @EntityGraph(attributePaths = {}, type = EntityGraph.EntityGraphType.LOAD)
     Page<MarketplacePost> findByBuildingIdAndStatusAndCategoryOrderByCreatedAtDesc(
         UUID buildingId, 
         PostStatus status, 
@@ -30,6 +32,8 @@ public interface MarketplacePostRepository extends JpaRepository<MarketplacePost
         Pageable pageable
     );
 
+    // Use native query with explicit TEXT cast to avoid bytea type issue with LOWER function
+    // Note: @EntityGraph doesn't work with native queries, but collections are loaded separately
     @Query(value = "SELECT * FROM marketplace.marketplace_posts p WHERE p.building_id = :buildingId " +
            "AND p.status = CAST(:status AS marketplace.post_status) " +
            "AND (LOWER(p.title) LIKE LOWER('%' || :search || '%') " +
@@ -47,6 +51,8 @@ public interface MarketplacePostRepository extends JpaRepository<MarketplacePost
         Pageable pageable
     );
 
+    // Use native query with explicit TEXT cast to avoid bytea type issue with LOWER function
+    // Note: @EntityGraph doesn't work with native queries, but collections are loaded separately
     @Query(value = "SELECT * FROM marketplace.marketplace_posts p WHERE " +
            "(:buildingId IS NULL OR p.building_id = :buildingId) " +
            "AND p.status = CAST(:status AS marketplace.post_status) " +
@@ -84,11 +90,14 @@ public interface MarketplacePostRepository extends JpaRepository<MarketplacePost
         Pageable pageable
     );
 
+    // Use EntityGraph to avoid Hibernate warning about collection fetch with pagination
+    @EntityGraph(attributePaths = {}, type = EntityGraph.EntityGraphType.LOAD)
     Page<MarketplacePost> findByResidentIdOrderByCreatedAtDesc(
         UUID residentId, 
         Pageable pageable
     );
 
+    @EntityGraph(attributePaths = {}, type = EntityGraph.EntityGraphType.LOAD)
     Page<MarketplacePost> findByResidentIdAndStatusOrderByCreatedAtDesc(
         UUID residentId, 
         PostStatus status, 

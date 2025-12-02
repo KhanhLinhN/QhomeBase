@@ -126,7 +126,9 @@ public class MarketplacePostService {
     @Transactional
     public MarketplacePost createPost(MarketplacePost post) {
         log.info("Creating new post: {}", post.getTitle());
+        log.info("📝 [MarketplacePostService] Post contactInfo before save: {}", post.getContactInfo());
         MarketplacePost saved = postRepository.save(post);
+        log.info("📝 [MarketplacePostService] Post contactInfo after save: {}", saved.getContactInfo());
         // Also evict post details cache for this post
         cacheService.evictPostCaches(saved.getId());
         return saved;

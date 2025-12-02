@@ -6,11 +6,11 @@ import com.QhomeBase.marketplaceservice.model.MarketplaceComment;
 import com.QhomeBase.marketplaceservice.model.MarketplacePost;
 import com.QhomeBase.marketplaceservice.model.MarketplacePostImage;
 import com.QhomeBase.marketplaceservice.service.ResidentInfoService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 public class MarketplaceMapper {
 
     private final ResidentInfoService residentInfoService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public PostResponse toPostResponse(MarketplacePost post) {
         // Fetch resident info for author
@@ -45,6 +46,10 @@ public class MarketplaceMapper {
             System.out.println("⚠️ [MarketplaceMapper] Post " + post.getId() + " has no images");
         }
         
+        // Debug: Log contactInfo from post entity
+        String contactInfoJson = post.getContactInfo();
+        System.out.println("📞 [MarketplaceMapper] Post " + post.getId() + " contactInfo from entity: " + contactInfoJson);
+        
         return PostResponse.builder()
                 .id(post.getId())
                 .residentId(post.getResidentId())
@@ -55,7 +60,7 @@ public class MarketplaceMapper {
                 .category(post.getCategory())
                 .categoryName(post.getCategory()) // Will be enhanced with category lookup
                 .status(post.getStatus().name())
-                .contactInfo(toContactInfoResponse(post.getContactInfo()))
+                .contactInfo(toContactInfoResponse(contactInfoJson))
                 .location(post.getLocation())
                 .viewCount(post.getViewCount())
                 .commentCount(post.getCommentCount())
@@ -78,19 +83,51 @@ public class MarketplaceMapper {
     }
 
     public ContactInfoResponse toContactInfoResponse(String contactInfoJson) {
-        // Simple implementation - in production, use JSON parser
-        if (contactInfoJson == null || contactInfoJson.isEmpty()) {
+        System.out.println("📞 [MarketplaceMapper] Parsing contactInfo JSON: " + contactInfoJson);
+        
+        if (contactInfoJson == null || contactInfoJson.isEmpty() || contactInfoJson.trim().equals("{}")) {
+            System.out.println("⚠️ [MarketplaceMapper] ContactInfo is null or empty");
             return ContactInfoResponse.builder()
                     .showPhone(false)
                     .showEmail(false)
                     .build();
         }
-        // TODO: Parse JSON properly
-        return ContactInfoResponse.builder()
-                .showPhone(true)
-                .showEmail(false)
-                .phoneDisplay("***") // Masked
-                .build();
+        
+        try {
+            // Parse JSON string to ContactInfoRequest
+            ContactInfoRequest contactInfo = objectMapper.readValue(contactInfoJson, ContactInfoRequest.class);
+            System.out.println("✅ [MarketplaceMapper] Parsed ContactInfoRequest - phone: " + contactInfo.getPhone() + ", email: " + contactInfo.getEmail() + ", showPhone: " + contactInfo.getShowPhone() + ", showEmail: " + contactInfo.getShowEmail());
+            
+            // Build response with actual phone and email
+            ContactInfoResponse.ContactInfoResponseBuilder builder = ContactInfoResponse.builder()
+                    .phone(contactInfo.getPhone())
+                    .email(contactInfo.getEmail())
+                    .showPhone(contactInfo.getShowPhone() != null ? contactInfo.getShowPhone() : true)
+                    .showEmail(contactInfo.getShowEmail() != null ? contactInfo.getShowEmail() : false);
+            
+            // Generate masked phone display if phone exists
+            if (contactInfo.getPhone() != null && !contactInfo.getPhone().trim().isEmpty()) {
+                String phone = contactInfo.getPhone().trim();
+                if (phone.length() > 4) {
+                    builder.phoneDisplay("***" + phone.substring(phone.length() - 4));
+                } else {
+                    builder.phoneDisplay("***");
+                }
+            }
+            
+            ContactInfoResponse response = builder.build();
+            System.out.println("✅ [MarketplaceMapper] Built ContactInfoResponse - phone: " + response.getPhone() + ", email: " + response.getEmail() + ", showPhone: " + response.getShowPhone() + ", showEmail: " + response.getShowEmail());
+            return response;
+        } catch (Exception e) {
+            System.err.println("❌ [MarketplaceMapper] ERROR: Failed to parse contactInfo JSON: " + contactInfoJson);
+            System.err.println("❌ [MarketplaceMapper] Exception: " + e.getMessage());
+            e.printStackTrace();
+            // Return empty response on parse error
+            return ContactInfoResponse.builder()
+                    .showPhone(false)
+                    .showEmail(false)
+                    .build();
+        }
     }
 
     public CommentResponse toCommentResponse(MarketplaceComment comment) {

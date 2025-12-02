@@ -101,13 +101,38 @@ public class MarketplacePostController {
     @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Create new post", description = "Create a new marketplace post")
     public ResponseEntity<PostResponse> createPost(
-            @Valid @RequestPart("data") CreatePostRequest request,
+            @RequestPart("data") String dataJson,
             @RequestPart(value = "images", required = false) List<MultipartFile> images,
             Authentication authentication) {
+        
+        // Manually deserialize JSON string to CreatePostRequest
+        CreatePostRequest request;
+        try {
+            log.info("📝 [MarketplacePostController] Raw data JSON: {}", dataJson);
+            request = objectMapper.readValue(dataJson, CreatePostRequest.class);
+            log.info("✅ [MarketplacePostController] Deserialized CreatePostRequest successfully");
+        } catch (Exception e) {
+            log.error("❌ [MarketplacePostController] Error deserializing request: {}", e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().build();
+        }
         
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
         String accessToken = principal.token();
+
+        // Debug: Log request data
+        log.info("📝 [MarketplacePostController] Received createPost request:");
+        log.info("   - buildingId: {}", request.getBuildingId());
+        log.info("   - title: {}", request.getTitle());
+        log.info("   - category: {}", request.getCategory());
+        log.info("   - contactInfo: {}", request.getContactInfo());
+        if (request.getContactInfo() != null) {
+            log.info("   - contactInfo.phone: {}", request.getContactInfo().getPhone());
+            log.info("   - contactInfo.email: {}", request.getContactInfo().getEmail());
+            log.info("   - contactInfo.showPhone: {}", request.getContactInfo().getShowPhone());
+            log.info("   - contactInfo.showEmail: {}", request.getContactInfo().getShowEmail());
+        }
 
         // Get residentId from userId
         UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
@@ -153,12 +178,24 @@ public class MarketplacePostController {
         if (request.getContactInfo() != null) {
             try {
                 String contactInfoJson = objectMapper.writeValueAsString(request.getContactInfo());
+                log.info("📞 [MarketplacePostController] Serializing contactInfo: phone={}, email={}, showPhone={}, showEmail={}", 
+                    request.getContactInfo().getPhone(), 
+                    request.getContactInfo().getEmail(),
+                    request.getContactInfo().getShowPhone(),
+                    request.getContactInfo().getShowEmail());
+                log.info("📞 [MarketplacePostController] Serialized JSON: {}", contactInfoJson);
                 post.setContactInfo(contactInfoJson);
+                log.info("✅ [MarketplacePostController] Set contactInfo to post: {}", contactInfoJson);
             } catch (Exception e) {
-                log.error("Error serializing contact info: {}", e.getMessage());
+                log.error("❌ [MarketplacePostController] Error serializing contact info: {}", e.getMessage());
+                e.printStackTrace();
                 post.setContactInfo("{}");
             }
+        } else {
+            log.warn("⚠️ [MarketplacePostController] ContactInfo is null in request - post will have no contact info");
         }
+        
+        log.info("📝 [MarketplacePostController] Post before save - contactInfo: {}", post.getContactInfo());
 
         MarketplacePost saved = postService.createPost(post);
 
@@ -204,9 +241,21 @@ public class MarketplacePostController {
     @Operation(summary = "Update post", description = "Update an existing post")
     public ResponseEntity<PostResponse> updatePost(
             @PathVariable UUID id,
-            @Valid @RequestPart("data") UpdatePostRequest request,
+            @RequestPart("data") String dataJson,
             @RequestPart(value = "images", required = false) List<MultipartFile> newImages,
             Authentication authentication) {
+        
+        // Manually deserialize JSON string to UpdatePostRequest
+        UpdatePostRequest request;
+        try {
+            log.info("📝 [MarketplacePostController] Raw update data JSON: {}", dataJson);
+            request = objectMapper.readValue(dataJson, UpdatePostRequest.class);
+            log.info("✅ [MarketplacePostController] Deserialized UpdatePostRequest successfully");
+        } catch (Exception e) {
+            log.error("❌ [MarketplacePostController] Error deserializing update request: {}", e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().build();
+        }
         
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
@@ -230,6 +279,23 @@ public class MarketplacePostController {
         if (request.getPrice() != null) post.setPrice(request.getPrice());
         if (request.getCategory() != null) post.setCategory(request.getCategory());
         if (request.getLocation() != null) post.setLocation(request.getLocation());
+        
+        // Handle contact info - serialize to JSON string
+        if (request.getContactInfo() != null) {
+            try {
+                String contactInfoJson = objectMapper.writeValueAsString(request.getContactInfo());
+                log.info("📞 [MarketplacePostController] Updating contactInfo: phone={}, email={}, showPhone={}, showEmail={}", 
+                    request.getContactInfo().getPhone(), 
+                    request.getContactInfo().getEmail(),
+                    request.getContactInfo().getShowPhone(),
+                    request.getContactInfo().getShowEmail());
+                log.info("📞 [MarketplacePostController] Serialized JSON: {}", contactInfoJson);
+                post.setContactInfo(contactInfoJson);
+            } catch (Exception e) {
+                log.error("❌ [MarketplacePostController] Error serializing contact info: {}", e.getMessage());
+                e.printStackTrace();
+            }
+        }
 
         MarketplacePost updated = postService.updatePost(id, post);
 

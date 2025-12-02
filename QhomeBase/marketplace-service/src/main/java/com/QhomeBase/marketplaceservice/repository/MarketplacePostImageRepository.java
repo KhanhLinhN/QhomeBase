@@ -14,7 +14,9 @@ public interface MarketplacePostImageRepository extends JpaRepository<Marketplac
     
     List<MarketplacePostImage> findByPostIdOrderBySortOrderAsc(UUID postId);
     
-    @Query("SELECT i FROM MarketplacePostImage i JOIN FETCH i.post WHERE i.post.id IN :postIds ORDER BY i.post.id, i.sortOrder ASC")
+    // Removed JOIN FETCH to avoid Hibernate warning when used with pagination
+    // The post relationship is already loaded from the parent query
+    @Query("SELECT i FROM MarketplacePostImage i WHERE i.post.id IN :postIds ORDER BY i.post.id, i.sortOrder ASC")
     List<MarketplacePostImage> findByPostIdIn(@Param("postIds") List<UUID> postIds);
 }
 
