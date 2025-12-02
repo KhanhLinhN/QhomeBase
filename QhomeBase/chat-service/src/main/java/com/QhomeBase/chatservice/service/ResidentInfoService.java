@@ -117,5 +117,40 @@ public class ResidentInfoService {
             return null;
         }
     }
+
+    /**
+     * Get resident name by residentId
+     */
+    public String getResidentName(UUID residentId, String accessToken) {
+        if (residentId == null) {
+            return "Unknown";
+        }
+
+        Map<String, Object> residentInfo = getResidentInfo(residentId);
+        if (residentInfo == null) {
+            return "Unknown";
+        }
+
+        // Try to get name from various possible fields
+        Object nameObj = residentInfo.get("name");
+        if (nameObj != null) {
+            return nameObj.toString();
+        }
+
+        Object fullNameObj = residentInfo.get("fullName");
+        if (fullNameObj != null) {
+            return fullNameObj.toString();
+        }
+
+        Object firstNameObj = residentInfo.get("firstName");
+        Object lastNameObj = residentInfo.get("lastName");
+        if (firstNameObj != null || lastNameObj != null) {
+            String firstName = firstNameObj != null ? firstNameObj.toString() : "";
+            String lastName = lastNameObj != null ? lastNameObj.toString() : "";
+            return (firstName + " " + lastName).trim();
+        }
+
+        return "Unknown";
+    }
 }
 

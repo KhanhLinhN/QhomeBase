@@ -26,6 +26,133 @@ public class FileUploadController {
 
     private final FileStorageService fileStorageService;
 
+    // Direct Chat File Upload Endpoints
+    @PostMapping("/direct/{conversationId}/image")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Upload image for direct chat", description = "Upload an image file for a direct chat message")
+    public ResponseEntity<Map<String, String>> uploadDirectImage(
+            @PathVariable UUID conversationId,
+            @RequestParam("file") MultipartFile file) {
+        
+        try {
+            if (file.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "File is empty"));
+            }
+
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.startsWith("image/")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "File must be an image"));
+            }
+
+            // Use conversationId as folder identifier (similar to groupId)
+            String imageUrl = fileStorageService.uploadImage(file, conversationId);
+
+            Map<String, String> response = new HashMap<>();
+            response.put("imageUrl", imageUrl);
+            response.put("mimeType", contentType);
+            return ResponseEntity.ok(response);
+        } catch (IOException e) {
+            log.error("Error uploading direct chat image: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to upload image"));
+        }
+    }
+
+    @PostMapping("/direct/{conversationId}/images")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Upload multiple images for direct chat", description = "Upload multiple image files for direct chat messages")
+    public ResponseEntity<Map<String, Object>> uploadDirectImages(
+            @PathVariable UUID conversationId,
+            @RequestParam("files") MultipartFile[] files) {
+        
+        try {
+            if (files == null || files.length == 0) {
+                return ResponseEntity.badRequest().body(Map.of("error", "No files provided"));
+            }
+
+            List<String> imageUrls = new ArrayList<>();
+            List<String> mimeTypes = new ArrayList<>();
+
+            for (MultipartFile file : files) {
+                if (file.isEmpty()) continue;
+
+                String contentType = file.getContentType();
+                if (contentType == null || !contentType.startsWith("image/")) {
+                    continue; // Skip non-image files
+                }
+
+                String imageUrl = fileStorageService.uploadImage(file, conversationId);
+                imageUrls.add(imageUrl);
+                mimeTypes.add(contentType);
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("imageUrls", imageUrls);
+            response.put("mimeTypes", mimeTypes);
+            response.put("count", imageUrls.size());
+            return ResponseEntity.ok(response);
+        } catch (IOException e) {
+            log.error("Error uploading direct chat images: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to upload images"));
+        }
+    }
+
+    @PostMapping("/direct/{conversationId}/audio")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Upload audio for direct chat", description = "Upload an audio file for a direct chat message")
+    public ResponseEntity<Map<String, String>> uploadDirectAudio(
+            @PathVariable UUID conversationId,
+            @RequestParam("file") MultipartFile file) {
+        
+        try {
+            if (file.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "File is empty"));
+            }
+
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.startsWith("audio/")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "File must be an audio file"));
+            }
+
+            String audioUrl = fileStorageService.uploadAudio(file, conversationId);
+
+            Map<String, String> response = new HashMap<>();
+            response.put("fileUrl", audioUrl);
+            response.put("mimeType", contentType);
+            response.put("fileSize", String.valueOf(file.getSize()));
+            return ResponseEntity.ok(response);
+        } catch (IOException e) {
+            log.error("Error uploading direct chat audio: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to upload audio"));
+        }
+    }
+
+    @PostMapping("/direct/{conversationId}/file")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Upload file for direct chat", description = "Upload any file for a direct chat message")
+    public ResponseEntity<Map<String, String>> uploadDirectFile(
+            @PathVariable UUID conversationId,
+            @RequestParam("file") MultipartFile file) {
+        
+        try {
+            if (file.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "File is empty"));
+            }
+
+            String fileUrl = fileStorageService.uploadFile(file, conversationId);
+            String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+
+            Map<String, String> response = new HashMap<>();
+            response.put("fileUrl", fileUrl);
+            response.put("fileName", file.getOriginalFilename());
+            response.put("fileSize", String.valueOf(file.getSize()));
+            response.put("mimeType", contentType);
+            return ResponseEntity.ok(response);
+        } catch (IOException e) {
+            log.error("Error uploading direct chat file: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to upload file"));
+        }
+    }
+
     @PostMapping("/{groupId}/image")
     @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Upload image for chat message", description = "Upload an image file for a chat message")

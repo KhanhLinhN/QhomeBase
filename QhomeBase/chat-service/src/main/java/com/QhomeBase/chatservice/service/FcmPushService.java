@@ -118,6 +118,75 @@ public class FcmPushService {
         }
     }
 
+    /**
+     * Send FCM push notification for direct message
+     */
+    public void sendDirectMessageNotification(UUID recipientId, UUID conversationId, com.QhomeBase.chatservice.dto.DirectMessageResponse message) {
+        try {
+            String title = "Tin nhắn mới";
+            String body = message.getSenderName() != null 
+                ? message.getSenderName() + ": " + getDirectMessagePreview(message)
+                : "Bạn có tin nhắn mới";
+
+            Map<String, String> data = new HashMap<>();
+            data.put("type", "DIRECT_MESSAGE");
+            data.put("conversationId", conversationId.toString());
+            data.put("messageId", message.getId().toString());
+            data.put("senderId", message.getSenderId() != null ? message.getSenderId().toString() : "");
+
+            sendPushToResident(recipientId, title, body, data);
+        } catch (Exception e) {
+            log.error("Error sending FCM push notification for direct message: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Send FCM push notification for direct invitation
+     */
+    public void sendDirectInvitationNotification(UUID inviteeId, UUID inviterId, UUID conversationId) {
+        try {
+            String title = "Lời mời trò chuyện";
+            String body = "Bạn có lời mời trò chuyện mới";
+
+            Map<String, String> data = new HashMap<>();
+            data.put("type", "DIRECT_INVITATION");
+            data.put("conversationId", conversationId.toString());
+            data.put("inviterId", inviterId.toString());
+
+            sendPushToResident(inviteeId, title, body, data);
+        } catch (Exception e) {
+            log.error("Error sending FCM push notification for direct invitation: {}", e.getMessage(), e);
+        }
+    }
+
+    private String getDirectMessagePreview(com.QhomeBase.chatservice.dto.DirectMessageResponse message) {
+        if (message.getIsDeleted() != null && message.getIsDeleted()) {
+            return "Tin nhắn đã bị xóa";
+        }
+        
+        if ("IMAGE".equals(message.getMessageType())) {
+            return "📷 Đã gửi một hình ảnh";
+        }
+        
+        if ("FILE".equals(message.getMessageType())) {
+            return "📎 Đã gửi một tệp";
+        }
+
+        if ("AUDIO".equals(message.getMessageType())) {
+            return "🎤 Đã gửi một tin nhắn thoại";
+        }
+        
+        if (message.getContent() != null && !message.getContent().isEmpty()) {
+            String content = message.getContent();
+            if (content.length() > 100) {
+                return content.substring(0, 100) + "...";
+            }
+            return content;
+        }
+        
+        return "Tin nhắn mới";
+    }
+
     private String getCurrentAccessToken() {
         try {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();

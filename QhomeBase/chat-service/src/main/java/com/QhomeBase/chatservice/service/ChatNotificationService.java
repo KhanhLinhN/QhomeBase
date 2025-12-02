@@ -115,5 +115,56 @@ public class ChatNotificationService {
         log.info("Sending GROUP_DELETED to group {} via WebSocket", groupId);
         messagingTemplate.convertAndSend(destination, wsMessage);
     }
+
+    // Direct Chat 1-1 WebSocket notifications
+    public void notifyDirectMessage(UUID conversationId, com.QhomeBase.chatservice.dto.DirectMessageResponse message) {
+        WebSocketMessage wsMessage = WebSocketMessage.builder()
+                .type("DIRECT_MESSAGE")
+                .conversationId(conversationId)
+                .directMessage(message)
+                .timestamp(OffsetDateTime.now())
+                .build();
+
+        String destination = "/topic/direct-chat/" + conversationId;
+        log.info("Sending DIRECT_MESSAGE to conversation {} via WebSocket", conversationId);
+        messagingTemplate.convertAndSend(destination, wsMessage);
+    }
+
+    public void notifyDirectInvitation(UUID inviteeId, com.QhomeBase.chatservice.dto.DirectInvitationResponse invitation) {
+        WebSocketMessage wsMessage = WebSocketMessage.builder()
+                .type("DIRECT_INVITATION")
+                .directInvitation(invitation)
+                .timestamp(OffsetDateTime.now())
+                .build();
+
+        String destination = "/topic/direct-invitations/" + inviteeId;
+        log.info("Sending DIRECT_INVITATION to user {} via WebSocket", inviteeId);
+        messagingTemplate.convertAndSend(destination, wsMessage);
+    }
+
+    public void notifyDirectInvitationAccepted(UUID inviterId, UUID conversationId, com.QhomeBase.chatservice.dto.DirectInvitationResponse invitation) {
+        WebSocketMessage wsMessage = WebSocketMessage.builder()
+                .type("DIRECT_INVITATION_ACCEPTED")
+                .conversationId(conversationId)
+                .directInvitation(invitation)
+                .timestamp(OffsetDateTime.now())
+                .build();
+
+        String destination = "/topic/direct-invitations/" + inviterId;
+        log.info("Sending DIRECT_INVITATION_ACCEPTED to user {} via WebSocket", inviterId);
+        messagingTemplate.convertAndSend(destination, wsMessage);
+    }
+
+    public void notifyDirectInvitationDeclined(UUID inviterId, UUID conversationId) {
+        WebSocketMessage wsMessage = WebSocketMessage.builder()
+                .type("DIRECT_INVITATION_DECLINED")
+                .conversationId(conversationId)
+                .timestamp(OffsetDateTime.now())
+                .build();
+
+        String destination = "/topic/direct-invitations/" + inviterId;
+        log.info("Sending DIRECT_INVITATION_DECLINED to user {} via WebSocket", inviterId);
+        messagingTemplate.convertAndSend(destination, wsMessage);
+    }
 }
 
