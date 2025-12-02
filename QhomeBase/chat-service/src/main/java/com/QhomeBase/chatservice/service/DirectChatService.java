@@ -426,5 +426,69 @@ public class DirectChatService {
 
         return builder.build();
     }
+
+    /**
+     * Get files in a conversation with pagination
+     */
+    @Transactional(readOnly = true)
+    public DirectChatFilePagedResponse getFiles(UUID conversationId, UUID userId, int page, int size) {
+        String accessToken = getCurrentAccessToken();
+        UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+        if (residentId == null) {
+            throw new RuntimeException("Resident not found for user: " + userId);
+        }
+        
+        // Verify user is a participant
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new RuntimeException("Conversation not found: " + conversationId));
+        
+        // Check if user is a participant using residentId
+        if (!conversation.isParticipant(residentId)) {
+            throw new RuntimeException("You are not a participant in this conversation");
+        }
+        
+        Pageable pageable = PageRequest.of(page, size);
+        Page<DirectChatFile> filePage = fileRepository.findByConversationIdOrderByCreatedAtDesc(
+                conversationId, pageable);
+        
+        List<DirectChatFileResponse> fileResponses = filePage.getContent().stream()
+                .map(file -> toFileResponse(file, accessToken))
+                .collect(Collectors.toList());
+        
+        return DirectChatFilePagedResponse.builder()
+                .content(fileResponses)
+                .currentPage(filePage.getNumber())
+                .pageSize(filePage.getSize())
+                .totalElements(filePage.getTotalElements())
+                .totalPages(filePage.getTotalPages())
+                .hasNext(filePage.hasNext())
+                .hasPrevious(filePage.hasPrevious())
+                .first(filePage.isFirst())
+                .last(filePage.isLast())
+                .build();
+    }
+    
+    /**
+     * Convert DirectChatFile entity to DTO
+     */
+    private DirectChatFileResponse toFileResponse(DirectChatFile file, String accessToken) {
+        String senderName = file.getSenderId() != null
+            ? residentInfoService.getResidentName(file.getSenderId(), accessToken)
+            : "Unknown";
+        
+        return DirectChatFileResponse.builder()
+                .id(file.getId())
+                .conversationId(file.getConversationId())
+                .messageId(file.getMessageId())
+                .senderId(file.getSenderId())
+                .senderName(senderName)
+                .fileName(file.getFileName())
+                .fileSize(file.getFileSize())
+                .fileType(file.getFileType())
+                .mimeType(file.getMimeType())
+                .fileUrl(file.getFileUrl())
+                .createdAt(file.getCreatedAt())
+                .build();
+    }
 }
 

@@ -90,6 +90,21 @@ public class DirectChatController {
         return ResponseEntity.ok(unreadCount);
     }
 
+    @GetMapping("/conversations/{conversationId}/files")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Get files", description = "Get files in a conversation with pagination")
+    public ResponseEntity<DirectChatFilePagedResponse> getFiles(
+            @PathVariable UUID conversationId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication) {
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        DirectChatFilePagedResponse files = directChatService.getFiles(conversationId, userId, page, size);
+        return ResponseEntity.ok(files);
+    }
+
     @PostMapping("/block/{blockedId}")
     @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Block user", description = "Block a user from sending/receiving messages")
