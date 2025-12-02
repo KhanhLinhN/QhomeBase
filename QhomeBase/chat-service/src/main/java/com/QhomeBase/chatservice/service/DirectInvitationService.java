@@ -125,6 +125,12 @@ public class DirectInvitationService {
         }
 
         // Create invitation
+        log.info("=== createInvitation ===");
+        log.info("InviterId (userId from JWT): {}", inviterId);
+        log.info("InviterResidentId (converted): {}", inviterResidentId);
+        log.info("InviteeId from request: {}", request.getInviteeId());
+        log.info("InviteeResidentId (used): {}", inviteeResidentId);
+        
         DirectInvitation invitation = DirectInvitation.builder()
                 .conversation(conversation)
                 .conversationId(conversation.getId())
@@ -135,6 +141,9 @@ public class DirectInvitationService {
                 .expiresAt(OffsetDateTime.now().plusDays(7))
                 .build();
         invitation = invitationRepository.save(invitation);
+        
+        log.info("Created invitation ID: {}, Inviter: {}, Invitee: {}", 
+                invitation.getId(), invitation.getInviterId(), invitation.getInviteeId());
 
         // If initial message provided, create it as a message
         if (request.getInitialMessage() != null && !request.getInitialMessage().trim().isEmpty()) {
@@ -251,12 +260,24 @@ public class DirectInvitationService {
     public List<DirectInvitationResponse> getPendingInvitations(UUID userId) {
         String accessToken = getCurrentAccessToken();
         UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+        
+        log.info("=== getPendingInvitations ===");
+        log.info("UserId from JWT: {}", userId);
+        log.info("ResidentId converted: {}", residentId);
+        
         if (residentId == null) {
+            log.error("Resident not found for user: {}", userId);
             throw new RuntimeException("Resident not found for user: " + userId);
         }
 
         List<DirectInvitation> invitations = invitationRepository
                 .findPendingInvitationsByInviteeId(residentId);
+        
+        log.info("Found {} pending invitations for residentId: {}", invitations.size(), residentId);
+        for (DirectInvitation inv : invitations) {
+            log.info("  - Invitation ID: {}, Inviter: {}, Invitee: {}, Status: {}", 
+                    inv.getId(), inv.getInviterId(), inv.getInviteeId(), inv.getStatus());
+        }
 
         return invitations.stream()
                 .map(inv -> toResponse(inv, accessToken))

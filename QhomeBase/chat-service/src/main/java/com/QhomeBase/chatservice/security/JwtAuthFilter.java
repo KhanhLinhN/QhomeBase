@@ -39,14 +39,32 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 @SuppressWarnings("unchecked")
                 List<String> perms = claims.get("perms", List.class);
 
+                System.out.println("=== JWT AUTH FILTER DEBUG ===");
+                System.out.println("UID: " + uid);
+                System.out.println("Username: " + username);
+                System.out.println("Roles from JWT: " + roles);
+                System.out.println("Perms from JWT: " + perms);
+
                 var authorities = new ArrayList<SimpleGrantedAuthority>();
                 for (String role : roles) {
-                    String normalizedRole = role != null ? role.toUpperCase() : role;
-                    authorities.add(new SimpleGrantedAuthority("ROLE_" + normalizedRole));
+                    if (role != null) {
+                        // Normalize role: convert to uppercase and ensure ROLE_ prefix
+                        String normalizedRole = role.toUpperCase();
+                        // If role already has ROLE_ prefix, don't add it again
+                        if (!normalizedRole.startsWith("ROLE_")) {
+                            normalizedRole = "ROLE_" + normalizedRole;
+                        }
+                        authorities.add(new SimpleGrantedAuthority(normalizedRole));
+                        System.out.println("Added authority: " + normalizedRole);
+                    }
                 }
                 for (String perm : perms) {
-                    authorities.add(new SimpleGrantedAuthority("PERM_" + perm));
+                    if (perm != null) {
+                        authorities.add(new SimpleGrantedAuthority("PERM_" + perm));
+                    }
                 }
+                System.out.println("All authorities: " + authorities);
+                System.out.println("==============================");
 
                 var principal = new UserPrincipal(uid, username, roles, perms, token);
                 var authn = new UsernamePasswordAuthenticationToken(principal, null, authorities);

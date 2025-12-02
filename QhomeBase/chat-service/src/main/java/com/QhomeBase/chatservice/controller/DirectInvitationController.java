@@ -7,17 +7,21 @@ import com.QhomeBase.chatservice.service.DirectInvitationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/direct-invitations")
 @RequiredArgsConstructor
+@Slf4j
 @Tag(name = "Direct Invitations", description = "APIs for direct chat invitations")
 public class DirectInvitationController {
 
@@ -29,8 +33,18 @@ public class DirectInvitationController {
     public ResponseEntity<DirectInvitationResponse> createInvitation(
             @RequestBody CreateDirectInvitationRequest request,
             Authentication authentication) {
+        log.info("=== DirectInvitationController.createInvitation ===");
+        log.info("Authentication: {}", authentication);
+        log.info("Principal: {}", authentication.getPrincipal());
+        log.info("Authorities: {}", authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toList()));
+        
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
+        log.info("User ID: {}", userId);
+        log.info("User roles: {}", principal.roles());
+        log.info("Request: {}", request);
         
         DirectInvitationResponse invitation = invitationService.createInvitation(userId, request);
         return ResponseEntity.ok(invitation);

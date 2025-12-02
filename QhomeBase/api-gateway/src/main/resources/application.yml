@@ -110,6 +110,20 @@ spring:
             - Path=/api/marketplace/**
           filters:
             - StripPrefix=2
+        # Chat Service - Direct Invitations (must be before chat-service catch-all)
+        - id: chat-service-direct-invitations
+          uri: ${chat.service.url:http://localhost:8090}
+          predicates:
+            - Path=/api/direct-invitations/**
+          filters:
+            - StripPrefix=0
+        # Chat Service - Direct Chat (must be before chat-service catch-all)
+        - id: chat-service-direct-chat
+          uri: ${chat.service.url:http://localhost:8090}
+          predicates:
+            - Path=/api/direct-chat/**
+          filters:
+            - StripPrefix=0
         # Chat Service Routes
         - id: chat-service
           uri: ${chat.service.url:http://localhost:8090}

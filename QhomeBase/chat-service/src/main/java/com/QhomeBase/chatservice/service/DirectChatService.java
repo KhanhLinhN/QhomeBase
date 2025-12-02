@@ -126,8 +126,14 @@ public class DirectChatService {
         }
 
         // Check if conversation is active
+        log.info("=== sendMessage ===");
+        log.info("Conversation ID: {}", conversationId);
+        log.info("Conversation status: {}", conversation.getStatus());
+        log.info("Resident ID: {}", residentId);
+        
         if (!"ACTIVE".equals(conversation.getStatus())) {
-            throw new RuntimeException("Conversation is not active");
+            log.error("Conversation is not active. Status: {}", conversation.getStatus());
+            throw new RuntimeException("Conversation is not active. Current status: " + conversation.getStatus());
         }
 
         // Check if blocked
