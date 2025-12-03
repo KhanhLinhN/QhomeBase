@@ -445,7 +445,33 @@ public class DirectChatService {
                 .map(friendship -> {
                     UUID friendId = friendship.getOtherUserId(residentId);
                     Map<String, Object> friendInfo = residentInfoService.getResidentInfo(friendId);
-                    String friendName = friendInfo != null ? (String) friendInfo.getOrDefault("name", "Unknown") : "Unknown";
+                    
+                    // Get friend name - try multiple fields like other services do
+                    String friendName = "Unknown";
+                    if (friendInfo != null) {
+                        Object nameObj = friendInfo.get("fullName");
+                        if (nameObj != null) {
+                            friendName = nameObj.toString();
+                        } else {
+                            nameObj = friendInfo.get("name");
+                            if (nameObj != null) {
+                                friendName = nameObj.toString();
+                            } else {
+                                // Try firstName + lastName
+                                Object firstNameObj = friendInfo.get("firstName");
+                                Object lastNameObj = friendInfo.get("lastName");
+                                if (firstNameObj != null || lastNameObj != null) {
+                                    String firstName = firstNameObj != null ? firstNameObj.toString() : "";
+                                    String lastName = lastNameObj != null ? lastNameObj.toString() : "";
+                                    friendName = (firstName + " " + lastName).trim();
+                                    if (friendName.isEmpty()) {
+                                        friendName = "Unknown";
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
                     String friendPhone = friendInfo != null ? (String) friendInfo.getOrDefault("phone", "") : "";
 
                     // Check if conversation exists
