@@ -23,6 +23,7 @@ public class ConversationResponse {
     private DirectMessageResponse lastMessage; // Last message in conversation
     private Long unreadCount; // Unread message count for current user
     private OffsetDateTime lastReadAt; // Last read timestamp for current user
+    private Boolean isBlockedByOther; // True if current user is blocked by the other participant
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 }

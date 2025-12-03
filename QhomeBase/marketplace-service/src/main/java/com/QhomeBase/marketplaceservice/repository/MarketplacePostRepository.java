@@ -106,5 +106,9 @@ public interface MarketplacePostRepository extends JpaRepository<MarketplacePost
 
     @Query("SELECT COUNT(p) FROM MarketplacePost p WHERE p.buildingId = :buildingId AND p.status = :status")
     Long countByBuildingIdAndStatus(@Param("buildingId") UUID buildingId, @Param("status") PostStatus status);
+
+    // Load post with images to avoid LazyInitializationException
+    @Query("SELECT DISTINCT p FROM MarketplacePost p LEFT JOIN FETCH p.images WHERE p.id = :id")
+    java.util.Optional<MarketplacePost> findByIdWithImages(@Param("id") UUID id);
 }
 

@@ -1,13 +1,16 @@
 package com.QhomeBase.chatservice.service;
 
+import com.QhomeBase.chatservice.model.Conversation;
 import com.QhomeBase.chatservice.model.ConversationParticipant;
 import com.QhomeBase.chatservice.repository.ConversationParticipantRepository;
+import com.QhomeBase.chatservice.repository.ConversationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -16,6 +19,7 @@ import java.util.UUID;
 public class ConversationHideService {
 
     private final ConversationParticipantRepository conversationParticipantRepository;
+    private final ConversationRepository conversationRepository;
     private final ResidentInfoService residentInfoService;
 
     /**
@@ -39,10 +43,29 @@ public class ConversationHideService {
             participant.setIsHidden(true);
             participant.setHiddenAt(OffsetDateTime.now());
             
-            // Reset unreadCount by setting lastReadAt to now
-            participant.setLastReadAt(OffsetDateTime.now());
+            // Reset lastReadAt to null so that when a new message arrives,
+            // it will be considered as the first message (like Messenger)
+            participant.setLastReadAt(null);
             
             conversationParticipantRepository.save(participant);
+
+            // Check if both participants have hidden the conversation
+            Conversation conversation = conversationRepository.findById(conversationId)
+                    .orElse(null);
+            if (conversation != null) {
+                List<ConversationParticipant> allParticipants = conversationParticipantRepository
+                        .findByConversationId(conversationId);
+                
+                boolean bothHidden = allParticipants.stream()
+                        .allMatch(p -> Boolean.TRUE.equals(p.getIsHidden()));
+                
+                if (bothHidden && allParticipants.size() == 2) {
+                    // Both participants have hidden the conversation - mark as DELETED
+                    conversation.setStatus("DELETED");
+                    conversationRepository.save(conversation);
+                    log.info("Conversation {} marked as DELETED (both participants have hidden it)", conversationId);
+                }
+            }
 
             log.info("Conversation {} hidden for resident {}", conversationId, residentId);
             return true;
@@ -66,8 +89,10 @@ public class ConversationHideService {
             if (participant != null && Boolean.TRUE.equals(participant.getIsHidden())) {
                 participant.setIsHidden(false);
                 participant.setHiddenAt(null);
+                // Reset lastReadAt to null so the new message is considered as the first message
+                participant.setLastReadAt(null);
                 conversationParticipantRepository.save(participant);
-                log.info("Conversation {} unhidden for resident {} (new message received)", conversationId, residentId);
+                log.info("Conversation {} unhidden for resident {} (new message received). lastReadAt reset to null.", conversationId, residentId);
             }
         } catch (Exception e) {
             log.error("Error unhiding direct conversation: {}", e.getMessage(), e);

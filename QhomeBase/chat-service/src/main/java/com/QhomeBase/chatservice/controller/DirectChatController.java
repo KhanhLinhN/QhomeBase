@@ -7,6 +7,7 @@ import com.QhomeBase.chatservice.service.DirectChatService;
 import com.QhomeBase.chatservice.service.ResidentInfoService;
 import com.QhomeBase.chatservice.service.ConversationMuteService;
 import com.QhomeBase.chatservice.service.ConversationHideService;
+import com.QhomeBase.chatservice.dto.FriendResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -95,6 +96,17 @@ public class DirectChatController {
         
         Long unreadCount = directChatService.countUnreadMessages(conversationId, userId);
         return ResponseEntity.ok(unreadCount);
+    }
+
+    @GetMapping("/friends")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Get friends list", description = "Get all active friends for current user")
+    public ResponseEntity<List<FriendResponse>> getFriends(Authentication authentication) {
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        List<FriendResponse> friends = directChatService.getFriends(userId);
+        return ResponseEntity.ok(friends);
     }
 
     @GetMapping("/conversations/{conversationId}/files")

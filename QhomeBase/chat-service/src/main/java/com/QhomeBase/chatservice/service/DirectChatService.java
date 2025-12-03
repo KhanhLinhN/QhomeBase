@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -32,6 +33,7 @@ public class DirectChatService {
     private final ResidentInfoService residentInfoService;
     private final ChatNotificationService notificationService;
     private final FcmPushService fcmPushService;
+    private final FriendshipService friendshipService;
 
     private String getCurrentAccessToken() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -71,7 +73,11 @@ public class DirectChatService {
 
         return conversations.stream()
                 .filter(conv -> {
-                    // Filter out hidden conversations
+                    // Filter out DELETED conversations (both participants have hidden)
+                    if ("DELETED".equals(conv.getStatus())) {
+                        return false;
+                    }
+                    // Filter out conversations hidden by current user
                     ConversationParticipant participant = participantRepository
                             .findByConversationIdAndResidentId(conv.getId(), residentId)
                             .orElse(null);
@@ -100,11 +106,21 @@ public class DirectChatService {
             throw new RuntimeException("You are not a participant in this conversation");
         }
 
-        // Check if blocked
-        UUID otherParticipantId = conversation.getOtherParticipantId(residentId);
-        if (blockRepository.findBlocksBetweenUsers(residentId, otherParticipantId).size() > 0) {
-            throw new RuntimeException("Cannot access conversation: User is blocked");
+        // Check if conversation is DELETED (both participants have hidden it)
+        if ("DELETED".equals(conversation.getStatus())) {
+            throw new RuntimeException("Conversation has been deleted by both participants.");
         }
+
+        // Check if conversation is hidden for this user
+        ConversationParticipant participant = participantRepository
+                .findByConversationIdAndResidentId(conversationId, residentId)
+                .orElse(null);
+        if (participant != null && Boolean.TRUE.equals(participant.getIsHidden())) {
+            throw new RuntimeException("Conversation is hidden. You cannot view this conversation.");
+        }
+
+        // Don't block access to conversation - allow user to see messages even if blocked
+        // Frontend will handle showing "User not found" message in input area if blocked
 
         return toConversationResponse(conversation, residentId, accessToken);
     }
@@ -143,10 +159,12 @@ public class DirectChatService {
             throw new RuntimeException("Conversation is not active. Current status: " + conversation.getStatus());
         }
 
-        // Check if blocked
+        // Don't block sending messages - allow sender to send even if blocked
+        // FCM notification will be filtered in FcmPushService if recipient has blocked sender
         UUID otherParticipantId = conversation.getOtherParticipantId(residentId);
-        if (blockRepository.findBlocksBetweenUsers(residentId, otherParticipantId).size() > 0) {
-            throw new RuntimeException("Cannot send message: User is blocked");
+        boolean recipientBlockedSender = blockRepository.findByBlockerIdAndBlockedId(otherParticipantId, residentId).isPresent();
+        if (recipientBlockedSender) {
+            log.info("Recipient {} has blocked sender {}. Message will be saved but no FCM will be sent.", otherParticipantId, residentId);
         }
 
         // Validate message type and content
@@ -241,7 +259,17 @@ public class DirectChatService {
         if (otherParticipant != null && Boolean.TRUE.equals(otherParticipant.getIsHidden())) {
             otherParticipant.setIsHidden(false);
             otherParticipant.setHiddenAt(null);
+            // Reset lastReadAt to null so the new message is considered as the first message
+            otherParticipant.setLastReadAt(null);
             participantRepository.save(otherParticipant);
+            log.info("Conversation {} unhidden for resident {} (new message received). lastReadAt reset to null.", conversationId, otherParticipantId);
+        }
+        
+        // If conversation was DELETED (both participants had hidden it), reset to ACTIVE
+        if ("DELETED".equals(conversation.getStatus())) {
+            conversation.setStatus("ACTIVE");
+            conversationRepository.save(conversation);
+            log.info("Conversation {} reset from DELETED to ACTIVE (new message received)", conversationId);
         }
 
         // Send FCM push notification to other participant
@@ -269,14 +297,24 @@ public class DirectChatService {
             throw new RuntimeException("You are not a participant in this conversation");
         }
 
+        // Check if conversation is DELETED (both participants have hidden it)
+        if ("DELETED".equals(conversation.getStatus())) {
+            throw new RuntimeException("Conversation has been deleted by both participants.");
+        }
+
+        // Check if conversation is hidden for this user
+        ConversationParticipant participant = participantRepository
+                .findByConversationIdAndResidentId(conversationId, residentId)
+                .orElse(null);
+        if (participant != null && Boolean.TRUE.equals(participant.getIsHidden())) {
+            throw new RuntimeException("Conversation is hidden. You cannot view messages.");
+        }
+
         Pageable pageable = PageRequest.of(page, size);
         Page<DirectMessage> messages = messageRepository
                 .findByConversationIdOrderByCreatedAtDesc(conversationId, pageable);
 
-        // Update last read time
-        ConversationParticipant participant = participantRepository
-                .findByConversationIdAndResidentId(conversationId, residentId)
-                .orElse(null);
+        // Update last read time (participant already loaded above)
         if (participant != null) {
             participant.setLastReadAt(OffsetDateTime.now());
             participantRepository.save(participant);
@@ -390,6 +428,45 @@ public class DirectChatService {
         return "application/octet-stream";
     }
 
+    /**
+     * Get all friends for current user
+     */
+    @Transactional(readOnly = true)
+    public List<FriendResponse> getFriends(UUID userId) {
+        String accessToken = getCurrentAccessToken();
+        UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+        if (residentId == null) {
+            throw new RuntimeException("Resident not found for user: " + userId);
+        }
+
+        List<com.QhomeBase.chatservice.model.Friendship> friendships = friendshipService.getActiveFriendships(residentId);
+
+        return friendships.stream()
+                .map(friendship -> {
+                    UUID friendId = friendship.getOtherUserId(residentId);
+                    Map<String, Object> friendInfo = residentInfoService.getResidentInfo(friendId);
+                    String friendName = friendInfo != null ? (String) friendInfo.getOrDefault("name", "Unknown") : "Unknown";
+                    String friendPhone = friendInfo != null ? (String) friendInfo.getOrDefault("phone", "") : "";
+
+                    // Check if conversation exists
+                    Conversation conversation = conversationRepository
+                            .findConversationBetweenParticipants(residentId, friendId)
+                            .orElse(null);
+
+                    UUID conversationId = conversation != null ? conversation.getId() : null;
+                    Boolean hasActiveConversation = conversation != null && "ACTIVE".equals(conversation.getStatus());
+
+                    return FriendResponse.builder()
+                            .friendId(friendId)
+                            .friendName(friendName)
+                            .friendPhone(friendPhone)
+                            .conversationId(conversationId)
+                            .hasActiveConversation(hasActiveConversation)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
     private ConversationResponse toConversationResponse(Conversation conversation, UUID currentUserId, String accessToken) {
         UUID otherParticipantId = conversation.getOtherParticipantId(currentUserId);
         String otherParticipantName = residentInfoService.getResidentName(otherParticipantId, accessToken);
@@ -418,6 +495,9 @@ public class DirectChatService {
             unreadCount = messageRepository.countUnreadMessages(conversation.getId(), currentUserId, lastReadAt);
         }
 
+        // Check if current user is blocked by the other participant
+        boolean isBlockedByOther = blockRepository.findByBlockerIdAndBlockedId(otherParticipantId, currentUserId).isPresent();
+
         return ConversationResponse.builder()
                 .id(conversation.getId())
                 .participant1Id(conversation.getParticipant1Id())
@@ -429,6 +509,7 @@ public class DirectChatService {
                 .lastMessage(lastMessage != null ? toDirectMessageResponse(lastMessage, accessToken) : null)
                 .unreadCount(unreadCount)
                 .lastReadAt(lastReadAt)
+                .isBlockedByOther(isBlockedByOther)
                 .createdAt(conversation.getCreatedAt())
                 .updatedAt(conversation.getUpdatedAt())
                 .build();

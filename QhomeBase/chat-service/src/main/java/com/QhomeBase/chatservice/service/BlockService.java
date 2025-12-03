@@ -1,9 +1,7 @@
 package com.QhomeBase.chatservice.service;
 
 import com.QhomeBase.chatservice.model.Block;
-import com.QhomeBase.chatservice.model.Conversation;
 import com.QhomeBase.chatservice.repository.BlockRepository;
-import com.QhomeBase.chatservice.repository.ConversationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,7 +16,7 @@ import java.util.UUID;
 public class BlockService {
 
     private final BlockRepository blockRepository;
-    private final ConversationRepository conversationRepository;
+    private final FriendshipService friendshipService;
 
     /**
      * Block a user
@@ -41,16 +39,14 @@ public class BlockService {
                 .build();
         blockRepository.save(block);
 
-        // Close any active conversations between them
-        conversationRepository.findConversationBetweenParticipants(blockerId, blockedId)
-                .ifPresent(conversation -> {
-                    if ("ACTIVE".equals(conversation.getStatus())) {
-                        conversation.setStatus("BLOCKED");
-                        conversationRepository.save(conversation);
-                    }
-                });
+        // Don't change conversation status - keep it ACTIVE so both users can still see the conversation
+        // The blocker can still send messages, but the blocked user won't receive FCM notifications
+        // and will see "User not found" message in the chat input area
 
-        log.info("User {} blocked user {}", blockerId, blockedId);
+        // Deactivate friendship if exists
+        friendshipService.deactivateFriendship(blockerId, blockedId);
+
+        log.info("User {} blocked user {}. Conversation remains ACTIVE. Friendship deactivated.", blockerId, blockedId);
     }
 
     /**
@@ -63,7 +59,13 @@ public class BlockService {
 
         blockRepository.delete(block);
 
-        log.info("User {} unblocked user {}", blockerId, blockedId);
+        // Conversation status should already be ACTIVE (we don't change it when blocking)
+        // No need to reset status here
+
+        // Reactivate friendship if exists
+        friendshipService.createOrActivateFriendship(blockerId, blockedId);
+
+        log.info("User {} unblocked user {}. Messages sent during block will now be visible. Friendship reactivated.", blockerId, blockedId);
     }
 
     /**

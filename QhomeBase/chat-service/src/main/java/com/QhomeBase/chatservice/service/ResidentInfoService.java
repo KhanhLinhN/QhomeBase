@@ -112,7 +112,13 @@ public class ResidentInfoService {
             }
             
             return UUID.fromString(idObj.toString());
+        } catch (WebClientResponseException.NotFound e) {
+            // 404 means userId not found - this is expected if inviteeId is already a residentId
+            // Log as debug instead of error to reduce noise
+            log.debug("UserId {} not found in base-service (404), assuming it's already a residentId", userId);
+            return null;
         } catch (Exception e) {
+            // For other errors, log as error
             log.error("Error getting residentId for userId: {}", userId, e);
             return null;
         }

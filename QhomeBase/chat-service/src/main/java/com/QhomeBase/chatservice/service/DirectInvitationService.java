@@ -2,7 +2,6 @@ package com.QhomeBase.chatservice.service;
 
 import com.QhomeBase.chatservice.dto.CreateDirectInvitationRequest;
 import com.QhomeBase.chatservice.dto.DirectInvitationResponse;
-import com.QhomeBase.chatservice.model.Block;
 import com.QhomeBase.chatservice.model.Conversation;
 import com.QhomeBase.chatservice.model.DirectInvitation;
 import com.QhomeBase.chatservice.model.DirectMessage;
@@ -21,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -37,6 +37,7 @@ public class DirectInvitationService {
     private final ResidentInfoService residentInfoService;
     private final ChatNotificationService notificationService;
     private final FcmPushService fcmPushService;
+    private final FriendshipService friendshipService;
 
     private String getCurrentAccessToken() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -64,12 +65,33 @@ public class DirectInvitationService {
             throw new RuntimeException("Resident not found for user: " + inviterId);
         }
 
-        UUID inviteeResidentId = request.getInviteeId();
+        // inviteeId from request might be userId or residentId
+        // Try to convert from userId to residentId if needed
+        UUID inviteeIdFromRequest = request.getInviteeId();
+        UUID inviteeResidentId = residentInfoService.getResidentIdFromUserId(inviteeIdFromRequest, accessToken);
+        if (inviteeResidentId == null) {
+            // If conversion fails, assume it's already a residentId
+            inviteeResidentId = inviteeIdFromRequest;
+        }
+        
+        log.info("Checking block status: inviterResidentId={}, inviteeIdFromRequest={}, inviteeResidentId={}", 
+                inviterResidentId, inviteeIdFromRequest, inviteeResidentId);
 
-        // Check if users are blocked
-        if (blockRepository.findByBlockerIdAndBlockedId(inviterResidentId, inviteeResidentId).isPresent() ||
-            blockRepository.findByBlockerIdAndBlockedId(inviteeResidentId, inviterResidentId).isPresent()) {
-            throw new RuntimeException("Cannot send invitation: User is blocked");
+        // Check if users are blocked (bidirectional)
+        boolean inviterBlockedInvitee = blockRepository
+                .findByBlockerIdAndBlockedId(inviterResidentId, inviteeResidentId).isPresent();
+        boolean inviteeBlockedInviter = blockRepository
+                .findByBlockerIdAndBlockedId(inviteeResidentId, inviterResidentId).isPresent();
+        
+        log.info("Block check result: inviterBlockedInvitee={}, inviteeBlockedInviter={}", 
+                inviterBlockedInvitee, inviteeBlockedInviter);
+        
+        if (inviterBlockedInvitee || inviteeBlockedInviter) {
+            String message = inviterBlockedInvitee 
+                ? "Cannot send invitation: You have blocked this user"
+                : "Cannot send invitation: This user has blocked you";
+            log.warn("Block check failed: {}", message);
+            throw new RuntimeException(message);
         }
 
         // Ensure participant1_id < participant2_id for uniqueness
@@ -90,16 +112,11 @@ public class DirectInvitationService {
             if ("ACTIVE".equals(conversation.getStatus())) {
                 throw new RuntimeException("Conversation already exists and is active");
             }
-            
-            // If conversation exists but is PENDING, check if invitation exists
-            if ("PENDING".equals(conversation.getStatus())) {
-                DirectInvitation existingInvitation = invitationRepository
-                        .findByConversationIdAndStatus(conversation.getId(), "PENDING")
-                        .orElse(null);
-                
-                if (existingInvitation != null && !existingInvitation.isExpired()) {
-                    throw new RuntimeException("Invitation already exists and is pending");
-                }
+            // If conversation status is BLOCKED, reset to PENDING to allow new invitations
+            if ("BLOCKED".equals(conversation.getStatus())) {
+                log.info("Conversation status is BLOCKED, resetting to PENDING: {}", conversation.getId());
+                conversation.setStatus("PENDING");
+                conversation = conversationRepository.save(conversation);
             }
         } else {
             // Create new conversation
@@ -124,23 +141,210 @@ public class DirectInvitationService {
                     .build());
         }
 
-        // Create invitation
         log.info("=== createInvitation ===");
         log.info("InviterId (userId from JWT): {}", inviterId);
         log.info("InviterResidentId (converted): {}", inviterResidentId);
         log.info("InviteeId from request: {}", request.getInviteeId());
         log.info("InviteeResidentId (used): {}", inviteeResidentId);
+        log.info("Conversation ID: {}", conversation.getId());
+        log.info("Conversation Status: {}", conversation.getStatus());
         
-        DirectInvitation invitation = DirectInvitation.builder()
-                .conversation(conversation)
-                .conversationId(conversation.getId())
-                .inviterId(inviterResidentId)
-                .inviteeId(inviteeResidentId)
-                .status("PENDING")
-                .initialMessage(request.getInitialMessage())
-                .expiresAt(OffsetDateTime.now().plusDays(7))
-                .build();
-        invitation = invitationRepository.save(invitation);
+        // Check if invitation already exists (any status) to avoid unique constraint violation
+        // This checks for invitation from inviterResidentId to inviteeResidentId
+        DirectInvitation existingInvitation = invitationRepository
+                .findByConversationAndParticipants(conversation.getId(), inviterResidentId, inviteeResidentId)
+                .orElse(null);
+        
+        // Also check for reverse invitation (invitee invited inviter)
+        Optional<DirectInvitation> reverseInvitation = invitationRepository
+                .findByConversationAndParticipants(conversation.getId(), inviteeResidentId, inviterResidentId);
+        
+        if (reverseInvitation.isPresent()) {
+            log.info("Found reverse invitation ID: {}, Status: {}, Inviter: {}, Invitee: {}", 
+                    reverseInvitation.get().getId(), 
+                    reverseInvitation.get().getStatus(),
+                    reverseInvitation.get().getInviterId(),
+                    reverseInvitation.get().getInviteeId());
+        } else {
+            log.info("No reverse invitation found");
+        }
+        
+        DirectInvitation invitation;
+        if (existingInvitation != null) {
+            log.info("Found existing invitation ID: {}, Status: {}", existingInvitation.getId(), existingInvitation.getStatus());
+            
+            // If invitation exists
+            if ("PENDING".equals(existingInvitation.getStatus())) {
+                // Check if there's a reverse invitation PENDING - if so, both users want to chat
+                if (reverseInvitation.isPresent() && "PENDING".equals(reverseInvitation.get().getStatus())) {
+                    log.info("Found mutual invitations (both PENDING). Auto-accepting both invitations and creating friendship.");
+                    
+                    // Auto-accept existing invitation (A->B)
+                    existingInvitation.setStatus("ACCEPTED");
+                    existingInvitation.setRespondedAt(OffsetDateTime.now());
+                    invitation = invitationRepository.save(existingInvitation);
+                    log.info("Auto-accepted existing invitation ID: {}", invitation.getId());
+                    
+                    // Auto-accept reverse invitation (B->A)
+                    DirectInvitation reverseInv = reverseInvitation.get();
+                    reverseInv.setStatus("ACCEPTED");
+                    reverseInv.setRespondedAt(OffsetDateTime.now());
+                    invitationRepository.save(reverseInv);
+                    log.info("Auto-accepted reverse invitation ID: {}", reverseInv.getId());
+                    
+                    // Activate conversation
+                    conversation.setStatus("ACTIVE");
+                    conversation = conversationRepository.save(conversation);
+                    log.info("Activated conversation ID: {}", conversation.getId());
+                    
+                    // Create or activate friendship between both users
+                    friendshipService.createOrActivateFriendship(inviterResidentId, inviteeResidentId);
+                    log.info("Friendship created/activated between {} and {} (mutual invitations - both PENDING)", inviterResidentId, inviteeResidentId);
+                    
+                    // Notify both users that conversation is now active
+                    notificationService.notifyDirectInvitationAccepted(
+                            reverseInv.getInviterId(),
+                            conversation.getId(),
+                            toResponse(reverseInv, accessToken));
+                    notificationService.notifyDirectInvitationAccepted(
+                            invitation.getInviterId(),
+                            conversation.getId(),
+                            toResponse(invitation, accessToken));
+                } else if (!existingInvitation.isExpired()) {
+                    // PENDING and not expired - return existing (no reverse invitation)
+                    log.info("Invitation already exists and is pending: {}", existingInvitation.getId());
+                    throw new RuntimeException("Invitation already exists and is pending");
+                } else {
+                    // PENDING but expired - update to new expiration
+                    log.info("Invitation exists but expired, updating expiration: {}", existingInvitation.getId());
+                    existingInvitation.setExpiresAt(OffsetDateTime.now().plusDays(7));
+                    existingInvitation.setInitialMessage(request.getInitialMessage());
+                    existingInvitation.setRespondedAt(null);
+                    invitation = invitationRepository.save(existingInvitation);
+                    log.info("Updated expired invitation ID: {}", invitation.getId());
+                }
+            } else if ("ACCEPTED".equals(existingInvitation.getStatus())) {
+                // Already accepted - check conversation status
+                if ("ACTIVE".equals(conversation.getStatus())) {
+                    // Conversation is ACTIVE - invitation already accepted
+                    log.info("Invitation already accepted and conversation is ACTIVE. Invitation ID: {}", existingInvitation.getId());
+                    throw new RuntimeException("Conversation already exists and is active");
+                } else {
+                    // Data inconsistency: invitation ACCEPTED but conversation not ACTIVE
+                    // Check if there's a reverse invitation PENDING - if so, auto-accept it and activate conversation
+                    if (reverseInvitation.isPresent() && "PENDING".equals(reverseInvitation.get().getStatus())) {
+                        log.info("Invitation ACCEPTED but conversation PENDING. Found reverse invitation PENDING. Auto-accepting reverse invitation and activating conversation.");
+                        
+                        // Auto-accept reverse invitation
+                        DirectInvitation reverseInv = reverseInvitation.get();
+                        reverseInv.setStatus("ACCEPTED");
+                        reverseInv.setRespondedAt(OffsetDateTime.now());
+                        invitationRepository.save(reverseInv);
+                        log.info("Auto-accepted reverse invitation ID: {}", reverseInv.getId());
+                        
+                        // Activate conversation
+                        conversation.setStatus("ACTIVE");
+                        conversation = conversationRepository.save(conversation);
+                        log.info("Activated conversation ID: {}", conversation.getId());
+                        
+                        // Create or activate friendship between both users
+                        friendshipService.createOrActivateFriendship(inviterResidentId, inviteeResidentId);
+                        log.info("Friendship created/activated between {} and {} (invitation accepted with reverse pending)", inviterResidentId, inviteeResidentId);
+                        
+                        // Notify both users that conversation is now active
+                        notificationService.notifyDirectInvitationAccepted(
+                                reverseInv.getInviterId(),
+                                conversation.getId(),
+                                toResponse(reverseInv, accessToken));
+                        notificationService.notifyDirectInvitationAccepted(
+                                existingInvitation.getInviterId(),
+                                conversation.getId(),
+                                toResponse(existingInvitation, accessToken));
+                        
+                        invitation = existingInvitation;
+                    } else {
+                        // No reverse invitation or already responded
+                        // Return existing invitation to maintain consistency
+                        log.warn("Invitation already accepted but conversation status is {}. Invitation ID: {}. Returning existing invitation.", 
+                                conversation.getStatus(), existingInvitation.getId());
+                        invitation = existingInvitation;
+                    }
+                }
+            } else {
+                // DECLINED or EXPIRED - update to PENDING
+                log.info("Invitation exists with status {}, updating to PENDING: {}", 
+                        existingInvitation.getStatus(), existingInvitation.getId());
+                existingInvitation.setStatus("PENDING");
+                existingInvitation.setInitialMessage(request.getInitialMessage());
+                existingInvitation.setExpiresAt(OffsetDateTime.now().plusDays(7));
+                existingInvitation.setRespondedAt(null);
+                invitation = invitationRepository.save(existingInvitation);
+                log.info("Updated invitation from {} to PENDING. ID: {}", existingInvitation.getStatus(), invitation.getId());
+            }
+        } else {
+            // Create new invitation
+            // Check if reverse invitation exists and is PENDING - if so, both users want to chat
+            if (reverseInvitation.isPresent() && "PENDING".equals(reverseInvitation.get().getStatus())) {
+                log.info("Reverse invitation exists and is PENDING. Both users want to chat. Auto-accepting both invitations.");
+                
+                // Auto-accept reverse invitation
+                DirectInvitation reverseInv = reverseInvitation.get();
+                reverseInv.setStatus("ACCEPTED");
+                reverseInv.setRespondedAt(OffsetDateTime.now());
+                invitationRepository.save(reverseInv);
+                log.info("Auto-accepted reverse invitation ID: {}", reverseInv.getId());
+                
+                // Activate conversation
+                conversation.setStatus("ACTIVE");
+                conversation = conversationRepository.save(conversation);
+                log.info("Activated conversation ID: {}", conversation.getId());
+                
+                // Create invitation and immediately accept it
+                invitation = DirectInvitation.builder()
+                        .conversation(conversation)
+                        .conversationId(conversation.getId())
+                        .inviterId(inviterResidentId)
+                        .inviteeId(inviteeResidentId)
+                        .status("ACCEPTED")
+                        .initialMessage(request.getInitialMessage())
+                        .expiresAt(OffsetDateTime.now().plusDays(7))
+                        .respondedAt(OffsetDateTime.now())
+                        .build();
+                invitation = invitationRepository.save(invitation);
+                
+                log.info("Created and auto-accepted invitation ID: {}, Inviter: {}, Invitee: {}", 
+                        invitation.getId(), invitation.getInviterId(), invitation.getInviteeId());
+                
+                // Create or activate friendship between both users
+                friendshipService.createOrActivateFriendship(inviterResidentId, inviteeResidentId);
+                log.info("Friendship created/activated between {} and {} (mutual invitations)", inviterResidentId, inviteeResidentId);
+                
+                // Notify both users that conversation is now active
+                notificationService.notifyDirectInvitationAccepted(
+                        reverseInv.getInviterId(),
+                        conversation.getId(),
+                        toResponse(reverseInv, accessToken));
+                notificationService.notifyDirectInvitationAccepted(
+                        invitation.getInviterId(),
+                        conversation.getId(),
+                        toResponse(invitation, accessToken));
+            } else {
+                // Create new invitation normally
+                invitation = DirectInvitation.builder()
+                        .conversation(conversation)
+                        .conversationId(conversation.getId())
+                        .inviterId(inviterResidentId)
+                        .inviteeId(inviteeResidentId)
+                        .status("PENDING")
+                        .initialMessage(request.getInitialMessage())
+                        .expiresAt(OffsetDateTime.now().plusDays(7))
+                        .build();
+                invitation = invitationRepository.save(invitation);
+                
+                log.info("Created new invitation ID: {}, Inviter: {}, Invitee: {}", 
+                        invitation.getId(), invitation.getInviterId(), invitation.getInviteeId());
+            }
+        }
         
         log.info("Created invitation ID: {}, Inviter: {}, Invitee: {}", 
                 invitation.getId(), invitation.getInviterId(), invitation.getInviteeId());
@@ -204,6 +408,25 @@ public class DirectInvitationService {
         Conversation conversation = invitation.getConversation();
         conversation.setStatus("ACTIVE");
         conversationRepository.save(conversation);
+
+        // Check if there's a reverse invitation (invitee invited inviter) and auto-accept it
+        UUID inviterId = invitation.getInviterId();
+        UUID inviteeId = invitation.getInviteeId();
+        Optional<DirectInvitation> reverseInvitation = invitationRepository
+                .findByConversationAndParticipants(conversation.getId(), inviteeId, inviterId);
+        
+        if (reverseInvitation.isPresent() && "PENDING".equals(reverseInvitation.get().getStatus())) {
+            log.info("Found reverse invitation, auto-accepting: {}", reverseInvitation.get().getId());
+            DirectInvitation reverseInv = reverseInvitation.get();
+            reverseInv.setStatus("ACCEPTED");
+            reverseInv.setRespondedAt(OffsetDateTime.now());
+            invitationRepository.save(reverseInv);
+            log.info("Auto-accepted reverse invitation: {}", reverseInv.getId());
+        }
+
+        // Create or activate friendship between inviter and invitee
+        friendshipService.createOrActivateFriendship(inviterId, inviteeId);
+        log.info("Friendship created/activated between {} and {}", inviterId, inviteeId);
 
         // Notify inviter via WebSocket
         notificationService.notifyDirectInvitationAccepted(
@@ -275,8 +498,20 @@ public class DirectInvitationService {
         
         log.info("Found {} pending invitations for residentId: {}", invitations.size(), residentId);
         for (DirectInvitation inv : invitations) {
-            log.info("  - Invitation ID: {}, Inviter: {}, Invitee: {}, Status: {}", 
-                    inv.getId(), inv.getInviterId(), inv.getInviteeId(), inv.getStatus());
+            log.info("  - Invitation ID: {}, Conversation ID: {}, Inviter: {}, Invitee: {}, Status: {}, ExpiresAt: {}", 
+                    inv.getId(), inv.getConversationId(), inv.getInviterId(), inv.getInviteeId(), 
+                    inv.getStatus(), inv.getExpiresAt());
+        }
+        
+        // Also check all invitations where this user is invitee (for debugging)
+        List<DirectInvitation> allInvitationsAsInvitee = invitationRepository.findAll().stream()
+                .filter(inv -> inv.getInviteeId().equals(residentId))
+                .collect(Collectors.toList());
+        log.info("Total invitations where user {} is invitee: {}", residentId, allInvitationsAsInvitee.size());
+        for (DirectInvitation inv : allInvitationsAsInvitee) {
+            log.info("  - Invitation ID: {}, Conversation ID: {}, Inviter: {}, Invitee: {}, Status: {}, ExpiresAt: {}", 
+                    inv.getId(), inv.getConversationId(), inv.getInviterId(), inv.getInviteeId(), 
+                    inv.getStatus(), inv.getExpiresAt());
         }
 
         return invitations.stream()

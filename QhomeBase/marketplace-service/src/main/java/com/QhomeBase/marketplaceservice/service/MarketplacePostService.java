@@ -36,7 +36,8 @@ public class MarketplacePostService {
     @Transactional(readOnly = true)
     public MarketplacePost getPostById(UUID postId) {
         log.debug("Fetching post from database: {}", postId);
-        return postRepository.findById(postId)
+        // Use findByIdWithImages to eager load images and avoid LazyInitializationException
+        return postRepository.findByIdWithImages(postId)
                 .orElseThrow(() -> new RuntimeException("Post not found: " + postId));
     }
 
