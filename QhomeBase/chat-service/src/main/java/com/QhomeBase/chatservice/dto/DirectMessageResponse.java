@@ -30,5 +30,12 @@ public class DirectMessageResponse {
     private Boolean isDeleted;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
+    
+    // Marketplace post fields (for MARKETPLACE_POST message type)
+    private String postId;
+    private String postTitle;
+    private String postThumbnailUrl;
+    private Double postPrice;
+    private String deepLink;
 }
 

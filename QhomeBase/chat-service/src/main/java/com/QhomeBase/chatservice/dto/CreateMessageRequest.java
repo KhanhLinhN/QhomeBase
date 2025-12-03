@@ -24,5 +24,12 @@ public class CreateMessageRequest {
     private String mimeType;
     
     private UUID replyToMessageId; // For replying to a message
+    
+    // Marketplace post fields (for MARKETPLACE_POST message type)
+    private String postId;
+    private String postTitle;
+    private String postThumbnailUrl;
+    private Double postPrice;
+    private String deepLink;
 }
 

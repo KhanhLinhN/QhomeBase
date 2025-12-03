@@ -126,6 +126,37 @@ public class FileUploadController {
         }
     }
 
+    @PostMapping("/direct/{conversationId}/video")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Upload video for direct chat", description = "Upload a video file for a direct chat message")
+    public ResponseEntity<Map<String, String>> uploadDirectVideo(
+            @PathVariable UUID conversationId,
+            @RequestParam("file") MultipartFile file) {
+        
+        try {
+            if (file.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "File is empty"));
+            }
+
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.startsWith("video/")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "File must be a video file"));
+            }
+
+            String videoUrl = fileStorageService.uploadVideo(file, conversationId);
+
+            Map<String, String> response = new HashMap<>();
+            response.put("fileUrl", videoUrl);
+            response.put("fileName", file.getOriginalFilename() != null ? file.getOriginalFilename() : "video.mp4");
+            response.put("fileSize", String.valueOf(file.getSize()));
+            response.put("mimeType", contentType);
+            return ResponseEntity.ok(response);
+        } catch (IOException e) {
+            log.error("Error uploading direct chat video: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to upload video"));
+        }
+    }
+
     @PostMapping("/direct/{conversationId}/file")
     @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Upload file for direct chat", description = "Upload any file for a direct chat message")
@@ -248,6 +279,46 @@ public class FileUploadController {
         } catch (IOException e) {
             log.error("Error uploading audio: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(Map.of("error", "Failed to upload audio"));
+        }
+    }
+
+    @PostMapping("/{groupId}/video")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Upload video for chat message", description = "Upload a video file for a chat message")
+    public ResponseEntity<Map<String, String>> uploadVideo(
+            @PathVariable UUID groupId,
+            @RequestParam("file") MultipartFile file) {
+        
+        try {
+            // Validate file
+            if (file.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "File is empty"));
+            }
+
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.startsWith("video/")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "File must be a video file"));
+            }
+
+            // Validate file size (max 50MB)
+            long maxSize = 50 * 1024 * 1024; // 50MB
+            if (file.getSize() > maxSize) {
+                return ResponseEntity.badRequest().body(Map.of("error", "File size exceeds 50MB limit"));
+            }
+
+            // Upload video
+            String videoUrl = fileStorageService.uploadVideo(file, groupId);
+            String fileName = file.getOriginalFilename();
+
+            Map<String, String> response = new HashMap<>();
+            response.put("fileUrl", videoUrl);
+            response.put("fileName", fileName != null ? fileName : "video.mp4");
+            response.put("fileSize", String.valueOf(file.getSize()));
+            response.put("mimeType", contentType);
+            return ResponseEntity.ok(response);
+        } catch (IOException e) {
+            log.error("Error uploading video: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to upload video"));
         }
     }
 

@@ -102,6 +102,31 @@ public class FileStorageService {
     }
 
     /**
+     * Upload video file for chat message
+     */
+    public String uploadVideo(MultipartFile file, UUID groupId) throws IOException {
+        log.info("Uploading video for group: {}", groupId);
+        
+        // Create directory if not exists
+        Path uploadPath = Paths.get(uploadDirectory, groupId.toString(), "video");
+        Files.createDirectories(uploadPath);
+
+        String originalFileName = file.getOriginalFilename();
+        String extension = ".mp4"; // Default to mp4
+        if (originalFileName != null && originalFileName.contains(".")) {
+            extension = originalFileName.substring(originalFileName.lastIndexOf("."));
+        }
+        
+        String fileName = UUID.randomUUID().toString() + extension;
+        Path filePath = uploadPath.resolve(fileName);
+        Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+        String videoUrl = getVideoUrl(groupId.toString(), fileName);
+        log.info("Uploaded video: {}", videoUrl);
+        return videoUrl;
+    }
+
+    /**
      * Upload file for chat message
      */
     public String uploadFile(MultipartFile file, UUID groupId) throws IOException {
@@ -164,6 +189,13 @@ public class FileStorageService {
             return cdnBaseUrl + "/chat/" + groupId + "/audio/" + fileName;
         }
         return "/uploads/chat/" + groupId + "/audio/" + fileName;
+    }
+
+    private String getVideoUrl(String groupId, String fileName) {
+        if (cdnBaseUrl != null && !cdnBaseUrl.isEmpty()) {
+            return cdnBaseUrl + "/chat/" + groupId + "/video/" + fileName;
+        }
+        return "/uploads/chat/" + groupId + "/video/" + fileName;
     }
 
     private String getFileUrl(String groupId, String fileName) {

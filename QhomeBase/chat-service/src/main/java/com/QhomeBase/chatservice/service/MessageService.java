@@ -66,6 +66,28 @@ public class MessageService {
         if ("FILE".equals(messageType) && (request.getFileUrl() == null || request.getFileUrl().isEmpty())) {
             throw new RuntimeException("File message must have fileUrl");
         }
+        if ("MARKETPLACE_POST".equals(messageType)) {
+            if (request.getPostId() == null || request.getPostId().isEmpty()) {
+                throw new RuntimeException("Marketplace post message must have postId");
+            }
+            if (request.getPostTitle() == null || request.getPostTitle().isEmpty()) {
+                throw new RuntimeException("Marketplace post message must have postTitle");
+            }
+            // Store marketplace post data as JSON in content field
+            String marketplaceData = String.format(
+                "{\"postId\":\"%s\",\"postTitle\":\"%s\",\"postThumbnailUrl\":\"%s\",\"postPrice\":%s,\"deepLink\":\"%s\"}",
+                request.getPostId() != null ? request.getPostId().replace("\"", "\\\"") : "",
+                request.getPostTitle() != null ? request.getPostTitle().replace("\"", "\\\"") : "",
+                request.getPostThumbnailUrl() != null ? request.getPostThumbnailUrl().replace("\"", "\\\"") : "",
+                request.getPostPrice() != null ? request.getPostPrice() : "null",
+                request.getDeepLink() != null ? request.getDeepLink().replace("\"", "\\\"") : ""
+            );
+            request.setContent(marketplaceData);
+            // Use thumbnail as imageUrl for preview
+            if (request.getPostThumbnailUrl() != null && !request.getPostThumbnailUrl().isEmpty()) {
+                request.setImageUrl(request.getPostThumbnailUrl());
+            }
+        }
 
         Message message = Message.builder()
                 .group(group)
@@ -385,6 +407,28 @@ public class MessageService {
                 .isDeleted(message.getIsDeleted())
                 .createdAt(message.getCreatedAt())
                 .updatedAt(message.getUpdatedAt());
+        
+        // Parse marketplace_post data from content if messageType is MARKETPLACE_POST
+        if ("MARKETPLACE_POST".equals(message.getMessageType()) && message.getContent() != null) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                java.util.Map<String, Object> marketplaceData = objectMapper.readValue(message.getContent(), java.util.Map.class);
+                builder.postId((String) marketplaceData.get("postId"));
+                builder.postTitle((String) marketplaceData.get("postTitle"));
+                builder.postThumbnailUrl((String) marketplaceData.get("postThumbnailUrl"));
+                Object priceObj = marketplaceData.get("postPrice");
+                if (priceObj != null && !"null".equals(priceObj.toString())) {
+                    if (priceObj instanceof Number) {
+                        builder.postPrice(((Number) priceObj).doubleValue());
+                    } else {
+                        builder.postPrice(Double.parseDouble(priceObj.toString()));
+                    }
+                }
+                builder.deepLink((String) marketplaceData.get("deepLink"));
+            } catch (Exception e) {
+                log.warn("Failed to parse marketplace_post data: {}", e.getMessage());
+            }
+        }
 
         // Add reply message if exists
         if (message.getReplyToMessage() != null) {
