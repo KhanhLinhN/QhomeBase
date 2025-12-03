@@ -75,6 +75,15 @@ public class ResidentService {
         return toDto(resident);
     }
 
+    public ResidentDto getByNationalId(String nationalId) {
+        if (!StringUtils.hasText(nationalId)) {
+            throw new IllegalArgumentException("National ID is required");
+        }
+        Resident resident = residentRepository.findByNationalId(nationalId.trim())
+                .orElseThrow(() -> new IllegalArgumentException("Resident not found for national ID: " + nationalId));
+        return toDto(resident);
+    }
+
     public boolean existsEmail(String email, UUID excludeId) {
         if (!StringUtils.hasText(email)) {
             return false;

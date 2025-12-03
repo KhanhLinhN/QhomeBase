@@ -168,6 +168,18 @@ public class ResidentController {
         }
     }
 
+    @GetMapping("/by-national-id/{nationalId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORTER', 'RESIDENT')")
+    public ResponseEntity<ResidentDto> getResidentByNationalId(@PathVariable String nationalId) {
+        try {
+            ResidentDto resident = residentService.getByNationalId(nationalId);
+            return ResponseEntity.ok(resident);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to get resident by national ID {}: {}", nationalId, e.getMessage());
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     @GetMapping("/me")
     @PreAuthorize("hasRole('RESIDENT')")
     public ResponseEntity<ResidentDto> getMyResident(Authentication authentication) {
