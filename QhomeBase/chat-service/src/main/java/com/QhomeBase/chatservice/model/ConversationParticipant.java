@@ -46,6 +46,19 @@ public class ConversationParticipant {
     @Builder.Default
     private Boolean isBlocked = false; // If this participant blocked the other
 
+    @Column(name = "mute_until")
+    private OffsetDateTime muteUntil; // Timestamp when mute expires (null = not muted or muted indefinitely)
+
+    @Column(name = "muted_by_user_id")
+    private UUID mutedByUserId; // User who set the mute
+
+    @Column(name = "is_hidden", nullable = false)
+    @Builder.Default
+    private Boolean isHidden = false; // If conversation is hidden from user's chat list
+
+    @Column(name = "hidden_at")
+    private OffsetDateTime hiddenAt; // When conversation was hidden
+
     @CreationTimestamp
     @Column(name = "joined_at", nullable = false, updatable = false)
     private OffsetDateTime joinedAt;

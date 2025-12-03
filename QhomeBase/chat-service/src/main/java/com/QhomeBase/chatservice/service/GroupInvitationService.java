@@ -9,6 +9,7 @@ import com.QhomeBase.chatservice.model.GroupMember;
 import com.QhomeBase.chatservice.repository.GroupInvitationRepository;
 import com.QhomeBase.chatservice.repository.GroupMemberRepository;
 import com.QhomeBase.chatservice.repository.GroupRepository;
+import com.QhomeBase.chatservice.repository.BlockRepository;
 import com.QhomeBase.chatservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +39,7 @@ public class GroupInvitationService {
     private final ResidentInfoService residentInfoService;
     private final ChatNotificationService notificationService;
     private final FcmPushService fcmPushService;
+    private final BlockRepository blockRepository;
 
     @Value("${base.service.url:http://localhost:8081}")
     private String baseServiceUrl;
@@ -166,6 +168,14 @@ public class GroupInvitationService {
             if (existing.isPresent()) {
                 skippedPhones.add(phone + " (Đã có lời mời đang chờ)");
                 log.info("Pending invitation already exists for phone {} in group {}", phoneForStorage, groupId);
+                continue;
+            }
+
+            // Check if inviter has blocked the invitee or vice versa
+            if (blockRepository.findByBlockerIdAndBlockedId(inviterResidentId, residentId).isPresent() ||
+                blockRepository.findByBlockerIdAndBlockedId(residentId, inviterResidentId).isPresent()) {
+                skippedPhones.add(phone + " (Người dùng đã bị chặn)");
+                log.info("Cannot invite resident {} to group {}: blocked relationship exists", residentId, groupId);
                 continue;
             }
 

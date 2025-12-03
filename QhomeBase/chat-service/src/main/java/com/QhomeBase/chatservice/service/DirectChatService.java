@@ -70,6 +70,13 @@ public class DirectChatService {
                 .findActiveConversationsByUserId(residentId);
 
         return conversations.stream()
+                .filter(conv -> {
+                    // Filter out hidden conversations
+                    ConversationParticipant participant = participantRepository
+                            .findByConversationIdAndResidentId(conv.getId(), residentId)
+                            .orElse(null);
+                    return participant == null || !Boolean.TRUE.equals(participant.getIsHidden());
+                })
                 .map(conv -> toConversationResponse(conv, residentId, accessToken))
                 .collect(Collectors.toList());
     }
@@ -205,8 +212,18 @@ public class DirectChatService {
         // Notify via WebSocket
         notificationService.notifyDirectMessage(conversationId, response);
 
+        // Unhide conversation if it was hidden (when new message arrives)
+        ConversationParticipant otherParticipant = participantRepository
+                .findByConversationIdAndResidentId(conversationId, otherParticipantId)
+                .orElse(null);
+        if (otherParticipant != null && Boolean.TRUE.equals(otherParticipant.getIsHidden())) {
+            otherParticipant.setIsHidden(false);
+            otherParticipant.setHiddenAt(null);
+            participantRepository.save(otherParticipant);
+        }
+
         // Send FCM push notification to other participant
-        fcmPushService.sendDirectMessageNotification(otherParticipantId, conversationId, response);
+        fcmPushService.sendDirectMessageNotification(otherParticipantId, conversationId, response, residentId);
 
         return response;
     }

@@ -152,5 +152,58 @@ public class ResidentInfoService {
 
         return "Unknown";
     }
+
+    /**
+     * Get residentId from userId (using current access token)
+     */
+    public UUID getResidentIdFromUserId(UUID userId) {
+        String accessToken = getCurrentAccessToken();
+        if (accessToken == null || accessToken.isEmpty()) {
+            log.warn("No access token available for getting residentId from userId: {}", userId);
+            return null;
+        }
+        return getResidentIdFromUserId(userId, accessToken);
+    }
+
+    /**
+     * Get userId from residentId
+     */
+    public UUID getUserIdFromResidentId(UUID residentId) {
+        if (residentId == null) {
+            return null;
+        }
+        
+        String accessToken = getCurrentAccessToken();
+        if (accessToken == null || accessToken.isEmpty()) {
+            log.warn("No access token available for getting userId from residentId: {}", residentId);
+            return null;
+        }
+        
+        try {
+            String url = baseServiceUrl + "/api/residents/" + residentId;
+            
+            Map<String, Object> response = webClient
+                    .get()
+                    .uri(url)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+            
+            if (response == null) {
+                return null;
+            }
+            
+            Object userIdObj = response.get("userId");
+            if (userIdObj == null) {
+                return null;
+            }
+            
+            return UUID.fromString(userIdObj.toString());
+        } catch (Exception e) {
+            log.error("Error getting userId for residentId: {}", residentId, e);
+            return null;
+        }
+    }
 }
 

@@ -4,6 +4,9 @@ import com.QhomeBase.chatservice.dto.*;
 import com.QhomeBase.chatservice.security.UserPrincipal;
 import com.QhomeBase.chatservice.service.BlockService;
 import com.QhomeBase.chatservice.service.DirectChatService;
+import com.QhomeBase.chatservice.service.ResidentInfoService;
+import com.QhomeBase.chatservice.service.ConversationMuteService;
+import com.QhomeBase.chatservice.service.ConversationHideService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +16,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -23,6 +27,9 @@ public class DirectChatController {
 
     private final DirectChatService directChatService;
     private final BlockService blockService;
+    private final ResidentInfoService residentInfoService;
+    private final ConversationMuteService conversationMuteService;
+    private final ConversationHideService conversationHideService;
 
     @GetMapping("/conversations")
     @PreAuthorize("hasRole('RESIDENT')")
@@ -114,9 +121,11 @@ public class DirectChatController {
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
         
-        // Get residentId
-        // TODO: Use ResidentInfoService to get residentId from userId
-        blockService.blockUser(userId, blockedId);
+        // Convert userId to residentId
+        UUID blockerResidentId = residentInfoService.getResidentIdFromUserId(userId);
+        UUID blockedResidentId = residentInfoService.getResidentIdFromUserId(blockedId);
+        
+        blockService.blockUser(blockerResidentId, blockedResidentId);
         return ResponseEntity.ok().build();
     }
 
@@ -129,8 +138,88 @@ public class DirectChatController {
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
         
-        blockService.unblockUser(userId, blockedId);
+        // Convert userId to residentId
+        UUID blockerResidentId = residentInfoService.getResidentIdFromUserId(userId);
+        UUID blockedResidentId = residentInfoService.getResidentIdFromUserId(blockedId);
+        
+        blockService.unblockUser(blockerResidentId, blockedResidentId);
         return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/blocked-users")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Get blocked users", description = "Get list of users blocked by current user")
+    public ResponseEntity<List<UUID>> getBlockedUsers(Authentication authentication) {
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        // Convert userId to residentId
+        UUID residentId = residentInfoService.getResidentIdFromUserId(userId);
+        
+        // Get blocked residentIds and convert back to userIds
+        List<UUID> blockedResidentIds = blockService.getBlockedUserIds(residentId);
+        List<UUID> blockedUserIds = blockedResidentIds.stream()
+                .map(residentInfoService::getUserIdFromResidentId)
+                .toList();
+        
+        return ResponseEntity.ok(blockedUserIds);
+    }
+
+    @GetMapping("/is-blocked/{userId}")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Check if user is blocked", description = "Check if a user is blocked by current user")
+    public ResponseEntity<Boolean> isBlocked(
+            @PathVariable UUID userId,
+            Authentication authentication) {
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID blockerUserId = principal.uid();
+        
+        // Convert userIds to residentIds
+        UUID blockerResidentId = residentInfoService.getResidentIdFromUserId(blockerUserId);
+        UUID blockedResidentId = residentInfoService.getResidentIdFromUserId(userId);
+        
+        boolean isBlocked = blockService.isBlocked(blockerResidentId, blockedResidentId);
+        return ResponseEntity.ok(isBlocked);
+    }
+
+    @PostMapping("/conversations/{conversationId}/mute")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Mute direct conversation", description = "Mute notifications for a direct conversation. durationHours: 1, 2, 24, or null (indefinitely)")
+    public ResponseEntity<Map<String, Object>> muteDirectConversation(
+            @PathVariable UUID conversationId,
+            @RequestParam(required = false) Integer durationHours,
+            Authentication authentication) {
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        boolean success = conversationMuteService.muteDirectConversation(conversationId, userId, durationHours);
+        return ResponseEntity.ok(Map.of("success", success));
+    }
+
+    @DeleteMapping("/conversations/{conversationId}/mute")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Unmute direct conversation", description = "Unmute notifications for a direct conversation")
+    public ResponseEntity<Map<String, Object>> unmuteDirectConversation(
+            @PathVariable UUID conversationId,
+            Authentication authentication) {
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        boolean success = conversationMuteService.unmuteDirectConversation(conversationId, userId);
+        return ResponseEntity.ok(Map.of("success", success));
+    }
+
+    @PostMapping("/conversations/{conversationId}/hide")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Hide direct conversation", description = "Hide a direct conversation from chat list (client-side only). Resets unreadCount to 0.")
+    public ResponseEntity<Map<String, Object>> hideDirectConversation(
+            @PathVariable UUID conversationId,
+            Authentication authentication) {
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        boolean success = conversationHideService.hideDirectConversation(conversationId, userId);
+        return ResponseEntity.ok(Map.of("success", success));
     }
 }
 

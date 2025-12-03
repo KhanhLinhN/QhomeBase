@@ -5,6 +5,7 @@ import com.QhomeBase.chatservice.dto.MessagePagedResponse;
 import com.QhomeBase.chatservice.dto.MessageResponse;
 import com.QhomeBase.chatservice.security.UserPrincipal;
 import com.QhomeBase.chatservice.service.MessageService;
+import com.QhomeBase.chatservice.service.ConversationMuteService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -13,7 +14,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
 import java.util.UUID;
@@ -25,6 +25,7 @@ import java.util.UUID;
 public class MessageController {
 
     private final MessageService messageService;
+    private final ConversationMuteService conversationMuteService;
 
     @PostMapping
     @PreAuthorize("hasRole('RESIDENT')")
@@ -114,6 +115,35 @@ public class MessageController {
         
         Long unreadCount = messageService.getUnreadCount(groupId, userId);
         return ResponseEntity.ok(Map.of("unreadCount", unreadCount));
+    }
+
+    @PostMapping("/mute")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Mute group chat", description = "Mute notifications for a group chat. durationHours: 1, 2, 24, or null (indefinitely)")
+    public ResponseEntity<Map<String, Object>> muteGroupChat(
+            @PathVariable UUID groupId,
+            @RequestParam(required = false) Integer durationHours,
+            Authentication authentication) {
+        
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        boolean success = conversationMuteService.muteGroupChat(groupId, userId, durationHours);
+        return ResponseEntity.ok(Map.of("success", success));
+    }
+
+    @DeleteMapping("/mute")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Unmute group chat", description = "Unmute notifications for a group chat")
+    public ResponseEntity<Map<String, Object>> unmuteGroupChat(
+            @PathVariable UUID groupId,
+            Authentication authentication) {
+        
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        boolean success = conversationMuteService.unmuteGroupChat(groupId, userId);
+        return ResponseEntity.ok(Map.of("success", success));
     }
 }
 

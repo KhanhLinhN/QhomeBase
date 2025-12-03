@@ -51,5 +51,11 @@ public class GroupMember {
     @Column(name = "is_muted", nullable = false)
     @Builder.Default
     private Boolean isMuted = false;
+
+    @Column(name = "mute_until")
+    private OffsetDateTime muteUntil; // Timestamp when mute expires (null = not muted or muted indefinitely)
+
+    @Column(name = "muted_by_user_id")
+    private UUID mutedByUserId; // User who set the mute
 }
 

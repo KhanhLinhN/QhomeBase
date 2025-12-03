@@ -39,5 +39,19 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
 
     @Query("SELECT m FROM Message m WHERE m.id = :messageId AND m.isDeleted = false")
     Message findByIdAndNotDeleted(@Param("messageId") UUID messageId);
+
+    /**
+     * Count unread messages for a user in a group
+     */
+    @Query("SELECT COUNT(m) FROM Message m WHERE m.groupId = :groupId " +
+           "AND m.senderId != :excludeSenderId " +
+           "AND m.createdAt > :lastReadAt " +
+           "AND m.isDeleted = false " +
+           "AND m.messageType != 'SYSTEM'")
+    Long countUnreadMessages(
+        @Param("groupId") UUID groupId,
+        @Param("excludeSenderId") UUID excludeSenderId,
+        @Param("lastReadAt") OffsetDateTime lastReadAt
+    );
 }
 
