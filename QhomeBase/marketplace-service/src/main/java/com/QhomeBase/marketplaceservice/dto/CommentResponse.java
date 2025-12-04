@@ -25,5 +25,9 @@ public class CommentResponse {
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private Boolean isDeleted;
+
+    private String imageUrl; // URL of image attached to comment
+
+    private String videoUrl; // URL of video attached to comment
 }
 

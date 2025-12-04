@@ -20,5 +20,9 @@ public class CreateCommentRequest {
     private String content;
 
     private UUID parentCommentId; // For replies
+
+    private String imageUrl; // URL of image attached to comment
+
+    private String videoUrl; // URL of video attached to comment
 }
 

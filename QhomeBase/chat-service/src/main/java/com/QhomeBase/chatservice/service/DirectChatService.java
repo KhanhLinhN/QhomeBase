@@ -281,13 +281,16 @@ public class DirectChatService {
     /**
      * Get messages in a conversation with pagination
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public DirectMessagePagedResponse getMessages(UUID conversationId, UUID userId, int page, int size) {
         String accessToken = getCurrentAccessToken();
         UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
         if (residentId == null) {
             throw new RuntimeException("Resident not found for user: " + userId);
         }
+
+        log.info("📥 [DirectChatService] getMessages called - conversationId: {}, userId: {}, residentId: {}, page: {}, size: {}", 
+                conversationId, userId, residentId, page, size);
 
         Conversation conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new RuntimeException("Conversation not found"));
@@ -316,9 +319,18 @@ public class DirectChatService {
 
         // Update last read time (participant already loaded above)
         if (participant != null) {
-            participant.setLastReadAt(OffsetDateTime.now());
+            OffsetDateTime oldLastReadAt = participant.getLastReadAt();
+            OffsetDateTime newLastReadAt = OffsetDateTime.now();
+            participant.setLastReadAt(newLastReadAt);
             participantRepository.save(participant);
+            log.info("✅ [DirectChatService] Updated lastReadAt for participant - conversationId: {}, residentId: {}, oldLastReadAt: {}, newLastReadAt: {}", 
+                    conversationId, residentId, oldLastReadAt, newLastReadAt);
+        } else {
+            log.warn("⚠️ [DirectChatService] Participant is null, cannot update lastReadAt - conversationId: {}, residentId: {}", 
+                    conversationId, residentId);
         }
+
+        log.info("📤 [DirectChatService] Returning {} messages for conversationId: {}", messages.getContent().size(), conversationId);
 
         return DirectMessagePagedResponse.builder()
                 .content(messages.getContent().stream()
@@ -519,6 +531,11 @@ public class DirectChatService {
                 lastReadAt = OffsetDateTime.of(1970, 1, 1, 0, 0, 0, 0, java.time.ZoneOffset.UTC);
             }
             unreadCount = messageRepository.countUnreadMessages(conversation.getId(), currentUserId, lastReadAt);
+            log.info("📊 [DirectChatService] getConversation - conversationId: {}, currentUserId: {}, lastReadAt: {}, unreadCount: {}", 
+                    conversation.getId(), currentUserId, lastReadAt, unreadCount);
+        } else {
+            log.warn("⚠️ [DirectChatService] getConversation - Participant not found for conversationId: {}, currentUserId: {}", 
+                    conversation.getId(), currentUserId);
         }
 
         // Check if current user is blocked by the other participant

@@ -91,7 +91,8 @@ public class MarketplaceCommentController {
         }
 
         MarketplaceComment comment = commentService.addComment(
-                postId, residentId, request.getContent(), request.getParentCommentId()
+                postId, residentId, request.getContent(), request.getParentCommentId(),
+                request.getImageUrl(), request.getVideoUrl()
         );
         
         // Get post to get all stats
@@ -157,6 +158,18 @@ public class MarketplaceCommentController {
         }
 
         commentService.deleteComment(commentId, residentId);
+        
+        // Get post to get updated stats
+        var post = postService.getPostById(postId);
+        
+        // Send realtime stats update
+        notificationService.notifyPostStatsUpdate(
+                postId, 
+                post.getLikeCount(), 
+                post.getCommentCount(), 
+                post.getViewCount()
+        );
+        
         return ResponseEntity.noContent().build();
     }
 }

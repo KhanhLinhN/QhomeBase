@@ -15,11 +15,13 @@ import java.util.UUID;
 @Repository
 public interface MarketplaceCommentRepository extends JpaRepository<MarketplaceComment, UUID> {
 
+    @Query("SELECT c FROM MarketplaceComment c WHERE c.post.id = :postId AND c.parentComment IS NULL AND c.deletedAt IS NULL ORDER BY c.createdAt ASC")
     @EntityGraph(attributePaths = {"replies"})
-    List<MarketplaceComment> findByPostIdAndParentCommentIsNullOrderByCreatedAtAsc(UUID postId);
+    List<MarketplaceComment> findByPostIdAndParentCommentIsNullOrderByCreatedAtAsc(@Param("postId") UUID postId);
 
+    @Query("SELECT c FROM MarketplaceComment c WHERE c.post.id = :postId AND c.parentComment IS NULL AND c.deletedAt IS NULL ORDER BY c.createdAt ASC")
     @EntityGraph(attributePaths = {"replies"})
-    Page<MarketplaceComment> findByPostIdAndParentCommentIsNullOrderByCreatedAtAsc(UUID postId, Pageable pageable);
+    Page<MarketplaceComment> findByPostIdAndParentCommentIsNullOrderByCreatedAtAsc(@Param("postId") UUID postId, Pageable pageable);
 
     List<MarketplaceComment> findByParentCommentIdOrderByCreatedAtAsc(UUID parentCommentId);
 

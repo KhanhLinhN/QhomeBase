@@ -12,7 +12,8 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CreateDirectInvitationRequest {
-    private UUID inviteeId; // Resident ID to invite
+    private UUID inviteeId; // Resident ID to invite (optional if phoneNumber is provided)
+    private String phoneNumber; // Phone number to invite (optional if inviteeId is provided)
     private String initialMessage; // Optional first message
 }
 

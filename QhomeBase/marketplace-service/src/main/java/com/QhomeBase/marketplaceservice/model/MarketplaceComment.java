@@ -48,6 +48,12 @@ public class MarketplaceComment {
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
 
+    @Column(name = "image_url", columnDefinition = "TEXT")
+    private String imageUrl; // URL of image attached to comment
+
+    @Column(name = "video_url", columnDefinition = "TEXT")
+    private String videoUrl; // URL of video attached to comment
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

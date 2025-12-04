@@ -14,13 +14,16 @@ import com.QhomeBase.chatservice.repository.DirectMessageRepository;
 import com.QhomeBase.chatservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -40,12 +43,48 @@ public class DirectInvitationService {
     private final FcmPushService fcmPushService;
     private final FriendshipService friendshipService;
 
+    @Value("${base.service.url:http://localhost:8081}")
+    private String baseServiceUrl;
+
+    private final WebClient webClient = WebClient.builder().build();
+
     private String getCurrentAccessToken() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal principal) {
             return principal.token();
         }
         return null;
+    }
+
+    /**
+     * Find resident ID by phone number
+     */
+    private UUID findResidentIdByPhone(String phone, String accessToken) {
+        try {
+            String url = baseServiceUrl + "/api/residents/by-phone/" + phone;
+            
+            Map<String, Object> response = webClient
+                    .get()
+                    .uri(url)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+            
+            if (response == null) {
+                return null;
+            }
+            
+            Object idObj = response.get("id");
+            if (idObj == null) {
+                return null;
+            }
+            
+            return UUID.fromString(idObj.toString());
+        } catch (Exception e) {
+            log.debug("Resident not found for phone: {}", phone);
+            return null;
+        }
     }
 
     /**
@@ -66,17 +105,45 @@ public class DirectInvitationService {
             throw new RuntimeException("Resident not found for user: " + inviterId);
         }
 
-        // inviteeId from request might be userId or residentId
-        // Try to convert from userId to residentId if needed
-        UUID inviteeIdFromRequest = request.getInviteeId();
-        UUID inviteeResidentId = residentInfoService.getResidentIdFromUserId(inviteeIdFromRequest, accessToken);
-        if (inviteeResidentId == null) {
-            // If conversion fails, assume it's already a residentId
-            inviteeResidentId = inviteeIdFromRequest;
+        // Determine inviteeResidentId from either phoneNumber or inviteeId
+        UUID inviteeResidentId = null;
+        
+        if (request.getPhoneNumber() != null && !request.getPhoneNumber().trim().isEmpty()) {
+            // Use phone number to find resident
+            String phone = request.getPhoneNumber().trim().replaceAll("[^0-9]", "");
+            
+            // Normalize phone: remove leading zero if present for storage consistency
+            String phoneForStorage = phone;
+            if (phone.startsWith("0") && phone.length() > 1) {
+                phoneForStorage = phone.substring(1);
+            }
+            
+            // Try to find resident by phone
+            inviteeResidentId = findResidentIdByPhone(phoneForStorage, accessToken);
+            if (inviteeResidentId == null && !phoneForStorage.startsWith("0")) {
+                // Try with leading zero
+                inviteeResidentId = findResidentIdByPhone("0" + phoneForStorage, accessToken);
+            }
+            
+            if (inviteeResidentId == null) {
+                throw new RuntimeException("Số điện thoại không tồn tại trong hệ thống: " + request.getPhoneNumber());
+            }
+            
+            log.info("Found resident {} by phone number {}", inviteeResidentId, request.getPhoneNumber());
+        } else if (request.getInviteeId() != null) {
+            // Use inviteeId (might be userId or residentId)
+            UUID inviteeIdFromRequest = request.getInviteeId();
+            inviteeResidentId = residentInfoService.getResidentIdFromUserId(inviteeIdFromRequest, accessToken);
+            if (inviteeResidentId == null) {
+                // If conversion fails, assume it's already a residentId
+                inviteeResidentId = inviteeIdFromRequest;
+            }
+        } else {
+            throw new RuntimeException("Either phoneNumber or inviteeId must be provided");
         }
         
-        log.info("Checking block status: inviterResidentId={}, inviteeIdFromRequest={}, inviteeResidentId={}", 
-                inviterResidentId, inviteeIdFromRequest, inviteeResidentId);
+        log.info("Checking block status: inviterResidentId={}, inviteeResidentId={}", 
+                inviterResidentId, inviteeResidentId);
 
         // Check if users are blocked (bidirectional)
         boolean inviterBlockedInvitee = blockRepository

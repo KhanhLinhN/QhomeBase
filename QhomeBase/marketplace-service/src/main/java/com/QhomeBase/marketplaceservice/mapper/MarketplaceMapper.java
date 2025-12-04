@@ -159,6 +159,8 @@ public class MarketplaceMapper {
                 .createdAt(comment.getCreatedAt())
                 .updatedAt(comment.getUpdatedAt())
                 .isDeleted(comment.isDeleted())
+                .imageUrl(comment.getImageUrl())
+                .videoUrl(comment.getVideoUrl())
                 .build();
     }
 
