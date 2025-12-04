@@ -97,6 +97,25 @@ public class MaintenanceRequest {
     @Column(name = "response_status", length = 50)
     private String responseStatus;
 
+    @Column(name = "progress_notes", columnDefinition = "TEXT")
+    private String progressNotes;
+
+    @Column(name = "payment_status", length = 50)
+    @Builder.Default
+    private String paymentStatus = "UNPAID";
+
+    @Column(name = "payment_amount", precision = 15, scale = 2)
+    private java.math.BigDecimal paymentAmount;
+
+    @Column(name = "payment_date")
+    private OffsetDateTime paymentDate;
+
+    @Column(name = "payment_gateway", length = 50)
+    private String paymentGateway;
+
+    @Column(name = "vnpay_transaction_ref", length = 255)
+    private String vnpayTransactionRef;
+
     @PrePersist
     public void onCreate() {
         OffsetDateTime now = OffsetDateTime.now();

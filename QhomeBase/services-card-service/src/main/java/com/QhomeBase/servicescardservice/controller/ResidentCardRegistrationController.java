@@ -1,5 +1,6 @@
 package com.QhomeBase.servicescardservice.controller;
 
+import com.QhomeBase.servicescardservice.dto.BatchCardPaymentRequest;
 import com.QhomeBase.servicescardservice.dto.CardRegistrationAdminDecisionRequest;
 import com.QhomeBase.servicescardservice.dto.ResidentCardRegistrationCreateDto;
 import com.QhomeBase.servicescardservice.dto.ResidentCardRegistrationDto;
@@ -44,8 +45,8 @@ public class ResidentCardRegistrationController {
                     .body(Map.of("message", "Unauthorized"));
         }
         try {
-            // Only use status if provided, don't set default
-            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : null;
+            // Mặc định chỉ lấy những thẻ có status = PENDING nếu không có query param
+            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : "PENDING";
             String finalPaymentStatus = (paymentStatus != null && !paymentStatus.isBlank()) ? paymentStatus.trim() : null;
             
             return ResponseEntity.ok(
@@ -129,6 +130,66 @@ public class ResidentCardRegistrationController {
             log.error("❌ [ResidentCard] Lỗi tiếp tục thanh toán", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Không thể tiếp tục thanh toán: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/batch-payment")
+    public ResponseEntity<?> batchPayment(@Valid @RequestBody BatchCardPaymentRequest request,
+                                         @RequestHeader HttpHeaders headers,
+                                         HttpServletRequest httpRequest) {
+        UUID userId = jwtUtil.getUserIdFromHeaders(headers);
+        if (userId == null) {
+            log.warn("⚠️ [ResidentCard] Unauthorized request to batchPayment");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        
+        try {
+            log.info("📥 [ResidentCard] Batch payment request: unitId={}, registrationIds={}", 
+                    request.unitId(), request.registrationIds().size());
+            
+            ResidentCardPaymentResponse response = registrationService.batchInitiatePayment(userId, request, httpRequest);
+            Map<String, Object> body = new HashMap<>();
+            body.put("registrationId", response.registrationId() != null ? response.registrationId().toString() : null);
+            body.put("paymentUrl", response.paymentUrl());
+            body.put("cardCount", request.registrationIds().size());
+            
+            log.info("✅ [ResidentCard] Batch payment initiated: {} cards", request.registrationIds().size());
+            return ResponseEntity.ok(body);
+        } catch (IllegalArgumentException e) {
+            log.warn("⚠️ [ResidentCard] Invalid argument: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (IllegalStateException e) {
+            log.warn("⚠️ [ResidentCard] IllegalStateException: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            log.error("❌ [ResidentCard] Lỗi batch payment", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Không thể khởi tạo thanh toán batch: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping
+    public ResponseEntity<?> createRegistration(@Valid @RequestBody ResidentCardRegistrationCreateDto dto,
+                                                @RequestHeader HttpHeaders headers) {
+        UUID userId = jwtUtil.getUserIdFromHeaders(headers);
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        try {
+            ResidentCardRegistrationDto created = registrationService.createRegistration(userId, dto);
+            Map<String, Object> body = new HashMap<>();
+            body.put("id", created.id() != null ? created.id().toString() : null);
+            body.put("status", created.status());
+            body.put("paymentStatus", created.paymentStatus());
+            return ResponseEntity.ok(body);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            log.error("❌ [ResidentCard] Lỗi tạo đăng ký", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Không thể tạo đăng ký thẻ cư dân: " + e.getMessage()));
         }
     }
 

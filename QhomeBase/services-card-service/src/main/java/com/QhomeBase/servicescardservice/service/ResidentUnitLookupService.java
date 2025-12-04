@@ -74,7 +74,8 @@ public class ResidentUnitLookupService {
                 SELECT u.code AS apartment_number,
                        COALESCE(b.name, b.code) AS building_name,
                        hm.resident_id,
-                       r.full_name
+                       r.full_name,
+                       b.id AS building_id
                 FROM data.residents r
                 LEFT JOIN data.household_members hm ON hm.resident_id = r.id AND hm.left_at IS NULL
                 LEFT JOIN data.households h ON h.id = hm.household_id
@@ -118,7 +119,8 @@ public class ResidentUnitLookupService {
                 .addValue("unitId", unitId);
         SqlRowSet rowSet = jdbcTemplate.queryForRowSet("""
                 SELECT u.code AS apartment_number,
-                       COALESCE(b.name, b.code) AS building_name
+                       COALESCE(b.name, b.code) AS building_name,
+                       b.id AS building_id
                 FROM data.units u
                 LEFT JOIN data.buildings b ON b.id = u.building_id
                 WHERE u.id = :unitId
@@ -130,10 +132,33 @@ public class ResidentUnitLookupService {
                     normalize(rowSet.getString("apartment_number")),
                     normalize(rowSet.getString("building_name")),
                     null,
-                    null
+                    null,
+                    getUuid(rowSet, "building_id")
             ));
         }
         return Optional.empty();
+    }
+    
+    public Optional<UUID> getBuildingIdFromUnitId(UUID unitId) {
+        return resolveByUnit(unitId)
+                .map(AddressInfo::buildingId);
+    }
+    
+    private UUID getUuid(SqlRowSet rowSet, String column) {
+        if (!hasColumn(rowSet, column)) {
+            return null;
+        }
+        Object value = rowSet.getObject(column);
+        if (value instanceof UUID uuid) {
+            return uuid;
+        } else if (value instanceof String str && StringUtils.hasText(str)) {
+            try {
+                return UUID.fromString(str.trim());
+            } catch (IllegalArgumentException ignored) {
+                log.debug("Cannot parse {} value {}", column, str);
+            }
+        }
+        return null;
     }
 
     private AddressInfo mapRow(SqlRowSet rowSet) {
@@ -150,11 +175,13 @@ public class ResidentUnitLookupService {
                 }
             }
         }
+        UUID buildingId = getUuid(rowSet, "building_id");
         return new AddressInfo(
                 normalize(getString(rowSet, "apartment_number")),
                 normalize(getString(rowSet, "building_name")),
                 residentId,
-                normalize(getString(rowSet, "full_name"))
+                normalize(getString(rowSet, "full_name")),
+                buildingId
         );
     }
 
@@ -175,7 +202,11 @@ public class ResidentUnitLookupService {
         return hasColumn(rowSet, column) ? rowSet.getString(column) : null;
     }
 
-    public record AddressInfo(String apartmentNumber, String buildingName, UUID residentId, String residentFullName) {
+    public record AddressInfo(String apartmentNumber, String buildingName, UUID residentId, String residentFullName, UUID buildingId) {
+        public AddressInfo(String apartmentNumber, String buildingName, UUID residentId, String residentFullName) {
+            this(apartmentNumber, buildingName, residentId, residentFullName, null);
+        }
+        
         public boolean hasAddress() {
             return StringUtils.hasText(apartmentNumber) || StringUtils.hasText(buildingName);
         }

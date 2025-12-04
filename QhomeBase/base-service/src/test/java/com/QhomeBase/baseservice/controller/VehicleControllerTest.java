@@ -14,7 +14,7 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -32,6 +32,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @WebMvcTest(controllers = VehicleController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -43,13 +44,13 @@ class VehicleControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockBean
+    @MockitoBean
     private VehicleService vehicleService;
 
-    @MockBean
+    @MockitoBean
     private AuthzService authz;
 
-    @MockBean
+    @MockitoBean
     private JwtAuthFilter jwtAuthFilter;
 
     private UUID id;
@@ -76,8 +77,7 @@ class VehicleControllerTest {
                 null,
                 null,
                 OffsetDateTime.now(),
-                OffsetDateTime.now()
-        );
+                OffsetDateTime.now());
     }
 
     @Test
@@ -88,8 +88,8 @@ class VehicleControllerTest {
         var body = new VehicleCreateDto(residentId, unitId, "ABC123", VehicleKind.CAR, "Red");
 
         mockMvc.perform(post("/api/vehicles")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id.toString()))
                 .andExpect(jsonPath("$.plateNo").value("ABC123"))
@@ -104,8 +104,8 @@ class VehicleControllerTest {
         var body = new VehicleUpdateDto(residentId, unitId, "DEF456", VehicleKind.MOTORBIKE, "Blue", true);
 
         mockMvc.perform(put("/api/vehicles/" + id)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(body)))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id.toString()))
                 .andExpect(jsonPath("$.plateNo").value("ABC123"));
@@ -192,4 +192,3 @@ class VehicleControllerTest {
                 .andExpect(jsonPath("$[3]").value("OTHER"));
     }
 }
-

@@ -26,6 +26,8 @@ public class NotificationDetailResponse {
 
     private UUID targetBuildingId;
 
+    private UUID targetResidentId;
+
     private String actionUrl;
 
     private Instant createdAt;

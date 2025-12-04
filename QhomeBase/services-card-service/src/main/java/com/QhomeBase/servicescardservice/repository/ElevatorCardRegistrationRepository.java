@@ -14,6 +14,8 @@ public interface ElevatorCardRegistrationRepository extends JpaRepository<Elevat
     Optional<ElevatorCardRegistration> findByIdAndUserId(UUID id, UUID userId);
 
     Optional<ElevatorCardRegistration> findByVnpayTransactionRef(String vnpayTransactionRef);
+    
+    List<ElevatorCardRegistration> findAllByVnpayTransactionRef(String vnpayTransactionRef);
 
     List<ElevatorCardRegistration> findByResidentId(UUID residentId);
 

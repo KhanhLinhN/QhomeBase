@@ -185,7 +185,7 @@
                 <configuration>
                     <url>jdbc:postgresql://localhost:5432/qhome_base_db?currentSchema=cs_service,content,public</url>
                     <user>postgres</user>
-                    <password>postgres</password>
+                    <password>0035</password>
                     <schemas>
                         <schema>cs_service</schema>
                         <schema>content</schema>
@@ -195,6 +195,7 @@
                         <location>classpath:migration/content</location>
                     </locations>
                     <baselineOnMigrate>true</baselineOnMigrate>
+                    <outOfOrder>false</outOfOrder>
                 </configuration>
             </plugin>
         </plugins>

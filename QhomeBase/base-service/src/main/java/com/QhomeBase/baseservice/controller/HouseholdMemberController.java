@@ -34,8 +34,18 @@ public class HouseholdMemberController {
 
     @GetMapping("/households/{householdId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'RESIDENT')")
-    public ResponseEntity<List<HouseholdMemberDto>> getActiveMembersByHouseholdId(@PathVariable UUID householdId) {
+    public ResponseEntity<?> getActiveMembersByHouseholdId(
+            @PathVariable UUID householdId,
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) Integer offset) {
         try {
+            // If pagination parameters are provided, return paginated response
+            if (limit != null || offset != null) {
+                java.util.Map<String, Object> pagedResponse = householdMemberService
+                        .getActiveMembersByHouseholdIdPaged(householdId, limit, offset);
+                return ResponseEntity.ok(pagedResponse);
+            }
+            // Otherwise, return all members (backward compatibility)
             List<HouseholdMemberDto> result = householdMemberService.getActiveMembersByHouseholdId(householdId);
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {

@@ -42,7 +42,7 @@ public class ResidentServiceCatalogService {
                 .toList();
     }
 
-    public List<ServiceBookedSlotDto> getBookedSlots(UUID serviceId, LocalDate fromDate, LocalDate toDate) {
+    public List<ServiceBookedSlotDto> getBookedSlots(UUID serviceId, LocalDate fromDate, LocalDate toDate, UUID userId) {
         java.util.Objects.requireNonNull(serviceId, "Service ID is required");
 
         com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(serviceId)
@@ -67,6 +67,7 @@ public class ResidentServiceCatalogService {
                 .findAllByServiceIdAndSlotDateBetweenOrderBySlotDateAscStartTimeAsc(serviceId, start, end)
                 .stream()
                 .filter(slot -> slot.getBooking() != null && isVisibleStatus(slot.getBooking()))
+                .filter(slot -> userId == null || slot.getBooking().getUserId().equals(userId))
                 .map(slot -> ServiceBookedSlotDto.builder()
                         .bookingId(slot.getBooking().getId())
                         .slotDate(slot.getSlotDate())

@@ -194,9 +194,8 @@ public class VehicleRegistrationController {
     public ResponseEntity<?> getRegistrationsForAdmin(@RequestParam(name = "status", required = false) String status,
                                                       @RequestParam(name = "paymentStatus", required = false) String paymentStatus) {
         try {
-            // Only use status if provided, don't set default
-            // This allows frontend to filter by specific status or get all
-            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : null;
+            // Mặc định chỉ lấy những thẻ có status = PENDING nếu không có query param
+            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : "PENDING";
             String finalPaymentStatus = (paymentStatus != null && !paymentStatus.isBlank()) ? paymentStatus.trim() : null;
             
             return ResponseEntity.ok(
@@ -242,7 +241,8 @@ public class VehicleRegistrationController {
             UUID regUuid = UUID.fromString(registrationId);
             String adminNote = request != null ? request.getNote() : null;
             String issueMessage = request != null ? request.getIssueMessage() : null;
-            RegisterServiceRequestDto dto = registrationService.approveRegistration(regUuid, adminId, adminNote, issueMessage);
+            java.time.OffsetDateTime issueTime = request != null ? request.getIssueTime() : null;
+            RegisterServiceRequestDto dto = registrationService.approveRegistration(regUuid, adminId, adminNote, issueMessage, issueTime);
             return ResponseEntity.ok(toResponse(dto));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
@@ -283,6 +283,27 @@ public class VehicleRegistrationController {
             UUID regUuid = UUID.fromString(registrationId);
             String reason = request != null ? request.getNote() : null;
             RegisterServiceRequestDto dto = registrationService.rejectRegistration(regUuid, adminId, reason);
+            return ResponseEntity.ok(toResponse(dto));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/admin/vehicle-registrations/{registrationId}/cancel")
+    public ResponseEntity<?> cancelRegistration(@PathVariable String registrationId,
+                                                @RequestHeader HttpHeaders headers,
+                                                @Valid @RequestBody(required = false) VehicleRegistrationAdminDecisionRequest request) {
+        UUID adminId = jwtUtil.getUserIdFromHeaders(headers);
+        if (adminId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Unauthorized"));
+        }
+        try {
+            UUID regUuid = UUID.fromString(registrationId);
+            String adminNote = request != null ? request.getNote() : null;
+            RegisterServiceRequestDto dto = registrationService.cancelRegistration(regUuid, adminId, adminNote);
             return ResponseEntity.ok(toResponse(dto));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));

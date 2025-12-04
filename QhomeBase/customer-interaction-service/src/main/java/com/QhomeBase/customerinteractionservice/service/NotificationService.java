@@ -8,7 +8,9 @@ import com.QhomeBase.customerinteractionservice.dto.notification.NotificationWeb
 import com.QhomeBase.customerinteractionservice.dto.notification.UpdateNotificationRequest;
 import com.QhomeBase.customerinteractionservice.model.Notification;
 import com.QhomeBase.customerinteractionservice.model.NotificationScope;
+import com.QhomeBase.customerinteractionservice.model.NotificationType;
 import com.QhomeBase.customerinteractionservice.repository.NotificationRepository;
+import com.QhomeBase.customerinteractionservice.client.BaseServiceClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -32,6 +34,7 @@ public class NotificationService {
     private final SimpMessagingTemplate messagingTemplate;
     private final NotificationPushService notificationPushService;
     private final NotificationDeviceTokenService deviceTokenService;
+    private final BaseServiceClient baseServiceClient;
 
     public NotificationResponse createNotification(CreateNotificationRequest request) {
         validateNotificationScope(request.getScope(), request.getTargetRole(), request.getTargetBuildingId());
@@ -52,8 +55,17 @@ public class NotificationService {
 
         Notification savedNotification = notificationRepository.save(notification);
 
-        sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
-        notificationPushService.sendPushNotification(savedNotification);
+        // Chỉ gửi realtime notification và FCM push khi:
+        // 1. scope = EXTERNAL (riêng tư cho cư dân)
+        // 2. createdAt = today (không phải tương lai)
+        if (shouldSendNotification(savedNotification)) {
+            sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
+            notificationPushService.sendPushNotification(savedNotification);
+            log.info("✅ [NotificationService] Sent realtime and FCM push notification for notification {} (EXTERNAL, createdAt = today)", savedNotification.getId());
+        } else {
+            log.info("⏭️ [NotificationService] Skipped sending notification for notification {} (scope={}, createdAt={})", 
+                    savedNotification.getId(), savedNotification.getScope(), savedNotification.getCreatedAt());
+        }
 
         return toResponse(savedNotification);
     }
@@ -102,8 +114,17 @@ public class NotificationService {
 
         Notification updatedNotification = notificationRepository.save(notification);
 
-        sendWebSocketNotification(updatedNotification, "NOTIFICATION_UPDATED");
-        notificationPushService.sendPushNotification(updatedNotification);
+        // Chỉ gửi realtime notification và FCM push khi:
+        // 1. scope = EXTERNAL (riêng tư cho cư dân)
+        // 2. createdAt = today (không phải tương lai)
+        if (shouldSendNotification(updatedNotification)) {
+            sendWebSocketNotification(updatedNotification, "NOTIFICATION_UPDATED");
+            notificationPushService.sendPushNotification(updatedNotification);
+            log.info("✅ [NotificationService] Sent realtime and FCM push notification for updated notification {} (EXTERNAL, createdAt = today)", updatedNotification.getId());
+        } else {
+            log.info("⏭️ [NotificationService] Skipped sending notification for updated notification {} (scope={}, createdAt={})", 
+                    updatedNotification.getId(), updatedNotification.getScope(), updatedNotification.getCreatedAt());
+        }
 
         return toResponse(updatedNotification);
     }
@@ -238,6 +259,38 @@ public class NotificationService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Kiểm tra xem có nên gửi notification (realtime + FCM push) không.
+     * Chỉ gửi khi:
+     * 1. scope = EXTERNAL (riêng tư cho cư dân)
+     * 2. createdAt = today (không phải tương lai)
+     */
+    private boolean shouldSendNotification(Notification notification) {
+        // Chỉ gửi cho notification có scope EXTERNAL (cho cư dân)
+        if (notification.getScope() != NotificationScope.EXTERNAL) {
+            return false;
+        }
+        
+        // Chỉ gửi khi createdAt là hôm nay (không phải tương lai)
+        Instant now = Instant.now();
+        Instant createdAt = notification.getCreatedAt();
+        if (createdAt == null) {
+            return false;
+        }
+        
+        // Kiểm tra createdAt không phải tương lai
+        if (createdAt.isAfter(now)) {
+            return false; // createdAt là tương lai, không gửi notification
+        }
+        
+        // Kiểm tra createdAt là cùng ngày với hiện tại
+        // So sánh ngày (không tính giờ)
+        java.time.LocalDate createdAtDate = java.time.LocalDate.ofInstant(createdAt, java.time.ZoneId.systemDefault());
+        java.time.LocalDate nowDate = java.time.LocalDate.ofInstant(now, java.time.ZoneId.systemDefault());
+        
+        return createdAtDate.equals(nowDate);
+    }
+
     private void validateNotificationScope(NotificationScope scope, String targetRole, UUID targetBuildingId) {
         if (scope == null) {
             throw new IllegalArgumentException("Scope is required");
@@ -281,6 +334,23 @@ public class NotificationService {
         }
 
         if (notification.getScope() == NotificationScope.EXTERNAL) {
+            NotificationType type = notification.getType();
+            
+            // Card-related notifications (CARD_FEE_REMINDER, CARD_APPROVED, CARD_REJECTED):
+            // RIÊNG TƯ - chỉ hiển thị cho resident tạo thẻ
+            // These notifications must have targetResidentId set
+            if (type == NotificationType.CARD_FEE_REMINDER || 
+                type == NotificationType.CARD_APPROVED || 
+                type == NotificationType.CARD_REJECTED) {
+                // Card notifications must have targetResidentId and match current resident
+                if (notification.getTargetResidentId() == null) {
+                    log.warn("⚠️ [NotificationService] Card notification {} missing targetResidentId, skipping", notification.getId());
+                    return false; // Don't show card notifications without targetResidentId
+                }
+                return residentId != null && residentId.equals(notification.getTargetResidentId());
+            }
+            
+            // For other notification types, use existing logic
             // If notification has targetResidentId, only show to that specific resident
             if (notification.getTargetResidentId() != null) {
                 return residentId != null && residentId.equals(notification.getTargetResidentId());
@@ -296,6 +366,20 @@ public class NotificationService {
         return false;
     }
 
+    /**
+     * Get residentId from userId by calling base-service
+     * This ensures that notifications are filtered by the authenticated user's residentId
+     */
+    @Transactional(readOnly = true)
+    public UUID getResidentIdFromUserId(UUID userId) {
+        try {
+            return baseServiceClient.getResidentIdByUserId(userId);
+        } catch (Exception e) {
+            log.error("❌ Error getting residentId from userId {}: {}", userId, e.getMessage(), e);
+            return null;
+        }
+    }
+
     private NotificationDetailResponse toDetailResponse(Notification notification) {
         return NotificationDetailResponse.builder()
                 .type(notification.getType())
@@ -303,15 +387,32 @@ public class NotificationService {
                 .message(notification.getMessage())
                 .scope(notification.getScope())
                 .targetBuildingId(notification.getTargetBuildingId())
+                .targetResidentId(notification.getTargetResidentId())
                 .actionUrl(notification.getActionUrl())
                 .createdAt(notification.getCreatedAt())
                 .build();
     }
 
     private void sendWebSocketNotification(Notification notification, String action) {
-        NotificationWebSocketMessage payload = NotificationWebSocketMessage.of(notification, action);
         try {
-            // Gửi kênh tổng cho tất cả client quan tâm
+            log.info("🔔 [NotificationService] Sending WebSocket notification: action={}, notificationId={}, targetResidentId={}", 
+                    action, notification.getId(), notification.getTargetResidentId());
+            
+            NotificationWebSocketMessage payload = NotificationWebSocketMessage.of(notification, action);
+            
+            // If notification has targetResidentId, only send to that specific resident
+            // Don't broadcast to building/external channels to prevent other residents from receiving it
+            if (notification.getTargetResidentId() != null) {
+                String residentDestination = "/topic/notifications/resident/" + notification.getTargetResidentId();
+                log.info("📤 [NotificationService] Sending WebSocket to resident-specific channel: {}", residentDestination);
+                messagingTemplate.convertAndSend(residentDestination, payload);
+                log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {} | ResidentId: {}", 
+                        action, residentDestination, notification.getId(), notification.getTargetResidentId());
+                log.info("✅ Notification sent successfully via WebSocket to resident {}", notification.getTargetResidentId());
+                return;
+            }
+
+            // Gửi kênh tổng cho tất cả client quan tâm (only for non-resident-specific notifications)
             messagingTemplate.convertAndSend("/topic/notifications", payload);
             log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, "/topic/notifications", notification.getId());
 
@@ -364,7 +465,19 @@ public class NotificationService {
     }
 
     public void createInternalNotification(com.QhomeBase.customerinteractionservice.dto.notification.InternalNotificationRequest request) {
-        // If residentId is provided, send directly to that resident
+        NotificationType type = request.getType();
+        
+        // Validate: All card-related notifications require residentId (private notifications)
+        if (type == NotificationType.CARD_FEE_REMINDER || 
+            type == NotificationType.CARD_APPROVED || 
+            type == NotificationType.CARD_REJECTED) {
+            if (request.getResidentId() == null) {
+                log.error("❌ [NotificationService] Card notification (type={}) requires residentId, but it's null", type);
+                throw new IllegalArgumentException("Card notifications must have residentId");
+            }
+        }
+        
+        // If residentId is provided, send directly to that resident (private notification)
         if (request.getResidentId() != null) {
             Map<String, String> dataPayload = new HashMap<>();
             dataPayload.put("type", request.getType() != null ? request.getType().name() : "SYSTEM");
@@ -387,6 +500,9 @@ public class NotificationService {
             );
 
             // Also save to DB with scope EXTERNAL and targetResidentId for specific resident
+            // IMPORTANT: When residentId is provided, always set targetResidentId and targetBuildingId = null
+            // to ensure only the resident who created the request sees the notification (PRIVATE notification)
+            // This applies to all request types: card registrations, cleaning requests, maintenance requests, etc.
             NotificationScope scope = NotificationScope.EXTERNAL;
             
             Notification notification = Notification.builder()
@@ -394,8 +510,8 @@ public class NotificationService {
                     .title(request.getTitle())
                     .message(request.getMessage())
                     .scope(scope)
-                    .targetResidentId(request.getResidentId()) // Set targetResidentId for specific resident
-                    .targetBuildingId(null) // Don't set targetBuildingId when targeting specific resident
+                    .targetResidentId(request.getResidentId()) // Set targetResidentId for specific resident (PRIVATE)
+                    .targetBuildingId(null) // Always null when targeting specific resident (ensures PRIVATE notification)
                     .targetRole(null)
                     .referenceId(request.getReferenceId())
                     .referenceType(request.getReferenceType())
@@ -405,25 +521,27 @@ public class NotificationService {
 
             Notification savedNotification = notificationRepository.save(notification);
             
-            // Send WebSocket notification to resident-specific channel for real-time update
-            sendWebSocketNotificationToResident(savedNotification, request.getResidentId(), "NOTIFICATION_CREATED");
+            log.info("📡 [NotificationService] Preparing to send WebSocket notification: residentId={}, notificationId={}, type={}", 
+                    request.getResidentId(), savedNotification.getId(), type);
             
-            // Also send to general channels (building/external) for clients that subscribe to those channels
+            // Send WebSocket notification - will automatically route to resident-specific channel
+            // since targetResidentId is set, it won't broadcast to building/external channels
             sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
             
-            log.info("✅ Created internal notification for residentId: {} | Notification ID: {}", 
-                    request.getResidentId(), savedNotification.getId());
+            // Push notification đã được gửi ở trên (dòng 440) qua sendPushNotificationToResident
+            // Không cần gọi sendPushNotification nữa để tránh gửi trùng
+            
+            log.info("✅ Created internal notification for residentId: {} | Notification ID: {} | Type: {} | WebSocket sent to /topic/notifications/resident/{}", 
+                    request.getResidentId(), savedNotification.getId(), type, request.getResidentId());
         } else {
             // Fallback to regular notification creation
             CreateNotificationRequest createRequest = CreateNotificationRequest.builder()
                     .type(request.getType())
                     .title(request.getTitle())
                     .message(request.getMessage())
-                    .scope(request.getBuildingId() != null 
-                            ? NotificationScope.EXTERNAL 
-                            : (request.getTargetRole() != null 
-                                    ? NotificationScope.INTERNAL 
-                                    : NotificationScope.EXTERNAL))
+                    .scope(request.getTargetRole() != null 
+                            ? NotificationScope.INTERNAL 
+                            : NotificationScope.EXTERNAL)
                     .targetBuildingId(request.getBuildingId())
                     .targetRole(request.getTargetRole())
                     .referenceId(request.getReferenceId())

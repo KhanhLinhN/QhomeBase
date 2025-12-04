@@ -21,7 +21,7 @@ public record ResidentCardRegistrationCreateDto(
         String buildingName,
 
         @NotBlank(message = "CCCD/CMND là bắt buộc")
-        @Pattern(regexp = "^[0-9]{13}$", message = "CCCD/CMND phải là 13 số")
+        @Pattern(regexp = "^[0-9]{12,}$", message = "CCCD/CMND phải có ít nhất 12 số")
         String citizenId,
 
         String phoneNumber,

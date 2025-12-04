@@ -30,8 +30,16 @@ public interface ServiceBookingRepository extends JpaRepository<ServiceBooking, 
     List<ServiceBooking> findAllByUserIdAndPaymentStatusInOrderByCreatedAtDesc(@NotNull UUID userId,
                                                                                Collection<ServicePaymentStatus> statuses);
 
+    List<ServiceBooking> findAllByUserIdAndPaymentStatusInAndStatusNotInOrderByCreatedAtDesc(@NotNull UUID userId,
+                                                                                               Collection<ServicePaymentStatus> paymentStatuses,
+                                                                                               Collection<ServiceBookingStatus> excludedBookingStatuses);
+
     boolean existsByUserIdAndPaymentStatusIn(@NotNull UUID userId,
                                              Collection<ServicePaymentStatus> statuses);
+
+    boolean existsByUserIdAndPaymentStatusInAndStatusNotIn(@NotNull UUID userId,
+                                                             Collection<ServicePaymentStatus> paymentStatuses,
+                                                             Collection<ServiceBookingStatus> excludedBookingStatuses);
 
     List<ServiceBooking> findAllByBookingDateBetweenOrderByCreatedAtDesc(@NotNull LocalDate start,
                                                                          @NotNull LocalDate end);

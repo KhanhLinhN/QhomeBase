@@ -2,8 +2,11 @@ package com.QhomeBase.baseservice.service;
 
 import com.QhomeBase.baseservice.dto.AdminMaintenanceResponseDto;
 import com.QhomeBase.baseservice.dto.AdminServiceRequestActionDto;
+import com.QhomeBase.baseservice.dto.AddProgressNoteDto;
 import com.QhomeBase.baseservice.dto.CreateMaintenanceRequestDto;
 import com.QhomeBase.baseservice.dto.MaintenanceRequestDto;
+import com.QhomeBase.baseservice.service.vnpay.VnpayService;
+import com.QhomeBase.baseservice.service.vnpay.VnpayPaymentResult;
 import com.QhomeBase.baseservice.model.Household;
 import com.QhomeBase.baseservice.model.HouseholdMember;
 import com.QhomeBase.baseservice.model.MaintenanceRequest;
@@ -45,6 +48,7 @@ public class MaintenanceRequestService {
     private static final String STATUS_IN_PROGRESS = "IN_PROGRESS";
     private static final String STATUS_DONE = "DONE";
     private static final String STATUS_CANCELLED = "CANCELLED";
+    private static final String STATUS_DENIED = "DENIED";
     private static final String STATUS_NEW = "NEW";
     
     private static final String RESPONSE_STATUS_PENDING_APPROVAL = "PENDING_APPROVAL";
@@ -63,6 +67,7 @@ public class MaintenanceRequestService {
     private final HouseholdRepository householdRepository;
     private final HouseholdMemberRepository householdMemberRepository;
     private final NotificationClient notificationClient;
+    private final VnpayService vnpayService;
 
     public MaintenanceRequestService(
             MaintenanceRequestRepository maintenanceRequestRepository,
@@ -71,6 +76,7 @@ public class MaintenanceRequestService {
             HouseholdRepository householdRepository,
             HouseholdMemberRepository householdMemberRepository,
             NotificationClient notificationClient,
+            VnpayService vnpayService,
             @Value("${maintenance.request.working.hours.start:08:00}") String workingStartStr,
             @Value("${maintenance.request.working.hours.end:18:00}") String workingEndStr) {
         this.maintenanceRequestRepository = maintenanceRequestRepository;
@@ -79,6 +85,7 @@ public class MaintenanceRequestService {
         this.householdRepository = householdRepository;
         this.householdMemberRepository = householdMemberRepository;
         this.notificationClient = notificationClient;
+        this.vnpayService = vnpayService;
         this.workingStart = LocalTime.parse(workingStartStr, TIME_FORMATTER);
         this.workingEnd = LocalTime.parse(workingEndStr, TIME_FORMATTER);
     }
@@ -187,7 +194,12 @@ public class MaintenanceRequestService {
                 entity.getEstimatedCost(),
                 entity.getRespondedBy(),
                 entity.getRespondedAt(),
-                entity.getResponseStatus()
+                entity.getResponseStatus(),
+                entity.getProgressNotes(),
+                entity.getPaymentStatus(),
+                entity.getPaymentAmount(),
+                entity.getPaymentDate(),
+                entity.getPaymentGateway()
         );
     }
 
@@ -202,9 +214,63 @@ public class MaintenanceRequestService {
                 .toList();
     }
 
-    public List<MaintenanceRequestDto> getPendingRequests() {
+    /**
+     * Get paginated requests for a resident (all statuses)
+     */
+    public Map<String, Object> getMyRequestsPaged(UUID userId, int limit, int offset) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        
         List<MaintenanceRequest> requests = maintenanceRequestRepository
-                .findByStatusOrderByCreatedAtAsc(STATUS_PENDING);
+                .findByResidentIdWithPagination(resident.getId(), limit, offset);
+        
+        long total = maintenanceRequestRepository.countByResidentId(resident.getId());
+        
+        List<MaintenanceRequestDto> dtos = requests.stream()
+                .map(this::toDto)
+                .toList();
+        
+        return Map.of(
+                "requests", dtos,
+                "total", total,
+                "limit", limit,
+                "offset", offset
+        );
+    }
+
+    public List<MaintenanceRequestDto> getPendingRequests() {
+        // Changed from STATUS_PENDING to STATUS_NEW - new requests now have status NEW
+        List<MaintenanceRequest> requests = maintenanceRequestRepository
+                .findByStatusOrderByCreatedAtAsc(STATUS_NEW);
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    public List<MaintenanceRequestDto> getInProgressRequests() {
+        List<MaintenanceRequest> requests = maintenanceRequestRepository
+                .findByStatusOrderByCreatedAtAsc(STATUS_IN_PROGRESS);
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    public List<MaintenanceRequestDto> getRequestsByStatus(String status) {
+        List<MaintenanceRequest> requests = maintenanceRequestRepository
+                .findByStatusOrderByCreatedAtAsc(status);
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    /**
+     * Get paid maintenance requests for a resident
+     */
+    public List<MaintenanceRequestDto> getPaidRequests(UUID userId) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        List<MaintenanceRequest> requests = maintenanceRequestRepository
+                .findByResidentIdAndPaymentStatusPaid(resident.getId());
         return requests.stream()
                 .map(this::toDto)
                 .toList();
@@ -279,25 +345,26 @@ public class MaintenanceRequestService {
     }
 
     @SuppressWarnings("null")
-    public MaintenanceRequestDto approveRequest(UUID adminId, UUID requestId, AdminServiceRequestActionDto dto) {
+    public MaintenanceRequestDto denyRequest(UUID adminId, UUID requestId, AdminServiceRequestActionDto dto) {
         MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
 
-        // For deny action: set status to CANCELLED
-        // This method is used for denying requests
-        request.setStatus(STATUS_CANCELLED);
-        
-        if (dto != null && dto.note() != null && !dto.note().isBlank()) {
-            request.setNote(dto.note().trim());
+        // Require note (reason) for denial
+        if (dto == null || dto.note() == null || dto.note().isBlank()) {
+            throw new IllegalArgumentException("Note (reason) is required when denying a request");
         }
+
+        // Admin deny/reject request: set status to DENIED (different from CANCELLED by resident)
+        request.setStatus(STATUS_DENIED);
+        request.setNote(dto.note().trim());
         
         if (request.getResponseStatus() == null || RESPONSE_STATUS_PENDING_APPROVAL.equalsIgnoreCase(request.getResponseStatus())) {
             request.setResponseStatus(RESPONSE_STATUS_REJECTED);
         }
 
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
-        notifyMaintenanceCancelled(saved);
-        log.info("Admin {} denied maintenance request {} and set status to CANCELLED", adminId, requestId);
+        notifyMaintenanceDenied(saved);
+        log.info("Admin {} denied maintenance request {} and set status to DENIED", adminId, requestId);
         return toDto(saved);
     }
 
@@ -311,8 +378,19 @@ public class MaintenanceRequestService {
         }
 
         request.setStatus(STATUS_DONE);
+        
+        // If payment status is null or UNPAID, mark as paid via direct payment (staff completes without VNPay)
+        if (request.getPaymentStatus() == null || "UNPAID".equalsIgnoreCase(request.getPaymentStatus())) {
+            request.setPaymentStatus("PAID");
+            request.setPaymentAmount(request.getEstimatedCost());
+            request.setPaymentDate(OffsetDateTime.now());
+            request.setPaymentGateway("DIRECT");
+            log.info("Staff {} completed maintenance request {} and marked as paid via DIRECT payment", staffId, requestId);
+        }
+        
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
-        notifyMaintenanceCompleted(saved, dto != null ? dto.note() : null);
+        // Removed notification - no need to notify when request is completed
+        // notifyMaintenanceCompleted(saved, dto != null ? dto.note() : null);
         return toDto(saved);
     }
 
@@ -336,10 +414,14 @@ public class MaintenanceRequestService {
             throw new IllegalStateException("Request status must be PENDING to approve response");
         }
 
+        // Simply approve and set status to IN_PROGRESS (no payment at this stage)
         request.setResponseStatus(RESPONSE_STATUS_APPROVED);
         request.setStatus(STATUS_IN_PROGRESS);
+        // Payment will be handled later when staff completes the work
+
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
-        notifyMaintenanceResponseApproved(saved);
+        // Removed notification - no need to notify when resident approves response
+        // notifyMaintenanceResponseApproved(saved);
         log.info("Resident {} approved response for maintenance request {}", resident.getId(), requestId);
         return toDto(saved);
     }
@@ -381,8 +463,9 @@ public class MaintenanceRequestService {
         }
 
         if (STATUS_DONE.equalsIgnoreCase(request.getStatus()) ||
-                STATUS_CANCELLED.equalsIgnoreCase(request.getStatus())) {
-            throw new IllegalStateException("Cannot cancel a completed or already cancelled request");
+                STATUS_CANCELLED.equalsIgnoreCase(request.getStatus()) ||
+                STATUS_DENIED.equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Cannot cancel a completed, denied, or already cancelled request");
         }
 
         request.setStatus(STATUS_CANCELLED);
@@ -390,7 +473,8 @@ public class MaintenanceRequestService {
             request.setResponseStatus(RESPONSE_STATUS_REJECTED);
         }
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
-        notifyMaintenanceCancelled(saved);
+        // Không gửi notification khi cư dân tự hủy request
+        // notifyMaintenanceCancelled(saved);
         return toDto(saved);
     }
 
@@ -528,6 +612,23 @@ public class MaintenanceRequestService {
         );
     }
 
+    private void notifyMaintenanceDenied(MaintenanceRequest request) {
+        StringBuilder body = new StringBuilder("Yêu cầu sửa chữa \"")
+                .append(request.getTitle())
+                .append("\" đã bị từ chối bởi admin.");
+        
+        if (request.getNote() != null && !request.getNote().isBlank()) {
+            body.append(" ").append(request.getNote());
+        }
+
+        sendMaintenanceNotification(
+                request,
+                "Yêu cầu sửa chữa bị từ chối",
+                body.toString(),
+                STATUS_DENIED
+        );
+    }
+
     private void sendMaintenanceNotification(
             MaintenanceRequest request,
             String title,
@@ -565,6 +666,122 @@ public class MaintenanceRequestService {
                 "MAINTENANCE_REQUEST",
                 data
         );
+    }
+
+    @SuppressWarnings("null")
+    public MaintenanceRequestDto addProgressNote(UUID staffId, UUID requestId, String note, java.math.BigDecimal cost) {
+        MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
+
+        if (!STATUS_IN_PROGRESS.equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Progress notes can only be added when request status is IN_PROGRESS");
+        }
+
+        // Append new note to existing progress notes
+        String existingNotes = request.getProgressNotes();
+        String newNote = note != null ? note.trim() : "";
+        
+        if (newNote.isEmpty()) {
+            throw new IllegalArgumentException("Progress note cannot be empty");
+        }
+
+        // Format: append with timestamp and separator
+        OffsetDateTime now = OffsetDateTime.now();
+        String timestamp = now.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String formattedNote = String.format("[%s] %s", timestamp, newNote);
+        
+        if (existingNotes == null || existingNotes.isBlank()) {
+            request.setProgressNotes(formattedNote);
+        } else {
+            request.setProgressNotes(existingNotes + "\n\n" + formattedNote);
+        }
+
+        // Update cost if provided (if null, keep original estimated cost)
+        if (cost != null) {
+            request.setEstimatedCost(cost);
+            log.info("Staff {} updated estimated cost to {} for maintenance request {}", staffId, cost, requestId);
+        }
+
+        MaintenanceRequest saved = maintenanceRequestRepository.save(request);
+        // Removed notification - no need to notify when adding progress note
+        // notifyMaintenanceProgressNoteAdded(saved, newNote);
+        log.info("Staff {} added progress note to maintenance request {}", staffId, requestId);
+        return toDto(saved);
+    }
+
+    public VnpayPaymentResult createVnpayPaymentUrl(UUID userId, UUID requestId, String clientIp) {
+        Resident resident = residentRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
+        
+        MaintenanceRequest request = maintenanceRequestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found"));
+
+        if (request.getResidentId() == null || !request.getResidentId().equals(resident.getId())) {
+            throw new IllegalArgumentException("You can only create payment URL for your own requests");
+        }
+
+        // Payment can only be made when request is IN_PROGRESS (staff has completed work)
+        if (!STATUS_IN_PROGRESS.equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalStateException("Payment can only be made when request is in progress");
+        }
+
+        if (request.getEstimatedCost() == null || request.getEstimatedCost().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new IllegalStateException("Estimated cost is required and must be greater than 0");
+        }
+
+        // Check if already paid
+        if ("PAID".equalsIgnoreCase(request.getPaymentStatus())) {
+            throw new IllegalStateException("Request is already paid");
+        }
+
+        // Use request ID as order ID (convert UUID to long hash)
+        long orderId = Math.abs(requestId.hashCode());
+        String orderInfo = "Thanh toan yeu cau sua chua: " + request.getTitle();
+
+        VnpayPaymentResult result = vnpayService.createPaymentUrlWithRef(
+                orderId,
+                orderInfo,
+                request.getEstimatedCost(),
+                clientIp,
+                null // Will use default return URL from VnpayProperties
+        );
+
+        // Save transaction ref and set payment gateway
+        request.setVnpayTransactionRef(result.transactionRef());
+        request.setPaymentGateway("VNPAY");
+        request.setPaymentStatus("UNPAID");
+        request.setPaymentAmount(request.getEstimatedCost());
+        maintenanceRequestRepository.save(request);
+
+        log.info("Created VNPay payment URL for maintenance request {}: txnRef={}", requestId, result.transactionRef());
+        return result;
+    }
+
+    @SuppressWarnings("null")
+    public MaintenanceRequestDto handleVnpayCallback(Map<String, String> params) {
+        String txnRef = params.get("vnp_TxnRef");
+        if (txnRef == null || txnRef.isBlank()) {
+            throw new IllegalArgumentException("Transaction reference is required");
+        }
+
+        // Find request by transaction ref
+        MaintenanceRequest request = maintenanceRequestRepository.findByVnpayTransactionRef(txnRef)
+                .orElseThrow(() -> new IllegalArgumentException("Maintenance request not found for transaction: " + txnRef));
+
+        // Validate VNPay response
+        if (!vnpayService.validateReturn(params)) {
+            log.warn("Invalid VNPay callback for maintenance request {}: txnRef={}", request.getId(), txnRef);
+            throw new IllegalStateException("Invalid payment response from VNPay");
+        }
+
+        // Update payment status
+        request.setPaymentStatus("PAID");
+        request.setPaymentDate(OffsetDateTime.now());
+        request.setStatus(STATUS_DONE); // Set status to DONE after successful payment
+
+        MaintenanceRequest saved = maintenanceRequestRepository.save(request);
+        log.info("VNPay payment successful for maintenance request {}: txnRef={}", request.getId(), txnRef);
+        return toDto(saved);
     }
 }
 

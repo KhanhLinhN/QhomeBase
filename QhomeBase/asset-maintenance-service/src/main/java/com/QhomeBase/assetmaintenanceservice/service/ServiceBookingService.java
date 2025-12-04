@@ -79,7 +79,13 @@ public class ServiceBookingService {
         UserPrincipal principal = principal(authenticationPrincipal);
         UUID userId = requireUserId(principal);
 
-        if (serviceBookingRepository.existsByUserIdAndPaymentStatusIn(userId, UNPAID_STATUSES)) {
+        // Check for unpaid bookings, but exclude CANCELLED payment status
+        // CANCELLED payment status means the booking and payment are both cancelled
+        List<ServiceBooking> unpaidBookings = serviceBookingRepository
+                .findAllByUserIdAndPaymentStatusInOrderByCreatedAtDesc(userId, UNPAID_STATUSES);
+        boolean hasActiveUnpaid = unpaidBookings.stream()
+                .anyMatch(booking -> booking.getPaymentStatus() != ServicePaymentStatus.CANCELLED);
+        if (hasActiveUnpaid) {
             throw new IllegalStateException("Bạn đang có dịch vụ chưa được thanh toán. Vui lòng thanh toán hoặc hủy trước khi đặt lịch mới.");
         }
 
@@ -122,6 +128,10 @@ public class ServiceBookingService {
         if (pricingType == ServicePricingType.SESSION) {
             validateSlotWithinAvailability(service, bookingDate, startTime, endTime);
         }
+
+        // Validate slot booking including capacity check
+        validateSlotBooking(service.getId(), bookingDate, startTime, endTime, null, 
+                request.getNumberOfPeople(), service.getMaxCapacity());
 
         ServiceBooking booking = new ServiceBooking();
         booking.setService(service);
@@ -199,7 +209,8 @@ public class ServiceBookingService {
         }
 
         try {
-            validateSlotBooking(serviceId, bookingDate, startTime, endTime, null);
+            validateSlotBooking(serviceId, bookingDate, startTime, endTime, null, 
+                    request.getNumberOfPeople(), service.getMaxCapacity());
         } catch (IllegalArgumentException ex) {
             return false;
         }
@@ -228,9 +239,14 @@ public class ServiceBookingService {
     public List<ServiceBookingDto> getMyUnpaidBookings(Object authenticationPrincipal) {
         UserPrincipal principal = principal(authenticationPrincipal);
         UUID userId = requireUserId(principal);
+        // Get all bookings with UNPAID or PENDING payment status
+        // Exclude bookings with CANCELLED payment status (these are fully cancelled)
+        // UNPAID_STATUSES only contains UNPAID and PENDING, so we don't need to filter CANCELLED
+        // But we keep the filter for safety in case of data inconsistency
         List<ServiceBooking> bookings = serviceBookingRepository
                 .findAllByUserIdAndPaymentStatusInOrderByCreatedAtDesc(userId, UNPAID_STATUSES);
         return bookings.stream()
+                .filter(booking -> booking.getPaymentStatus() != ServicePaymentStatus.CANCELLED)
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
@@ -277,15 +293,30 @@ public class ServiceBookingService {
         ServiceBooking booking = serviceBookingRepository.findByIdAndUserId(bookingId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Booking not found: " + bookingId));
 
+        // If already cancelled, return the booking without error
+        if (booking.getStatus() == ServiceBookingStatus.CANCELLED) {
+            return toDto(booking);
+        }
+
         if (!canCancel(booking.getStatus())) {
             throw new IllegalStateException("Booking cannot be cancelled in current status: " + booking.getStatus());
         }
 
         booking.setStatus(ServiceBookingStatus.CANCELLED);
         booking.setRejectionReason(trimToNull(request.getReason()));
-        if (booking.getPaymentStatus() == ServicePaymentStatus.UNPAID) {
+        // Cancel payment status if not yet paid (UNPAID or PENDING)
+        // This ensures cancelled bookings don't block new bookings
+        if (booking.getPaymentStatus() == ServicePaymentStatus.UNPAID 
+                || booking.getPaymentStatus() == ServicePaymentStatus.PENDING) {
+            booking.setPaymentStatus(ServicePaymentStatus.CANCELLED);
+        } else if (booking.getPaymentStatus() == ServicePaymentStatus.PAID) {
+            // If already paid, also set payment status to CANCELLED
             booking.setPaymentStatus(ServicePaymentStatus.CANCELLED);
         }
+
+        // Remove booking slots when cancelling to free up the time slot for new bookings
+        // This prevents unique constraint violations when creating new bookings with the same slot
+        booking.getBookingSlots().clear();
 
         return toDto(booking);
     }
@@ -704,6 +735,16 @@ public class ServiceBookingService {
                                      LocalTime start,
                                      LocalTime end,
                                      UUID bookingId) {
+        validateSlotBooking(serviceId, date, start, end, bookingId, null, null);
+    }
+
+    private void validateSlotBooking(UUID serviceId,
+                                     LocalDate date,
+                                     LocalTime start,
+                                     LocalTime end,
+                                     UUID bookingId,
+                                     Integer requestedNumberOfPeople,
+                                     Integer maxCapacity) {
         if (date == null) {
             throw new IllegalArgumentException("Slot date is required");
         }
@@ -714,18 +755,46 @@ public class ServiceBookingService {
             throw new IllegalArgumentException("Slot end time must be after start time");
         }
 
-        boolean overlap;
+        // Check for overlapping slots
+        List<com.QhomeBase.assetmaintenanceservice.model.service.ServiceBookingSlot> overlappingSlots;
         if (bookingId == null) {
-            overlap = serviceBookingSlotRepository
-                    .existsByServiceIdAndSlotDateAndStartTimeLessThanAndEndTimeGreaterThan(serviceId, date, end, start);
+            overlappingSlots = serviceBookingSlotRepository
+                    .findAllByServiceIdAndSlotDateAndStartTimeLessThanAndEndTimeGreaterThan(serviceId, date, end, start);
         } else {
-            overlap = serviceBookingSlotRepository
-                    .existsByServiceIdAndSlotDateAndStartTimeLessThanAndEndTimeGreaterThanAndBooking_IdNot(
+            overlappingSlots = serviceBookingSlotRepository
+                    .findAllByServiceIdAndSlotDateAndStartTimeLessThanAndEndTimeGreaterThanAndBooking_IdNot(
                             serviceId, date, end, start, bookingId);
         }
-        if (overlap) {
-            throw new IllegalArgumentException(String.format(
-                    "Requested slot %s %s-%s is already booked for this service", date, start, end));
+
+        // Filter to only include bookings with visible status (PENDING, APPROVED, COMPLETED)
+        List<com.QhomeBase.assetmaintenanceservice.model.service.ServiceBooking> overlappingBookings = overlappingSlots.stream()
+                .map(com.QhomeBase.assetmaintenanceservice.model.service.ServiceBookingSlot::getBooking)
+                .filter(booking -> booking != null)
+                .filter(booking -> {
+                    com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus status = booking.getStatus();
+                    return status == com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus.PENDING
+                            || status == com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus.APPROVED
+                            || status == com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus.COMPLETED;
+                })
+                .toList();
+
+        if (!overlappingBookings.isEmpty()) {
+            // Check capacity if maxCapacity is set
+            if (maxCapacity != null && maxCapacity > 0 && requestedNumberOfPeople != null) {
+                int totalPeople = overlappingBookings.stream()
+                        .mapToInt(booking -> booking.getNumberOfPeople() != null ? booking.getNumberOfPeople() : 0)
+                        .sum();
+                
+                if (totalPeople + requestedNumberOfPeople > maxCapacity) {
+                    throw new IllegalArgumentException(String.format(
+                            "Slot %s %s-%s đã đạt giới hạn số người. Số người hiện tại: %d, giới hạn: %d, yêu cầu thêm: %d",
+                            date, start, end, totalPeople, maxCapacity, requestedNumberOfPeople));
+                }
+            } else {
+                // If no capacity limit or no requested people, just check for any overlap
+                throw new IllegalArgumentException(String.format(
+                        "Requested slot %s %s-%s is already booked for this service", date, start, end));
+            }
         }
     }
 

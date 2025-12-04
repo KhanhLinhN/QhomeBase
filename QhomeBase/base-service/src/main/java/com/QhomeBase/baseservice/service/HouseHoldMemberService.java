@@ -183,6 +183,39 @@ public class HouseHoldMemberService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Get paginated active members by household ID
+     * @param householdId The household ID
+     * @param limit Maximum number of members to return
+     * @param offset Number of members to skip
+     * @return Map containing members list and total count
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getActiveMembersByHouseholdIdPaged(
+            UUID householdId, Integer limit, Integer offset) {
+        int pageLimit = (limit != null && limit > 0) ? limit : 100; // Default 100
+        int pageOffset = (offset != null && offset >= 0) ? offset : 0;
+        
+        // Cap limit at 1000 to prevent excessive data transfer
+        pageLimit = Math.min(pageLimit, 1000);
+        
+        List<HouseholdMember> members = householdMemberRepository
+                .findActiveMembersByHouseholdIdWithPagination(householdId, pageLimit, pageOffset);
+        
+        long total = householdMemberRepository.countActiveMembersByHouseholdId(householdId);
+        
+        List<HouseholdMemberDto> dtos = members.stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+        
+        return java.util.Map.of(
+                "members", dtos,
+                "total", total,
+                "limit", pageLimit,
+                "offset", pageOffset
+        );
+    }
+
     @Transactional(readOnly = true)
     public List<HouseholdMemberDto> getActiveMembersByResidentId(UUID residentId) {
         List<HouseholdMember> members = householdMemberRepository

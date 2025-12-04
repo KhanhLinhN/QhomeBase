@@ -1,6 +1,7 @@
 package com.QhomeBase.servicescardservice.service;
 
 import com.QhomeBase.servicescardservice.config.VnpayProperties;
+import com.QhomeBase.servicescardservice.dto.BatchCardPaymentRequest;
 import com.QhomeBase.servicescardservice.dto.CardRegistrationAdminDecisionRequest;
 import com.QhomeBase.servicescardservice.dto.ResidentCardRegistrationCreateDto;
 import com.QhomeBase.servicescardservice.dto.ResidentCardRegistrationDto;
@@ -21,6 +22,7 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -189,7 +191,7 @@ public class ResidentCardRegistrationService {
             }
 
             // Send notification to resident
-            sendCardApprovalNotification(saved, request.issueMessage());
+            sendCardApprovalNotification(saved, request.issueMessage(), request.issueTime());
 
             log.info("✅ [ResidentCard] Admin {} đã approve đăng ký {}", adminId, registrationId);
             return toDto(saved);
@@ -210,35 +212,104 @@ public class ResidentCardRegistrationService {
 
             log.info("✅ [ResidentCard] Admin {} đã reject đăng ký {}", adminId, registrationId);
             return toDto(saved);
+        } else if ("CANCEL".equalsIgnoreCase(decision) || "CANCELLED".equalsIgnoreCase(decision)) {
+            // Admin cancel logic - set status to REJECTED (bị từ chối)
+            // Note: Cư dân hủy sẽ set status = CANCELLED, admin hủy sẽ set status = REJECTED
+            if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
+                throw new IllegalStateException("Đăng ký đã bị từ chối");
+            }
+
+            registration.setStatus(STATUS_REJECTED);
+            registration.setAdminNote(request.note());
+            registration.setUpdatedAt(now);
+
+            ResidentCardRegistration saved = repository.save(registration);
+
+            // Send notification to resident (admin cancel = reject)
+            sendCardRejectionNotification(saved, request.note());
+
+            log.info("✅ [ResidentCard] Admin {} đã cancel (reject) đăng ký {}", adminId, registrationId);
+            return toDto(saved);
         } else {
-            throw new IllegalArgumentException("Invalid decision: " + decision + ". Must be APPROVE or REJECT");
+            throw new IllegalArgumentException("Invalid decision: " + decision + ". Must be APPROVE, REJECT, or CANCEL");
         }
     }
 
-    private void sendCardApprovalNotification(ResidentCardRegistration registration, String issueMessage) {
+    private void sendCardApprovalNotification(ResidentCardRegistration registration, String issueMessage, OffsetDateTime issueTime) {
         try {
-            // Get current card price from database
-            BigDecimal currentPrice = cardPricingService.getPrice("RESIDENT");
-            String formattedPrice = formatVnd(currentPrice);
+            // CARD_APPROVED is PRIVATE - only resident who created the request can see
+            // Get residentId from userId (người tạo request) instead of residentId (người được đăng ký thẻ)
+            UUID requesterResidentId = residentUnitLookupService.resolveByUser(
+                    registration.getUserId(), 
+                    registration.getUnitId()
+            ).map(ResidentUnitLookupService.AddressInfo::residentId).orElse(null);
+            
+            if (requesterResidentId == null) {
+                log.warn("⚠️ [ResidentCard] Không thể tìm thấy residentId cho userId={}, không thể gửi notification cho registrationId: {}", 
+                        registration.getUserId(), registration.getId());
+                return;
+            }
+
+            // Get payment amount (use actual payment amount if available, otherwise use current price)
+            BigDecimal paymentAmount = registration.getPaymentAmount();
+            if (paymentAmount == null) {
+                paymentAmount = cardPricingService.getPrice("RESIDENT");
+            }
+            String formattedPrice = formatVnd(paymentAmount);
+
+            // Get resident full name (người được đăng ký thẻ)
+            String residentFullName = registration.getFullName();
+            if (residentFullName == null || residentFullName.isBlank()) {
+                residentFullName = "cư dân";
+            }
 
             String title = "Thẻ cư dân đã được duyệt";
-            String message = issueMessage != null && !issueMessage.isBlank() 
-                    ? issueMessage 
-                    : String.format("Thẻ cư dân của bạn đã được duyệt. Phí đăng ký: %s. Vui lòng đến nhận thẻ theo thông tin đã cung cấp.", 
-                            formattedPrice);
+            
+            // Format thời gian nhận thẻ (từ issueTime nếu có, nếu không thì dùng approvedAt)
+            String issueTimeFormatted = "";
+            OffsetDateTime timeToUse = issueTime != null ? issueTime : registration.getApprovedAt();
+            if (timeToUse != null) {
+                DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm", Locale.forLanguageTag("vi-VN"));
+                issueTimeFormatted = timeToUse.atZoneSameInstant(ZoneId.of("Asia/Ho_Chi_Minh"))
+                        .format(dateFormatter);
+            }
+            
+            String message;
+            if (issueMessage != null && !issueMessage.isBlank()) {
+                message = issueMessage;
+            } else {
+                // Tự động tạo message: "Thẻ cư dân của (họ và tên) đã chấp nhận và cư dân sẽ nhận vào (ngày giờ)"
+                if (issueTimeFormatted.isEmpty()) {
+                    message = String.format("Thẻ cư dân của %s đã chấp nhận.", residentFullName);
+                } else {
+                    message = String.format("Thẻ cư dân của %s đã chấp nhận và cư dân sẽ nhận vào %s.", 
+                            residentFullName, issueTimeFormatted);
+                }
+            }
 
             Map<String, String> data = new HashMap<>();
             data.put("cardType", "RESIDENT_CARD");
             data.put("registrationId", registration.getId().toString());
-            data.put("price", currentPrice.toString());
+            data.put("price", paymentAmount.toString());
             data.put("formattedPrice", formattedPrice);
             if (registration.getApartmentNumber() != null) {
                 data.put("apartmentNumber", registration.getApartmentNumber());
             }
+            if (residentFullName != null) {
+                data.put("fullName", residentFullName);
+            }
+            if (!issueTimeFormatted.isEmpty()) {
+                data.put("issueTime", issueTimeFormatted);
+            }
+            if (timeToUse != null) {
+                data.put("issueTimeTimestamp", timeToUse.toString());
+            }
 
+            // Send PRIVATE notification to requester (người tạo request) only
+            // buildingId = null for private notification
             notificationClient.sendResidentNotification(
-                    registration.getResidentId(),
-                    null, // buildingId - có thể null vì gửi theo residentId
+                    requesterResidentId, // residentId của người tạo request
+                    null, // buildingId = null for private notification
                     "CARD_APPROVED",
                     title,
                     message,
@@ -247,48 +318,72 @@ public class ResidentCardRegistrationService {
                     data
             );
 
-            log.info("✅ [ResidentCard] Đã gửi notification approval cho residentId: {}", registration.getResidentId());
+            log.info("✅ [ResidentCard] Đã gửi notification approval riêng tư cho requester residentId: {} (userId: {})", 
+                    requesterResidentId, registration.getUserId());
         } catch (Exception e) {
-            log.error("❌ [ResidentCard] Không thể gửi notification approval cho residentId: {}", registration.getResidentId(), e);
+            log.error("❌ [ResidentCard] Không thể gửi notification approval cho registrationId: {}", registration.getId(), e);
         }
     }
 
     private void sendCardRejectionNotification(ResidentCardRegistration registration, String rejectionReason) {
         try {
-            UUID residentId = registration.getResidentId();
-            if (residentId == null) {
-                log.warn("⚠️ [ResidentCard] residentId là null, không thể gửi notification cho registrationId: {}", 
-                        registration.getId());
+            // CARD_REJECTED is PRIVATE - only resident who created the request can see
+            // Get residentId from userId (người tạo request) instead of residentId (người được đăng ký thẻ)
+            UUID requesterResidentId = residentUnitLookupService.resolveByUser(
+                    registration.getUserId(), 
+                    registration.getUnitId()
+            ).map(ResidentUnitLookupService.AddressInfo::residentId).orElse(null);
+            
+            if (requesterResidentId == null) {
+                log.warn("⚠️ [ResidentCard] Không thể tìm thấy residentId cho userId={}, không thể gửi notification cho registrationId: {}", 
+                        registration.getUserId(), registration.getId());
                 return;
             }
 
-            // Get current card price from database
-            BigDecimal currentPrice = cardPricingService.getPrice("RESIDENT");
-            String formattedPrice = formatVnd(currentPrice);
+            // Get payment amount (use actual payment amount if available, otherwise use current price)
+            BigDecimal paymentAmount = registration.getPaymentAmount();
+            if (paymentAmount == null) {
+                paymentAmount = cardPricingService.getPrice("RESIDENT");
+            }
+            String formattedPrice = formatVnd(paymentAmount);
+
+            // Get resident full name (người được đăng ký thẻ)
+            String residentFullName = registration.getFullName();
+            if (residentFullName == null || residentFullName.isBlank()) {
+                residentFullName = "cư dân";
+            }
 
             String title = "Thẻ cư dân bị từ chối";
-            String message = rejectionReason != null && !rejectionReason.isBlank() 
-                    ? String.format("Yêu cầu đăng ký thẻ cư dân của bạn đã bị từ chối. Phí đăng ký: %s. Lý do: %s", 
-                            formattedPrice, rejectionReason)
-                    : String.format("Yêu cầu đăng ký thẻ cư dân của bạn đã bị từ chối. Phí đăng ký: %s. Vui lòng liên hệ quản trị viên để biết thêm chi tiết.", 
-                            formattedPrice);
+            String message;
+            if (rejectionReason != null && !rejectionReason.isBlank()) {
+                message = String.format("Yêu cầu đăng ký thẻ cư dân của %s đã bị từ chối. Phí đăng ký: %s. Lý do: %s", 
+                        residentFullName, formattedPrice, rejectionReason);
+            } else {
+                message = String.format("Yêu cầu đăng ký thẻ cư dân của %s đã bị từ chối. Phí đăng ký: %s. Vui lòng liên hệ quản trị viên để biết thêm chi tiết.", 
+                        residentFullName, formattedPrice);
+            }
 
             Map<String, String> data = new HashMap<>();
             data.put("cardType", "RESIDENT_CARD");
             data.put("registrationId", registration.getId().toString());
             data.put("status", "REJECTED");
-            data.put("price", currentPrice.toString());
+            data.put("price", paymentAmount.toString());
             data.put("formattedPrice", formattedPrice);
             if (registration.getApartmentNumber() != null) {
                 data.put("apartmentNumber", registration.getApartmentNumber());
+            }
+            if (residentFullName != null) {
+                data.put("fullName", residentFullName);
             }
             if (rejectionReason != null) {
                 data.put("rejectionReason", rejectionReason);
             }
 
+            // Send PRIVATE notification to requester (người tạo request) only
+            // buildingId = null for private notification
             notificationClient.sendResidentNotification(
-                    residentId,
-                    null, // buildingId - có thể null vì gửi theo residentId
+                    requesterResidentId, // residentId của người tạo request
+                    null, // buildingId = null for private notification
                     "CARD_REJECTED",
                     title,
                     message,
@@ -297,12 +392,14 @@ public class ResidentCardRegistrationService {
                     data
             );
 
-            log.info("✅ [ResidentCard] Đã gửi notification rejection cho residentId: {}", residentId);
+            log.info("✅ [ResidentCard] Đã gửi notification rejection riêng tư cho requester residentId: {} (userId: {})", 
+                    requesterResidentId, registration.getUserId());
         } catch (Exception e) {
             log.error("❌ [ResidentCard] Không thể gửi notification rejection cho registrationId: {}", 
                     registration.getId(), e);
         }
     }
+
 
     @Transactional
     public ResidentCardPaymentResponse initiatePayment(UUID userId,
@@ -360,6 +457,117 @@ public class ResidentCardRegistrationService {
         repository.save(saved);
 
         return new ResidentCardPaymentResponse(saved.getId(), paymentResult.paymentUrl());
+    }
+
+    @Transactional
+    public ResidentCardPaymentResponse batchInitiatePayment(UUID userId,
+                                                           BatchCardPaymentRequest request,
+                                                           HttpServletRequest httpRequest) {
+        if (request.registrationIds() == null || request.registrationIds().isEmpty()) {
+            throw new IllegalArgumentException("Danh sách đăng ký không được để trống");
+        }
+
+        // Validate all registrations belong to user and are in valid state
+        List<ResidentCardRegistration> registrations = new ArrayList<>();
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        
+        for (UUID registrationId : request.registrationIds()) {
+            ResidentCardRegistration registration = repository.findByIdAndUserId(registrationId, userId)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            String.format("Không tìm thấy đăng ký thẻ cư dân: %s", registrationId)));
+
+            // Validate unitId matches
+            if (!registration.getUnitId().equals(request.unitId())) {
+                throw new IllegalArgumentException(
+                        String.format("Đăng ký %s không thuộc căn hộ %s", registrationId, request.unitId()));
+            }
+
+            // Validate status
+            if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
+                throw new IllegalStateException(
+                        String.format("Đăng ký %s đã bị từ chối", registrationId));
+            }
+            if ("CANCELLED".equalsIgnoreCase(registration.getStatus())) {
+                throw new IllegalStateException(
+                        String.format("Đăng ký %s đã bị hủy. Vui lòng tạo đăng ký mới.", registrationId));
+            }
+
+            String currentStatus = registration.getStatus();
+            String paymentStatus = registration.getPaymentStatus();
+            
+            if (!"NEEDS_RENEWAL".equalsIgnoreCase(currentStatus) && 
+                !"SUSPENDED".equalsIgnoreCase(currentStatus)) {
+                if (!Objects.equals(paymentStatus, "UNPAID") && 
+                    !Objects.equals(paymentStatus, "PAYMENT_PENDING")) {
+                    throw new IllegalStateException(
+                            String.format("Đăng ký %s đã thanh toán hoặc không thể tiếp tục thanh toán", registrationId));
+                }
+            }
+
+            // Use paymentAmount from registration, fallback to pricing service if null
+            BigDecimal registrationAmount = registration.getPaymentAmount();
+            if (registrationAmount == null || registrationAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                registrationAmount = cardPricingService.getPrice("RESIDENT");
+                log.warn("⚠️ [ResidentCard] Registration {} has no paymentAmount, using default price: {}", 
+                        registrationId, registrationAmount);
+            }
+
+            registrations.add(registration);
+            totalAmount = totalAmount.add(registrationAmount);
+        }
+
+        // Update all registrations to PAYMENT_PENDING
+        String apartmentNumber = registrations.get(0).getApartmentNumber();
+        for (ResidentCardRegistration registration : registrations) {
+            registration.setStatus(STATUS_PAYMENT_PENDING);
+            registration.setPaymentStatus("PAYMENT_PENDING");
+            registration.setPaymentGateway(PAYMENT_VNPAY);
+            repository.save(registration);
+        }
+
+        // Create single payment URL for all cards
+        // Use first registration ID for orderId, but include count in orderInfo
+        UUID firstRegistrationId = registrations.get(0).getId();
+        long orderId = Math.abs(firstRegistrationId.hashCode());
+        if (orderId == 0) {
+            orderId = Math.abs(UUID.randomUUID().getMostSignificantBits());
+        }
+        
+        // Store mapping: orderId -> list of registration IDs (comma-separated)
+        String registrationIdsStr = registrations.stream()
+                .map(r -> r.getId().toString())
+                .collect(java.util.stream.Collectors.joining(","));
+        orderIdToRegistrationId.put(orderId, firstRegistrationId); // Store first ID for backward compatibility
+        
+        // Store batch mapping separately (we'll need to add a new map for this)
+        // For now, we'll encode it in the orderInfo or use a different approach
+        
+        String clientIp = resolveClientIp(httpRequest);
+        int cardCount = registrations.size();
+        String orderInfo = String.format("Thanh toán %d thẻ cư dân %s", 
+                cardCount, 
+                apartmentNumber != null ? apartmentNumber : firstRegistrationId.toString().substring(0, 8));
+        
+        String returnUrl = StringUtils.hasText(vnpayProperties.getResidentReturnUrl())
+                ? vnpayProperties.getResidentReturnUrl()
+                : vnpayProperties.getReturnUrl();
+        
+        log.info("💰 [ResidentCard] Batch payment calculation: {} cards, totalAmount={} VND", 
+                cardCount, totalAmount);
+        
+        var paymentResult = vnpayService.createPaymentUrlWithRef(orderId, orderInfo, totalAmount, clientIp, returnUrl);
+        
+        // Save transaction reference to all registrations
+        String txnRef = paymentResult.transactionRef();
+        for (ResidentCardRegistration registration : registrations) {
+            registration.setVnpayTransactionRef(txnRef);
+            repository.save(registration);
+        }
+
+        log.info("✅ [ResidentCard] Batch payment initiated: {} cards, total amount: {} VND, txnRef: {}", 
+                cardCount, totalAmount, txnRef);
+        
+        return new ResidentCardPaymentResponse(firstRegistrationId, paymentResult.paymentUrl());
     }
 
     @Transactional(readOnly = true)
@@ -439,77 +647,91 @@ public class ResidentCardRegistrationService {
         registration.setVnpayTransactionRef(txnRef);
 
         if (signatureValid && "00".equals(responseCode) && "00".equals(transactionStatus)) {
-            registration.setPaymentStatus("PAID");
-            try {
-                applyResolvedAddressForResident(
-                        registration,
-                        registration.getResidentId(),
-                        registration.getUnitId(),
-                        registration.getFullName(),
-                        registration.getApartmentNumber(),
-                        registration.getBuildingName()
-                );
-            } catch (Exception e) {
-                log.warn("⚠️ [ResidentCard] Không thể resolve địa chỉ sau thanh toán, giữ nguyên giá trị hiện tại: {}", e.getMessage());
+            // Handle batch payment: find all registrations with the same txnRef
+            List<ResidentCardRegistration> allRegistrations = repository.findAllByVnpayTransactionRef(txnRef);
+            if (allRegistrations.isEmpty()) {
+                allRegistrations = List.of(registration);
             }
             
-            // Nếu là gia hạn (status = NEEDS_RENEWAL hoặc SUSPENDED), sau khi thanh toán thành công → set status = APPROVED
-            // Nếu là đăng ký mới, sau khi thanh toán → set status = PENDING_REVIEW (chờ admin duyệt)
-            registration.setPaymentGateway(PAYMENT_VNPAY);
-            OffsetDateTime payDate = parsePayDate(params.get("vnp_PayDate"));
-            registration.setPaymentDate(payDate);
+            log.info("✅ [ResidentCard] Processing payment for {} registration(s) with txnRef: {}", 
+                    allRegistrations.size(), txnRef);
             
-            String currentStatus = registration.getStatus();
-            if ("NEEDS_RENEWAL".equals(currentStatus) || "SUSPENDED".equals(currentStatus)) {
-                registration.setStatus(STATUS_APPROVED);
-                registration.setApprovedAt(OffsetDateTime.now()); // Cập nhật lại approved_at khi gia hạn
-                log.info("✅ [ResidentCard] Gia hạn thành công, thẻ {} đã được set lại status = APPROVED", registration.getId());
+            OffsetDateTime payDate = parsePayDate(params.get("vnp_PayDate"));
+            
+            for (ResidentCardRegistration reg : allRegistrations) {
+                reg.setPaymentStatus("PAID");
+                reg.setPaymentGateway(PAYMENT_VNPAY);
+                reg.setPaymentDate(payDate);
+                reg.setVnpayTransactionRef(txnRef);
                 
-                // Reset reminder cycle sau khi gia hạn (approved_at đã được set ở trên)
+                try {
+                    applyResolvedAddressForResident(
+                            reg,
+                            reg.getResidentId(),
+                            reg.getUnitId(),
+                            reg.getFullName(),
+                            reg.getApartmentNumber(),
+                            reg.getBuildingName()
+                    );
+                } catch (Exception e) {
+                    log.warn("⚠️ [ResidentCard] Không thể resolve địa chỉ sau thanh toán cho registration {}, giữ nguyên giá trị hiện tại: {}", 
+                            reg.getId(), e.getMessage());
+                }
+                
+                // Nếu là gia hạn (status = NEEDS_RENEWAL hoặc SUSPENDED), sau khi thanh toán thành công → set status = APPROVED
+                // Nếu là đăng ký mới, sau khi thanh toán → set status = PENDING_REVIEW (chờ admin duyệt)
+                String currentStatus = reg.getStatus();
+                if ("NEEDS_RENEWAL".equals(currentStatus) || "SUSPENDED".equals(currentStatus)) {
+                    reg.setStatus(STATUS_APPROVED);
+                    reg.setApprovedAt(OffsetDateTime.now()); // Cập nhật lại approved_at khi gia hạn
+                    log.info("✅ [ResidentCard] Gia hạn thành công, thẻ {} đã được set lại status = APPROVED", reg.getId());
+                    
+                    // Reset reminder cycle sau khi gia hạn (approved_at đã được set ở trên)
+                    cardFeeReminderService.resetReminderAfterPayment(
+                            CardFeeReminderService.CardFeeType.RESIDENT,
+                            reg.getId(),
+                            reg.getUnitId(),
+                            reg.getResidentId(),
+                            reg.getUserId(),
+                            reg.getApartmentNumber(),
+                            reg.getBuildingName(),
+                            payDate // payment_date mới (approved_at sẽ được lấy từ registration.getApprovedAt())
+                    );
+                } else {
+                    reg.setStatus(STATUS_PENDING_REVIEW);
+                }
+                repository.save(reg);
+
+                log.info("✅ [ResidentCard] Thanh toán thành công cho đăng ký {}", reg.getId());
+                billingClient.recordResidentCardPayment(
+                        reg.getId(),
+                        reg.getUserId(),
+                        reg.getUnitId(),
+                        reg.getFullName(),
+                        reg.getApartmentNumber(),
+                        reg.getBuildingName(),
+                        reg.getRequestType(),
+                        reg.getNote(),
+                        reg.getPaymentAmount(),
+                        payDate,
+                        txnRef,
+                        params.get("vnp_TransactionNo"),
+                        params.get("vnp_BankCode"),
+                        params.get("vnp_CardType"),
+                        responseCode
+                );
+
                 cardFeeReminderService.resetReminderAfterPayment(
                         CardFeeReminderService.CardFeeType.RESIDENT,
-                        registration.getId(),
-                        registration.getUnitId(),
-                        registration.getResidentId(),
-                        registration.getUserId(),
-                        registration.getApartmentNumber(),
-                        registration.getBuildingName(),
-                        payDate // payment_date mới (approved_at sẽ được lấy từ registration.getApprovedAt())
+                        reg.getId(),
+                        reg.getUnitId(),
+                        reg.getResidentId(),
+                        reg.getUserId(),
+                        reg.getApartmentNumber(),
+                        reg.getBuildingName(),
+                        payDate
                 );
-            } else {
-                registration.setStatus(STATUS_PENDING_REVIEW);
             }
-            repository.save(registration);
-
-            log.info("✅ [ResidentCard] Thanh toán thành công cho đăng ký {}", registration.getId());
-            billingClient.recordResidentCardPayment(
-                    registration.getId(),
-                    registration.getUserId(),
-                    registration.getUnitId(),
-                    registration.getFullName(),
-                    registration.getApartmentNumber(),
-                    registration.getBuildingName(),
-                    registration.getRequestType(),
-                    registration.getNote(),
-                    registration.getPaymentAmount(),
-                    payDate,
-                    txnRef,
-                    params.get("vnp_TransactionNo"),
-                    params.get("vnp_BankCode"),
-                    params.get("vnp_CardType"),
-                    responseCode
-            );
-
-            cardFeeReminderService.resetReminderAfterPayment(
-                    CardFeeReminderService.CardFeeType.RESIDENT,
-                    registration.getId(),
-                    registration.getUnitId(),
-                    registration.getResidentId(),
-                    registration.getUserId(),
-                    registration.getApartmentNumber(),
-                    registration.getBuildingName(),
-                    payDate
-            );
 
             orderIdToRegistrationId.remove(orderId);
             return new ResidentCardPaymentResult(registration.getId(), true, responseCode, true);
@@ -570,7 +792,7 @@ public class ResidentCardRegistrationService {
         // Validate số lượng thẻ cư dân không vượt quá số người trong căn hộ
         validateResidentCardLimitByUnit(dto.unitId());
         
-        // Validate CCCD phải là 13 số
+        // Validate CCCD phải có ít nhất 12 số
         if (!StringUtils.hasText(dto.citizenId())) {
             throw new IllegalArgumentException("CCCD/CMND là bắt buộc");
         }
@@ -578,9 +800,9 @@ public class ResidentCardRegistrationService {
         // Normalize CCCD: loại bỏ tất cả khoảng trắng và ký tự không phải số
         String normalizedCitizenId = dto.citizenId().replaceAll("[^0-9]", "");
         
-        // Validate format: phải đúng 13 số
-        if (normalizedCitizenId.length() != 13) {
-            throw new IllegalArgumentException("CCCD/CMND phải là 13 số");
+        // Validate format: phải có ít nhất 12 số
+        if (normalizedCitizenId.length() < 12) {
+            throw new IllegalArgumentException("CCCD/CMND phải có ít nhất 12 số");
         }
         
         // Kiểm tra CCCD có thuộc căn hộ không

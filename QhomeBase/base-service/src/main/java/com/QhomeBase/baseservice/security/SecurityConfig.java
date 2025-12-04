@@ -38,8 +38,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/reading-cycles/**").permitAll()
                         .requestMatchers("/api/meter-reading-assignments/**").permitAll()
                         .requestMatchers("/api/units/**").permitAll()
-                        // Internal service calls - allow customer-interaction-service to get household/unit/building info
+                        // VNPay callback endpoint - must be public for payment gateway redirect
+                        .requestMatchers(HttpMethod.GET, "/api/maintenance-requests/vnpay/redirect").permitAll()
+                        // Internal service calls - allow service-to-service communication
+                        // Allow finance-billing-service and other services to get household/unit/building info
                         .requestMatchers("/api/household-members/residents/**").permitAll()
+                        .requestMatchers("/api/household-members/households/**").permitAll() // Allow service-to-service calls
                         .requestMatchers("/api/households/**").permitAll()
                         .anyRequest().authenticated()
                 )

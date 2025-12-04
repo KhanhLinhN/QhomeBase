@@ -27,6 +27,19 @@ spring:
             - Path=/api/card-registrations/**
           filters:
             - StripPrefix=0
+        - id: services-card-pricing
+          uri: ${services-card.service.url:http://localhost:8083}
+          predicates:
+            - Path=/api/card-pricing/**
+          filters:
+            - StripPrefix=0
+        # Services Card Service - Uploads (must be before base-service catch-all)
+        - id: services-card-uploads
+          uri: ${services-card.service.url:http://localhost:8083}
+          predicates:
+            - Path=/api/uploads/**
+          filters:
+            - StripPrefix=1
         # IAM Service Routes (must be before base-service catch-all)
         - id: iam-service
           uri: ${iam.service.url:http://localhost:8088}
@@ -67,6 +80,20 @@ spring:
           uri: ${data-docs.service.url:http://localhost:8082}
           predicates:
             - Path=/api/data-docs/**
+          filters:
+            - StripPrefix=0
+        # Data Docs Service - Contracts (must be before base-service catch-all)
+        - id: data-docs-contracts
+          uri: ${data-docs.service.url:http://localhost:8082}
+          predicates:
+            - Path=/api/contracts/**
+          filters:
+            - StripPrefix=0
+        # Data Docs Service - Files (must be before base-service catch-all)
+        - id: data-docs-files
+          uri: ${data-docs.service.url:http://localhost:8082}
+          predicates:
+            - Path=/api/files/**
           filters:
             - StripPrefix=0
         # Customer Interaction Service Routes (must be before base-service catch-all)

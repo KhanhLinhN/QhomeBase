@@ -74,14 +74,39 @@ public class InvoiceService {
     );
     
     public List<InvoiceDto> getInvoicesByResident(UUID residentId) {
-        List<Invoice> invoices = invoiceRepository.findByPayerResidentId(residentId);
+        // Lấy invoice theo cả payerResidentId VÀ payerUnitId của resident đó
+        // Để tất cả thành viên trong cùng căn hộ có thể xem invoice của căn hộ đó
+        // Tìm unitId từ residentId thông qua household
+        UUID unitId = baseServiceClient.getUnitIdFromResidentId(residentId);
+        
+        List<Invoice> invoices;
+        if (unitId != null) {
+            // Lấy invoice theo cả payerResidentId VÀ payerUnitId
+            invoices = invoiceRepository.findByPayerResidentIdOrPayerUnitId(residentId, unitId);
+        } else {
+            // Fallback: chỉ lấy theo payerResidentId nếu không tìm được unitId
+            invoices = invoiceRepository.findByPayerResidentId(residentId);
+        }
+        
         return invoices.stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
     
     public List<InvoiceDto> getInvoicesByResidentAndStatus(UUID residentId, InvoiceStatus status) {
-        List<Invoice> invoices = invoiceRepository.findByPayerResidentIdAndStatus(residentId, status);
+        // Lấy invoice theo cả payerResidentId VÀ payerUnitId của resident đó với status
+        // Để tất cả thành viên trong cùng căn hộ có thể xem invoice của căn hộ đó
+        UUID unitId = baseServiceClient.getUnitIdFromResidentId(residentId);
+        
+        List<Invoice> invoices;
+        if (unitId != null) {
+            // Lấy invoice theo cả payerResidentId VÀ payerUnitId với status
+            invoices = invoiceRepository.findByPayerResidentIdOrPayerUnitIdAndStatus(residentId, unitId, status);
+        } else {
+            // Fallback: chỉ lấy theo payerResidentId nếu không tìm được unitId
+            invoices = invoiceRepository.findByPayerResidentIdAndStatus(residentId, status);
+        }
+        
         return invoices.stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
@@ -114,7 +139,19 @@ public class InvoiceService {
     }
     
     public List<InvoiceDto> getInvoicesByResidentAndServiceCode(UUID residentId, String serviceCode) {
-        List<Invoice> allInvoices = invoiceRepository.findByPayerResidentId(residentId);
+        // Lấy invoice theo cả payerResidentId VÀ payerUnitId của resident đó
+        // Để tất cả thành viên trong cùng căn hộ có thể xem invoice của căn hộ đó
+        UUID unitId = baseServiceClient.getUnitIdFromResidentId(residentId);
+        
+        List<Invoice> allInvoices;
+        if (unitId != null) {
+            // Lấy invoice theo cả payerResidentId VÀ payerUnitId
+            allInvoices = invoiceRepository.findByPayerResidentIdOrPayerUnitId(residentId, unitId);
+        } else {
+            // Fallback: chỉ lấy theo payerResidentId nếu không tìm được unitId
+            allInvoices = invoiceRepository.findByPayerResidentId(residentId);
+        }
+        
         return allInvoices.stream()
                 .filter(invoice -> {
                     List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceIdAndServiceCode(
@@ -430,13 +467,15 @@ public class InvoiceService {
             data.put("amount", totalAmount.toString());
             data.put("dueDate", invoice.getDueDate() != null ? invoice.getDueDate().toString() : "");
             
-            // Send notification to ALL residents in the unit
+            // Send PRIVATE notification to EACH resident in the unit (one notification per resident)
+            // IMPORTANT: Set buildingId = null to ensure notifications are private (targetResidentId only)
             int successCount = 0;
             for (UUID residentId : residentIds) {
                 try {
+                    // Set buildingId = null to make notification private (only visible to targetResidentId)
                     notificationClient.sendResidentNotification(
                             residentId,
-                            buildingId,
+                            null, // buildingId = null for private notification
                             "BILL",
                             title,
                             message,
@@ -450,8 +489,8 @@ public class InvoiceService {
                 }
             }
             
-            log.info("✅ [InvoiceService] Sent invoice notification to {}/{} residents in unit {}, buildingId={}, invoiceId={}", 
-                    successCount, residentIds.size(), invoice.getPayerUnitId(), buildingId, invoice.getId());
+            log.info("✅ [InvoiceService] Sent PRIVATE invoice notification to {}/{} residents in unit {}, invoiceId={}", 
+                    successCount, residentIds.size(), invoice.getPayerUnitId(), invoice.getId());
         } catch (Exception e) {
             log.error("❌ [InvoiceService] Failed to send invoice notification for invoiceId={}: {}", 
                     invoice.getId(), e.getMessage(), e);
@@ -491,18 +530,90 @@ public class InvoiceService {
         log.info("Invoice {} voided successfully", invoiceId);
     }
     
+    /**
+     * Kiểm tra xem user có thuộc căn hộ (unit) không
+     * @throws IllegalArgumentException nếu user không thuộc căn hộ
+     */
+    /**
+     * Validate that the user belongs to the specified unit (căn hộ).
+     * Only residents who are members of the household in this unit can access invoices.
+     * 
+     * @param userId The authenticated user's ID
+     * @param unitId The unit ID to check access for
+     * @throws IllegalArgumentException if user doesn't belong to the unit
+     */
+    private void validateUserBelongsToUnit(UUID userId, UUID unitId) {
+        if (unitId == null) {
+            throw new IllegalArgumentException("unitId is required");
+        }
+        
+        UUID residentId = residentRepository.findResidentIdByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + userId));
+        
+        // Kiểm tra xem resident có thuộc căn hộ này không thông qua household
+        try {
+            BaseServiceClient.ServiceInfo.HouseholdInfo household = baseServiceClient.getCurrentHouseholdByUnitId(unitId);
+            if (household == null || household.getId() == null) {
+                log.warn("⚠️ [InvoiceService] No household found for unit {}", unitId);
+                throw new IllegalArgumentException("Bạn không có quyền truy cập invoice của căn hộ này");
+            }
+            
+            // Kiểm tra xem resident có là member của household này không
+            List<BaseServiceClient.ServiceInfo.HouseholdMemberInfo> members = baseServiceClient.getActiveMembersByHouseholdId(household.getId());
+            boolean isMember = members.stream()
+                    .anyMatch(member -> member.getResidentId() != null && member.getResidentId().equals(residentId));
+            
+            // Kiểm tra xem có phải primary resident không
+            boolean isPrimaryResident = household.getPrimaryResidentId() != null 
+                    && household.getPrimaryResidentId().equals(residentId);
+            
+            // Chỉ cho phép nếu resident là member HOẶC primary resident của household
+            if (!isMember && !isPrimaryResident) {
+                log.warn("⚠️ [InvoiceService] Resident {} is not a member of unit {} (household {})", 
+                        residentId, unitId, household.getId());
+                throw new IllegalArgumentException("Bạn không có quyền truy cập invoice của căn hộ này");
+            }
+            
+            log.debug("✅ [InvoiceService] Resident {} validated for unit {} (isMember: {}, isPrimary: {})", 
+                    residentId, unitId, isMember, isPrimaryResident);
+        } catch (IllegalArgumentException e) {
+            throw e; // Re-throw IllegalArgumentException
+        } catch (Exception e) {
+            log.error("❌ [InvoiceService] Error validating user {} belongs to unit {}: {}", 
+                    userId, unitId, e.getMessage(), e);
+            throw new IllegalArgumentException("Bạn không có quyền truy cập invoice của căn hộ này");
+        }
+    }
+    
     public List<InvoiceLineResponseDto> getMyInvoices(UUID userId, UUID unitFilter, UUID cycleFilter) {
         if (unitFilter == null) {
             throw new IllegalArgumentException("unitId is required");
         }
-        UUID residentId = residentRepository.findResidentIdByUserId(userId)
-                .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + userId));
         
-        List<Invoice> invoices = invoiceRepository.findByPayerResidentId(residentId);
+        // Validate: user phải thuộc căn hộ này
+        // Chỉ những cư dân thuộc căn hộ này mới có thể xem invoice của căn hộ đó
+        validateUserBelongsToUnit(userId, unitFilter);
+        
+        // Lấy invoice theo payerUnitId (căn hộ) - CHỈ lấy invoice của căn hộ này
+        // Tất cả thành viên trong cùng căn hộ (household) đều có thể xem invoice của căn hộ đó
+        // Cư dân ở căn hộ khác sẽ KHÔNG thấy được invoice này
+        List<Invoice> invoices = invoiceRepository.findByPayerUnitId(unitFilter);
+        log.debug("🔍 [InvoiceService] Found {} invoices for unit {} (before filters)", invoices.size(), unitFilter);
+        
         invoices = invoices.stream()
-                .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
-                .filter(invoice -> cycleFilter == null || cycleFilter.equals(invoice.getCycleId()))
+                .filter(invoice -> {
+                    // Đảm bảo invoice thuộc đúng căn hộ
+                    if (!unitFilter.equals(invoice.getPayerUnitId())) {
+                        log.warn("⚠️ [InvoiceService] Invoice {} has payerUnitId {} but requested unitId is {}", 
+                                invoice.getId(), invoice.getPayerUnitId(), unitFilter);
+                        return false;
+                    }
+                    // Filter theo cycle nếu có
+                    return cycleFilter == null || cycleFilter.equals(invoice.getCycleId());
+                })
                 .collect(Collectors.toList());
+        
+        log.debug("🔍 [InvoiceService] After filters: {} invoices remain for unit {}", invoices.size(), unitFilter);
         List<InvoiceLineResponseDto> result = new ArrayList<>();
         
         for (Invoice invoice : invoices) {
@@ -526,12 +637,41 @@ public class InvoiceService {
         UUID residentId = residentRepository.findResidentIdByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy cư dân cho user: " + userId));
 
-        if (!residentId.equals(invoice.getPayerResidentId())) {
-            throw new IllegalArgumentException("Bạn không có quyền thanh toán hóa đơn này");
-        }
-
+        // Kiểm tra quyền: cho phép thanh toán nếu invoice thuộc căn hộ của user
+        // (tất cả thành viên trong cùng căn hộ có thể thanh toán invoice của căn hộ đó)
         if (unitFilter != null && !unitFilter.equals(invoice.getPayerUnitId())) {
             throw new IllegalArgumentException("Hóa đơn không thuộc căn hộ đã chọn");
+        }
+        
+        // Nếu không có unitFilter, kiểm tra xem invoice có thuộc căn hộ của resident không
+        if (unitFilter == null && invoice.getPayerUnitId() != null) {
+            // Kiểm tra xem resident có thuộc căn hộ này không
+            try {
+                BaseServiceClient.ServiceInfo.HouseholdInfo household = baseServiceClient.getCurrentHouseholdByUnitId(invoice.getPayerUnitId());
+                if (household != null && household.getId() != null) {
+                    List<BaseServiceClient.ServiceInfo.HouseholdMemberInfo> members = baseServiceClient.getActiveMembersByHouseholdId(household.getId());
+                    boolean isMember = members.stream()
+                            .anyMatch(member -> member.getResidentId() != null && member.getResidentId().equals(residentId));
+                    if (!isMember && household.getPrimaryResidentId() != null && !household.getPrimaryResidentId().equals(residentId)) {
+                        throw new IllegalArgumentException("Bạn không có quyền thanh toán hóa đơn này");
+                    }
+                } else {
+                    // Fallback: kiểm tra payerResidentId
+                    if (!residentId.equals(invoice.getPayerResidentId())) {
+                        throw new IllegalArgumentException("Bạn không có quyền thanh toán hóa đơn này");
+                    }
+                }
+            } catch (Exception e) {
+                // Fallback: kiểm tra payerResidentId
+                if (!residentId.equals(invoice.getPayerResidentId())) {
+                    throw new IllegalArgumentException("Bạn không có quyền thanh toán hóa đơn này");
+                }
+            }
+        } else if (invoice.getPayerUnitId() == null) {
+            // Nếu invoice không có payerUnitId, chỉ cho phép payerResidentId thanh toán
+            if (!residentId.equals(invoice.getPayerResidentId())) {
+                throw new IllegalArgumentException("Bạn không có quyền thanh toán hóa đơn này");
+            }
         }
 
         if (InvoiceStatus.PAID.equals(invoice.getStatus())) {
@@ -548,8 +688,15 @@ public class InvoiceService {
 
         String clientIp = resolveClientIp(request);
 
+        // Tạo orderId unique từ invoiceId và timestamp để tránh collision
         long orderId = Math.abs(invoiceId.hashCode());
         if (orderId == 0) {
+            orderId = Math.abs(UUID.randomUUID().getMostSignificantBits());
+        }
+        // Đảm bảo orderId là unique bằng cách kiểm tra nếu đã tồn tại
+        // Nếu đã tồn tại orderId trong map và không phải cùng invoice, tạo mới
+        while (orderIdToInvoiceIdMap.containsKey(orderId) && 
+               !orderIdToInvoiceIdMap.get(orderId).equals(invoiceId)) {
             orderId = Math.abs(UUID.randomUUID().getMostSignificantBits());
         }
         orderIdToInvoiceIdMap.put(orderId, invoiceId);
@@ -557,8 +704,8 @@ public class InvoiceService {
         String orderInfo = "Thanh toán hóa đơn " + (invoice.getCode() != null ? invoice.getCode() : invoiceId);
         String returnUrl = vnpayProperties.getReturnUrl();
 
-        log.info("💳 [InvoiceService] Creating VNPAY URL for invoice={}, user={}, amount={}, ip={}",
-                invoiceId, userId, totalAmount, clientIp);
+        log.info("💳 [InvoiceService] Creating VNPAY URL for invoice={}, user={}, amount={}, ip={}, orderId={}",
+                invoiceId, userId, totalAmount, clientIp, orderId);
 
         return vnpayService.createPaymentUrl(orderId, orderInfo, totalAmount, clientIp, returnUrl);
     }
@@ -573,9 +720,16 @@ public class InvoiceService {
         String transactionStatus = params.get("vnp_TransactionStatus");
         String txnRef = params.get("vnp_TxnRef");
 
+        if (txnRef == null || txnRef.trim().isEmpty()) {
+            throw new IllegalArgumentException("Thiếu mã giao dịch (vnp_TxnRef) từ VNPAY");
+        }
+
         UUID invoiceId = getInvoiceIdFromTxnRef(txnRef);
         Invoice invoice = invoiceRepository.findById(invoiceId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy hóa đơn cho txnRef: " + txnRef));
+
+        log.info("🔍 [InvoiceService] Processing VNPAY callback for invoice {} (txnRef: {}, responseCode: {}, status: {})", 
+                invoiceId, txnRef, responseCode, transactionStatus);
 
         invoice.setVnpResponseCode(responseCode);
         invoice.setVnpTransactionRef(txnRef);
@@ -592,33 +746,46 @@ public class InvoiceService {
                 invoice.setPaidAt(parseVnpPayDate(params.get("vnp_PayDate")));
                 invoiceRepository.save(invoice);
                 notifyPaymentSuccess(invoice, params);
-                log.info("✅ [InvoiceService] Invoice {} marked as PAID via VNPAY", invoiceId);
+                log.info("✅ [InvoiceService] Invoice {} marked as PAID via VNPAY (txnRef: {})", invoiceId, txnRef);
             } else {
-                log.info("ℹ️ [InvoiceService] Duplicate VNPAY callback received for already paid invoice {}", invoiceId);
+                log.info("ℹ️ [InvoiceService] Duplicate VNPAY callback received for already paid invoice {} (txnRef: {})", 
+                        invoiceId, txnRef);
             }
             return new VnpayCallbackResult(invoiceId, true, responseCode, true);
         }
 
         invoiceRepository.save(invoice);
-        log.warn("⚠️ [InvoiceService] VNPAY payment failed for invoice {} - responseCode={}, validSignature={}",
-                invoiceId, responseCode, signatureValid);
+        log.warn("⚠️ [InvoiceService] VNPAY payment failed for invoice {} (txnRef: {}) - responseCode={}, validSignature={}",
+                invoiceId, txnRef, responseCode, signatureValid);
         return new VnpayCallbackResult(invoiceId, false, responseCode, signatureValid);
     }
 
     public UUID getInvoiceIdFromTxnRef(String txnRef) {
-        if (txnRef == null || !txnRef.contains("_")) {
+        if (txnRef == null || txnRef.trim().isEmpty()) {
+            throw new IllegalArgumentException("Mã giao dịch không được để trống");
+        }
+        
+        // Ưu tiên tìm invoice theo vnpTransactionRef từ database (chính xác nhất)
+        Optional<Invoice> invoiceByRef = invoiceRepository.findByVnpTransactionRef(txnRef);
+        if (invoiceByRef.isPresent()) {
+            UUID invoiceId = invoiceByRef.get().getId();
+            log.info("🔍 [InvoiceService] Found invoice {} by vnpTransactionRef: {}", invoiceId, txnRef);
+            return invoiceId;
+        }
+        
+        // Fallback: nếu không tìm thấy theo vnpTransactionRef, thử parse orderId
+        if (!txnRef.contains("_")) {
             throw new IllegalArgumentException("Sai định dạng mã giao dịch: " + txnRef);
         }
+        
         try {
             Long orderId = Long.parseLong(txnRef.split("_")[0]);
             UUID invoiceId = orderIdToInvoiceIdMap.get(orderId);
             if (invoiceId == null) {
-                invoiceId = invoiceRepository.findByVnpTransactionRef(txnRef)
-                        .map(Invoice::getId)
-                        .orElseThrow(() -> new IllegalArgumentException(
-                                "Không tìm thấy hóa đơn tương ứng với orderId: " + orderId));
+                throw new IllegalArgumentException(
+                        "Không tìm thấy hóa đơn tương ứng với orderId: " + orderId + " và txnRef: " + txnRef);
             }
-            log.info("🔍 [InvoiceService] Map orderId {} -> invoice {}", orderId, invoiceId);
+            log.info("🔍 [InvoiceService] Map orderId {} -> invoice {} (from in-memory map)", orderId, invoiceId);
             return invoiceId;
         } catch (NumberFormatException ex) {
             throw new IllegalArgumentException("Không thể phân tích mã giao dịch: " + txnRef, ex);
@@ -629,14 +796,31 @@ public class InvoiceService {
         if (unitFilter == null) {
             throw new IllegalArgumentException("unitId is required");
         }
-        UUID residentId = residentRepository.findResidentIdByUserId(userId)
-                .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + userId));
-
-        List<Invoice> invoices = invoiceRepository.findByPayerResidentId(residentId);
+        
+        // Validate: user phải thuộc căn hộ này
+        // Chỉ những cư dân thuộc căn hộ này mới có thể xem invoice của căn hộ đó
+        validateUserBelongsToUnit(userId, unitFilter);
+        
+        // Lấy invoice theo payerUnitId (căn hộ) - CHỈ lấy invoice của căn hộ này
+        // Tất cả thành viên trong cùng căn hộ (household) đều có thể xem invoice của căn hộ đó
+        // Cư dân ở căn hộ khác sẽ KHÔNG thấy được invoice này
+        List<Invoice> invoices = invoiceRepository.findByPayerUnitId(unitFilter);
+        log.debug("🔍 [InvoiceService] Found {} invoices for unit {} (before filters)", invoices.size(), unitFilter);
+        
         invoices = invoices.stream()
-                .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
-                .filter(invoice -> cycleFilter == null || cycleFilter.equals(invoice.getCycleId()))
+                .filter(invoice -> {
+                    // Đảm bảo invoice thuộc đúng căn hộ
+                    if (!unitFilter.equals(invoice.getPayerUnitId())) {
+                        log.warn("⚠️ [InvoiceService] Invoice {} has payerUnitId {} but requested unitId is {}", 
+                                invoice.getId(), invoice.getPayerUnitId(), unitFilter);
+                        return false;
+                    }
+                    // Filter theo cycle nếu có
+                    return cycleFilter == null || cycleFilter.equals(invoice.getCycleId());
+                })
                 .collect(Collectors.toList());
+        
+        log.debug("🔍 [InvoiceService] After filters: {} invoices remain for unit {}", invoices.size(), unitFilter);
         Map<String, List<InvoiceLineResponseDto>> grouped = new HashMap<>();
 
         for (Invoice invoice : invoices) {
@@ -684,16 +868,31 @@ public class InvoiceService {
         if (unitFilter == null) {
             throw new IllegalArgumentException("unitId is required");
         }
-        UUID residentId = residentRepository.findResidentIdByUserId(userId)
-                .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + userId));
-
-        List<Invoice> invoices = invoiceRepository.findByPayerResidentId(residentId);
-        log.debug("🔍 [InvoiceService] Found {} invoices for resident {}", invoices.size(), residentId);
+        
+        // Validate: user phải thuộc căn hộ này
+        // Chỉ những cư dân thuộc căn hộ này mới có thể xem invoice của căn hộ đó
+        validateUserBelongsToUnit(userId, unitFilter);
+        
+        // Lấy invoice theo payerUnitId (căn hộ) - CHỈ lấy invoice của căn hộ này
+        // Tất cả thành viên trong cùng căn hộ (household) đều có thể xem invoice của căn hộ đó
+        // Cư dân ở căn hộ khác sẽ KHÔNG thấy được invoice này
+        List<Invoice> invoices = invoiceRepository.findByPayerUnitId(unitFilter);
+        log.debug("🔍 [InvoiceService] Found {} invoices for unit {} (before filters)", invoices.size(), unitFilter);
+        
         invoices = invoices.stream()
-                .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
-                .filter(invoice -> cycleFilter == null || cycleFilter.equals(invoice.getCycleId()))
+                .filter(invoice -> {
+                    // Đảm bảo invoice thuộc đúng căn hộ
+                    if (!unitFilter.equals(invoice.getPayerUnitId())) {
+                        log.warn("⚠️ [InvoiceService] Invoice {} has payerUnitId {} but requested unitId is {}", 
+                                invoice.getId(), invoice.getPayerUnitId(), unitFilter);
+                        return false;
+                    }
+                    // Filter theo cycle nếu có
+                    return cycleFilter == null || cycleFilter.equals(invoice.getCycleId());
+                })
                 .collect(Collectors.toList());
-        log.debug("🔍 [InvoiceService] After unit/cycle filter {} invoices remain for unit {}", invoices.size(), unitFilter);
+        
+        log.debug("🔍 [InvoiceService] After filters: {} invoices remain for unit {}", invoices.size(), unitFilter);
         Map<String, List<InvoiceLineResponseDto>> grouped = new HashMap<>();
 
         for (Invoice invoice : invoices) {
@@ -738,11 +937,23 @@ public class InvoiceService {
         UUID residentId = residentRepository.findResidentIdByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Resident not found for user: " + userId));
         
-        List<Invoice> invoices = invoiceRepository.findByPayerResidentId(residentId);
+        // Lấy invoice theo payerUnitId (căn hộ) nếu có unitFilter
+        // Để tất cả thành viên trong cùng căn hộ có thể xem invoice của căn hộ đó
+        List<Invoice> invoices;
         if (unitFilter != null) {
+            // Validate: user phải thuộc căn hộ này
+            // Chỉ những cư dân thuộc căn hộ này mới có thể xem invoice của căn hộ đó
+            validateUserBelongsToUnit(userId, unitFilter);
+            invoices = invoiceRepository.findByPayerUnitId(unitFilter);
+            // Đảm bảo chỉ lấy invoice của căn hộ này
             invoices = invoices.stream()
                     .filter(invoice -> unitFilter.equals(invoice.getPayerUnitId()))
                     .collect(Collectors.toList());
+        } else {
+            // Nếu không có unitFilter, lấy theo residentId (fallback - chỉ cho chính resident đó)
+            // Lưu ý: Fallback này chỉ nên dùng khi không có unitId, nhưng tốt nhất là luôn cung cấp unitId
+            log.warn("⚠️ [InvoiceService] getElectricityMonthlyData called without unitId, using residentId fallback");
+            invoices = invoiceRepository.findByPayerResidentId(residentId);
         }
         List<InvoiceLine> electricityLines = new ArrayList<>();
         

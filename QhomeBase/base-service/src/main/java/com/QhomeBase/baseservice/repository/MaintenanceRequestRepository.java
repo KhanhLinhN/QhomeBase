@@ -53,5 +53,13 @@ public interface MaintenanceRequestRepository extends JpaRepository<MaintenanceR
             @Param("status") String status,
             @Param("deadline") OffsetDateTime deadline,
             @Param("today") OffsetDateTime today);
+
+    java.util.Optional<MaintenanceRequest> findByVnpayTransactionRef(String vnpayTransactionRef);
+
+    @Query("select m from MaintenanceRequest m " +
+            "where m.residentId = :residentId " +
+            "and m.paymentStatus = 'PAID' " +
+            "order by m.paymentDate desc nulls last, m.createdAt desc")
+    List<MaintenanceRequest> findByResidentIdAndPaymentStatusPaid(@Param("residentId") UUID residentId);
 }
 

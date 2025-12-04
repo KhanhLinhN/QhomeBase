@@ -5,7 +5,6 @@ import com.QhomeBase.financebillingservice.model.InvoiceStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.security.core.parameters.P;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -22,6 +21,19 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
     List<Invoice> findByStatus(InvoiceStatus status);
     
     List<Invoice> findByPayerResidentIdAndStatus(UUID residentId, InvoiceStatus status);
+    
+    /**
+     * Tìm invoice theo cả payerResidentId VÀ payerUnitId
+     * Để tất cả thành viên trong cùng căn hộ có thể xem invoice của căn hộ đó
+     */
+    @Query("SELECT i FROM Invoice i WHERE i.payerResidentId = :residentId OR i.payerUnitId = :unitId")
+    List<Invoice> findByPayerResidentIdOrPayerUnitId(@Param("residentId") UUID residentId, @Param("unitId") UUID unitId);
+    
+    /**
+     * Tìm invoice theo cả payerResidentId VÀ payerUnitId với status
+     */
+    @Query("SELECT i FROM Invoice i WHERE (i.payerResidentId = :residentId OR i.payerUnitId = :unitId) AND i.status = :status")
+    List<Invoice> findByPayerResidentIdOrPayerUnitIdAndStatus(@Param("residentId") UUID residentId, @Param("unitId") UUID unitId, @Param("status") InvoiceStatus status);
     
     @Query("SELECT i FROM Invoice i WHERE i.payerUnitId = :unitId AND i.cycleId = :cycleId")
     List<Invoice> findByPayerUnitIdAndCycleId(@Param("unitId") UUID unitId, @Param("cycleId") UUID cycleId);
@@ -73,7 +85,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
 
     @Query(value = """
     select i.*
-    from billing.invoice i
+    from billing.invoices i
     join billing.invoice_lines bi on bi.invoice_id = i.id
     join billing.billing_cycles bc on bc.id = i.cycle_id
     where bi.service_code = :serviceCode

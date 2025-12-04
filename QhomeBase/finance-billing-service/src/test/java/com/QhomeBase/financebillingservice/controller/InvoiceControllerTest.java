@@ -17,7 +17,7 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -38,6 +38,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @WebMvcTest(controllers = InvoiceController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -49,16 +50,16 @@ class InvoiceControllerTest {
         @Autowired
         private ObjectMapper objectMapper;
 
-        @MockBean
+        @MockitoBean
         private InvoiceService invoiceService;
 
-        @MockBean
+        @MockitoBean
         private InvoiceExportService invoiceExportService;
 
-        @MockBean
+        @MockitoBean
         private JwtUtil jwtUtil;
 
-        @MockBean
+        @MockitoBean
         private VnpayService vnpayService;
 
         @Test
