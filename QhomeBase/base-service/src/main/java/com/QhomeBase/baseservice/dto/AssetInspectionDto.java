@@ -1,0 +1,25 @@
+package com.QhomeBase.baseservice.dto;
+
+import com.QhomeBase.baseservice.model.InspectionStatus;
+
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
+
+public record AssetInspectionDto(
+        UUID id,
+        UUID contractId,
+        UUID unitId,
+        String unitCode,
+        LocalDate inspectionDate,
+        InspectionStatus status,
+        String inspectorName,
+        String inspectorNotes,
+        OffsetDateTime completedAt,
+        UUID completedBy,
+        OffsetDateTime createdAt,
+        OffsetDateTime updatedAt,
+        List<AssetInspectionItemDto> items
+) {}
+

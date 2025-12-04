@@ -182,16 +182,14 @@ public class ResidentController {
         }
     }
 
-    @GetMapping("/by-phone/{phone}")
-    @PreAuthorize("hasRole('RESIDENT')")
-    public ResponseEntity<ResidentDto> getResidentByPhone(@PathVariable String phone) {
+    @GetMapping("/by-national-id/{nationalId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORTER', 'RESIDENT')")
+    public ResponseEntity<ResidentDto> getResidentByNationalId(@PathVariable String nationalId) {
         try {
-            // Normalize phone number (remove spaces, dashes, etc.)
-            String normalizedPhone = phone.replaceAll("[^0-9]", "");
-            ResidentDto resident = residentService.getByPhone(normalizedPhone);
+            ResidentDto resident = residentService.getByNationalId(nationalId);
             return ResponseEntity.ok(resident);
         } catch (IllegalArgumentException e) {
-            log.warn("Failed to get resident by phone {}: {}", phone, e.getMessage());
+            log.warn("Failed to get resident by national ID {}: {}", nationalId, e.getMessage());
             return ResponseEntity.notFound().build();
         }
     }

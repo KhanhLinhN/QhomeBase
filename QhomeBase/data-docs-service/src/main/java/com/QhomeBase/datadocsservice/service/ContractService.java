@@ -241,6 +241,41 @@ public class ContractService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
+    public List<ContractDto> getAllContracts() {
+        List<Contract> contracts = contractRepository.findAll();
+        return contracts.stream()
+                .sorted((a, b) -> {
+                    if (a.getCreatedAt() == null && b.getCreatedAt() == null) return 0;
+                    if (a.getCreatedAt() == null) return 1;
+                    if (b.getCreatedAt() == null) return -1;
+                    return b.getCreatedAt().compareTo(a.getCreatedAt()); // Descending
+                })
+                .map(this::toDtoSummary)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ContractDto> getContractsByType(String contractType) {
+        if (contractType == null || contractType.isEmpty()) {
+            throw new IllegalArgumentException("Contract type is required");
+        }
+        String upperContractType = contractType.toUpperCase();
+        List<Contract> allContracts = contractRepository.findAll();
+        List<Contract> contracts = allContracts.stream()
+                .filter(c -> upperContractType.equals(c.getContractType()))
+                .collect(Collectors.toList());
+        return contracts.stream()
+                .sorted((a, b) -> {
+                    if (a.getCreatedAt() == null && b.getCreatedAt() == null) return 0;
+                    if (a.getCreatedAt() == null) return 1;
+                    if (b.getCreatedAt() == null) return -1;
+                    return b.getCreatedAt().compareTo(a.getCreatedAt()); // Descending
+                })
+                .map(this::toDtoSummary)
+                .collect(Collectors.toList());
+    }
+
     @Transactional
     public void deleteContract(UUID contractId) {
         Contract contract = contractRepository.findByIdWithFiles(contractId)
@@ -406,6 +441,30 @@ public class ContractService {
                 .updatedAt(contract.getUpdatedAt())
                 .updatedBy(contract.getUpdatedBy())
                 .files(files)
+                .build();
+    }
+
+    private ContractDto toDtoSummary(Contract contract) {
+        // Summary DTO without files to avoid lazy loading issues
+        return ContractDto.builder()
+                .id(contract.getId())
+                .unitId(contract.getUnitId())
+                .contractNumber(contract.getContractNumber())
+                .contractType(contract.getContractType())
+                .startDate(contract.getStartDate())
+                .endDate(contract.getEndDate())
+                .monthlyRent(contract.getMonthlyRent())
+                .purchasePrice(contract.getPurchasePrice())
+                .paymentMethod(contract.getPaymentMethod())
+                .paymentTerms(contract.getPaymentTerms())
+                .purchaseDate(contract.getPurchaseDate())
+                .notes(contract.getNotes())
+                .status(contract.getStatus())
+                .createdBy(contract.getCreatedBy())
+                .createdAt(contract.getCreatedAt())
+                .updatedAt(contract.getUpdatedAt())
+                .updatedBy(contract.getUpdatedBy())
+                .files(null) // Files not loaded for summary
                 .build();
     }
 

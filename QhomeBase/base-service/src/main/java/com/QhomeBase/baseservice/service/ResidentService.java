@@ -75,13 +75,12 @@ public class ResidentService {
         return toDto(resident);
     }
 
-    public ResidentDto getByPhone(String phone) {
-        if (!StringUtils.hasText(phone)) {
-            throw new IllegalArgumentException("Phone number is required");
+    public ResidentDto getByNationalId(String nationalId) {
+        if (!StringUtils.hasText(nationalId)) {
+            throw new IllegalArgumentException("National ID is required");
         }
-        String normalizedPhone = phone.replaceAll("[^0-9]", "");
-        Resident resident = residentRepository.findByPhone(normalizedPhone)
-                .orElseThrow(() -> new IllegalArgumentException("Resident not found for phone: " + phone));
+        Resident resident = residentRepository.findByNationalId(nationalId.trim())
+                .orElseThrow(() -> new IllegalArgumentException("Resident not found for national ID: " + nationalId));
         return toDto(resident);
     }
 
