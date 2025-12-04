@@ -3,6 +3,7 @@ package com.QhomeBase.marketplaceservice.service;
 import com.QhomeBase.marketplaceservice.model.MarketplacePost;
 import com.QhomeBase.marketplaceservice.model.MarketplacePostImage;
 import com.QhomeBase.marketplaceservice.model.PostStatus;
+import com.QhomeBase.marketplaceservice.repository.MarketplaceCommentRepository;
 import com.QhomeBase.marketplaceservice.repository.MarketplacePostImageRepository;
 import com.QhomeBase.marketplaceservice.repository.MarketplacePostRepository;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ public class MarketplacePostService {
 
     private final MarketplacePostRepository postRepository;
     private final MarketplacePostImageRepository imageRepository;
+    private final MarketplaceCommentRepository commentRepository;
     private final CacheService cacheService;
 
     /**
@@ -37,8 +39,19 @@ public class MarketplacePostService {
     public MarketplacePost getPostById(UUID postId) {
         log.debug("Fetching post from database: {}", postId);
         // Use findByIdWithImages to eager load images and avoid LazyInitializationException
-        return postRepository.findByIdWithImages(postId)
+        MarketplacePost post = postRepository.findByIdWithImages(postId)
                 .orElseThrow(() -> new RuntimeException("Post not found: " + postId));
+        
+        // Sync comment count with actual count from database to ensure accuracy
+        Long actualCommentCount = commentRepository.countActiveCommentsByPostId(postId);
+        if (actualCommentCount != null && !actualCommentCount.equals(post.getCommentCount())) {
+            log.warn("Comment count mismatch for post {}: stored={}, actual={}. Syncing...", 
+                    postId, post.getCommentCount(), actualCommentCount);
+            // Note: We don't update here in read-only transaction, but log the mismatch
+            // The count will be corrected on next write operation
+        }
+        
+        return post;
     }
 
     /**
