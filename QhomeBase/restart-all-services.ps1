@@ -90,6 +90,7 @@ $services = @(
     @{Name="Asset Maintenance Service"; Path="asset-maintenance-service"; Port=8084; Color="Yellow"},
     @{Name="Finance Billing Service"; Path="finance-billing-service"; Port=8085; Color="Red"},
     @{Name="Marketplace Service"; Path="marketplace-service"; Port=8089; Color="DarkGreen"},
+    @{Name="Chat Service"; Path="chat-service"; Port=8090; Color="DarkBlue"},
     @{Name="API Gateway"; Path="api-gateway"; Port=8989; Color="DarkMagenta"}
 )
 
@@ -155,7 +156,7 @@ Write-Host ""
 Write-Host "Step 2: Stopping Java processes on service ports..." -ForegroundColor Cyan
 Write-Host ""
 
-$servicePorts = @(8088, 8081, 8086, 8082, 8083, 8084, 8085, 8089, 8989)
+$servicePorts = @(8088, 8081, 8086, 8082, 8083, 8084, 8085, 8089, 8090, 8989)
 $killedProcessIds = @()
 
 foreach ($port in $servicePorts) {
@@ -208,7 +209,8 @@ try {
                            $cmdLine -like "*data-docs*" -or
                            $cmdLine -like "*services-card*" -or
                            $cmdLine -like "*asset-maintenance*" -or
-                           $cmdLine -like "*marketplace*"
+                           $cmdLine -like "*marketplace*" -or
+                           $cmdLine -like "*chat-service*"
             
             if ($isSpringBoot) {
                 try {
@@ -449,7 +451,11 @@ Start-ServiceWithLog "Finance Billing Service" "finance-billing-service" 8085 "R
 Start-Sleep -Seconds 3  # Additional wait before Marketplace
 Start-ServiceWithLog "Marketplace Service" "marketplace-service" 8089 "DarkGreen" -DelaySeconds 5
 
-# Step 7: Start API Gateway last (routes to all services)
+# Step 7: Start Chat Service (depends on Base Service and IAM Service)
+Start-Sleep -Seconds 3  # Additional wait before Chat Service
+Start-ServiceWithLog "Chat Service" "chat-service" 8090 "DarkBlue" -DelaySeconds 5
+
+# Step 8: Start API Gateway last (routes to all services)
 Start-Sleep -Seconds 3  # Wait before API Gateway
 Start-ServiceWithLog "API Gateway" "api-gateway" 8989 "DarkMagenta" -DelaySeconds 0
 
@@ -476,6 +482,7 @@ if ($isNgrok) {
     Write-Host "   - Asset Maintenance: http://localhost:8084" -ForegroundColor White
     Write-Host "   - Finance Billing: http://localhost:8085" -ForegroundColor White
     Write-Host "   - Marketplace: http://localhost:8089" -ForegroundColor White
+    Write-Host "   - Chat Service: http://localhost:8090" -ForegroundColor White
     Write-Host ""
     Write-Host "   Flutter app should connect to: $baseUrl" -ForegroundColor Cyan
     Write-Host "   VNPay return URLs will use: $baseUrl" -ForegroundColor Cyan
@@ -490,6 +497,7 @@ if ($isNgrok) {
     Write-Host "   - Asset Maintenance: http://localhost:8084" -ForegroundColor White
     Write-Host "   - Finance Billing: http://localhost:8085" -ForegroundColor White
     Write-Host "   - Marketplace: http://localhost:8089" -ForegroundColor White
+    Write-Host "   - Chat Service: http://localhost:8090" -ForegroundColor White
     if ($baseUrl -and $baseUrl -ne "http://localhost:8989") {
         Write-Host ""
         Write-Host "   Flutter app should connect to: $baseUrl" -ForegroundColor Cyan

@@ -1,4 +1,4 @@
--- V84: Create assets table for managing unit assets (air conditioner, kitchen, etc.)
+-- V86: Create assets table for managing unit assets (air conditioner, kitchen, etc.)
 
 -- Create asset_type enum (similar to V27 which creates enum directly)
 CREATE TYPE data.asset_type AS ENUM (

@@ -1,4 +1,4 @@
--- V85: Create asset_inspections table for checklist when contract expires
+-- V87: Create asset_inspections table for checklist when contract expires
 
 -- Create inspection_status enum
 DO $$ BEGIN

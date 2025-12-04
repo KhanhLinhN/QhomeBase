@@ -74,7 +74,8 @@ Write-Host "   5. Services Card Service (port 8083)" -ForegroundColor White
 Write-Host "   6. Asset Maintenance Service (port 8084)" -ForegroundColor White
 Write-Host "   7. Finance Billing Service (port 8085)" -ForegroundColor White
 Write-Host "   8. Marketplace Service (port 8089)" -ForegroundColor White
-Write-Host "   9. API Gateway (port 8989)" -ForegroundColor White
+Write-Host "   9. Chat Service (port 8090)" -ForegroundColor White
+Write-Host "  10. API Gateway (port 8989)" -ForegroundColor White
 Write-Host ""
 
 # Function to start a service with colored output
@@ -154,10 +155,14 @@ Start-Sleep -Seconds 5  # Wait 5 seconds before next service
 Start-ServiceWithLog "Marketplace Service" "marketplace-service" 8089 "DarkGreen"
 Start-Sleep -Seconds 5  # Wait 5 seconds before next service
 
-# Step 7: Start API Gateway last (routes to all services)
+# Step 7: Start Chat Service (depends on Base Service and IAM Service)
+Start-ServiceWithLog "Chat Service" "chat-service" 8090 "DarkBlue"
+Start-Sleep -Seconds 5  # Wait 5 seconds before next service
+
+# Step 8: Start API Gateway last (routes to all services)
 Start-ServiceWithLog "API Gateway" "api-gateway" 8989 "DarkMagenta"
 
-# Step 8: Auto-start ngrok URL monitor based on current VNPAY_BASE_URL
+# Step 9: Auto-start ngrok URL monitor based on current VNPAY_BASE_URL
 Write-Host ""
 $isUsingNgrok = $env:VNPAY_BASE_URL -like "https://*.ngrok*" -or $env:VNPAY_BASE_URL -like "https://*.ngrok-free.app*"
 
@@ -240,6 +245,7 @@ if ($isNgrok) {
     Write-Host "   - Asset Maintenance: http://localhost:8084" -ForegroundColor White
     Write-Host "   - Finance Billing: http://localhost:8085" -ForegroundColor White
     Write-Host "   - Marketplace: http://localhost:8089" -ForegroundColor White
+    Write-Host "   - Chat Service: http://localhost:8090" -ForegroundColor White
     Write-Host ""
     Write-Host "   Flutter app should connect to: $baseUrl" -ForegroundColor Cyan
     Write-Host "   VNPay return URLs will use: $baseUrl" -ForegroundColor Cyan
@@ -254,6 +260,7 @@ if ($isNgrok) {
     Write-Host "   - Asset Maintenance: http://localhost:8084" -ForegroundColor White
     Write-Host "   - Finance Billing: http://localhost:8085" -ForegroundColor White
     Write-Host "   - Marketplace: http://localhost:8089" -ForegroundColor White
+    Write-Host "   - Chat Service: http://localhost:8090" -ForegroundColor White
     if ($baseUrl -and $baseUrl -ne "http://localhost:8989") {
         Write-Host ""
         Write-Host "   Flutter app should connect to: $baseUrl" -ForegroundColor Cyan
