@@ -11,6 +11,7 @@ import com.QhomeBase.chatservice.dto.FriendResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -23,6 +24,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/direct-chat")
 @RequiredArgsConstructor
+@Slf4j
 @Tag(name = "Direct Chat", description = "APIs for 1-1 direct chat")
 public class DirectChatController {
 
@@ -162,19 +164,35 @@ public class DirectChatController {
     @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Get blocked users", description = "Get list of users blocked by current user")
     public ResponseEntity<List<UUID>> getBlockedUsers(Authentication authentication) {
-        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
-        UUID userId = principal.uid();
-        
-        // Convert userId to residentId
-        UUID residentId = residentInfoService.getResidentIdFromUserId(userId);
-        
-        // Get blocked residentIds and convert back to userIds
-        List<UUID> blockedResidentIds = blockService.getBlockedUserIds(residentId);
-        List<UUID> blockedUserIds = blockedResidentIds.stream()
-                .map(residentInfoService::getUserIdFromResidentId)
-                .toList();
-        
-        return ResponseEntity.ok(blockedUserIds);
+        try {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID userId = principal.uid();
+            
+            // Convert userId to residentId
+            UUID residentId = residentInfoService.getResidentIdFromUserId(userId);
+            if (residentId == null) {
+                // If residentId is null, return empty list instead of throwing error
+                // This can happen if user doesn't have a resident record yet
+                return ResponseEntity.ok(List.of());
+            }
+            
+            // Get blocked residentIds and convert back to userIds
+            List<UUID> blockedResidentIds = blockService.getBlockedUserIds(residentId);
+            
+            // Filter out null values when converting residentIds to userIds
+            // Some residents might not have userIds yet
+            List<UUID> blockedUserIds = blockedResidentIds.stream()
+                    .map(residentInfoService::getUserIdFromResidentId)
+                    .filter(java.util.Objects::nonNull) // Filter out null values
+                    .toList();
+            
+            return ResponseEntity.ok(blockedUserIds);
+        } catch (Exception e) {
+            // Log error and return empty list instead of throwing 500
+            // This prevents the app from crashing if there's an issue
+            log.error("Error getting blocked users", e);
+            return ResponseEntity.ok(List.of());
+        }
     }
 
     @GetMapping("/is-blocked/{userId}")
