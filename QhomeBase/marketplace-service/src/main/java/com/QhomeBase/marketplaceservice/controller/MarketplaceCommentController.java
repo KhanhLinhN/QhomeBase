@@ -47,8 +47,20 @@ public class MarketplaceCommentController {
     public ResponseEntity<CommentPagedResponse> getComments(
             @PathVariable UUID postId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        Page<MarketplaceComment> commentsPage = commentService.getComments(postId, page, size);
+            @RequestParam(defaultValue = "10") int size,
+            Authentication authentication) {
+        
+        // Get current user info for filtering blocked comments
+        UUID currentResidentId = null;
+        String accessToken = null;
+        if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal) {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID userId = principal.uid();
+            accessToken = principal.token();
+            currentResidentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+        }
+        
+        Page<MarketplaceComment> commentsPage = commentService.getComments(postId, currentResidentId, accessToken, page, size);
         List<CommentResponse> content = commentsPage.getContent().stream()
                 .map(mapper::toCommentResponse)
                 .collect(Collectors.toList());
@@ -92,7 +104,7 @@ public class MarketplaceCommentController {
 
         MarketplaceComment comment = commentService.addComment(
                 postId, residentId, request.getContent(), request.getParentCommentId(),
-                request.getImageUrl(), request.getVideoUrl()
+                request.getImageUrl(), request.getVideoUrl(), residentId, accessToken
         );
         
         // Get post to get all stats

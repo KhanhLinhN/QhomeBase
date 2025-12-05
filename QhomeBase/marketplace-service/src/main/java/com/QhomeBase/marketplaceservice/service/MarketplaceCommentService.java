@@ -25,15 +25,22 @@ public class MarketplaceCommentService {
     private final MarketplaceCommentRepository commentRepository;
     private final MarketplacePostRepository postRepository;
     private final MarketplaceNotificationService notificationService;
+    private final ChatServiceClient chatServiceClient;
 
     /**
      * Get comments for a post (all comments, no pagination)
      */
     @Transactional(readOnly = true)
-    public List<MarketplaceComment> getComments(UUID postId) {
+    public List<MarketplaceComment> getComments(UUID postId, UUID currentResidentId, String accessToken) {
         List<MarketplaceComment> comments = commentRepository.findByPostIdAndParentCommentIsNullOrderByCreatedAtAsc(postId);
         // Force initialization of all nested replies recursively within transaction
-        comments.forEach(this::initializeReplies);
+        comments.forEach(comment -> initializeReplies(comment, currentResidentId, accessToken));
+        
+        // Filter comments based on block relationship
+        if (currentResidentId != null && accessToken != null && !accessToken.isEmpty()) {
+            comments = filterBlockedComments(comments, currentResidentId, accessToken);
+        }
+        
         return comments;
     }
 
@@ -41,11 +48,26 @@ public class MarketplaceCommentService {
      * Get paginated comments for a post
      */
     @Transactional(readOnly = true)
-    public Page<MarketplaceComment> getComments(UUID postId, int page, int size) {
+    public Page<MarketplaceComment> getComments(UUID postId, UUID currentResidentId, String accessToken, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
         Page<MarketplaceComment> commentsPage = commentRepository.findByPostIdAndParentCommentIsNullOrderByCreatedAtAsc(postId, pageable);
         // Force initialization of all nested replies recursively within transaction
-        commentsPage.getContent().forEach(this::initializeReplies);
+        commentsPage.getContent().forEach(comment -> initializeReplies(comment, currentResidentId, accessToken));
+        
+        // Filter comments based on block relationship
+        if (currentResidentId != null && accessToken != null && !accessToken.isEmpty()) {
+            List<MarketplaceComment> filteredComments = filterBlockedComments(commentsPage.getContent(), currentResidentId, accessToken);
+            
+            // Create new Page with filtered content
+            if (filteredComments.size() != commentsPage.getContent().size()) {
+                return new org.springframework.data.domain.PageImpl<>(
+                        filteredComments,
+                        pageable,
+                        commentsPage.getTotalElements() - (commentsPage.getContent().size() - filteredComments.size())
+                );
+            }
+        }
+        
         return commentsPage;
     }
 
@@ -53,13 +75,95 @@ public class MarketplaceCommentService {
      * Recursively initialize all nested replies to prevent LazyInitializationException
      * Also filters out deleted replies
      */
-    private void initializeReplies(MarketplaceComment comment) {
+    private void initializeReplies(MarketplaceComment comment, UUID currentResidentId, String accessToken) {
         if (comment.getReplies() != null) {
             // Force initialization of the replies collection
             Hibernate.initialize(comment.getReplies());
             // Filter out deleted replies and recursively initialize remaining ones
             comment.getReplies().removeIf(MarketplaceComment::isDeleted);
-            comment.getReplies().forEach(this::initializeReplies);
+            comment.getReplies().forEach(reply -> initializeReplies(reply, currentResidentId, accessToken));
+        }
+    }
+
+    /**
+     * Filter comments based on block relationship
+     * Rules:
+     * - If root comment author is blocked → hide entire comment tree (comment + all replies)
+     * - If child comment author is blocked → hide only that child comment (keep replies)
+     */
+    private List<MarketplaceComment> filterBlockedComments(List<MarketplaceComment> comments, UUID currentResidentId, String accessToken) {
+        try {
+            // Get blocked users
+            List<UUID> blockedUserIds = chatServiceClient.getBlockedUserIds(accessToken);
+            List<UUID> blockedByUserIds = chatServiceClient.getBlockedByUserIds(accessToken);
+            java.util.Set<UUID> allBlockedUserIds = new java.util.HashSet<>();
+            allBlockedUserIds.addAll(blockedUserIds);
+            allBlockedUserIds.addAll(blockedByUserIds);
+            
+            if (allBlockedUserIds.isEmpty()) {
+                return comments;
+            }
+            
+            log.info("🔍 [MarketplaceCommentService] Filtering comments - blocked users: {}", allBlockedUserIds);
+            
+            return comments.stream()
+                    .filter(comment -> {
+                        // Check if root comment author is blocked
+                        if (allBlockedUserIds.contains(comment.getResidentId())) {
+                            log.info("🚫 [MarketplaceCommentService] Filtering root comment {} - author {} is blocked", 
+                                    comment.getId(), comment.getResidentId());
+                            return false; // Hide entire comment tree
+                        }
+                        
+                        // Filter child comments (replies) - if child author is blocked, hide only that child
+                        filterBlockedReplies(comment, allBlockedUserIds);
+                        
+                        return true;
+                    })
+                    .collect(java.util.stream.Collectors.toList());
+        } catch (Exception e) {
+            log.error("❌ [MarketplaceCommentService] Error filtering blocked comments: {}", e.getMessage(), e);
+            return comments; // Return unfiltered comments on error
+        }
+    }
+
+    /**
+     * Recursively filter blocked replies
+     * If a child comment author is blocked → remove only that child comment, keep its replies
+     */
+    private void filterBlockedReplies(MarketplaceComment comment, java.util.Set<UUID> blockedUserIds) {
+        if (comment.getReplies() != null && !comment.getReplies().isEmpty()) {
+            List<MarketplaceComment> filteredReplies = new java.util.ArrayList<>();
+            
+            for (MarketplaceComment reply : comment.getReplies()) {
+                // Check if reply author is blocked
+                if (blockedUserIds.contains(reply.getResidentId())) {
+                    log.info("🚫 [MarketplaceCommentService] Filtering child comment {} - author {} is blocked", 
+                            reply.getId(), reply.getResidentId());
+                    
+                    // If this reply has children, move them to parent comment
+                    if (reply.getReplies() != null && !reply.getReplies().isEmpty()) {
+                        log.info("🔍 [MarketplaceCommentService] Moving {} replies from blocked comment {} to parent {}", 
+                                reply.getReplies().size(), reply.getId(), comment.getId());
+                        
+                        // Recursively process replies before moving
+                        for (MarketplaceComment childReply : reply.getReplies()) {
+                            filterBlockedReplies(childReply, blockedUserIds);
+                            filteredReplies.add(childReply);
+                            // Update parent reference
+                            childReply.setParentComment(comment);
+                        }
+                    }
+                    // Don't add the blocked reply itself
+                } else {
+                    // Recursively filter replies of this reply
+                    filterBlockedReplies(reply, blockedUserIds);
+                    filteredReplies.add(reply);
+                }
+            }
+            
+            // Update replies list
+            comment.setReplies(filteredReplies);
         }
     }
 
@@ -68,7 +172,7 @@ public class MarketplaceCommentService {
      */
     @CacheEvict(value = {"postDetails"}, allEntries = true)
     @Transactional
-    public MarketplaceComment addComment(UUID postId, UUID residentId, String content, UUID parentCommentId, String imageUrl, String videoUrl) {
+    public MarketplaceComment addComment(UUID postId, UUID residentId, String content, UUID parentCommentId, String imageUrl, String videoUrl, UUID currentResidentId, String accessToken) {
         log.info("Adding comment to post: {} by user: {}", postId, residentId);
 
         // Validate: content, imageUrl, or videoUrl must be provided
@@ -83,6 +187,46 @@ public class MarketplaceCommentService {
 
         MarketplacePost post = postRepository.findById(postId)
                 .orElseThrow(() -> new RuntimeException("Post not found: " + postId));
+        
+        // Check if current user is blocked from commenting on this post
+        if (currentResidentId != null && accessToken != null && !accessToken.isEmpty()) {
+            try {
+                List<UUID> blockedUserIds = chatServiceClient.getBlockedUserIds(accessToken);
+                List<UUID> blockedByUserIds = chatServiceClient.getBlockedByUserIds(accessToken);
+                java.util.Set<UUID> allBlockedUserIds = new java.util.HashSet<>();
+                allBlockedUserIds.addAll(blockedUserIds);
+                allBlockedUserIds.addAll(blockedByUserIds);
+                
+                // Check if post author is blocked (bidirectional)
+                if (allBlockedUserIds.contains(post.getResidentId())) {
+                    log.info("🚫 [MarketplaceCommentService] Cannot comment on post {} - post author {} is blocked", 
+                            postId, post.getResidentId());
+                    throw new RuntimeException("Cannot comment on this post");
+                }
+                
+                // If replying to a comment, check if comment author is blocked
+                if (parentCommentId != null) {
+                    MarketplaceComment parentComment = commentRepository.findById(parentCommentId)
+                            .orElseThrow(() -> new RuntimeException("Parent comment not found: " + parentCommentId));
+                    
+                    if (allBlockedUserIds.contains(parentComment.getResidentId())) {
+                        log.info("🚫 [MarketplaceCommentService] Cannot reply to comment {} - comment author {} is blocked", 
+                                parentCommentId, parentComment.getResidentId());
+                        throw new RuntimeException("Cannot reply to this comment");
+                    }
+                }
+            } catch (RuntimeException e) {
+                // Re-throw if it's our custom exception
+                if (e.getMessage() != null && (e.getMessage().contains("Cannot comment") || e.getMessage().contains("Cannot reply"))) {
+                    throw e;
+                }
+                log.error("❌ [MarketplaceCommentService] Error checking blocked users for comment: {}", e.getMessage(), e);
+                // Continue if error occurs (fail open)
+            } catch (Exception e) {
+                log.error("❌ [MarketplaceCommentService] Error checking blocked users for comment: {}", e.getMessage(), e);
+                // Continue if error occurs (fail open)
+            }
+        }
 
         MarketplaceComment comment = MarketplaceComment.builder()
                 .post(post)
