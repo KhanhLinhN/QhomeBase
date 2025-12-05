@@ -215,6 +215,7 @@ public class DirectChatService {
             }
         }
 
+        // Create message - @CreationTimestamp will automatically set createdAt when persisted
         DirectMessage message = DirectMessage.builder()
                 .conversation(conversation)
                 .conversationId(conversationId)
@@ -229,8 +230,23 @@ public class DirectChatService {
                 .replyToMessageId(request.getReplyToMessageId())
                 .build();
 
+        // Save message - @CreationTimestamp will set createdAt to current server time
+        OffsetDateTime beforeSave = OffsetDateTime.now();
         message = messageRepository.save(message);
-        messageRepository.flush(); // Ensure createdAt is set
+        messageRepository.flush(); // Ensure timestamp is persisted immediately
+        OffsetDateTime afterSave = OffsetDateTime.now();
+        
+        // Log timestamp for debugging - verify it's set correctly
+        OffsetDateTime messageCreatedAt = message.getCreatedAt();
+        if (messageCreatedAt != null) {
+            log.info("📅 Message timestamp - Created at: {} (offset: {}), Before save: {}, After save: {}", 
+                    messageCreatedAt,
+                    messageCreatedAt.getOffset(),
+                    beforeSave,
+                    afterSave);
+        } else {
+            log.error("⚠️ Message createdAt is null after save! This should not happen with @CreationTimestamp");
+        }
 
         // Update conversation updated_at
         conversation.setUpdatedAt(OffsetDateTime.now());
