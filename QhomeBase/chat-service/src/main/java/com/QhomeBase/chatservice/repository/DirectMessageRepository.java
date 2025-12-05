@@ -53,5 +53,18 @@ public interface DirectMessageRepository extends JpaRepository<DirectMessage, UU
         @Param("userId") UUID userId,
         @Param("lastReadAt") OffsetDateTime lastReadAt
     );
+
+    /**
+     * Find messages after a specific timestamp ordered by created_at DESC
+     * Used for filtering unread messages
+     */
+    @Query("SELECT m FROM DirectMessage m WHERE m.conversationId = :conversationId " +
+           "AND m.createdAt > :afterTimestamp " +
+           "ORDER BY m.createdAt DESC")
+    Page<DirectMessage> findByConversationIdAndCreatedAtAfterOrderByCreatedAtDesc(
+        @Param("conversationId") UUID conversationId,
+        @Param("afterTimestamp") OffsetDateTime afterTimestamp,
+        Pageable pageable
+    );
 }
 

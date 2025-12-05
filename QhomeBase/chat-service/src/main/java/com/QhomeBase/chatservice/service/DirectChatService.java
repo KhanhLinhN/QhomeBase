@@ -163,17 +163,19 @@ public class DirectChatService {
 
         UUID otherParticipantId = conversation.getOtherParticipantId(residentId);
         
-        // Check if sender has blocked recipient - if so, don't allow sending messages
-        Optional<Block> senderBlockedRecipient = blockRepository.findByBlockerIdAndBlockedId(residentId, otherParticipantId);
-        if (senderBlockedRecipient.isPresent()) {
-            log.warn("Sender {} has blocked recipient {}. Cannot send message.", residentId, otherParticipantId);
-            throw new RuntimeException("Bạn đã chặn người dùng này. Không thể gửi tin nhắn.");
-        }
-        
-        // Check if recipient has blocked sender - if so, message will be saved but recipient won't see it
+        // Check if recipient has blocked sender - if so, sender cannot send messages
+        // If A blocks B, then B cannot send messages to A (B's input field will show "người dùng hiện không tìm thấy")
         boolean recipientBlockedSender = blockRepository.findByBlockerIdAndBlockedId(otherParticipantId, residentId).isPresent();
         if (recipientBlockedSender) {
-            log.info("Recipient {} has blocked sender {}. Message will be saved but recipient won't see it.", otherParticipantId, residentId);
+            log.warn("Recipient {} has blocked sender {}. Sender cannot send messages.", otherParticipantId, residentId);
+            throw new RuntimeException("Người dùng hiện không tìm thấy");
+        }
+        
+        // Check if sender has blocked recipient - sender can still send messages
+        // If A blocks B, A can still send messages to B, but B won't see them (filtered in getMessages)
+        Optional<Block> senderBlockedRecipient = blockRepository.findByBlockerIdAndBlockedId(residentId, otherParticipantId);
+        if (senderBlockedRecipient.isPresent()) {
+            log.info("Sender {} has blocked recipient {}. Message will be sent but recipient won't see it (filtered in getMessages).", residentId, otherParticipantId);
         }
 
         // Validate message type and content
@@ -336,22 +338,34 @@ public class DirectChatService {
         // Get other participant ID
         UUID otherParticipantId = conversation.getOtherParticipantId(residentId);
         
-        // Check if other participant (sender) has blocked current user (recipient)
-        // If A blocks B, then B should not see messages from A sent after block time
+        // Check bidirectional blocking:
+        // 1. If other participant (sender) has blocked current user (recipient)
+        //    → Current user should not see messages from sender sent after block time
+        // 2. If current user has blocked other participant (sender)
+        //    → Current user should not see messages from sender sent after block time
         Optional<Block> senderBlockedRecipient = blockRepository.findByBlockerIdAndBlockedId(otherParticipantId, residentId);
-        OffsetDateTime blockTime = senderBlockedRecipient.map(Block::getCreatedAt).orElse(null);
+        Optional<Block> recipientBlockedSender = blockRepository.findByBlockerIdAndBlockedId(residentId, otherParticipantId);
         
-        // Filter messages: if sender has blocked recipient, hide messages sent after block time
+        final OffsetDateTime blockTime;
+        if (senderBlockedRecipient.isPresent()) {
+            blockTime = senderBlockedRecipient.get().getCreatedAt();
+            log.debug("Sender {} has blocked recipient {} at {}", otherParticipantId, residentId, blockTime);
+        } else if (recipientBlockedSender.isPresent()) {
+            blockTime = recipientBlockedSender.get().getCreatedAt();
+            log.debug("Recipient {} has blocked sender {} at {}", residentId, otherParticipantId, blockTime);
+        } else {
+            blockTime = null;
+        }
+        
+        // Filter messages: if either party has blocked the other, hide messages sent after block time
         List<DirectMessage> allMessages = messages.getContent().stream()
                 .filter(msg -> {
-                    // If sender (other participant) has blocked recipient (current user), 
-                    // filter out messages from sender sent after block time
-                    if (blockTime != null && msg.getSenderId() != null && msg.getSenderId().equals(otherParticipantId)) {
-                        // This is a message from the sender who blocked the current user
-                        // If it was sent after block time, current user (recipient) shouldn't see it
-                        if (msg.getCreatedAt() != null && msg.getCreatedAt().isAfter(blockTime)) {
-                            log.debug("Filtering message {} - sender {} blocked recipient {} at {}, message sent at {}", 
-                                    msg.getId(), otherParticipantId, residentId, blockTime, msg.getCreatedAt());
+                    // Only filter messages from the other participant (sender)
+                    if (msg.getSenderId() != null && msg.getSenderId().equals(otherParticipantId)) {
+                        // If either party has blocked the other, filter out messages sent after block time
+                        if (blockTime != null && msg.getCreatedAt() != null && msg.getCreatedAt().isAfter(blockTime)) {
+                            log.debug("Filtering message {} - block relationship exists, block time: {}, message sent at {}", 
+                                    msg.getId(), blockTime, msg.getCreatedAt());
                             return false;
                         }
                     }
@@ -656,15 +670,56 @@ public class DirectChatService {
         String participant1Name = residentInfoService.getResidentName(conversation.getParticipant1Id(), accessToken);
         String participant2Name = residentInfoService.getResidentName(conversation.getParticipant2Id(), accessToken);
 
-        // Get last message
-        DirectMessage lastMessage = messageRepository
-                .findByConversationIdOrderByCreatedAtDesc(conversation.getId(), PageRequest.of(0, 1))
-                .getContent()
-                .stream()
-                .findFirst()
-                .orElse(null);
+        // Check bidirectional blocking to filter messages
+        Optional<Block> senderBlockedRecipient = blockRepository.findByBlockerIdAndBlockedId(otherParticipantId, currentUserId);
+        Optional<Block> recipientBlockedSender = blockRepository.findByBlockerIdAndBlockedId(currentUserId, otherParticipantId);
+        
+        final OffsetDateTime blockTime;
+        if (senderBlockedRecipient.isPresent()) {
+            blockTime = senderBlockedRecipient.get().getCreatedAt();
+            log.debug("Sender {} has blocked recipient {} at {}", otherParticipantId, currentUserId, blockTime);
+        } else if (recipientBlockedSender.isPresent()) {
+            blockTime = recipientBlockedSender.get().getCreatedAt();
+            log.debug("Recipient {} has blocked sender {} at {}", currentUserId, otherParticipantId, blockTime);
+        } else {
+            blockTime = null;
+        }
 
-        // Get unread count
+        // Get last message - filter out blocked messages
+        DirectMessage lastMessage = null;
+        if (blockTime == null) {
+            // No blocking, get last message normally
+            lastMessage = messageRepository
+                    .findByConversationIdOrderByCreatedAtDesc(conversation.getId(), PageRequest.of(0, 1))
+                    .getContent()
+                    .stream()
+                    .findFirst()
+                    .orElse(null);
+        } else {
+            // Block exists, need to find last non-blocked message
+            // Get multiple messages and filter
+            List<DirectMessage> messages = messageRepository
+                    .findByConversationIdOrderByCreatedAtDesc(conversation.getId(), PageRequest.of(0, 50))
+                    .getContent();
+            
+            lastMessage = messages.stream()
+                    .filter(msg -> {
+                        // Only filter messages from the other participant (sender)
+                        if (msg.getSenderId() != null && msg.getSenderId().equals(otherParticipantId)) {
+                            // If either party has blocked the other, filter out messages sent after block time
+                            if (msg.getCreatedAt() != null && msg.getCreatedAt().isAfter(blockTime)) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    })
+                    .findFirst()
+                    .orElse(null);
+            
+            log.debug("Filtered last message - blockTime: {}, found: {}", blockTime, lastMessage != null ? lastMessage.getId() : "null");
+        }
+
+        // Get unread count - filter out blocked messages
         ConversationParticipant participant = participantRepository
                 .findByConversationIdAndResidentId(conversation.getId(), currentUserId)
                 .orElse(null);
@@ -675,7 +730,44 @@ public class DirectChatService {
             if (lastReadAt == null) {
                 lastReadAt = OffsetDateTime.of(1970, 1, 1, 0, 0, 0, 0, java.time.ZoneOffset.UTC);
             }
-            unreadCount = messageRepository.countUnreadMessages(conversation.getId(), currentUserId, lastReadAt);
+            
+            // Count unread messages, but exclude blocked messages
+            if (blockTime == null) {
+                // No blocking, count normally
+                unreadCount = messageRepository.countUnreadMessages(conversation.getId(), currentUserId, lastReadAt);
+            } else {
+                // Block exists, need to count unread messages excluding blocked ones
+                List<DirectMessage> unreadMessages = messageRepository
+                        .findByConversationIdAndCreatedAtAfterOrderByCreatedAtDesc(conversation.getId(), lastReadAt, PageRequest.of(0, 1000))
+                        .getContent();
+                
+                unreadCount = unreadMessages.stream()
+                        .filter(msg -> {
+                            // Only count messages from other participants (not from current user)
+                            if (msg.getSenderId() == null || msg.getSenderId().equals(currentUserId)) {
+                                return false;
+                            }
+                            
+                            // Only filter messages from the other participant (sender)
+                            if (msg.getSenderId().equals(otherParticipantId)) {
+                                // If either party has blocked the other, filter out messages sent after block time
+                                if (msg.getCreatedAt() != null && msg.getCreatedAt().isAfter(blockTime)) {
+                                    return false;
+                                }
+                            }
+                            
+                            // Also exclude deleted messages and system messages
+                            if (Boolean.TRUE.equals(msg.getIsDeleted()) || "SYSTEM".equals(msg.getMessageType())) {
+                                return false;
+                            }
+                            
+                            return true;
+                        })
+                        .count();
+                
+                log.debug("Filtered unread count - blockTime: {}, unreadCount: {}", blockTime, unreadCount);
+            }
+            
             log.info("📊 [DirectChatService] getConversation - conversationId: {}, currentUserId: {}, lastReadAt: {}, unreadCount: {}", 
                     conversation.getId(), currentUserId, lastReadAt, unreadCount);
         } else {
@@ -684,7 +776,7 @@ public class DirectChatService {
         }
 
         // Check if current user is blocked by the other participant
-        boolean isBlockedByOther = blockRepository.findByBlockerIdAndBlockedId(otherParticipantId, currentUserId).isPresent();
+        boolean isBlockedByOther = senderBlockedRecipient.isPresent();
 
         return ConversationResponse.builder()
                 .id(conversation.getId())
