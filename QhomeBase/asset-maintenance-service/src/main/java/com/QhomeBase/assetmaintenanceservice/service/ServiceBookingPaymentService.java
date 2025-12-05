@@ -18,10 +18,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -99,7 +96,8 @@ public class ServiceBookingPaymentService {
         if (signatureValid && "00".equals(responseCode) && "00".equals(transactionStatus)) {
             booking.setPaymentStatus(ServicePaymentStatus.PAID);
             booking.setPaymentGateway(PAYMENT_GATEWAY);
-            booking.setPaymentDate(parsePayDate(params.get("vnp_PayDate")));
+            // Use current time for payment date to ensure accurate timestamp
+            booking.setPaymentDate(OffsetDateTime.now());
             bookingRepository.save(booking);
 
             emailService.sendBookingPaymentSuccess(booking, txnRef);
@@ -150,19 +148,6 @@ public class ServiceBookingPaymentService {
         }
     }
 
-    private OffsetDateTime parsePayDate(String payDate) {
-        if (!StringUtils.hasText(payDate)) {
-            return OffsetDateTime.now();
-        }
-        try {
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
-            LocalDateTime localDateTime = LocalDateTime.parse(payDate, formatter);
-            return localDateTime.atZone(ZoneId.systemDefault()).toOffsetDateTime();
-        } catch (Exception e) {
-            log.warn("Không thể phân tích thời gian thanh toán {}, sử dụng thời gian hiện tại", payDate);
-            return OffsetDateTime.now();
-        }
-    }
 
     @SuppressWarnings({"NullAway", "DataFlowIssue"})
     private String extractTxnRef(String paymentUrl) {

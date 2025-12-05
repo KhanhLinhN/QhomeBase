@@ -22,7 +22,6 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -691,7 +690,8 @@ public class VehicleRegistrationService {
             );
             
             registration.setPaymentGateway(PAYMENT_VNPAY);
-            OffsetDateTime payDate = parsePayDate(params.get("vnp_PayDate"));
+            // Use current time for payment date to ensure accurate timestamp
+            OffsetDateTime payDate = OffsetDateTime.now();
             registration.setPaymentDate(payDate);
             
             // Nếu là gia hạn (status = NEEDS_RENEWAL hoặc SUSPENDED), sau khi thanh toán thành công → set status = APPROVED
@@ -779,18 +779,6 @@ public class VehicleRegistrationService {
         });
     }
 
-    private OffsetDateTime parsePayDate(String payDate) {
-        if (payDate == null || payDate.isBlank()) {
-            return OffsetDateTime.now();
-        }
-        try {
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
-            LocalDateTime localDateTime = LocalDateTime.parse(payDate, formatter);
-            return localDateTime.atZone(ZoneId.systemDefault()).toOffsetDateTime();
-        } catch (Exception e) {
-            return OffsetDateTime.now();
-        }
-    }
 
     private void validatePayload(RegisterServiceRequestCreateDto dto) {
         if (dto.unitId() == null) {

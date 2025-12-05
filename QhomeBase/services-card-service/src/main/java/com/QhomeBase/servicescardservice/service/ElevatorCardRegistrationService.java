@@ -18,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -717,7 +716,8 @@ public class ElevatorCardRegistrationService {
             log.info("✅ [ElevatorCard] Processing payment for {} registration(s) with txnRef: {}", 
                     allRegistrations.size(), txnRef);
             
-            OffsetDateTime payDate = parsePayDate(params.get("vnp_PayDate"));
+            // Use current time for payment date to ensure accurate timestamp
+            OffsetDateTime payDate = OffsetDateTime.now();
             
             for (ElevatorCardRegistration reg : allRegistrations) {
                 reg.setPaymentStatus("PAID");
@@ -942,18 +942,6 @@ public class ElevatorCardRegistrationService {
         }
     }
 
-    private OffsetDateTime parsePayDate(String payDate) {
-        if (!StringUtils.hasText(payDate)) {
-            return OffsetDateTime.now();
-        }
-        try {
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
-            LocalDateTime localDateTime = LocalDateTime.parse(payDate, formatter);
-            return localDateTime.atZone(ZoneId.systemDefault()).toOffsetDateTime();
-        } catch (Exception e) {
-            return OffsetDateTime.now();
-        }
-    }
 
     private void validatePayload(ElevatorCardRegistrationCreateDto dto) {
         if (dto.unitId() == null) {

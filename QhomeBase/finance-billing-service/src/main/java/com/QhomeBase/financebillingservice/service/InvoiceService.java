@@ -255,8 +255,9 @@ public class InvoiceService {
                 .filter(a -> a.compareTo(BigDecimal.ZERO) > 0)
                 .orElse(BigDecimal.valueOf(30000));
 
+        // Use paymentDate from request if available (from callback), otherwise use current time
         OffsetDateTime payDate = Optional.ofNullable(request.getPaymentDate())
-                .orElse(OffsetDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh")));
+                .orElse(OffsetDateTime.now());
         LocalDate serviceDate = payDate.toLocalDate();
 
         String description = buildVehicleRegistrationDescription(request);
@@ -743,7 +744,8 @@ public class InvoiceService {
             if (!alreadyPaid) {
                 invoice.setStatus(InvoiceStatus.PAID);
                 invoice.setPaymentGateway("VNPAY");
-                invoice.setPaidAt(parseVnpPayDate(params.get("vnp_PayDate")));
+                // Use current time for payment date to ensure accurate timestamp
+                invoice.setPaidAt(OffsetDateTime.now());
                 invoiceRepository.save(invoice);
                 notifyPaymentSuccess(invoice, params);
                 log.info("✅ [InvoiceService] Invoice {} marked as PAID via VNPAY (txnRef: {})", invoiceId, txnRef);
@@ -1117,19 +1119,6 @@ public class InvoiceService {
         }
     }
 
-    private OffsetDateTime parseVnpPayDate(String payDate) {
-        if (payDate == null || payDate.isBlank()) {
-            return OffsetDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh"));
-        }
-        try {
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
-            LocalDateTime localDateTime = LocalDateTime.parse(payDate, formatter);
-            return localDateTime.atZone(ZoneId.of("Asia/Ho_Chi_Minh")).toOffsetDateTime();
-        } catch (Exception e) {
-            log.warn("⚠️ [InvoiceService] Không thể parse vnp_PayDate {}: {}", payDate, e.getMessage());
-            return OffsetDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh"));
-        }
-    }
 
     private String resolveClientIp(HttpServletRequest request) {
         if (request == null) {
@@ -1295,8 +1284,9 @@ public class InvoiceService {
                 .filter(a -> a.compareTo(BigDecimal.ZERO) > 0)
                 .orElse(BigDecimal.valueOf(30000));
 
+        // Use paymentDate from request if available (from callback), otherwise use current time
         OffsetDateTime payDate = Optional.ofNullable(request.getPaymentDate())
-                .orElse(OffsetDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh")));
+                .orElse(OffsetDateTime.now());
         LocalDate serviceDate = payDate.toLocalDate();
 
         String description = buildElevatorCardDescription(request);
@@ -1371,8 +1361,9 @@ public class InvoiceService {
                 .filter(a -> a.compareTo(BigDecimal.ZERO) > 0)
                 .orElse(BigDecimal.valueOf(30000));
 
+        // Use paymentDate from request if available (from callback), otherwise use current time
         OffsetDateTime payDate = Optional.ofNullable(request.getPaymentDate())
-                .orElse(OffsetDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh")));
+                .orElse(OffsetDateTime.now());
         LocalDate serviceDate = payDate.toLocalDate();
 
         String description = buildResidentCardDescription(request);
