@@ -60,6 +60,7 @@ public class MarketplaceMapper {
                 .category(post.getCategory())
                 .categoryName(post.getCategory()) // Will be enhanced with category lookup
                 .status(post.getStatus().name())
+                .scope(post.getScope() != null ? post.getScope().name() : "BUILDING")
                 .contactInfo(toContactInfoResponse(contactInfoJson))
                 .location(post.getLocation())
                 .viewCount(post.getViewCount())

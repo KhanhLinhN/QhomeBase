@@ -24,6 +24,7 @@ public class PostResponse {
     private String category;
     private String categoryName;
     private String status;
+    private String scope; // BUILDING, ALL, or BOTH
     private ContactInfoResponse contactInfo;
     private String location;
     private Long viewCount;

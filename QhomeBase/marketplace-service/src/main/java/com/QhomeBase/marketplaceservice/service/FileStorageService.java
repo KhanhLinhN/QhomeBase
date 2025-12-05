@@ -128,11 +128,91 @@ public class FileStorageService {
     }
 
     /**
+     * Upload comment image
+     * Returns the image URL
+     */
+    public String uploadCommentImage(MultipartFile file, String postId) throws IOException {
+        log.info("Uploading comment image for post: {}", postId);
+        
+        // Create directory if not exists (use comments subdirectory)
+        Path uploadPath = Paths.get(uploadDirectory, postId, "comments");
+        Files.createDirectories(uploadPath);
+
+        String fileName = UUID.randomUUID().toString() + ".jpg";
+        
+        // Upload image
+        Path filePath = uploadPath.resolve(fileName);
+        Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+        
+        String imageUrl = getCommentImageUrl(postId, fileName);
+        log.info("Uploaded comment image: {}", filePath);
+        return imageUrl;
+    }
+
+    /**
+     * Upload comment video
+     * Returns the video URL
+     */
+    public String uploadCommentVideo(MultipartFile file, String postId) throws IOException {
+        log.info("Uploading comment video for post: {}", postId);
+        
+        // Create directory if not exists (use comments subdirectory)
+        Path uploadPath = Paths.get(uploadDirectory, postId, "comments");
+        Files.createDirectories(uploadPath);
+
+        String originalFilename = file.getOriginalFilename();
+        String extension = originalFilename != null && originalFilename.contains(".") 
+                ? originalFilename.substring(originalFilename.lastIndexOf(".")) 
+                : ".mp4";
+        String fileName = UUID.randomUUID().toString() + extension;
+        
+        // Upload video
+        Path filePath = uploadPath.resolve(fileName);
+        Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+        
+        String videoUrl = getCommentVideoUrl(postId, fileName);
+        log.info("Uploaded comment video: {}", filePath);
+        return videoUrl;
+    }
+
+    /**
+     * Get comment image URL
+     */
+    private String getCommentImageUrl(String postId, String fileName) {
+        if (cdnBaseUrl != null && !cdnBaseUrl.isEmpty()) {
+            return String.format("%s/marketplace/%s/comments/%s", cdnBaseUrl, postId, fileName);
+        } else {
+            return String.format("/api/marketplace/uploads/%s/comments/%s", postId, fileName);
+        }
+    }
+
+    /**
+     * Get comment video URL
+     */
+    private String getCommentVideoUrl(String postId, String fileName) {
+        if (cdnBaseUrl != null && !cdnBaseUrl.isEmpty()) {
+            return String.format("%s/marketplace/%s/comments/%s", cdnBaseUrl, postId, fileName);
+        } else {
+            return String.format("/api/marketplace/uploads/%s/comments/%s", postId, fileName);
+        }
+    }
+
+    /**
      * Get image file path
      */
     public Path getImagePath(String postId, String fileName) {
         Path path = Paths.get(uploadDirectory, postId, fileName);
         log.debug("📁 [FileStorageService] Getting image path: postId={}, fileName={}, fullPath={}, exists={}", 
+                postId, fileName, path, java.nio.file.Files.exists(path));
+        return path;
+    }
+
+    /**
+     * Get comment image/video file path
+     */
+    public Path getCommentFilePath(String postId, String fileName) {
+        Path path = Paths.get(uploadDirectory, postId, "comments", fileName);
+        log.debug("📁 [FileStorageService] Getting comment file path: postId={}, fileName={}, fullPath={}, exists={}", 
                 postId, fileName, path, java.nio.file.Files.exists(path));
         return path;
     }

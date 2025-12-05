@@ -103,6 +103,13 @@ spring:
             - Path=/api/customer-interaction/**
           filters:
             - StripPrefix=0
+        # Marketplace Service - Uploads (must be before marketplace-service catch-all)
+        - id: marketplace-service-uploads
+          uri: ${marketplace.service.url:http://localhost:8089}
+          predicates:
+            - Path=/api/marketplace/uploads/**
+          filters:
+            - StripPrefix=2
         # Marketplace Service Routes (must be before base-service catch-all)
         - id: marketplace-service
           uri: ${marketplace.service.url:http://localhost:8089}

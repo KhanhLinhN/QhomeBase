@@ -5,6 +5,7 @@ import com.QhomeBase.marketplaceservice.mapper.MarketplaceMapper;
 import com.QhomeBase.marketplaceservice.model.MarketplacePost;
 import com.QhomeBase.marketplaceservice.model.MarketplacePostImage;
 import com.QhomeBase.marketplaceservice.model.PostStatus;
+import com.QhomeBase.marketplaceservice.model.PostScope;
 import com.QhomeBase.marketplaceservice.repository.MarketplacePostImageRepository;
 import com.QhomeBase.marketplaceservice.security.UserPrincipal;
 import com.QhomeBase.marketplaceservice.service.*;
@@ -57,14 +58,22 @@ public class MarketplacePostController {
             @RequestParam(required = false) BigDecimal maxPrice,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String filterScope,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             Authentication authentication) {
         
         PostStatus postStatus = PostStatus.valueOf(status.toUpperCase());
+        
+        log.info("🔍 [MarketplacePostController] getPosts request: buildingId={}, status={}, filterScope={}, page={}, size={}", 
+                buildingId, status, filterScope, page, size);
+        
         Page<MarketplacePost> posts = postService.getPosts(
-                buildingId, postStatus, category, minPrice, maxPrice, search, sortBy, page, size
+                buildingId, postStatus, category, minPrice, maxPrice, search, sortBy, filterScope, page, size
         );
+        
+        log.info("🔍 [MarketplacePostController] getPosts response: {} posts (total: {})", 
+                posts.getContent().size(), posts.getTotalElements());
 
         PostPagedResponse response = mapper.toPostPagedResponse(posts);
         return ResponseEntity.ok(response);
@@ -162,6 +171,16 @@ public class MarketplacePostController {
             }
         }
 
+        // Parse scope from request
+        PostScope postScope = PostScope.BUILDING; // Default
+        if (request.getScope() != null && !request.getScope().isEmpty()) {
+            try {
+                postScope = PostScope.valueOf(request.getScope().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid scope value: {}, using default BUILDING", request.getScope());
+            }
+        }
+        
         // Create post
         MarketplacePost post = MarketplacePost.builder()
                 .residentId(residentId)
@@ -172,6 +191,7 @@ public class MarketplacePostController {
                 .category(request.getCategory())
                 .status(PostStatus.ACTIVE)
                 .location(request.getLocation())
+                .scope(postScope)
                 .build();
 
         // Handle contact info - serialize to JSON string

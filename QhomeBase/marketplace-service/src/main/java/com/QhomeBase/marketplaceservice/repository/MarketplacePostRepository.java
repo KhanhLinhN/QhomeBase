@@ -54,7 +54,16 @@ public interface MarketplacePostRepository extends JpaRepository<MarketplacePost
     // Use native query with explicit TEXT cast to avoid bytea type issue with LOWER function
     // Note: @EntityGraph doesn't work with native queries, but collections are loaded separately
     @Query(value = "SELECT * FROM marketplace.marketplace_posts p WHERE " +
-           "(:buildingId IS NULL OR p.building_id = :buildingId) " +
+           "(" +
+           "  CASE " +
+           "    WHEN :filterScope IS NULL OR :filterScope = '' THEN TRUE " +
+           "    WHEN :filterScope = 'ALL' THEN (p.scope = CAST('ALL' AS marketplace.post_scope) OR p.scope = CAST('BOTH' AS marketplace.post_scope)) " +
+           "    WHEN :filterScope = 'BUILDING' THEN " +
+           "      ((p.scope = CAST('BUILDING' AS marketplace.post_scope) AND p.building_id = :buildingId) OR " +
+           "       (p.scope = CAST('BOTH' AS marketplace.post_scope) AND p.building_id = :buildingId)) " +
+           "    ELSE FALSE " +
+           "  END" +
+           ") " +
            "AND p.status = CAST(:status AS marketplace.post_status) " +
            "AND (:category IS NULL OR p.category = :category) " +
            "AND (:minPrice IS NULL OR p.price >= :minPrice) " +
@@ -70,7 +79,16 @@ public interface MarketplacePostRepository extends JpaRepository<MarketplacePost
            "CASE WHEN :sortBy = 'popular' THEN p.like_count END DESC NULLS LAST, " +
            "p.created_at DESC",
            countQuery = "SELECT COUNT(*) FROM marketplace.marketplace_posts p WHERE " +
-           "(:buildingId IS NULL OR p.building_id = :buildingId) " +
+           "(" +
+           "  CASE " +
+           "    WHEN :filterScope IS NULL OR :filterScope = '' THEN TRUE " +
+           "    WHEN :filterScope = 'ALL' THEN (p.scope = CAST('ALL' AS marketplace.post_scope) OR p.scope = CAST('BOTH' AS marketplace.post_scope)) " +
+           "    WHEN :filterScope = 'BUILDING' THEN " +
+           "      ((p.scope = CAST('BUILDING' AS marketplace.post_scope) AND p.building_id = :buildingId) OR " +
+           "       (p.scope = CAST('BOTH' AS marketplace.post_scope) AND p.building_id = :buildingId)) " +
+           "    ELSE FALSE " +
+           "  END" +
+           ") " +
            "AND p.status = CAST(:status AS marketplace.post_status) " +
            "AND (:category IS NULL OR p.category = :category) " +
            "AND (:minPrice IS NULL OR p.price >= :minPrice) " +
@@ -87,6 +105,7 @@ public interface MarketplacePostRepository extends JpaRepository<MarketplacePost
         @Param("maxPrice") BigDecimal maxPrice,
         @Param("search") String search,
         @Param("sortBy") String sortBy,
+        @Param("filterScope") String filterScope,
         Pageable pageable
     );
 

@@ -38,5 +38,7 @@ public class CreatePostRequest {
     private String location;
 
     private ContactInfoRequest contactInfo;
+    
+    private String scope; // BUILDING, ALL, or BOTH
 }
 

@@ -801,9 +801,24 @@ public class InvoiceService {
         // Chỉ những cư dân thuộc căn hộ này mới có thể xem invoice của căn hộ đó
         validateUserBelongsToUnit(userId, unitFilter);
         
-        // Lấy invoice theo payerUnitId (căn hộ) - CHỈ lấy invoice của căn hộ này
-        // Tất cả thành viên trong cùng căn hộ (household) đều có thể xem invoice của căn hộ đó
-        // Cư dân ở căn hộ khác sẽ KHÔNG thấy được invoice này
+        // Lấy buildingId từ unitId để filter invoice theo cả unitId và buildingId
+        // Logic động: lấy buildingId từ căn hộ (unit) mà cư dân đang ở
+        UUID buildingId;
+        try {
+            BaseServiceClient.UnitInfo unitInfo = baseServiceClient.getUnitById(unitFilter);
+            if (unitInfo != null && unitInfo.getBuildingId() != null) {
+                buildingId = unitInfo.getBuildingId();
+            } else {
+                buildingId = null;
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ [InvoiceService] Failed to get buildingId from unitId {}: {}", unitFilter, e.getMessage());
+            buildingId = null;
+        }
+        final UUID finalBuildingId = buildingId; // Make effectively final for lambda
+        
+        // Lấy invoice từ bảng invoice, filter theo payerUnitId (căn hộ) và buildingId (tòa nhà)
+        // Cư dân ở căn hộ nào thuộc tòa nào sẽ chỉ thấy invoice của căn hộ đó thuộc tòa đó
         List<Invoice> invoices = invoiceRepository.findByPayerUnitId(unitFilter);
         log.debug("🔍 [InvoiceService] Found {} invoices for unit {} (before filters)", invoices.size(), unitFilter);
         
@@ -815,16 +830,34 @@ public class InvoiceService {
                                 invoice.getId(), invoice.getPayerUnitId(), unitFilter);
                         return false;
                     }
+                    
+                    // Filter theo buildingId: chỉ lấy invoice của căn hộ thuộc cùng tòa nhà với căn hộ của cư dân
+                    if (finalBuildingId != null && invoice.getPayerUnitId() != null) {
+                        try {
+                            BaseServiceClient.UnitInfo invoiceUnitInfo = baseServiceClient.getUnitById(invoice.getPayerUnitId());
+                            if (invoiceUnitInfo != null && invoiceUnitInfo.getBuildingId() != null) {
+                                if (!finalBuildingId.equals(invoiceUnitInfo.getBuildingId())) {
+                                    log.debug("🔍 [InvoiceService] Invoice {} belongs to different building, filtering out", invoice.getId());
+                                    return false;
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.warn("⚠️ [InvoiceService] Failed to get buildingId for invoice unit {}: {}", 
+                                    invoice.getPayerUnitId(), e.getMessage());
+                        }
+                    }
+                    
                     // Filter theo cycle nếu có
                     return cycleFilter == null || cycleFilter.equals(invoice.getCycleId());
                 })
                 .collect(Collectors.toList());
         
-        log.debug("🔍 [InvoiceService] After filters: {} invoices remain for unit {}", invoices.size(), unitFilter);
+        log.debug("🔍 [InvoiceService] After filters: {} invoices remain for unit {} (buildingId: {})", 
+                invoices.size(), unitFilter, buildingId);
         Map<String, List<InvoiceLineResponseDto>> grouped = new HashMap<>();
 
         for (Invoice invoice : invoices) {
-            if (invoice.getStatus() == InvoiceStatus.PAID || invoice.getStatus() == InvoiceStatus.VOID) {
+            if (invoice.getStatus() == InvoiceStatus.PAID || invoice.getStatus() == InvoiceStatus.VOID || invoice.getStatus() == InvoiceStatus.UNPAID) {
                 continue;
             }
 
@@ -873,9 +906,24 @@ public class InvoiceService {
         // Chỉ những cư dân thuộc căn hộ này mới có thể xem invoice của căn hộ đó
         validateUserBelongsToUnit(userId, unitFilter);
         
-        // Lấy invoice theo payerUnitId (căn hộ) - CHỈ lấy invoice của căn hộ này
-        // Tất cả thành viên trong cùng căn hộ (household) đều có thể xem invoice của căn hộ đó
-        // Cư dân ở căn hộ khác sẽ KHÔNG thấy được invoice này
+        // Lấy buildingId từ unitId để filter invoice theo cả unitId và buildingId
+        // Logic động: lấy buildingId từ căn hộ (unit) mà cư dân đang ở
+        UUID buildingId;
+        try {
+            BaseServiceClient.UnitInfo unitInfo = baseServiceClient.getUnitById(unitFilter);
+            if (unitInfo != null && unitInfo.getBuildingId() != null) {
+                buildingId = unitInfo.getBuildingId();
+            } else {
+                buildingId = null;
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ [InvoiceService] Failed to get buildingId from unitId {}: {}", unitFilter, e.getMessage());
+            buildingId = null;
+        }
+        final UUID finalBuildingId = buildingId; // Make effectively final for lambda
+        
+        // Lấy invoice từ bảng invoice, filter theo payerUnitId (căn hộ) và buildingId (tòa nhà)
+        // Cư dân ở căn hộ nào thuộc tòa nào sẽ chỉ thấy invoice của căn hộ đó thuộc tòa đó
         List<Invoice> invoices = invoiceRepository.findByPayerUnitId(unitFilter);
         log.debug("🔍 [InvoiceService] Found {} invoices for unit {} (before filters)", invoices.size(), unitFilter);
         
@@ -887,12 +935,30 @@ public class InvoiceService {
                                 invoice.getId(), invoice.getPayerUnitId(), unitFilter);
                         return false;
                     }
+                    
+                    // Filter theo buildingId: chỉ lấy invoice của căn hộ thuộc cùng tòa nhà với căn hộ của cư dân
+                    if (finalBuildingId != null && invoice.getPayerUnitId() != null) {
+                        try {
+                            BaseServiceClient.UnitInfo invoiceUnitInfo = baseServiceClient.getUnitById(invoice.getPayerUnitId());
+                            if (invoiceUnitInfo != null && invoiceUnitInfo.getBuildingId() != null) {
+                                if (!finalBuildingId.equals(invoiceUnitInfo.getBuildingId())) {
+                                    log.debug("🔍 [InvoiceService] Invoice {} belongs to different building, filtering out", invoice.getId());
+                                    return false;
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.warn("⚠️ [InvoiceService] Failed to get buildingId for invoice unit {}: {}", 
+                                    invoice.getPayerUnitId(), e.getMessage());
+                        }
+                    }
+                    
                     // Filter theo cycle nếu có
                     return cycleFilter == null || cycleFilter.equals(invoice.getCycleId());
                 })
                 .collect(Collectors.toList());
         
-        log.debug("🔍 [InvoiceService] After filters: {} invoices remain for unit {}", invoices.size(), unitFilter);
+        log.debug("🔍 [InvoiceService] After filters: {} invoices remain for unit {} (buildingId: {})", 
+                invoices.size(), unitFilter, buildingId);
         Map<String, List<InvoiceLineResponseDto>> grouped = new HashMap<>();
 
         for (Invoice invoice : invoices) {

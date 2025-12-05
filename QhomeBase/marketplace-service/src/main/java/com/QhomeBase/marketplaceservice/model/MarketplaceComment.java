@@ -45,8 +45,8 @@ public class MarketplaceComment {
     @Builder.Default
     private List<MarketplaceComment> replies = new ArrayList<>();
 
-    @Column(name = "content", nullable = false, columnDefinition = "TEXT")
-    private String content;
+    @Column(name = "content", nullable = true, columnDefinition = "TEXT")
+    private String content; // Can be null if comment only has image or video
 
     @Column(name = "image_url", columnDefinition = "TEXT")
     private String imageUrl; // URL of image attached to comment

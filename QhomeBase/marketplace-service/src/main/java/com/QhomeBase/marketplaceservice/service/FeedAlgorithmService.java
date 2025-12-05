@@ -62,6 +62,7 @@ public class FeedAlgorithmService {
                         null, // maxPrice
                         null, // search
                         "newest",
+                        null, // filterScope
                         page,
                         size
                 );

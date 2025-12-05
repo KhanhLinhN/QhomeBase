@@ -1,6 +1,5 @@
 package com.QhomeBase.marketplaceservice.dto;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -15,9 +14,8 @@ import java.util.UUID;
 @AllArgsConstructor
 public class CreateCommentRequest {
 
-    @NotBlank(message = "Content is required")
     @Size(max = 2000, message = "Content must not exceed 2000 characters")
-    private String content;
+    private String content; // Optional - can be empty if imageUrl or videoUrl is provided
 
     private UUID parentCommentId; // For replies
 

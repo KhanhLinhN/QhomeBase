@@ -71,13 +71,23 @@ public class MarketplaceCommentService {
     public MarketplaceComment addComment(UUID postId, UUID residentId, String content, UUID parentCommentId, String imageUrl, String videoUrl) {
         log.info("Adding comment to post: {} by user: {}", postId, residentId);
 
+        // Validate: content, imageUrl, or videoUrl must be provided
+        String trimmedContent = content != null ? content.trim() : "";
+        boolean hasContent = !trimmedContent.isEmpty();
+        boolean hasImage = imageUrl != null && !imageUrl.trim().isEmpty();
+        boolean hasVideo = videoUrl != null && !videoUrl.trim().isEmpty();
+        
+        if (!hasContent && !hasImage && !hasVideo) {
+            throw new IllegalArgumentException("Comment must have content, image, or video");
+        }
+
         MarketplacePost post = postRepository.findById(postId)
                 .orElseThrow(() -> new RuntimeException("Post not found: " + postId));
 
         MarketplaceComment comment = MarketplaceComment.builder()
                 .post(post)
                 .residentId(residentId)
-                .content(content)
+                .content(hasContent ? trimmedContent : null) // Set to null if empty
                 .imageUrl(imageUrl)
                 .videoUrl(videoUrl)
                 .build();

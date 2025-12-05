@@ -41,6 +41,12 @@ public class MarketplacePost {
     @Column(name = "building_id", nullable = false)
     private UUID buildingId;
 
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "scope", nullable = false, columnDefinition = "post_scope")
+    @Builder.Default
+    private PostScope scope = PostScope.BUILDING;
+
     @Column(name = "title", nullable = false, length = 200)
     private String title;
 

@@ -57,7 +57,7 @@ public class MarketplacePostService {
     /**
      * Get posts with filters - cached for 2 minutes
      */
-    @Cacheable(value = "postList", key = "(#buildingId != null ? #buildingId : 'all') + '_' + #status + '_' + (#category != null ? #category : 'all') + '_' + #page + '_' + #size + '_' + (#sortBy != null ? #sortBy : 'newest')")
+    @Cacheable(value = "postList", key = "(#buildingId != null ? #buildingId : 'all') + '_' + #status + '_' + (#category != null ? #category : 'all') + '_' + #page + '_' + #size + '_' + (#sortBy != null ? #sortBy : 'newest') + '_' + (#filterScope != null ? #filterScope : 'null')")
     @Transactional(readOnly = true)
     public Page<MarketplacePost> getPosts(
             UUID buildingId,
@@ -67,11 +67,12 @@ public class MarketplacePostService {
             BigDecimal maxPrice,
             String search,
             String sortBy,
+            String filterScope,
             int page,
             int size) {
         
-        log.debug("Fetching posts from database: buildingId={}, status={}, category={}, page={}, size={}", 
-                buildingId, status, category, page, size);
+        log.info("🔍 [MarketplacePostService] Fetching posts: buildingId={}, status={}, category={}, filterScope={}, page={}, size={}", 
+                buildingId, status, category, filterScope, page, size);
 
         // Default sort
         if (sortBy == null || sortBy.isEmpty()) {
@@ -81,8 +82,10 @@ public class MarketplacePostService {
         Pageable pageable = PageRequest.of(page, size);
         
         Page<MarketplacePost> posts = postRepository.findPostsWithFilters(
-                buildingId, status.name(), category, minPrice, maxPrice, search, sortBy, pageable
+                buildingId, status.name(), category, minPrice, maxPrice, search, sortBy, filterScope, pageable
         );
+        
+        log.info("🔍 [MarketplacePostService] Found {} posts (total: {})", posts.getContent().size(), posts.getTotalElements());
         
         // Load images for all posts in batch to avoid N+1 problem and LazyInitializationException
         if (!posts.getContent().isEmpty()) {
