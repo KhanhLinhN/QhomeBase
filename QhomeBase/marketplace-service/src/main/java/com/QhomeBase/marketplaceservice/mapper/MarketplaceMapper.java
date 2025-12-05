@@ -36,10 +36,12 @@ public class MarketplaceMapper {
             e.printStackTrace();
         }
         
-        // Debug: Check images
-        System.out.println("🖼️ [MarketplaceMapper] Post " + post.getId() + " has " + post.getImages().size() + " images");
-        if (!post.getImages().isEmpty()) {
-            post.getImages().forEach(img -> {
+        // Debug: Check images - safely access to avoid LazyInitializationException
+        List<MarketplacePostImage> images = post.getImages();
+        int imageCount = images != null ? images.size() : 0;
+        System.out.println("🖼️ [MarketplaceMapper] Post " + post.getId() + " has " + imageCount + " images");
+        if (images != null && !images.isEmpty()) {
+            images.forEach(img -> {
                 System.out.println("  - Image ID: " + img.getId() + ", URL: " + img.getImageUrl() + ", Thumbnail: " + img.getThumbnailUrl());
             });
         } else {
@@ -65,9 +67,9 @@ public class MarketplaceMapper {
                 .location(post.getLocation())
                 .viewCount(post.getViewCount())
                 .commentCount(post.getCommentCount())
-                .images(post.getImages().stream()
+                .images(images != null ? images.stream()
                         .map(this::toPostImageResponse)
-                        .collect(Collectors.toList()))
+                        .collect(Collectors.toList()) : new java.util.ArrayList<>())
                 .author(author)
                 .createdAt(post.getCreatedAt())
                 .updatedAt(post.getUpdatedAt())

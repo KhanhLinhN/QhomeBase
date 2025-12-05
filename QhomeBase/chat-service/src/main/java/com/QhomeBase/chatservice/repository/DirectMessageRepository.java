@@ -18,9 +18,9 @@ public interface DirectMessageRepository extends JpaRepository<DirectMessage, UU
     /**
      * Find messages in a conversation with pagination
      * Ordered by created_at DESC (newest first)
+     * Includes deleted messages (they will show as "Đã xóa")
      */
     @Query("SELECT m FROM DirectMessage m WHERE m.conversationId = :conversationId " +
-           "AND m.isDeleted = false " +
            "ORDER BY m.createdAt DESC")
     Page<DirectMessage> findByConversationIdOrderByCreatedAtDesc(
         @Param("conversationId") UUID conversationId,

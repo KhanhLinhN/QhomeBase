@@ -23,6 +23,10 @@ public class BlockService {
      */
     @Transactional
     public void blockUser(UUID blockerId, UUID blockedId) {
+        if (blockerId == null || blockedId == null) {
+            throw new RuntimeException("Blocker ID and blocked ID cannot be null");
+        }
+        
         if (blockerId.equals(blockedId)) {
             throw new RuntimeException("Cannot block yourself");
         }

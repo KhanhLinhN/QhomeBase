@@ -9,7 +9,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +22,12 @@ public class FriendshipService {
      */
     @Transactional
     public Friendship createOrActivateFriendship(UUID userId1, UUID userId2) {
+        // Validate inputs
+        if (userId1 == null || userId2 == null) {
+            log.warn("Cannot create/activate friendship: one or both userIds are null (userId1: {}, userId2: {})", userId1, userId2);
+            throw new RuntimeException("User IDs cannot be null");
+        }
+        
         // Ensure user1_id < user2_id for consistency
         UUID user1Id = userId1.compareTo(userId2) < 0 ? userId1 : userId2;
         UUID user2Id = userId1.compareTo(userId2) < 0 ? userId2 : userId1;
@@ -55,6 +60,12 @@ public class FriendshipService {
      */
     @Transactional
     public void deactivateFriendship(UUID userId1, UUID userId2) {
+        // Validate inputs
+        if (userId1 == null || userId2 == null) {
+            log.warn("Cannot deactivate friendship: one or both userIds are null (userId1: {}, userId2: {})", userId1, userId2);
+            return;
+        }
+        
         UUID user1Id = userId1.compareTo(userId2) < 0 ? userId1 : userId2;
         UUID user2Id = userId1.compareTo(userId2) < 0 ? userId2 : userId1;
 
@@ -81,6 +92,12 @@ public class FriendshipService {
      */
     @Transactional(readOnly = true)
     public boolean areFriends(UUID userId1, UUID userId2) {
+        // Validate inputs
+        if (userId1 == null || userId2 == null) {
+            log.debug("Cannot check friendship: one or both userIds are null (userId1: {}, userId2: {})", userId1, userId2);
+            return false;
+        }
+        
         UUID user1Id = userId1.compareTo(userId2) < 0 ? userId1 : userId2;
         UUID user2Id = userId1.compareTo(userId2) < 0 ? userId2 : userId1;
 

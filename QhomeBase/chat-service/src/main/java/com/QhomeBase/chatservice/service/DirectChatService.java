@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -34,6 +35,7 @@ public class DirectChatService {
     private final ChatNotificationService notificationService;
     private final FcmPushService fcmPushService;
     private final FriendshipService friendshipService;
+    private final DirectMessageDeletionRepository messageDeletionRepository;
 
     private String getCurrentAccessToken() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -159,12 +161,19 @@ public class DirectChatService {
             throw new RuntimeException("Conversation is not active. Current status: " + conversation.getStatus());
         }
 
-        // Don't block sending messages - allow sender to send even if blocked
-        // FCM notification will be filtered in FcmPushService if recipient has blocked sender
         UUID otherParticipantId = conversation.getOtherParticipantId(residentId);
+        
+        // Check if sender has blocked recipient - if so, don't allow sending messages
+        Optional<Block> senderBlockedRecipient = blockRepository.findByBlockerIdAndBlockedId(residentId, otherParticipantId);
+        if (senderBlockedRecipient.isPresent()) {
+            log.warn("Sender {} has blocked recipient {}. Cannot send message.", residentId, otherParticipantId);
+            throw new RuntimeException("Bạn đã chặn người dùng này. Không thể gửi tin nhắn.");
+        }
+        
+        // Check if recipient has blocked sender - if so, message will be saved but recipient won't see it
         boolean recipientBlockedSender = blockRepository.findByBlockerIdAndBlockedId(otherParticipantId, residentId).isPresent();
         if (recipientBlockedSender) {
-            log.info("Recipient {} has blocked sender {}. Message will be saved but no FCM will be sent.", otherParticipantId, residentId);
+            log.info("Recipient {} has blocked sender {}. Message will be saved but recipient won't see it.", otherParticipantId, residentId);
         }
 
         // Validate message type and content
@@ -317,6 +326,39 @@ public class DirectChatService {
         Page<DirectMessage> messages = messageRepository
                 .findByConversationIdOrderByCreatedAtDesc(conversationId, pageable);
 
+        // Get all deletion records for these messages
+        List<UUID> messageIds = messages.getContent().stream()
+                .map(DirectMessage::getId)
+                .collect(Collectors.toList());
+        
+        List<DirectMessageDeletion> deletions = messageDeletionRepository.findByMessageIdIn(messageIds);
+        
+        // Get other participant ID
+        UUID otherParticipantId = conversation.getOtherParticipantId(residentId);
+        
+        // Check if other participant (sender) has blocked current user (recipient)
+        // If A blocks B, then B should not see messages from A sent after block time
+        Optional<Block> senderBlockedRecipient = blockRepository.findByBlockerIdAndBlockedId(otherParticipantId, residentId);
+        OffsetDateTime blockTime = senderBlockedRecipient.map(Block::getCreatedAt).orElse(null);
+        
+        // Filter messages: if sender has blocked recipient, hide messages sent after block time
+        List<DirectMessage> allMessages = messages.getContent().stream()
+                .filter(msg -> {
+                    // If sender (other participant) has blocked recipient (current user), 
+                    // filter out messages from sender sent after block time
+                    if (blockTime != null && msg.getSenderId() != null && msg.getSenderId().equals(otherParticipantId)) {
+                        // This is a message from the sender who blocked the current user
+                        // If it was sent after block time, current user (recipient) shouldn't see it
+                        if (msg.getCreatedAt() != null && msg.getCreatedAt().isAfter(blockTime)) {
+                            log.debug("Filtering message {} - sender {} blocked recipient {} at {}, message sent at {}", 
+                                    msg.getId(), otherParticipantId, residentId, blockTime, msg.getCreatedAt());
+                            return false;
+                        }
+                    }
+                    return true;
+                })
+                .collect(Collectors.toList());
+
         // Update last read time (participant already loaded above)
         if (participant != null) {
             OffsetDateTime oldLastReadAt = participant.getLastReadAt();
@@ -330,11 +372,32 @@ public class DirectChatService {
                     conversationId, residentId);
         }
 
-        log.info("📤 [DirectChatService] Returning {} messages for conversationId: {}", messages.getContent().size(), conversationId);
+        log.info("📤 [DirectChatService] Returning {} messages for conversationId: {}", 
+                allMessages.size(), conversationId);
 
+        // Create a map of messageId -> deletion for quick lookup
+        Map<UUID, DirectMessageDeletion> deletionMap = deletions.stream()
+                .filter(d -> d.getDeletedByUserId().equals(residentId) || 
+                            d.getDeleteType() == DirectMessageDeletion.DeleteType.FOR_EVERYONE)
+                .collect(Collectors.toMap(
+                    DirectMessageDeletion::getMessageId,
+                    d -> d,
+                    (d1, d2) -> {
+                        // If both FOR_ME and FOR_EVERYONE exist, prefer FOR_EVERYONE
+                        if (d1.getDeleteType() == DirectMessageDeletion.DeleteType.FOR_EVERYONE) {
+                            return d1;
+                        }
+                        return d2;
+                    }
+                ));
+
+        // Create a custom page response with all messages (including deleted ones)
         return DirectMessagePagedResponse.builder()
-                .content(messages.getContent().stream()
-                        .map(msg -> toDirectMessageResponse(msg, accessToken))
+                .content(allMessages.stream()
+                        .map(msg -> {
+                            DirectMessageDeletion deletion = deletionMap.get(msg.getId());
+                            return toDirectMessageResponse(msg, accessToken, deletion);
+                        })
                         .collect(Collectors.toList()))
                 .currentPage(messages.getNumber())
                 .pageSize(messages.getSize())
@@ -345,6 +408,88 @@ public class DirectChatService {
                 .first(messages.isFirst())
                 .last(messages.isLast())
                 .build();
+    }
+
+    /**
+     * Delete a message
+     * @param deleteType "FOR_ME" - only delete for current user, "FOR_EVERYONE" - delete for everyone
+     * Only the sender can delete their own message
+     */
+    @Transactional
+    public void deleteMessage(UUID conversationId, UUID messageId, UUID userId, String deleteType) {
+        String accessToken = getCurrentAccessToken();
+        UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+        if (residentId == null) {
+            throw new RuntimeException("Resident not found for user: " + userId);
+        }
+
+        // Validate deleteType
+        DirectMessageDeletion.DeleteType type;
+        try {
+            type = DirectMessageDeletion.DeleteType.valueOf(deleteType.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("Invalid deleteType. Must be FOR_ME or FOR_EVERYONE");
+        }
+
+        // Check conversation exists and user is a participant
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new RuntimeException("Conversation not found"));
+
+        if (!conversation.isParticipant(residentId)) {
+            throw new RuntimeException("You are not a participant in this conversation");
+        }
+
+        // Find message
+        DirectMessage message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new RuntimeException("Message not found"));
+
+        // Verify message belongs to this conversation
+        if (!message.getConversationId().equals(conversationId)) {
+            throw new RuntimeException("Message does not belong to this conversation");
+        }
+
+        // Only sender can delete their own message
+        if (message.getSenderId() == null || !message.getSenderId().equals(residentId)) {
+            throw new RuntimeException("You can only delete your own messages");
+        }
+
+        // Check if already deleted with same type
+        List<DirectMessageDeletion> existingDeletions = messageDeletionRepository
+                .findByMessageIdAndDeletedByUserId(messageId, residentId);
+        boolean alreadyDeletedForMe = existingDeletions.stream()
+                .anyMatch(d -> d.getDeleteType() == DirectMessageDeletion.DeleteType.FOR_ME);
+        boolean alreadyDeletedForEveryone = existingDeletions.stream()
+                .anyMatch(d -> d.getDeleteType() == DirectMessageDeletion.DeleteType.FOR_EVERYONE);
+
+        if (type == DirectMessageDeletion.DeleteType.FOR_EVERYONE && alreadyDeletedForEveryone) {
+            log.warn("Message {} already deleted for everyone", messageId);
+            return;
+        }
+        if (type == DirectMessageDeletion.DeleteType.FOR_ME && alreadyDeletedForMe) {
+            log.warn("Message {} already deleted for user {}", messageId, residentId);
+            return;
+        }
+
+        // Create deletion record
+        DirectMessageDeletion deletion = DirectMessageDeletion.builder()
+                .messageId(messageId)
+                .deletedByUserId(residentId)
+                .deleteType(type)
+                .deletedAt(OffsetDateTime.now())
+                .build();
+        messageDeletionRepository.save(deletion);
+
+        // If deleting for everyone, also mark the message as deleted (legacy support)
+        if (type == DirectMessageDeletion.DeleteType.FOR_EVERYONE) {
+            message.setIsDeleted(true);
+            messageRepository.save(message);
+        }
+
+        log.info("Message {} deleted by user {} with type {}", messageId, residentId, type);
+
+        // Notify via WebSocket
+        DirectMessageResponse response = toDirectMessageResponse(message, accessToken);
+        notificationService.notifyDirectMessageDeleted(conversationId, messageId, response);
     }
 
     /**
@@ -559,9 +704,22 @@ public class DirectChatService {
     }
 
     private DirectMessageResponse toDirectMessageResponse(DirectMessage message, String accessToken) {
+        return toDirectMessageResponse(message, accessToken, null);
+    }
+
+    private DirectMessageResponse toDirectMessageResponse(DirectMessage message, String accessToken, DirectMessageDeletion deletion) {
         String senderName = message.getSenderId() != null 
             ? residentInfoService.getResidentName(message.getSenderId(), accessToken)
             : "System";
+
+        // Determine deleteType
+        String deleteType = null;
+        if (deletion != null) {
+            deleteType = deletion.getDeleteType().name();
+        } else if (Boolean.TRUE.equals(message.getIsDeleted())) {
+            // Legacy support: if isDeleted is true but no deletion record, assume FOR_EVERYONE
+            deleteType = "FOR_EVERYONE";
+        }
 
         DirectMessageResponse.DirectMessageResponseBuilder builder = DirectMessageResponse.builder()
                 .id(message.getId())
@@ -577,7 +735,8 @@ public class DirectChatService {
                 .mimeType(message.getMimeType())
                 .replyToMessageId(message.getReplyToMessageId())
                 .isEdited(message.getIsEdited())
-                .isDeleted(message.getIsDeleted())
+                .isDeleted(message.getIsDeleted() || deletion != null)
+                .deleteType(deleteType)
                 .createdAt(message.getCreatedAt())
                 .updatedAt(message.getUpdatedAt());
         

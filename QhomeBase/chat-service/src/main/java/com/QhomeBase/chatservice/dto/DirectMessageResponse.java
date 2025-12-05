@@ -28,6 +28,7 @@ public class DirectMessageResponse {
     private DirectMessageResponse replyToMessage; // Nested reply message
     private Boolean isEdited;
     private Boolean isDeleted;
+    private String deleteType; // FOR_ME, FOR_EVERYONE, or null if not deleted
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     

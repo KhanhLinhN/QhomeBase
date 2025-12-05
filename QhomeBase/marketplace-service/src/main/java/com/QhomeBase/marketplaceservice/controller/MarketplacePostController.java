@@ -68,8 +68,19 @@ public class MarketplacePostController {
         log.info("🔍 [MarketplacePostController] getPosts request: buildingId={}, status={}, filterScope={}, page={}, size={}", 
                 buildingId, status, filterScope, page, size);
         
+        // Get current user info for filtering blocked posts
+        UUID currentResidentId = null;
+        String accessToken = null;
+        if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal) {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID userId = principal.uid();
+            accessToken = principal.token();
+            currentResidentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+        }
+        
         Page<MarketplacePost> posts = postService.getPosts(
-                buildingId, postStatus, category, minPrice, maxPrice, search, sortBy, filterScope, page, size
+                buildingId, postStatus, category, minPrice, maxPrice, search, sortBy, filterScope, 
+                currentResidentId, accessToken, page, size
         );
         
         log.info("🔍 [MarketplacePostController] getPosts response: {} posts (total: {})", 
@@ -86,13 +97,23 @@ public class MarketplacePostController {
             @PathVariable UUID id,
             Authentication authentication) {
         
-        MarketplacePost post = postService.getPostById(id);
+        // Get current user info for filtering blocked posts
+        UUID currentResidentId = null;
+        String accessToken = null;
+        if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal) {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID userId = principal.uid();
+            accessToken = principal.token();
+            currentResidentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+        }
+        
+        MarketplacePost post = postService.getPostById(id, currentResidentId, accessToken);
         
         // Increment view count
         postService.incrementViewCount(id);
         
         // Reload post to get updated view count
-        post = postService.getPostById(id);
+        post = postService.getPostById(id, currentResidentId, accessToken);
         
         // Send realtime stats update
         notificationService.notifyPostStatsUpdate(

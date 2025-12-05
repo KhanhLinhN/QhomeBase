@@ -1,6 +1,8 @@
 package com.QhomeBase.chatservice.controller;
 
 import com.QhomeBase.chatservice.dto.*;
+import com.QhomeBase.chatservice.model.Block;
+import com.QhomeBase.chatservice.repository.BlockRepository;
 import com.QhomeBase.chatservice.security.UserPrincipal;
 import com.QhomeBase.chatservice.service.BlockService;
 import com.QhomeBase.chatservice.service.DirectChatService;
@@ -12,6 +14,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -30,6 +33,7 @@ public class DirectChatController {
 
     private final DirectChatService directChatService;
     private final BlockService blockService;
+    private final BlockRepository blockRepository;
     private final ResidentInfoService residentInfoService;
     private final ConversationMuteService conversationMuteService;
     private final ConversationHideService conversationHideService;
@@ -137,7 +141,23 @@ public class DirectChatController {
         
         // Convert userId to residentId
         UUID blockerResidentId = residentInfoService.getResidentIdFromUserId(userId);
+        if (blockerResidentId == null) {
+            log.error("Cannot find residentId for blocker userId: {}", userId);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+        
+        // Try to convert blockedId (might be userId or residentId)
         UUID blockedResidentId = residentInfoService.getResidentIdFromUserId(blockedId);
+        // If conversion returns null, assume blockedId is already a residentId
+        if (blockedResidentId == null) {
+            blockedResidentId = blockedId;
+            log.debug("blockedId {} is already a residentId, using it directly", blockedId);
+        }
+        
+        if (blockedResidentId == null) {
+            log.error("Cannot determine residentId for blocked user: {}", blockedId);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
         
         blockService.blockUser(blockerResidentId, blockedResidentId);
         return ResponseEntity.ok().build();
@@ -176,21 +196,49 @@ public class DirectChatController {
                 return ResponseEntity.ok(List.of());
             }
             
-            // Get blocked residentIds and convert back to userIds
+            // Get blocked residentIds - return residentIds directly (not userIds)
+            // This is needed for marketplace filtering which uses residentIds
             List<UUID> blockedResidentIds = blockService.getBlockedUserIds(residentId);
             
-            // Filter out null values when converting residentIds to userIds
-            // Some residents might not have userIds yet
-            List<UUID> blockedUserIds = blockedResidentIds.stream()
-                    .map(residentInfoService::getUserIdFromResidentId)
-                    .filter(java.util.Objects::nonNull) // Filter out null values
-                    .toList();
-            
-            return ResponseEntity.ok(blockedUserIds);
+            log.info("🔍 [DirectChatController] Found {} users blocked by current user {} (residentIds)", blockedResidentIds.size(), residentId);
+            if (!blockedResidentIds.isEmpty()) {
+                log.info("🔍 [DirectChatController] Blocked residentIds: {}", blockedResidentIds);
+            }
+            log.info("🔍 [DirectChatController] Returning {} residentIds (NOT userIds) from /blocked-users endpoint", blockedResidentIds.size());
+            return ResponseEntity.ok(blockedResidentIds);
         } catch (Exception e) {
             // Log error and return empty list instead of throwing 500
             // This prevents the app from crashing if there's an issue
             log.error("Error getting blocked users", e);
+            return ResponseEntity.ok(List.of());
+        }
+    }
+
+    @GetMapping("/blocked-by-users")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Get users who blocked current user", description = "Get list of users who have blocked current user")
+    public ResponseEntity<List<UUID>> getBlockedByUsers(Authentication authentication) {
+        try {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            UUID userId = principal.uid();
+            
+            // Convert userId to residentId
+            UUID residentId = residentInfoService.getResidentIdFromUserId(userId);
+            if (residentId == null) {
+                // If residentId is null, return empty list instead of throwing error
+                return ResponseEntity.ok(List.of());
+            }
+            
+            // Get users who blocked current user (blockedId = current user)
+            List<UUID> blockerResidentIds = blockRepository.findByBlockedId(residentId).stream()
+                    .map(Block::getBlockerId)
+                    .toList();
+            
+            log.info("Found {} users who blocked current user {}", blockerResidentIds.size(), residentId);
+            return ResponseEntity.ok(blockerResidentIds);
+            
+        } catch (Exception e) {
+            log.error("Error getting blocked-by users", e);
             return ResponseEntity.ok(List.of());
         }
     }
@@ -250,6 +298,21 @@ public class DirectChatController {
         
         boolean success = conversationHideService.hideDirectConversation(conversationId, userId);
         return ResponseEntity.ok(Map.of("success", success));
+    }
+
+    @DeleteMapping("/conversations/{conversationId}/messages/{messageId}")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Delete direct message", description = "Delete a direct message. Only the sender can delete their own message. deleteType: FOR_ME (only for current user) or FOR_EVERYONE (for everyone)")
+    public ResponseEntity<Void> deleteMessage(
+            @PathVariable UUID conversationId,
+            @PathVariable UUID messageId,
+            @RequestParam(defaultValue = "FOR_ME") String deleteType,
+            Authentication authentication) {
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        directChatService.deleteMessage(conversationId, messageId, userId, deleteType);
+        return ResponseEntity.ok().build();
     }
 }
 

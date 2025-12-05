@@ -47,11 +47,11 @@ public class FeedAlgorithmService {
         // In future, can implement more sophisticated algorithm
         switch (sortBy.toLowerCase()) {
             case "popular":
-                return postService.getPopularPosts(buildingId, page, size);
+                return postService.getPopularPosts(buildingId, null, null, page, size);
             case "trending":
                 // Trending = posts with high engagement in last 24 hours
                 // For now, use popular as fallback
-                return postService.getPopularPosts(buildingId, page, size);
+                return postService.getPopularPosts(buildingId, null, null, page, size);
             case "newest":
             default:
                 return postService.getPosts(
@@ -63,6 +63,8 @@ public class FeedAlgorithmService {
                         null, // search
                         "newest",
                         null, // filterScope
+                        null, // currentResidentId - FeedAlgorithmService doesn't have access to auth context
+                        null, // accessToken - FeedAlgorithmService doesn't have access to auth context
                         page,
                         size
                 );
