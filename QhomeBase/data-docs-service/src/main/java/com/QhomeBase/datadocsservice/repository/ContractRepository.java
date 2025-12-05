@@ -37,6 +37,8 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
            "AND (c.endDate IS NULL OR c.endDate >= :currentDate)")
     List<Contract> findActiveContractsByUnit(@Param("unitId") UUID unitId, @Param("currentDate") LocalDate currentDate);
 
-    // No additional methods needed - will use findAll() and filter in service
+    @Query("SELECT c FROM Contract c WHERE c.status = 'INACTIVE' AND c.startDate = :targetDate")
+    List<Contract> findInactiveContractsByStartDate(@Param("targetDate") LocalDate targetDate);
+
 }
 

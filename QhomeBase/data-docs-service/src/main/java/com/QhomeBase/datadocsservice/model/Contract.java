@@ -41,6 +41,9 @@ public class Contract {
     @Column(name = "end_date")
     private LocalDate endDate;
 
+    @Column(name = "checkout_date")
+    private LocalDate checkoutDate;
+
     @Column(name = "monthly_rent", precision = 14, scale = 2)
     private BigDecimal monthlyRent;
 

@@ -123,6 +123,31 @@ public class ContractController {
         return ResponseEntity.noContent().build();
     }
 
+    @PutMapping("/{contractId}/checkout")
+    @Operation(summary = "Checkout contract", description = "Set checkout date for a contract and change status to CANCELLED. Checkout date must be less than end date.")
+    public ResponseEntity<ContractDto> checkoutContract(
+            @PathVariable UUID contractId,
+            @RequestParam("checkoutDate") java.time.LocalDate checkoutDate,
+            @RequestParam(value = "updatedBy", required = false) UUID updatedBy) {
+        
+        if (updatedBy == null) {
+            updatedBy = UUID.randomUUID();
+        }
+        
+        ContractDto contract = contractService.checkoutContract(contractId, checkoutDate, updatedBy);
+        return ResponseEntity.ok(contract);
+    }
+
+    @PutMapping("/activate-inactive")
+    @Operation(summary = "Activate inactive contracts", description = "Activate all contracts with status INACTIVE and startDate = today")
+    public ResponseEntity<Map<String, Object>> activateInactiveContracts() {
+        int activatedCount = contractService.activateInactiveContracts();
+        return ResponseEntity.ok(Map.of(
+            "message", "Activated " + activatedCount + " contract(s)",
+            "activatedCount", activatedCount
+        ));
+    }
+
     @PostMapping("/{contractId}/files")
     @Operation(summary = "Upload contract file", description = "Upload a file (PDF, images) for a contract")
     public ResponseEntity<ContractFileDto> uploadContractFile(

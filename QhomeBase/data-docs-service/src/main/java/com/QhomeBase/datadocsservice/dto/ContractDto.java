@@ -23,6 +23,7 @@ public class ContractDto {
     private String contractType;
     private LocalDate startDate;
     private LocalDate endDate;
+    private LocalDate checkoutDate;
     private BigDecimal monthlyRent;
     private BigDecimal purchasePrice;
     private String paymentMethod;
