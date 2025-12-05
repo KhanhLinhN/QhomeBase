@@ -39,5 +39,6 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
 
     @Query("SELECT c FROM Contract c WHERE c.status = 'INACTIVE' AND c.startDate = :targetDate")
     List<Contract> findInactiveContractsByStartDate(@Param("targetDate") LocalDate targetDate);
+
 }
 

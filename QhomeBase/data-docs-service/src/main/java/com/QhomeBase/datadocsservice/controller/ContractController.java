@@ -93,6 +93,29 @@ public class ContractController {
         return ResponseEntity.ok(contracts);
     }
 
+    @GetMapping("/all")
+    @Operation(summary = "Get all contracts", description = "Get all contracts (optional filter by contractType)")
+    public ResponseEntity<List<ContractDto>> getAllContracts(
+            @RequestParam(value = "contractType", required = false) String contractType) {
+        try {
+            log.info("Getting all contracts with contractType filter: {}", contractType);
+            List<ContractDto> contracts;
+            if (contractType != null && !contractType.isEmpty()) {
+                contracts = contractService.getContractsByType(contractType);
+            } else {
+                contracts = contractService.getAllContracts();
+            }
+            log.info("Found {} contracts", contracts.size());
+            return ResponseEntity.ok(contracts);
+        } catch (IllegalArgumentException ex) {
+            log.error("Invalid request: {}", ex.getMessage(), ex);
+            return ResponseEntity.badRequest().build();
+        } catch (Exception ex) {
+            log.error("Error getting contracts: {}", ex.getMessage(), ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
     @DeleteMapping("/{contractId}")
     @Operation(summary = "Delete contract", description = "Delete a contract")
     public ResponseEntity<Void> deleteContract(@PathVariable UUID contractId) {
