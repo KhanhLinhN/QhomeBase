@@ -55,12 +55,24 @@ public class BlockService {
 
     /**
      * Unblock a user
+     * This method is idempotent - if the user is not blocked, it will return successfully without error
      */
     @Transactional
     public void unblockUser(UUID blockerId, UUID blockedId) {
-        Block block = blockRepository.findByBlockerIdAndBlockedId(blockerId, blockedId)
-                .orElseThrow(() -> new RuntimeException("User is not blocked"));
+        if (blockerId == null || blockedId == null) {
+            throw new RuntimeException("Blocker ID and blocked ID cannot be null");
+        }
+        
+        // Check if user is actually blocked
+        var blockOpt = blockRepository.findByBlockerIdAndBlockedId(blockerId, blockedId);
+        
+        if (blockOpt.isEmpty()) {
+            // User is not blocked - this is fine, just return (idempotent operation)
+            log.debug("User {} attempted to unblock user {}, but user was not blocked. Operation completed successfully (idempotent).", blockerId, blockedId);
+            return;
+        }
 
+        Block block = blockOpt.get();
         blockRepository.delete(block);
 
         // Conversation status should already be ACTIVE (we don't change it when blocking)

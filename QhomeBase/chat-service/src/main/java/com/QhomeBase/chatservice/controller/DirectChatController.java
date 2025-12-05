@@ -174,10 +174,31 @@ public class DirectChatController {
         
         // Convert userId to residentId
         UUID blockerResidentId = residentInfoService.getResidentIdFromUserId(userId);
-        UUID blockedResidentId = residentInfoService.getResidentIdFromUserId(blockedId);
+        if (blockerResidentId == null) {
+            log.error("Cannot find residentId for blocker userId: {}", userId);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
         
-        blockService.unblockUser(blockerResidentId, blockedResidentId);
-        return ResponseEntity.ok().build();
+        // Try to convert blockedId (might be userId or residentId)
+        UUID blockedResidentId = residentInfoService.getResidentIdFromUserId(blockedId);
+        // If conversion returns null, assume blockedId is already a residentId
+        if (blockedResidentId == null) {
+            blockedResidentId = blockedId;
+            log.debug("blockedId {} is already a residentId, using it directly", blockedId);
+        }
+        
+        if (blockedResidentId == null) {
+            log.error("Cannot determine residentId for blocked user: {}", blockedId);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+        
+        try {
+            blockService.unblockUser(blockerResidentId, blockedResidentId);
+            return ResponseEntity.ok().build();
+        } catch (RuntimeException e) {
+            log.error("Error unblocking user {}: {}", blockedResidentId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
     }
 
     @GetMapping("/blocked-users")
