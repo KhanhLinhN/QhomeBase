@@ -429,6 +429,7 @@ public class ContractService {
                 .contractType(contract.getContractType())
                 .startDate(contract.getStartDate())
                 .endDate(contract.getEndDate())
+                .checkoutDate(contract.getCheckoutDate())
                 .monthlyRent(contract.getMonthlyRent())
                 .purchasePrice(contract.getPurchasePrice())
                 .paymentMethod(contract.getPaymentMethod())
@@ -482,6 +483,51 @@ public class ContractService {
                 .uploadedBy(file.getUploadedBy())
                 .uploadedAt(file.getUploadedAt())
                 .build();
+    }
+
+    @Transactional
+    public ContractDto checkoutContract(UUID contractId, LocalDate checkoutDate, UUID updatedBy) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+
+        // Validate checkout date must be less than end date
+        if (contract.getEndDate() != null && checkoutDate.isAfter(contract.getEndDate())) {
+            throw new IllegalArgumentException("Checkout date must be less than or equal to end date");
+        }
+
+        // Validate checkout date must be after or equal to start date
+        if (checkoutDate.isBefore(contract.getStartDate())) {
+            throw new IllegalArgumentException("Checkout date must be after or equal to start date");
+        }
+
+        contract.setCheckoutDate(checkoutDate);
+        contract.setStatus("CANCELLED");
+        contract.setUpdatedBy(updatedBy);
+        
+        contract = contractRepository.save(contract);
+        log.info("Checked out contract: {} with checkout date: {}", contractId, checkoutDate);
+
+        return toDto(contract);
+    }
+
+    @Transactional
+    public int activateInactiveContracts() {
+        LocalDate today = LocalDate.now();
+        List<Contract> inactiveContracts = contractRepository.findInactiveContractsByStartDate(today);
+        
+        int activatedCount = 0;
+        for (Contract contract : inactiveContracts) {
+            contract.setStatus("ACTIVE");
+            contractRepository.save(contract);
+            activatedCount++;
+            log.info("Activated contract: {} (contract number: {})", contract.getId(), contract.getContractNumber());
+        }
+        
+        if (activatedCount > 0) {
+            log.info("Activated {} inactive contract(s) with start date = {}", activatedCount, today);
+        }
+        
+        return activatedCount;
     }
 }
 

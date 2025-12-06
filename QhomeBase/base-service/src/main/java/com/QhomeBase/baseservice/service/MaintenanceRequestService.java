@@ -337,6 +337,15 @@ public class MaintenanceRequestService {
         if (dto.note() != null && !dto.note().isBlank()) {
             request.setNote(dto.note().trim());
         }
+        
+        // Update preferred datetime if provided
+        if (dto.preferredDatetime() != null) {
+            OffsetDateTime normalizedPreferredDatetime = normalizePreferredDatetime(dto.preferredDatetime());
+            validatePreferredDatetime(normalizedPreferredDatetime);
+            request.setPreferredDatetime(normalizedPreferredDatetime);
+            log.info("Admin {} updated preferred datetime to {} for maintenance request {}", 
+                    adminId, normalizedPreferredDatetime, requestId);
+        }
 
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
         notifyMaintenanceResponseReceived(saved);
