@@ -117,6 +117,17 @@ public class InvoiceService {
     public InvoiceDto getInvoiceById(UUID invoiceId) {
         Invoice invoice = invoiceRepository.findById(invoiceId)
                 .orElseThrow(() -> new IllegalArgumentException("Invoice not found"));
+        
+        // Auto-fix: If invoice is PAID but paidAt is null, set it to issuedAt (or current time if issuedAt is also null)
+        // This handles invoices created before the paidAt logic was added
+        if (invoice.getStatus() == InvoiceStatus.PAID && invoice.getPaidAt() == null) {
+            log.warn("⚠️ Invoice {} is PAID but paidAt is null, setting it to issuedAt", invoiceId);
+            OffsetDateTime paidAt = invoice.getIssuedAt() != null ? invoice.getIssuedAt() : OffsetDateTime.now();
+            invoice.setPaidAt(paidAt);
+            invoice = invoiceRepository.save(invoice);
+            log.info("✅ Fixed paidAt for invoice {}: {}", invoiceId, invoice.getPaidAt());
+        }
+        
         return toDto(invoice);
     }
     
@@ -328,8 +339,13 @@ public class InvoiceService {
                 .payerUnitId(request.getPayerUnitId())
                 .payerResidentId(request.getPayerResidentId())
                 .cycleId(request.getCycleId())
-                .paidAt(invoiceStatus == InvoiceStatus.PAID ? now : null) // Set paidAt to current time if status is PAID
                 .build();
+        
+        // Set paidAt after building if status is PAID
+        if (invoiceStatus == InvoiceStatus.PAID) {
+            invoice.setPaidAt(now);
+            log.info("Setting paidAt to current time for PAID invoice: {}", now);
+        }
         
         Invoice savedInvoice = invoiceRepository.save(invoice);
         log.info("Invoice created with ID: {}, code: {}, status: {}, paidAt: {}", 
@@ -339,6 +355,14 @@ public class InvoiceService {
         savedInvoice = invoiceRepository.findById(savedInvoice.getId())
                 .orElseThrow(() -> new IllegalStateException("Invoice not found after creation"));
         log.info("Invoice reloaded - paidAt: {}", savedInvoice.getPaidAt());
+        
+        // If paidAt is still null after reload and status is PAID, set it explicitly
+        if (savedInvoice.getStatus() == InvoiceStatus.PAID && savedInvoice.getPaidAt() == null) {
+            log.warn("⚠️ paidAt is null for PAID invoice {}, setting it now", savedInvoice.getId());
+            savedInvoice.setPaidAt(now);
+            savedInvoice = invoiceRepository.save(savedInvoice);
+            log.info("✅ Updated paidAt for invoice {}: {}", savedInvoice.getId(), savedInvoice.getPaidAt());
+        }
         
         if (request.getLines() != null && !request.getLines().isEmpty()) {
             for (CreateInvoiceLineRequest lineRequest : request.getLines()) {
@@ -520,8 +544,15 @@ public class InvoiceService {
         InvoiceStatus oldStatus = invoice.getStatus();
         invoice.setStatus(request.getStatus());
         
+        // If updating to PAID and paidAt is null, set it to current time
+        if (request.getStatus() == InvoiceStatus.PAID && invoice.getPaidAt() == null) {
+            invoice.setPaidAt(OffsetDateTime.now());
+            log.info("Setting paidAt to current time for invoice {} (status updated to PAID)", invoiceId);
+        }
+        
         Invoice updatedInvoice = invoiceRepository.save(invoice);
-        log.info("Invoice {} status updated from {} to {}", invoiceId, oldStatus, request.getStatus());
+        log.info("Invoice {} status updated from {} to {}, paidAt: {}", 
+                invoiceId, oldStatus, request.getStatus(), updatedInvoice.getPaidAt());
         
         return toDto(updatedInvoice);
     }

@@ -89,4 +89,32 @@ public class InvoiceClient {
             return null;
         }
     }
+    
+    public void updateInvoicePaidAt(UUID invoiceId) {
+        try {
+            String url = financeBillingServiceBaseUrl + "/api/invoices/" + invoiceId + "/status";
+            
+            // Update invoice status to PAID and set paidAt
+            Map<String, Object> request = new HashMap<>();
+            request.put("status", "PAID");
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.PUT,
+                    new HttpEntity<>(request, headers),
+                    Map.class
+            );
+            
+            if (response.getStatusCode().is2xxSuccessful()) {
+                log.info("✅ [InvoiceClient] Updated invoice {} status to PAID (paidAt should be set automatically)", invoiceId);
+            } else {
+                log.warn("⚠️ [InvoiceClient] Failed to update invoice {} status: {}", invoiceId, response.getStatusCode());
+            }
+        } catch (Exception ex) {
+            log.error("❌ [InvoiceClient] Error updating invoice {} status", invoiceId, ex);
+        }
+    }
 }
