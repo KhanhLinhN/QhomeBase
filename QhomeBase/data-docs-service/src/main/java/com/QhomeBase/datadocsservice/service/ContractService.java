@@ -12,7 +12,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -195,9 +199,8 @@ public class ContractService {
                         try {
                             return toDto(contract);
                         } catch (Exception e) {
-                            log.error("❌ [ContractService] Lỗi khi convert contract {} sang DTO: {}", 
+                            log.error("[ContractService] Lỗi khi convert contract {} sang DTO: {}", 
                                     contract.getId(), e.getMessage(), e);
-                            // Return a minimal DTO to avoid breaking the entire list
                             return ContractDto.builder()
                                     .id(contract.getId())
                                     .unitId(contract.getUnitId())
@@ -216,13 +219,13 @@ public class ContractService {
                                     .createdAt(contract.getCreatedAt())
                                     .updatedAt(contract.getUpdatedAt())
                                     .updatedBy(contract.getUpdatedBy())
-                                    .files(List.of()) // Empty files list on error
+                                    .files(List.of())
                                     .build();
                         }
                     })
                     .collect(Collectors.toList());
         } catch (Exception e) {
-            log.error("❌ [ContractService] Lỗi khi lấy contracts cho unit {}: {}", unitId, e.getMessage(), e);
+            log.error("[ContractService] Lỗi khi lấy contracts cho unit {}: {}", unitId, e.getMessage(), e);
             throw new RuntimeException("Không thể lấy danh sách hợp đồng: " + e.getMessage(), e);
         }
     }
@@ -249,7 +252,7 @@ public class ContractService {
                     if (a.getCreatedAt() == null && b.getCreatedAt() == null) return 0;
                     if (a.getCreatedAt() == null) return 1;
                     if (b.getCreatedAt() == null) return -1;
-                    return b.getCreatedAt().compareTo(a.getCreatedAt()); // Descending
+                    return b.getCreatedAt().compareTo(a.getCreatedAt());
                 })
                 .map(this::toDtoSummary)
                 .collect(Collectors.toList());
@@ -270,7 +273,7 @@ public class ContractService {
                     if (a.getCreatedAt() == null && b.getCreatedAt() == null) return 0;
                     if (a.getCreatedAt() == null) return 1;
                     if (b.getCreatedAt() == null) return -1;
-                    return b.getCreatedAt().compareTo(a.getCreatedAt()); // Descending
+                    return b.getCreatedAt().compareTo(a.getCreatedAt());
                 })
                 .map(this::toDtoSummary)
                 .collect(Collectors.toList());
@@ -408,7 +411,7 @@ public class ContractService {
                             try {
                                 return toFileDto(file);
                             } catch (Exception e) {
-                                log.warn("⚠️ [ContractService] Lỗi khi convert file {} sang DTO: {}", 
+                                log.warn("[ContractService] Lỗi khi convert file {} sang DTO: {}", 
                                         file != null ? file.getId() : "null", e.getMessage());
                                 return null;
                             }
@@ -417,9 +420,8 @@ public class ContractService {
                         .collect(Collectors.toList());
             }
         } catch (Exception e) {
-            log.warn("⚠️ [ContractService] Lỗi khi load files cho contract {}: {}", 
+            log.warn("[ContractService] Lỗi khi load files cho contract {}: {}", 
                     contract.getId(), e.getMessage());
-            // Continue with empty files list
         }
 
         return ContractDto.builder()
@@ -429,7 +431,9 @@ public class ContractService {
                 .contractType(contract.getContractType())
                 .startDate(contract.getStartDate())
                 .endDate(contract.getEndDate())
+                .checkoutDate(contract.getCheckoutDate())
                 .monthlyRent(contract.getMonthlyRent())
+                .totalRent(calculateTotalRent(contract))
                 .purchasePrice(contract.getPurchasePrice())
                 .paymentMethod(contract.getPaymentMethod())
                 .paymentTerms(contract.getPaymentTerms())
@@ -440,12 +444,14 @@ public class ContractService {
                 .createdAt(contract.getCreatedAt())
                 .updatedAt(contract.getUpdatedAt())
                 .updatedBy(contract.getUpdatedBy())
+                .renewalReminderSentAt(contract.getRenewalReminderSentAt())
+                .renewalDeclinedAt(contract.getRenewalDeclinedAt())
+                .renewalStatus(contract.getRenewalStatus())
                 .files(files)
                 .build();
     }
 
     private ContractDto toDtoSummary(Contract contract) {
-        // Summary DTO without files to avoid lazy loading issues
         return ContractDto.builder()
                 .id(contract.getId())
                 .unitId(contract.getUnitId())
@@ -454,6 +460,7 @@ public class ContractService {
                 .startDate(contract.getStartDate())
                 .endDate(contract.getEndDate())
                 .monthlyRent(contract.getMonthlyRent())
+                .totalRent(calculateTotalRent(contract))
                 .purchasePrice(contract.getPurchasePrice())
                 .paymentMethod(contract.getPaymentMethod())
                 .paymentTerms(contract.getPaymentTerms())
@@ -464,7 +471,10 @@ public class ContractService {
                 .createdAt(contract.getCreatedAt())
                 .updatedAt(contract.getUpdatedAt())
                 .updatedBy(contract.getUpdatedBy())
-                .files(null) // Files not loaded for summary
+                .renewalReminderSentAt(contract.getRenewalReminderSentAt())
+                .renewalDeclinedAt(contract.getRenewalDeclinedAt())
+                .renewalStatus(contract.getRenewalStatus())
+                .files(null)
                 .build();
     }
 
@@ -482,6 +492,238 @@ public class ContractService {
                 .uploadedBy(file.getUploadedBy())
                 .uploadedAt(file.getUploadedAt())
                 .build();
+    }
+
+    @Transactional
+    public ContractDto checkoutContract(UUID contractId, LocalDate checkoutDate, UUID updatedBy) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+
+        if (contract.getEndDate() != null && checkoutDate.isAfter(contract.getEndDate())) {
+            throw new IllegalArgumentException("Checkout date must be less than or equal to end date");
+        }
+
+        if (checkoutDate.isBefore(contract.getStartDate())) {
+            throw new IllegalArgumentException("Checkout date must be after or equal to start date");
+        }
+
+        contract.setCheckoutDate(checkoutDate);
+        contract.setStatus("CANCELLED");
+        contract.setUpdatedBy(updatedBy);
+        
+        contract = contractRepository.save(contract);
+        log.info("Checked out contract: {} with checkout date: {}", contractId, checkoutDate);
+
+        return toDto(contract);
+    }
+
+    @Transactional
+    public int activateInactiveContracts() {
+        LocalDate today = LocalDate.now();
+        List<Contract> inactiveContracts = contractRepository.findInactiveContractsByStartDate(today);
+        
+        int activatedCount = 0;
+        for (Contract contract : inactiveContracts) {
+            contract.setStatus("ACTIVE");
+            contractRepository.save(contract);
+            activatedCount++;
+            log.info("Activated contract: {} (contract number: {})", contract.getId(), contract.getContractNumber());
+        }
+        
+        if (activatedCount > 0) {
+            log.info("Activated {} inactive contract(s) with start date = {}", activatedCount, today);
+        }
+        
+        return activatedCount;
+    }
+
+    @Transactional
+    public int markExpiredContracts() {
+        LocalDate today = LocalDate.now();
+        List<Contract> expiredContracts = contractRepository.findContractsNeedingExpired(today);
+        
+        int expiredCount = 0;
+        for (Contract contract : expiredContracts) {
+            contract.setStatus("EXPIRED");
+            contractRepository.save(contract);
+            expiredCount++;
+            log.info("Marked contract as expired: {} (contract number: {}, endDate: {})", 
+                    contract.getId(), contract.getContractNumber(), contract.getEndDate());
+        }
+        
+        if (expiredCount > 0) {
+            log.info("Marked {} contract(s) as expired with endDate < {}", expiredCount, today);
+        }
+        
+        return expiredCount;
+    }
+
+    public BigDecimal calculateTotalRent(Contract contract) {
+        if (!"RENTAL".equals(contract.getContractType())) {
+            return null;
+        }
+        
+        if (contract.getMonthlyRent() == null || contract.getStartDate() == null) {
+            return null;
+        }
+        
+        if (contract.getEndDate() == null) {
+            return null;
+        }
+        
+        LocalDate startDate = contract.getStartDate();
+        LocalDate endDate = contract.getEndDate();
+        BigDecimal monthlyRent = contract.getMonthlyRent();
+        
+        long totalMonths = ChronoUnit.MONTHS.between(
+            startDate.withDayOfMonth(1), 
+            endDate.withDayOfMonth(1)
+        ) + 1;
+        
+        if (totalMonths <= 0) {
+            return BigDecimal.ZERO;
+        }
+        
+        BigDecimal totalRent = BigDecimal.ZERO;
+        
+        int startDay = startDate.getDayOfMonth();
+        if (startDay <= 15) {
+            totalRent = totalRent.add(monthlyRent);
+        } else {
+            totalRent = totalRent.add(monthlyRent.divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP));
+        }
+        
+        if (totalMonths > 1) {
+            long middleMonths = totalMonths - 1;
+            totalRent = totalRent.add(monthlyRent.multiply(BigDecimal.valueOf(middleMonths)));
+        }
+        
+        return totalRent.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Contract> findContractsNeedingRenewalReminder() {
+        LocalDate today = LocalDate.now();
+        LocalDate thirtyDaysLater = today.plusDays(30);
+        
+        return contractRepository.findContractsNeedingRenewalReminder(today, thirtyDaysLater);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Contract> findContractsWithRenewalDeclined(OffsetDateTime deadlineDate) {
+        return contractRepository.findContractsWithRenewalDeclined(deadlineDate);
+    }
+
+    @Transactional
+    public void sendRenewalReminder(UUID contractId) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+        
+        if (!"RENTAL".equals(contract.getContractType())) {
+            throw new IllegalArgumentException("Only RENTAL contracts can have renewal reminders");
+        }
+        
+        if (!"ACTIVE".equals(contract.getStatus())) {
+            throw new IllegalArgumentException("Only ACTIVE contracts can have renewal reminders");
+        }
+        
+        if (contract.getEndDate() == null) {
+            throw new IllegalArgumentException("Contract must have end date for renewal reminder");
+        }
+        
+        String currentRenewalStatus = contract.getRenewalStatus();
+        if (!"PENDING".equals(currentRenewalStatus) && !"REMINDED".equals(currentRenewalStatus)) {
+            throw new IllegalArgumentException("Contract must be in PENDING or REMINDED status to send renewal reminder. Current status: " + currentRenewalStatus);
+        }
+        
+        if (contract.getRenewalReminderSentAt() == null) {
+            contract.setRenewalReminderSentAt(OffsetDateTime.now());
+        }
+        
+        contract.setRenewalStatus("REMINDED");
+        contractRepository.save(contract);
+        
+        if (contract.getRenewalReminderSentAt() != null) {
+            long daysSinceFirstReminder = ChronoUnit.DAYS.between(
+                contract.getRenewalReminderSentAt().toLocalDate(),
+                LocalDate.now()
+            );
+            log.info("Sent renewal reminder for contract: {} (ends on: {}, {} days since first reminder)", 
+                    contractId, contract.getEndDate(), daysSinceFirstReminder);
+        } else {
+            log.info("Sent renewal reminder for contract: {} (ends on: {})", contractId, contract.getEndDate());
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<Contract> findContractsNeedingSecondReminder() {
+        OffsetDateTime sevenDaysAgo = OffsetDateTime.now().minusDays(7);
+        return contractRepository.findContractsNeedingSecondReminder(sevenDaysAgo);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Contract> findContractsNeedingThirdReminder() {
+        OffsetDateTime twentyDaysAgo = OffsetDateTime.now().minusDays(20);
+        return contractRepository.findContractsNeedingThirdReminder(twentyDaysAgo);
+    }
+
+    @Transactional
+    public void markRenewalDeclined(UUID contractId) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+        
+        if (!"RENTAL".equals(contract.getContractType())) {
+            throw new IllegalArgumentException("Only RENTAL contracts can have renewal declined");
+        }
+        
+        if (!"ACTIVE".equals(contract.getStatus())) {
+            throw new IllegalArgumentException("Only ACTIVE contracts can have renewal declined");
+        }
+        
+        String currentRenewalStatus = contract.getRenewalStatus();
+        if (!"PENDING".equals(currentRenewalStatus) && !"REMINDED".equals(currentRenewalStatus)) {
+            throw new IllegalArgumentException("Contract must be in PENDING or REMINDED status to mark as declined. Current status: " + currentRenewalStatus);
+        }
+        
+        contract.setRenewalDeclinedAt(OffsetDateTime.now());
+        contract.setRenewalStatus("DECLINED");
+        contractRepository.save(contract);
+        
+        log.info("Marked contract {} as renewal declined (was: {})", contractId, currentRenewalStatus);
+    }
+
+    @Transactional
+    public ContractDto extendContract(UUID contractId, LocalDate newEndDate, UUID updatedBy) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+        
+        if (!"RENTAL".equals(contract.getContractType())) {
+            throw new IllegalArgumentException("Only RENTAL contracts can be extended");
+        }
+        
+        if (!"ACTIVE".equals(contract.getStatus())) {
+            throw new IllegalArgumentException("Only ACTIVE contracts can be extended");
+        }
+        
+        if (contract.getEndDate() == null) {
+            throw new IllegalArgumentException("Contract must have end date to extend");
+        }
+        
+        if (newEndDate.isBefore(contract.getEndDate()) || newEndDate.isEqual(contract.getEndDate())) {
+            throw new IllegalArgumentException("New end date must be after current end date");
+        }
+        
+        contract.setEndDate(newEndDate);
+        contract.setRenewalStatus("PENDING");
+        contract.setRenewalReminderSentAt(null);
+        contract.setRenewalDeclinedAt(null);
+        contract.setUpdatedBy(updatedBy);
+        
+        contract = contractRepository.save(contract);
+        log.info("Extended contract {} to new end date: {}. Renewal status reset to PENDING for new cycle.", 
+                contractId, newEndDate);
+        
+        return toDto(contract);
     }
 }
 

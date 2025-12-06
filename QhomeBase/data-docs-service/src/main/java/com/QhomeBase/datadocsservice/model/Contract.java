@@ -41,6 +41,9 @@ public class Contract {
     @Column(name = "end_date")
     private LocalDate endDate;
 
+    @Column(name = "checkout_date")
+    private LocalDate checkoutDate;
+
     @Column(name = "monthly_rent", precision = 14, scale = 2)
     private BigDecimal monthlyRent;
 
@@ -76,6 +79,16 @@ public class Contract {
 
     @Column(name = "updated_by")
     private UUID updatedBy;
+
+    @Column(name = "renewal_reminder_sent_at")
+    private OffsetDateTime renewalReminderSentAt;
+
+    @Column(name = "renewal_declined_at")
+    private OffsetDateTime renewalDeclinedAt;
+
+    @Column(name = "renewal_status", length = 20)
+    @Builder.Default
+    private String renewalStatus = "PENDING";
 
     @OneToMany(mappedBy = "contract", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("displayOrder ASC, uploadedAt ASC")
