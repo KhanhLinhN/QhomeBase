@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.securityContext;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -80,7 +79,8 @@ class MaintenanceRequestControllerTest {
                                 req.title(), req.description(), java.util.List.of(), req.location(),
                                 req.preferredDatetime(),
                                 req.contactName(), req.contactPhone(), req.note(), "PENDING", OffsetDateTime.now(),
-                                OffsetDateTime.now(), null, false, false, null, null, null, null, null);
+                                OffsetDateTime.now(), null, false, false, null, null, null, null, null,
+                                null, null, null, null, null);
                 Mockito.when(maintenanceRequestService.create(any(UUID.class), any(CreateMaintenanceRequestDto.class)))
                                 .thenReturn(dto);
 
@@ -102,7 +102,7 @@ class MaintenanceRequestControllerTest {
                                 "Leak", "desc", java.util.List.of(), "Kitchen", OffsetDateTime.now(), "John", "0123",
                                 "note", "PENDING",
                                 OffsetDateTime.now(), OffsetDateTime.now(), null, false, false, null, null, null, null,
-                                null);
+                                null, null, null, null, null, null);
                 Mockito.when(maintenanceRequestService.getMyRequests(any(UUID.class))).thenReturn(List.of(dto));
 
                 var ctx = new org.springframework.security.core.context.SecurityContextImpl();
@@ -123,7 +123,8 @@ class MaintenanceRequestControllerTest {
                                 "Leak", "desc", List.of(), "Kitchen", OffsetDateTime.now(), "John", "0123", "note",
                                 "IN_PROGRESS",
                                 OffsetDateTime.now(), OffsetDateTime.now(), null, false, false, "OK",
-                                java.math.BigDecimal.valueOf(100000), userId, OffsetDateTime.now(), "APPROVED");
+                                java.math.BigDecimal.valueOf(100000), userId, OffsetDateTime.now(), "APPROVED",
+                                null, null, null, null, null);
                 Mockito.when(maintenanceRequestService.respondToRequest(any(UUID.class), any(UUID.class),
                                 any(AdminMaintenanceResponseDto.class))).thenReturn(dto);
 
@@ -138,7 +139,8 @@ class MaintenanceRequestControllerTest {
                                 "Leak", "desc", List.of(), "Kitchen", OffsetDateTime.now(), "John", "0123", "note",
                                 "DONE",
                                 OffsetDateTime.now(), OffsetDateTime.now(), null, false, false, "OK",
-                                java.math.BigDecimal.valueOf(100000), userId, OffsetDateTime.now(), "COMPLETED");
+                                java.math.BigDecimal.valueOf(100000), userId, OffsetDateTime.now(), "COMPLETED",
+                                null, null, null, null, null);
                 Mockito.when(maintenanceRequestService.completeRequest(any(UUID.class), any(UUID.class),
                                 any(AdminServiceRequestActionDto.class))).thenReturn(dto2);
 

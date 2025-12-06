@@ -6,3 +6,4 @@ ALTER TABLE cs_service.processing_logs
 
 ALTER TABLE cs_service.processing_logs
     DROP COLUMN IF EXISTS log_type;
+

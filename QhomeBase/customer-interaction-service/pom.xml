@@ -185,7 +185,7 @@
                 <configuration>
                     <url>jdbc:postgresql://localhost:5432/qhome_base_db?currentSchema=cs_service,content,public</url>
                     <user>postgres</user>
-                    <password>0035</password>
+                    <password>postgres</password>
                     <schemas>
                         <schema>cs_service</schema>
                         <schema>content</schema>
