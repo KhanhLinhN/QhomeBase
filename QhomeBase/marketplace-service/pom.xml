@@ -119,6 +119,11 @@
             <artifactId>thumbnailator</artifactId>
             <version>0.4.20</version>
         </dependency>
+        <!-- ImageKit SDK -->
+        <dependency>
+            <groupId>com.github.imagekit-developer</groupId>
+            <artifactId>imagekit-java</artifactId>
+        </dependency>
 
         <!-- Rate Limiting - Temporarily commented out due to dependency issues -->
         <!-- Will be enabled after fixing Bucket4j dependency -->
