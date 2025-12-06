@@ -10,6 +10,7 @@ import com.QhomeBase.baseservice.security.JwtAuthFilter;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import com.QhomeBase.baseservice.service.MaintenanceRequestMonitor;
 import com.QhomeBase.baseservice.service.MaintenanceRequestService;
+import com.QhomeBase.baseservice.service.vnpay.VnpayService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,11 +53,14 @@ class MaintenanceRequestControllerTest {
         @MockitoBean
         private MaintenanceRequestMonitor maintenanceRequestMonitor;
 
-        @MockitoBean
+        @MockitoBean(name = "authz")
         private AuthzService authz;
 
         @MockitoBean
         private JwtAuthFilter jwtAuthFilter;
+
+        @MockitoBean
+        private VnpayService vnpayService;
 
         private UsernamePasswordAuthenticationToken authResident;
         private UUID userId;
@@ -117,7 +121,8 @@ class MaintenanceRequestControllerTest {
         @Test
         void shouldApproveAndComplete_Admin() throws Exception {
                 Mockito.when(authz.canManageServiceRequests()).thenReturn(true);
-                var resp = new AdminMaintenanceResponseDto("OK", java.math.BigDecimal.valueOf(100000), "note", OffsetDateTime.now());
+                var resp = new AdminMaintenanceResponseDto("OK", java.math.BigDecimal.valueOf(100000), "note",
+                                OffsetDateTime.now());
                 var dto = new MaintenanceRequestDto(UUID.randomUUID(), UUID.randomUUID(), null, userId, userId,
                                 "PLUMBING",
                                 "Leak", "desc", List.of(), "Kitchen", OffsetDateTime.now(), "John", "0123", "note",
@@ -128,7 +133,11 @@ class MaintenanceRequestControllerTest {
                 Mockito.when(maintenanceRequestService.respondToRequest(any(UUID.class), any(UUID.class),
                                 any(AdminMaintenanceResponseDto.class))).thenReturn(dto);
 
+                var ctx = new org.springframework.security.core.context.SecurityContextImpl();
+                ctx.setAuthentication(authResident);
                 mockMvc.perform(post("/api/maintenance-requests/admin/" + UUID.randomUUID() + "/respond")
+                                .with(securityContext(ctx))
+                                .principal(authResident)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .accept(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(resp)))
@@ -145,6 +154,8 @@ class MaintenanceRequestControllerTest {
                                 any(AdminServiceRequestActionDto.class))).thenReturn(dto2);
 
                 mockMvc.perform(patch("/api/maintenance-requests/admin/" + UUID.randomUUID() + "/complete")
+                                .with(securityContext(ctx))
+                                .principal(authResident)
                                 .accept(MediaType.APPLICATION_JSON))
                                 .andExpect(status().isOk());
         }
