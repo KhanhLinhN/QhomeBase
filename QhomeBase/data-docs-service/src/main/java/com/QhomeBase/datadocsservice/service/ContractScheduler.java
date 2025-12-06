@@ -111,7 +111,7 @@ public class ContractScheduler {
                             today
                         );
                         
-                        if (daysSinceFirstReminder >= 7 && daysSinceFirstReminder < 20) {
+                        if (daysSinceFirstReminder == 8) {
                             contractService.sendRenewalReminder(contract.getId());
                             secondReminderCount++;
                             log.info("Sent second renewal reminder for contract {} (expires on {}, {} days since first reminder)", 
@@ -135,7 +135,7 @@ public class ContractScheduler {
                             today
                         );
                         
-                        if (daysSinceFirstReminder >= 20) {
+                        if (daysSinceFirstReminder == 20) {
                             contractService.sendRenewalReminder(contract.getId());
                             thirdReminderCount++;
                             log.info("Sent third (FINAL) renewal reminder for contract {} (expires on {}, {} days since first reminder - THIS IS THE DEADLINE)", 
