@@ -291,6 +291,32 @@ public class ContractController {
         ));
     }
 
+    @PutMapping("/{contractId}/renewal/decline")
+    @Operation(summary = "Decline contract renewal manually", description = "Manually decline renewal for a contract. This marks the contract's renewal status as DECLINED immediately, even if it's still within the reminder period. Contract remains ACTIVE until endDate.")
+    public ResponseEntity<Map<String, Object>> declineRenewal(
+            @PathVariable UUID contractId,
+            @RequestParam(value = "updatedBy", required = false) UUID updatedBy) {
+        try {
+            contractService.markRenewalDeclined(contractId);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Contract renewal declined successfully",
+                "contractId", contractId.toString()
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", e.getMessage()
+            ));
+        } catch (Exception e) {
+            log.error("Error declining renewal for contract {}", contractId, e);
+            return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "success", false,
+                "message", "Failed to decline renewal: " + e.getMessage()
+            ));
+        }
+    }
+
     @PostMapping("/{contractId}/files")
     @Operation(summary = "Upload contract file", description = "Upload a file (PDF, images) for a contract")
     public ResponseEntity<ContractFileDto> uploadContractFile(

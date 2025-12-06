@@ -22,11 +22,11 @@ public class ContractScheduler {
     
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
-        log.info("🚀 Application ready - Running initial contract status checks...");
+        log.info("Application ready - Running initial contract status checks...");
         contractService.markExpiredContracts();
         sendRenewalReminders();
         markRenewalDeclined();
-        log.info("✅ Initial contract status checks completed");
+        log.info("Initial contract status checks completed");
     }
 
     @Scheduled(cron = "0 0 0 * * ?")

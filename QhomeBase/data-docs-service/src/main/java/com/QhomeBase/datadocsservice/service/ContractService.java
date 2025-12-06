@@ -199,7 +199,7 @@ public class ContractService {
                         try {
                             return toDto(contract);
                         } catch (Exception e) {
-                            log.error("❌ [ContractService] Lỗi khi convert contract {} sang DTO: {}", 
+                            log.error("[ContractService] Lỗi khi convert contract {} sang DTO: {}", 
                                     contract.getId(), e.getMessage(), e);
                             return ContractDto.builder()
                                     .id(contract.getId())
@@ -225,7 +225,7 @@ public class ContractService {
                     })
                     .collect(Collectors.toList());
         } catch (Exception e) {
-            log.error("❌ [ContractService] Lỗi khi lấy contracts cho unit {}: {}", unitId, e.getMessage(), e);
+            log.error("[ContractService] Lỗi khi lấy contracts cho unit {}: {}", unitId, e.getMessage(), e);
             throw new RuntimeException("Không thể lấy danh sách hợp đồng: " + e.getMessage(), e);
         }
     }
@@ -411,7 +411,7 @@ public class ContractService {
                             try {
                                 return toFileDto(file);
                             } catch (Exception e) {
-                                log.warn("⚠️ [ContractService] Lỗi khi convert file {} sang DTO: {}", 
+                                log.warn("[ContractService] Lỗi khi convert file {} sang DTO: {}", 
                                         file != null ? file.getId() : "null", e.getMessage());
                                 return null;
                             }
@@ -420,7 +420,7 @@ public class ContractService {
                         .collect(Collectors.toList());
             }
         } catch (Exception e) {
-            log.warn("⚠️ [ContractService] Lỗi khi load files cho contract {}: {}", 
+            log.warn("[ContractService] Lỗi khi load files cho contract {}: {}", 
                     contract.getId(), e.getMessage());
         }
 
@@ -672,15 +672,24 @@ public class ContractService {
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
         
-        if (!"REMINDED".equals(contract.getRenewalStatus())) {
-            throw new IllegalArgumentException("Contract must be in REMINDED status to mark as declined");
+        if (!"RENTAL".equals(contract.getContractType())) {
+            throw new IllegalArgumentException("Only RENTAL contracts can have renewal declined");
+        }
+        
+        if (!"ACTIVE".equals(contract.getStatus())) {
+            throw new IllegalArgumentException("Only ACTIVE contracts can have renewal declined");
+        }
+        
+        String currentRenewalStatus = contract.getRenewalStatus();
+        if (!"PENDING".equals(currentRenewalStatus) && !"REMINDED".equals(currentRenewalStatus)) {
+            throw new IllegalArgumentException("Contract must be in PENDING or REMINDED status to mark as declined. Current status: " + currentRenewalStatus);
         }
         
         contract.setRenewalDeclinedAt(OffsetDateTime.now());
         contract.setRenewalStatus("DECLINED");
         contractRepository.save(contract);
         
-        log.info("Marked contract {} as renewal declined", contractId);
+        log.info("Marked contract {} as renewal declined (was: {})", contractId, currentRenewalStatus);
     }
 
     @Transactional
