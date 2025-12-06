@@ -1,5 +1,6 @@
 package com.QhomeBase.financebillingservice.dto;
 
+import com.QhomeBase.financebillingservice.model.InvoiceStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,6 +23,7 @@ public class CreateInvoiceRequest {
     private UUID payerUnitId;
     private UUID payerResidentId;
     private UUID cycleId;
+    private InvoiceStatus status; // Optional: if not provided, defaults to PUBLISHED
     private List<CreateInvoiceLineRequest> lines;
 }
 

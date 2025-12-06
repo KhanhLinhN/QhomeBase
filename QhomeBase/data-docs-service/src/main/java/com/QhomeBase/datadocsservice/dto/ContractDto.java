@@ -39,6 +39,8 @@ public class ContractDto {
     private OffsetDateTime renewalReminderSentAt;
     private OffsetDateTime renewalDeclinedAt;
     private String renewalStatus;
+    private Integer reminderCount; // Calculated: 1, 2, or 3 based on days since first reminder
+    private Boolean isFinalReminder; // true if reminderCount == 3
     private List<ContractFileDto> files;
 }
 

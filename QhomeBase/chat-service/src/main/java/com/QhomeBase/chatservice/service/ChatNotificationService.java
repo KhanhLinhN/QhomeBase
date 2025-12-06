@@ -179,5 +179,18 @@ public class ChatNotificationService {
         log.info("Sending DIRECT_MESSAGE_DELETED to conversation {} via WebSocket", conversationId);
         messagingTemplate.convertAndSend(destination, wsMessage);
     }
+
+    public void notifyDirectMessageUpdated(UUID conversationId, com.QhomeBase.chatservice.dto.DirectMessageResponse message) {
+        WebSocketMessage wsMessage = WebSocketMessage.builder()
+                .type("DIRECT_MESSAGE_UPDATED")
+                .conversationId(conversationId)
+                .directMessage(message)
+                .timestamp(OffsetDateTime.now())
+                .build();
+
+        String destination = "/topic/direct-chat/" + conversationId;
+        log.info("Sending DIRECT_MESSAGE_UPDATED to conversation {} via WebSocket", conversationId);
+        messagingTemplate.convertAndSend(destination, wsMessage);
+    }
 }
 

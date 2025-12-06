@@ -2,11 +2,13 @@ package com.QhomeBase.datadocsservice.controller;
 
 import com.QhomeBase.datadocsservice.dto.*;
 import com.QhomeBase.datadocsservice.service.ContractService;
+import com.QhomeBase.datadocsservice.dto.RenewContractRequest;
 import com.QhomeBase.datadocsservice.service.PdfFieldMapper;
 import com.QhomeBase.datadocsservice.service.PdfFormFillService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +22,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.io.File;
 import java.io.InputStream;
 import java.io.ByteArrayInputStream;
@@ -525,6 +529,149 @@ public class ContractController {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse(HttpStatus.BAD_REQUEST.value(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalStateException(IllegalStateException ex) {
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<ErrorResponse> handleRuntimeException(RuntimeException ex) {
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), ex.getMessage()));
+    }
+
+    @GetMapping("/unit/{unitId}/popup")
+    @Operation(summary = "Get contracts needing popup", description = "Get contracts that need to show popup to resident (renewal reminders)")
+    public ResponseEntity<List<ContractDto>> getContractsNeedingPopup(@PathVariable UUID unitId) {
+        List<ContractDto> contracts = contractService.getContractsNeedingPopup(unitId);
+        return ResponseEntity.ok(contracts);
+    }
+
+    @PostMapping("/{contractId}/renew")
+    @Operation(summary = "Renew contract", description = "Create a new contract based on old contract for renewal")
+    public ResponseEntity<ContractDto> renewContract(
+            @PathVariable UUID contractId,
+            @Valid @RequestBody RenewContractRequest request,
+            @RequestParam(value = "createdBy", required = false) UUID createdBy) {
+        
+        if (createdBy == null) {
+            createdBy = UUID.randomUUID();
+        }
+        
+        ContractDto contract = contractService.renewContract(
+                contractId,
+                request.getStartDate(),
+                request.getEndDate(),
+                createdBy
+        );
+        return ResponseEntity.status(HttpStatus.CREATED).body(contract);
+    }
+
+    @PutMapping("/{contractId}/cancel")
+    @Operation(summary = "Cancel contract", description = "Cancel a contract (set status to CANCELLED)")
+    public ResponseEntity<ContractDto> cancelContract(
+            @PathVariable UUID contractId,
+            @RequestParam(value = "updatedBy", required = false) UUID updatedBy) {
+        
+        if (updatedBy == null) {
+            updatedBy = UUID.randomUUID();
+        }
+        
+        ContractDto contract = contractService.cancelContract(contractId, updatedBy);
+        return ResponseEntity.ok(contract);
+    }
+
+    @PostMapping("/{contractId}/renew/payment")
+    @Operation(summary = "Create payment URL for contract renewal", description = "Create VNPay payment URL for contract renewal")
+    public ResponseEntity<ContractRenewalResponse> createRenewalPaymentUrl(
+            @PathVariable UUID contractId,
+            @Valid @RequestBody RenewContractRequest request,
+            @RequestParam(value = "createdBy", required = false) UUID createdBy,
+            HttpServletRequest httpRequest) {
+        
+        if (createdBy == null) {
+            createdBy = UUID.randomUUID();
+        }
+        
+        String clientIp = getClientIp(httpRequest);
+        ContractRenewalResponse response = contractService.createRenewalPaymentUrl(
+                contractId,
+                request.getStartDate(),
+                request.getEndDate(),
+                createdBy,
+                clientIp
+        );
+        
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/vnpay/callback")
+    @Operation(summary = "VNPay callback", description = "Handle VNPay payment callback for contract renewal")
+    public void handleVnpayCallback(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            @RequestParam(value = "contractId", required = false) UUID contractId) throws IOException {
+        try {
+            Map<String, String> params = contractService.extractVnpayParams(request);
+            
+            // If contractId not provided, try to extract from orderInfo or txnRef
+            if (contractId == null) {
+                log.error("VNPay callback error: contractId parameter is required");
+                String fallbackUrl = "qhomeapp://vnpay-result?success=false&message=contractId+parameter+is+required";
+                response.sendRedirect(fallbackUrl);
+                return;
+            }
+            
+            ContractDto contract = contractService.handleVnpayCallback(params, contractId);
+            
+            // Redirect to app with success result
+            String responseCode = params.get("vnp_ResponseCode");
+            String redirectUrl = new StringBuilder("qhomeapp://vnpay-result")
+                    .append("?contractId=").append(contract.getId())
+                    .append("&responseCode=").append(responseCode != null ? responseCode : "")
+                    .append("&success=true")
+                    .append("&message=Thanh+toan+thanh+cong")
+                    .toString();
+            
+            log.info("✅ [ContractController] VNPay callback success, redirecting to app: {}", redirectUrl);
+            response.sendRedirect(redirectUrl);
+        } catch (IllegalArgumentException e) {
+            log.error("VNPay callback error: {}", e.getMessage());
+            String fallbackUrl = "qhomeapp://vnpay-result?success=false&message=" + 
+                    URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8);
+            response.sendRedirect(fallbackUrl);
+        } catch (Exception e) {
+            log.error("Unexpected error in VNPay callback", e);
+            String fallbackUrl = "qhomeapp://vnpay-result?success=false&message=Internal+server+error";
+            response.sendRedirect(fallbackUrl);
+        }
+    }
+
+    @PostMapping("/{contractId}/renew/complete")
+    @Operation(summary = "Complete contract renewal payment", description = "Complete contract renewal after successful payment")
+    public ResponseEntity<ContractDto> completeRenewalPayment(
+            @PathVariable UUID contractId,
+            @RequestParam("residentId") UUID residentId,
+            @RequestParam(value = "vnpayTransactionRef", required = false) String vnpayTransactionRef) {
+        
+        ContractDto contract = contractService.completeRenewalPayment(contractId, residentId, vnpayTransactionRef);
+        return ResponseEntity.ok(contract);
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("X-Real-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        return ip;
     }
 
     record ErrorResponse(int status, String message) {}

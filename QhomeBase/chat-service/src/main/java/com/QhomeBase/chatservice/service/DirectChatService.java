@@ -441,10 +441,67 @@ public class DirectChatService {
     }
 
     /**
-     * Delete a message
-     * @param deleteType "FOR_ME" - only delete for current user, "FOR_EVERYONE" - delete for everyone
-     * Only the sender can delete their own message
+     * Update/edit a direct message
+     * Only the sender can edit their own TEXT messages
      */
+    @Transactional
+    public DirectMessageResponse updateMessage(UUID conversationId, UUID messageId, String content, UUID userId) {
+        String accessToken = getCurrentAccessToken();
+        UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+        if (residentId == null) {
+            throw new RuntimeException("Resident not found for user: " + userId);
+        }
+
+        // Check conversation exists and user is a participant
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new RuntimeException("Conversation not found"));
+
+        if (!conversation.isParticipant(residentId)) {
+            throw new RuntimeException("You are not a participant in this conversation");
+        }
+
+        // Find message
+        DirectMessage message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new RuntimeException("Message not found"));
+
+        // Verify message belongs to this conversation
+        if (!message.getConversationId().equals(conversationId)) {
+            throw new RuntimeException("Message does not belong to this conversation");
+        }
+
+        // System messages cannot be edited
+        if ("SYSTEM".equals(message.getMessageType())) {
+            throw new RuntimeException("System messages cannot be edited");
+        }
+
+        // Only sender can edit their own message
+        if (message.getSenderId() == null || !message.getSenderId().equals(residentId)) {
+            throw new RuntimeException("You can only edit your own messages");
+        }
+
+        // Cannot edit deleted messages
+        if (Boolean.TRUE.equals(message.getIsDeleted())) {
+            throw new RuntimeException("Cannot edit deleted message");
+        }
+
+        // Only text messages can be edited
+        if (!"TEXT".equals(message.getMessageType())) {
+            throw new RuntimeException("Only text messages can be edited");
+        }
+
+        // Update message
+        message.setContent(content);
+        message.setIsEdited(true);
+        message = messageRepository.save(message);
+
+        DirectMessageResponse response = toDirectMessageResponse(message, accessToken);
+        
+        // Notify via WebSocket
+        notificationService.notifyDirectMessageUpdated(conversationId, response);
+
+        return response;
+    }
+
     @Transactional
     public void deleteMessage(UUID conversationId, UUID messageId, UUID userId, String deleteType) {
         String accessToken = getCurrentAccessToken();

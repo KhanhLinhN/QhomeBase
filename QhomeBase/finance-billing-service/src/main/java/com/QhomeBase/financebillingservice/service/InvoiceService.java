@@ -61,6 +61,7 @@ public class InvoiceService {
             "INTERNET", "Internet",
             "ELEVATOR", "Vé thang máy",
             "PARKING", "Vé gửi xe",
+            "CONTRACT_RENEWAL", "Gia hạn hợp đồng",
             "OTHER", "Khác"
     );
 
@@ -70,6 +71,7 @@ public class InvoiceService {
             "INTERNET",
             "ELEVATOR",
             "PARKING",
+            "CONTRACT_RENEWAL",
             "OTHER"
     );
     
@@ -311,11 +313,14 @@ public class InvoiceService {
 
         String invoiceCode = generateInvoiceCode();
 
+        InvoiceStatus invoiceStatus = request.getStatus() != null ? request.getStatus() : InvoiceStatus.PUBLISHED;
+        OffsetDateTime now = OffsetDateTime.now();
+        
         Invoice invoice = Invoice.builder()
                 .code(invoiceCode)
-                .issuedAt(OffsetDateTime.now())
+                .issuedAt(now)
                 .dueDate(request.getDueDate())
-                .status(InvoiceStatus.PUBLISHED)
+                .status(invoiceStatus)
                 .currency(request.getCurrency() != null ? request.getCurrency() : "VND")
                 .billToName(request.getBillToName())
                 .billToAddress(request.getBillToAddress())
@@ -323,10 +328,17 @@ public class InvoiceService {
                 .payerUnitId(request.getPayerUnitId())
                 .payerResidentId(request.getPayerResidentId())
                 .cycleId(request.getCycleId())
+                .paidAt(invoiceStatus == InvoiceStatus.PAID ? now : null) // Set paidAt to current time if status is PAID
                 .build();
         
         Invoice savedInvoice = invoiceRepository.save(invoice);
-        log.info("Invoice created with ID: {}, code: {}", savedInvoice.getId(), savedInvoice.getCode());
+        log.info("Invoice created with ID: {}, code: {}, status: {}, paidAt: {}", 
+                savedInvoice.getId(), savedInvoice.getCode(), savedInvoice.getStatus(), savedInvoice.getPaidAt());
+        
+        // Reload invoice to ensure paidAt is persisted correctly
+        savedInvoice = invoiceRepository.findById(savedInvoice.getId())
+                .orElseThrow(() -> new IllegalStateException("Invoice not found after creation"));
+        log.info("Invoice reloaded - paidAt: {}", savedInvoice.getPaidAt());
         
         if (request.getLines() != null && !request.getLines().isEmpty()) {
             for (CreateInvoiceLineRequest lineRequest : request.getLines()) {
@@ -870,6 +882,17 @@ public class InvoiceService {
                     continue;
                 }
 
+                // Only show electricity and water invoices - skip all others (contract renewal, etc.)
+                String serviceCode = line.getServiceCode();
+                if (serviceCode == null || serviceCode.isBlank()) {
+                    continue;
+                }
+                String normalized = serviceCode.trim().toUpperCase();
+                // Only allow ELECTRICITY and WATER service codes
+                if (!normalized.contains("ELECTRIC") && !normalized.contains("WATER")) {
+                    continue;
+                }
+
                 String category = determineCategory(line.getServiceCode());
                 grouped.computeIfAbsent(category, key -> new ArrayList<>()).add(dto);
             }
@@ -972,6 +995,26 @@ public class InvoiceService {
             List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceId(invoice.getId());
             log.debug("🔍 [InvoiceService] Invoice {} has {} lines", invoice.getId(), lines.size());
             for (InvoiceLine line : lines) {
+                String serviceCode = line.getServiceCode();
+                if (serviceCode == null || serviceCode.isBlank()) {
+                    log.debug("🔍 [InvoiceService] Skipping invoice line {} with null/empty serviceCode", line.getId());
+                    continue;
+                }
+                String normalized = serviceCode.trim().toUpperCase();
+                
+                // For paid invoices: show electricity, water, contract renewal, AND card payments
+                boolean isElectricity = normalized.contains("ELECTRIC");
+                boolean isWater = normalized.contains("WATER");
+                boolean isContractRenewal = normalized.contains("CONTRACT");
+                boolean isVehicleCard = normalized.contains("VEHICLE_CARD") || normalized.contains("VEHICLE");
+                boolean isElevatorCard = normalized.contains("ELEVATOR_CARD") || normalized.contains("ELEVATOR");
+                boolean isResidentCard = normalized.contains("RESIDENT_CARD") || normalized.contains("RESIDENT");
+                
+                if (!isElectricity && !isWater && !isContractRenewal && !isVehicleCard && !isElevatorCard && !isResidentCard) {
+                    log.debug("🔍 [InvoiceService] Skipping invoice line {} with serviceCode: {} (not electricity/water/contract/card)", line.getId(), serviceCode);
+                    continue;
+                }
+
                 String category = determineCategory(line.getServiceCode());
                 InvoiceLineResponseDto dto = toInvoiceLineResponseDto(invoice, line);
                 grouped.computeIfAbsent(category, key -> new ArrayList<>()).add(dto);
@@ -1248,6 +1291,9 @@ public class InvoiceService {
         }
         if (normalized.contains("PARK") || normalized.contains("VEHICLE") || normalized.contains("CAR") || normalized.contains("MOTOR")) {
             return "PARKING";
+        }
+        if (normalized.contains("CONTRACT")) {
+            return "CONTRACT_RENEWAL";
         }
 
         return "OTHER";

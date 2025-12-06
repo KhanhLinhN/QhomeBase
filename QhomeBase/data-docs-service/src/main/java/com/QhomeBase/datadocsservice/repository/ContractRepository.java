@@ -46,10 +46,25 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
            "AND c.endDate IS NOT NULL " +
            "AND c.endDate >= :startDate " +
            "AND c.endDate <= :endDate " +
-           "AND c.renewalStatus = 'PENDING'")
+           "AND (c.renewalStatus = 'PENDING' OR c.renewalStatus = 'REMINDED')")
     List<Contract> findContractsNeedingRenewalReminder(
         @Param("startDate") LocalDate startDate,
         @Param("endDate") LocalDate endDate
+    );
+    
+    /**
+     * Find contracts that need renewal reminders based on days until end date
+     * This includes contracts with endDate in the next 8-32 days
+     */
+    @Query("SELECT c FROM Contract c WHERE c.status = 'ACTIVE' " +
+           "AND c.contractType = 'RENTAL' " +
+           "AND c.endDate IS NOT NULL " +
+           "AND c.endDate >= :today " +
+           "AND c.endDate <= :maxDate " +
+           "AND (c.renewalStatus = 'PENDING' OR c.renewalStatus = 'REMINDED')")
+    List<Contract> findContractsNeedingRenewalReminderByDateRange(
+        @Param("today") LocalDate today,
+        @Param("maxDate") LocalDate maxDate
     );
 
     @Query("SELECT c FROM Contract c WHERE c.status = 'ACTIVE' " +

@@ -321,6 +321,21 @@ public class DirectChatController {
         return ResponseEntity.ok(Map.of("success", success));
     }
 
+    @PutMapping("/conversations/{conversationId}/messages/{messageId}")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Edit direct message", description = "Edit a text message. Only the sender can edit their own messages.")
+    public ResponseEntity<DirectMessageResponse> editMessage(
+            @PathVariable UUID conversationId,
+            @PathVariable UUID messageId,
+            @RequestBody String content,
+            Authentication authentication) {
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        DirectMessageResponse response = directChatService.updateMessage(conversationId, messageId, content, userId);
+        return ResponseEntity.ok(response);
+    }
+
     @DeleteMapping("/conversations/{conversationId}/messages/{messageId}")
     @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Delete direct message", description = "Delete a direct message. Only the sender can delete their own message. deleteType: FOR_ME (only for current user) or FOR_EVERYONE (for everyone)")

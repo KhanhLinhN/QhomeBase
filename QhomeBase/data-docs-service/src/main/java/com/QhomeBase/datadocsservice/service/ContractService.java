@@ -1,10 +1,14 @@
 package com.QhomeBase.datadocsservice.service;
 
+import com.QhomeBase.datadocsservice.client.BaseServiceClient;
+import com.QhomeBase.datadocsservice.client.InvoiceClient;
+import com.QhomeBase.datadocsservice.config.VnpayProperties;
 import com.QhomeBase.datadocsservice.dto.*;
 import com.QhomeBase.datadocsservice.model.Contract;
 import com.QhomeBase.datadocsservice.model.ContractFile;
 import com.QhomeBase.datadocsservice.repository.ContractFileRepository;
 import com.QhomeBase.datadocsservice.repository.ContractRepository;
+import com.QhomeBase.datadocsservice.service.vnpay.VnpayService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
@@ -18,6 +22,8 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -29,6 +35,10 @@ public class ContractService {
     private final ContractRepository contractRepository;
     private final ContractFileRepository contractFileRepository;
     private final FileStorageService fileStorageService;
+    private final VnpayService vnpayService;
+    private final VnpayProperties vnpayProperties;
+    private final InvoiceClient invoiceClient;
+    private final BaseServiceClient baseServiceClient;
 
     @Transactional
     public ContractDto createContract(CreateContractRequest request, UUID createdBy) {
@@ -424,6 +434,9 @@ public class ContractService {
                     contract.getId(), e.getMessage());
         }
 
+        int reminderCount = calculateReminderCount(contract);
+        boolean isFinalReminder = reminderCount == 3;
+        
         return ContractDto.builder()
                 .id(contract.getId())
                 .unitId(contract.getUnitId())
@@ -447,6 +460,8 @@ public class ContractService {
                 .renewalReminderSentAt(contract.getRenewalReminderSentAt())
                 .renewalDeclinedAt(contract.getRenewalDeclinedAt())
                 .renewalStatus(contract.getRenewalStatus())
+                .reminderCount(reminderCount > 0 ? reminderCount : null)
+                .isFinalReminder(isFinalReminder)
                 .files(files)
                 .build();
     }
@@ -544,11 +559,13 @@ public class ContractService {
         
         int expiredCount = 0;
         for (Contract contract : expiredContracts) {
+            // When contract expires, set status to EXPIRED
+            // renewalStatus remains as is (PENDING, REMINDED, or DECLINED)
             contract.setStatus("EXPIRED");
             contractRepository.save(contract);
             expiredCount++;
-            log.info("Marked contract as expired: {} (contract number: {}, endDate: {})", 
-                    contract.getId(), contract.getContractNumber(), contract.getEndDate());
+            log.info("Marked contract as expired: {} (contract number: {}, endDate: {}, renewalStatus: {})", 
+                    contract.getId(), contract.getContractNumber(), contract.getEndDate(), contract.getRenewalStatus());
         }
         
         if (expiredCount > 0) {
@@ -604,9 +621,13 @@ public class ContractService {
     @Transactional(readOnly = true)
     public List<Contract> findContractsNeedingRenewalReminder() {
         LocalDate today = LocalDate.now();
-        LocalDate thirtyDaysLater = today.plusDays(30);
+        // Find contracts with endDate in next 8-32 days (for all 3 reminder levels)
+        // Lần 1: 30 ngày trước endDate (28-32 buffer)
+        // Lần 2: 22 ngày trước endDate (20-24 buffer) - ngày thứ 8 trong tháng
+        // Lần 3: 10 ngày trước endDate (8-12 buffer) - ngày 20 trong tháng
+        LocalDate maxDate = today.plusDays(32);
         
-        return contractRepository.findContractsNeedingRenewalReminder(today, thirtyDaysLater);
+        return contractRepository.findContractsNeedingRenewalReminderByDateRange(today, maxDate);
     }
 
     @Transactional(readOnly = true)
@@ -724,6 +745,367 @@ public class ContractService {
                 contractId, newEndDate);
         
         return toDto(contract);
+    }
+
+    /**
+     * Get contracts that need to show popup to resident
+     * These are contracts with renewalStatus = REMINDED
+     */
+    @Transactional(readOnly = true)
+    public List<ContractDto> getContractsNeedingPopup(UUID unitId) {
+        List<Contract> contracts = contractRepository.findByUnitIdAndStatus(unitId, "ACTIVE");
+        return contracts.stream()
+                .filter(c -> "RENTAL".equals(c.getContractType()))
+                .filter(c -> "REMINDED".equals(c.getRenewalStatus()))
+                .filter(c -> c.getRenewalReminderSentAt() != null)
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Calculate reminder count based on days until end date
+     * Lần 1: 30 ngày trước endDate
+     * Lần 2: 22 ngày trước endDate (ngày thứ 8 trong tháng)
+     * Lần 3: 10 ngày trước endDate (ngày 20 trong tháng)
+     */
+    /**
+     * Calculate reminder count based on:
+     * - Lần 1: Trước 30 ngày hết hạn (28-32 ngày trước endDate)
+     * - Lần 2: Đúng ngày 8 của tháng endDate (sau khi đã gửi lần 1)
+     * - Lần 3: Đúng ngày 20 của tháng endDate (sau khi đã gửi lần 2)
+     */
+    public int calculateReminderCount(Contract contract) {
+        if (contract.getEndDate() == null || contract.getRenewalReminderSentAt() == null) {
+            return 0;
+        }
+        
+        LocalDate today = LocalDate.now();
+        LocalDate endDate = contract.getEndDate();
+        long daysUntilEndDate = ChronoUnit.DAYS.between(today, endDate);
+        
+        // Lần 1: Trước 30 ngày hết hạn (28-32 ngày trước endDate)
+        if (daysUntilEndDate >= 28 && daysUntilEndDate <= 32) {
+            return 1;
+        }
+        
+        // Lần 2: Đúng ngày 8 của tháng endDate
+        // Chỉ tính là lần 2 nếu:
+        // - Đã gửi lần 1 (renewalReminderSentAt != null)
+        // - Hôm nay là ngày 8 của tháng endDate
+        // - Contract vẫn trong tháng cuối (daysUntilEndDate > 0 và < 30)
+        if (today.getYear() == endDate.getYear()
+                && today.getMonth() == endDate.getMonth()
+                && today.getDayOfMonth() == 8
+                && daysUntilEndDate > 0 && daysUntilEndDate < 30) {
+            return 2;
+        }
+        
+        // Lần 3: Đúng ngày 20 của tháng endDate - BẮT BUỘC
+        // Chỉ tính là lần 3 nếu:
+        // - Đã gửi lần 1 và lần 2 (renewalReminderSentAt != null)
+        // - Hôm nay là ngày 20 của tháng endDate
+        // - Contract vẫn trong tháng cuối (daysUntilEndDate > 0 và < 30)
+        if (today.getYear() == endDate.getYear()
+                && today.getMonth() == endDate.getMonth()
+                && today.getDayOfMonth() == 20
+                && daysUntilEndDate > 0 && daysUntilEndDate < 30) {
+            return 3;
+        }
+        
+        // Fallback: Nếu đã gửi reminder nhưng không phải ngày 8 hoặc 20
+        // Tính dựa trên số ngày kể từ lần nhắc đầu tiên và ngày hiện tại
+        if (daysUntilEndDate > 0 && daysUntilEndDate < 30
+                && today.getYear() == endDate.getYear()
+                && today.getMonth() == endDate.getMonth()) {
+            // Nếu đã qua ngày 20, coi như lần 3
+            if (today.getDayOfMonth() >= 20) {
+                return 3;
+            }
+            // Nếu đã qua ngày 8, coi như lần 2
+            else if (today.getDayOfMonth() >= 8) {
+                return 2;
+            }
+            // Trước ngày 8, coi như lần 1
+            else {
+                return 1;
+            }
+        }
+        
+        return 0;
+    }
+
+    /**
+     * Cancel contract (set status to CANCELLED and renewalStatus to DECLINED)
+     */
+    @Transactional
+    public ContractDto cancelContract(UUID contractId, UUID updatedBy) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+        
+        if (!"RENTAL".equals(contract.getContractType())) {
+            throw new IllegalArgumentException("Only RENTAL contracts can be cancelled");
+        }
+        
+        if (!"ACTIVE".equals(contract.getStatus())) {
+            throw new IllegalArgumentException("Only ACTIVE contracts can be cancelled");
+        }
+        
+        contract.setStatus("CANCELLED");
+        // Set renewalStatus to DECLINED when user cancels the contract
+        contract.setRenewalStatus("DECLINED");
+        contract.setRenewalDeclinedAt(OffsetDateTime.now());
+        contract.setUpdatedBy(updatedBy);
+        contract = contractRepository.save(contract);
+        
+        log.info("Cancelled contract: {} (renewalStatus set to DECLINED)", contractId);
+        return toDto(contract);
+    }
+
+    /**
+     * Renew contract - create new contract based on old contract
+     * This will be called from the controller which will handle VNPay payment
+     */
+    @Transactional
+    public ContractDto renewContract(UUID oldContractId, LocalDate newStartDate, LocalDate newEndDate, UUID createdBy) {
+        Contract oldContract = contractRepository.findById(oldContractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + oldContractId));
+        
+        if (!"RENTAL".equals(oldContract.getContractType())) {
+            throw new IllegalArgumentException("Only RENTAL contracts can be renewed");
+        }
+        
+        if (!"ACTIVE".equals(oldContract.getStatus()) && !"REMINDED".equals(oldContract.getRenewalStatus())) {
+            throw new IllegalArgumentException("Contract must be ACTIVE and in REMINDED status to renew");
+        }
+        
+        // Validate dates
+        if (newStartDate.isAfter(newEndDate)) {
+            throw new IllegalArgumentException("Start date must be before or equal to end date");
+        }
+        
+        // Check if start date is today - if not, status should be INACTIVE
+        LocalDate today = LocalDate.now();
+        String newStatus = newStartDate.equals(today) ? "ACTIVE" : "INACTIVE";
+        
+        // Create new contract based on old contract
+        Contract newContract = Contract.builder()
+                .unitId(oldContract.getUnitId())
+                .contractNumber(oldContract.getContractNumber()) // Same contract number
+                .contractType(oldContract.getContractType())
+                .startDate(newStartDate)
+                .endDate(newEndDate)
+                .monthlyRent(oldContract.getMonthlyRent())
+                .notes(oldContract.getNotes())
+                .status(newStatus)
+                .renewalStatus("PENDING")
+                .createdBy(createdBy)
+                .build();
+        
+        newContract = contractRepository.save(newContract);
+        log.info("Created renewal contract: {} for old contract: {}", newContract.getId(), oldContractId);
+        
+        return toDto(newContract);
+    }
+
+    /**
+     * Create VNPay payment URL for contract renewal
+     */
+    @Transactional
+    public ContractRenewalResponse createRenewalPaymentUrl(UUID contractId, 
+                                                           LocalDate newStartDate, 
+                                                           LocalDate newEndDate,
+                                                           UUID createdBy,
+                                                           String clientIp) {
+        try {
+            Contract oldContract = contractRepository.findById(contractId)
+                    .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+            
+            if (!"RENTAL".equals(oldContract.getContractType())) {
+                throw new IllegalArgumentException("Only RENTAL contracts can be renewed");
+            }
+            
+            if (oldContract.getMonthlyRent() == null) {
+                throw new IllegalArgumentException("Contract monthly rent is required for renewal");
+            }
+            
+            // Create new contract first (with PENDING status, will be activated after payment)
+            // Generate new contract number for renewal (append timestamp to avoid duplicate)
+            String newContractNumber = oldContract.getContractNumber() + "-RENEW-" + System.currentTimeMillis();
+            
+            // Check if contract number already exists (very unlikely but safe)
+            int retryCount = 0;
+            while (contractRepository.findByContractNumber(newContractNumber).isPresent() && retryCount < 5) {
+                newContractNumber = oldContract.getContractNumber() + "-RENEW-" + System.currentTimeMillis() + "-" + retryCount;
+                retryCount++;
+            }
+            
+            Contract newContract = Contract.builder()
+                    .unitId(oldContract.getUnitId())
+                    .contractNumber(newContractNumber)
+                    .contractType(oldContract.getContractType())
+                    .startDate(newStartDate)
+                    .endDate(newEndDate)
+                    .monthlyRent(oldContract.getMonthlyRent())
+                    .notes(oldContract.getNotes())
+                    .status("INACTIVE") // Will be activated after payment
+                    .renewalStatus("PENDING")
+                    .createdBy(createdBy)
+                    .build();
+            
+            newContract = contractRepository.save(newContract);
+            
+            // Calculate total amount
+            BigDecimal totalAmount = calculateTotalRent(newContract);
+            if (totalAmount == null || totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                log.error("Invalid contract amount for payment: contractId={}, totalAmount={}", 
+                        newContract.getId(), totalAmount);
+                throw new IllegalArgumentException("Invalid contract amount for payment: " + totalAmount);
+            }
+            
+            // Create VNPay payment URL
+            // Use newContractId as part of orderId to track it
+            Long orderId = newContract.getId().getMostSignificantBits() & Long.MAX_VALUE;
+            String orderInfo = String.format("Gia hạn hợp đồng %s - ContractId:%s", 
+                    oldContract.getContractNumber(), newContract.getId());
+            
+            String returnUrlBase = vnpayProperties.getContractRenewalReturnUrl();
+            if (returnUrlBase == null || returnUrlBase.isEmpty()) {
+                log.error("Contract renewal return URL is not configured");
+                throw new IllegalStateException("Contract renewal return URL is not configured. Please check vnpay.contract-renewal-return-url or vnpay.base-url in application properties");
+            }
+            
+            String returnUrl = returnUrlBase + "?contractId=" + newContract.getId();
+            
+            VnpayService.VnpayPaymentResult paymentResult = vnpayService.createPaymentUrl(
+                    orderId,
+                    orderInfo,
+                    totalAmount,
+                    clientIp,
+                    returnUrl
+            );
+            
+            log.info("Created VNPay payment URL for contract renewal: contractId={}, newContractId={}, amount={}", 
+                    contractId, newContract.getId(), totalAmount);
+            
+            return ContractRenewalResponse.builder()
+                    .newContractId(newContract.getId())
+                    .contractNumber(newContract.getContractNumber())
+                    .totalAmount(totalAmount)
+                    .paymentUrl(paymentResult.paymentUrl())
+                    .message("Vui lòng thanh toán để hoàn tất gia hạn hợp đồng")
+                    .build();
+        } catch (IllegalArgumentException e) {
+            log.error("Error creating renewal payment URL: {}", e.getMessage(), e);
+            throw e;
+        } catch (Exception e) {
+            log.error("Unexpected error creating renewal payment URL for contractId={}", contractId, e);
+            throw new RuntimeException("Failed to create payment URL: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Handle VNPay callback for contract renewal payment
+     * Note: This requires storing txnRef -> contractId mapping when creating payment URL
+     * For now, we'll extract contractId from orderInfo or use a query parameter
+     */
+    @Transactional
+    public ContractDto handleVnpayCallback(Map<String, String> params, UUID contractId) {
+        if (params == null || params.isEmpty()) {
+            throw new IllegalArgumentException("Missing callback data from VNPAY");
+        }
+        
+        boolean signatureValid = vnpayService.validateReturn(params);
+        if (!signatureValid) {
+            throw new IllegalArgumentException("Invalid VNPAY signature");
+        }
+        
+        String txnRef = params.get("vnp_TxnRef");
+        String responseCode = params.get("vnp_ResponseCode");
+        
+        if (txnRef == null || txnRef.isEmpty()) {
+            throw new IllegalArgumentException("Missing transaction reference from VNPAY");
+        }
+        
+        log.info("Processing VNPay callback: txnRef={}, responseCode={}, contractId={}", txnRef, responseCode, contractId);
+        
+        if ("00".equals(responseCode)) {
+            // Payment successful - complete the renewal
+            // Get contract to retrieve unitId
+            Contract newContract = contractRepository.findById(contractId)
+                    .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+            
+            // Get residentId from contract's unitId
+            Optional<UUID> residentIdOpt = baseServiceClient.getPrimaryResidentIdByUnitId(newContract.getUnitId());
+            if (residentIdOpt.isEmpty()) {
+                log.warn("⚠️ Cannot find resident for unitId: {}. This may happen if unit has no active household.", newContract.getUnitId());
+                log.warn("⚠️ Contract createdBy (userId): {}", newContract.getCreatedBy());
+                throw new IllegalArgumentException("Cannot find resident for contract unit: " + newContract.getUnitId() + 
+                        ". Please ensure the unit has an active household with a primary resident.");
+            }
+            
+            return completeRenewalPayment(contractId, residentIdOpt.get(), txnRef);
+        } else {
+            throw new IllegalArgumentException("VNPay payment failed with response code: " + responseCode);
+        }
+    }
+
+    /**
+     * Extract VNPay params from HttpServletRequest
+     */
+    public Map<String, String> extractVnpayParams(jakarta.servlet.http.HttpServletRequest request) {
+        return vnpayService.extractParams(request);
+    }
+
+    /**
+     * Complete contract renewal after successful payment
+     */
+    @Transactional
+    public ContractDto completeRenewalPayment(UUID newContractId, UUID residentId, String vnpayTransactionRef) {
+        Contract newContract = contractRepository.findById(newContractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + newContractId));
+        
+        if (!"PENDING".equals(newContract.getRenewalStatus())) {
+            throw new IllegalArgumentException("Contract is not in PENDING renewal status");
+        }
+        
+        // Get unit code
+        Optional<String> unitCodeOpt = baseServiceClient.getUnitCodeByUnitId(newContract.getUnitId());
+        String unitCode = unitCodeOpt.orElse("N/A");
+        
+        // Calculate total amount
+        BigDecimal totalAmount = calculateTotalRent(newContract);
+        
+        // Create invoice
+        UUID invoiceId = invoiceClient.createContractRenewalInvoice(
+                newContract.getId(),
+                newContract.getUnitId(),
+                residentId,
+                newContract.getContractNumber(),
+                unitCode,
+                totalAmount,
+                newContract.getStartDate(),
+                newContract.getEndDate()
+        );
+        
+        if (invoiceId == null) {
+            log.warn("Failed to create invoice for contract renewal, but continuing...");
+        }
+        
+        // Update contract status
+        LocalDate today = LocalDate.now();
+        if (newContract.getStartDate().equals(today)) {
+            newContract.setStatus("ACTIVE");
+        } else {
+            newContract.setStatus("INACTIVE"); // Will be activated by scheduler when start date arrives
+        }
+        
+        newContract.setRenewalStatus("PENDING"); // Reset for new cycle
+        newContract = contractRepository.save(newContract);
+        
+        log.info("Completed contract renewal payment: contractId={}, invoiceId={}, vnpayTxnRef={}", 
+                newContract.getId(), invoiceId, vnpayTransactionRef);
+        
+        return toDto(newContract);
     }
 }
 
