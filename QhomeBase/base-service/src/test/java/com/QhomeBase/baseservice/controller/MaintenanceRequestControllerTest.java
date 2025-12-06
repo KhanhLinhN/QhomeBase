@@ -117,7 +117,7 @@ class MaintenanceRequestControllerTest {
         @Test
         void shouldApproveAndComplete_Admin() throws Exception {
                 Mockito.when(authz.canManageServiceRequests()).thenReturn(true);
-                var resp = new AdminMaintenanceResponseDto("OK", java.math.BigDecimal.valueOf(100000), "note");
+                var resp = new AdminMaintenanceResponseDto("OK", java.math.BigDecimal.valueOf(100000), "note", OffsetDateTime.now());
                 var dto = new MaintenanceRequestDto(UUID.randomUUID(), UUID.randomUUID(), null, userId, userId,
                                 "PLUMBING",
                                 "Leak", "desc", List.of(), "Kitchen", OffsetDateTime.now(), "John", "0123", "note",

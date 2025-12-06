@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,6 +40,51 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
 
     @Query("SELECT c FROM Contract c WHERE c.status = 'INACTIVE' AND c.startDate = :targetDate")
     List<Contract> findInactiveContractsByStartDate(@Param("targetDate") LocalDate targetDate);
+
+    @Query("SELECT c FROM Contract c WHERE c.status = 'ACTIVE' " +
+           "AND c.contractType = 'RENTAL' " +
+           "AND c.endDate IS NOT NULL " +
+           "AND c.endDate >= :startDate " +
+           "AND c.endDate <= :endDate " +
+           "AND c.renewalStatus = 'PENDING'")
+    List<Contract> findContractsNeedingRenewalReminder(
+        @Param("startDate") LocalDate startDate,
+        @Param("endDate") LocalDate endDate
+    );
+
+    @Query("SELECT c FROM Contract c WHERE c.status = 'ACTIVE' " +
+           "AND c.contractType = 'RENTAL' " +
+           "AND c.renewalStatus = 'REMINDED' " +
+           "AND c.renewalReminderSentAt IS NOT NULL " +
+           "AND c.renewalReminderSentAt <= :deadlineDate")
+    List<Contract> findContractsWithRenewalDeclined(
+        @Param("deadlineDate") java.time.OffsetDateTime deadlineDate
+    );
+
+    @Query("SELECT c FROM Contract c WHERE c.status = 'ACTIVE' " +
+           "AND c.endDate IS NOT NULL " +
+           "AND c.endDate < :today")
+    List<Contract> findContractsNeedingExpired(@Param("today") java.time.LocalDate today);
+
+    @Query("SELECT c FROM Contract c WHERE c.status = 'ACTIVE' " +
+           "AND c.contractType = 'RENTAL' " +
+           "AND c.endDate IS NOT NULL " +
+           "AND c.renewalStatus = 'REMINDED' " +
+           "AND c.renewalReminderSentAt IS NOT NULL " +
+           "AND c.renewalReminderSentAt <= :sevenDaysAgo")
+    List<Contract> findContractsNeedingSecondReminder(
+        @Param("sevenDaysAgo") java.time.OffsetDateTime sevenDaysAgo
+    );
+
+    @Query("SELECT c FROM Contract c WHERE c.status = 'ACTIVE' " +
+           "AND c.contractType = 'RENTAL' " +
+           "AND c.endDate IS NOT NULL " +
+           "AND c.renewalStatus = 'REMINDED' " +
+           "AND c.renewalReminderSentAt IS NOT NULL " +
+           "AND c.renewalReminderSentAt <= :twentyDaysAgo")
+    List<Contract> findContractsNeedingThirdReminder(
+        @Param("twentyDaysAgo") java.time.OffsetDateTime twentyDaysAgo
+    );
 
 }
 

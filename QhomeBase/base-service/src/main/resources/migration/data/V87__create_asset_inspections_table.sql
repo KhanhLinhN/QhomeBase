@@ -66,3 +66,5 @@ COMMENT ON COLUMN data.asset_inspection_items.checked IS 'Đã kiểm tra chưa'
 COMMENT ON COLUMN data.asset_inspection_items.checked_at IS 'Thời gian kiểm tra';
 COMMENT ON COLUMN data.asset_inspection_items.checked_by IS 'Người kiểm tra';
 
+
+

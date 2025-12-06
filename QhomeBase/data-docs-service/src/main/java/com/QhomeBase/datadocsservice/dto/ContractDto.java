@@ -25,6 +25,7 @@ public class ContractDto {
     private LocalDate endDate;
     private LocalDate checkoutDate;
     private BigDecimal monthlyRent;
+    private BigDecimal totalRent; // Calculated total rent amount for RENTAL contracts
     private BigDecimal purchasePrice;
     private String paymentMethod;
     private String paymentTerms;
@@ -35,6 +36,9 @@ public class ContractDto {
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private UUID updatedBy;
+    private OffsetDateTime renewalReminderSentAt;
+    private OffsetDateTime renewalDeclinedAt;
+    private String renewalStatus;
     private List<ContractFileDto> files;
 }
 
