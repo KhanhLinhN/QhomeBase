@@ -72,15 +72,12 @@ public class AssetInspectionService {
             }
         }
 
-        // Calculate scheduledDate: if not provided, default to last day of inspectionDate month (ngày cuối tháng hủy hợp đồng)
+        // When contract is cancelled, the selected date is stored in inspectionDate
+        // scheduledDate is optional and can be set later by staff
+        // If scheduledDate is provided, use it; otherwise, set to null (can be updated later)
         LocalDate scheduledDate = request.scheduledDate();
-        if (scheduledDate == null) {
-            // Mặc định là ngày cuối tháng của tháng hủy hợp đồng (inspectionDate)
-            // inspectionDate là tháng mà người dùng hủy hợp đồng (hôm nay)
-            scheduledDate = LocalDate.of(inspectionDate.getYear(), inspectionDate.getMonth(), 1)
-                    .withDayOfMonth(inspectionDate.lengthOfMonth());
-            log.info("Using default scheduledDate (last day of cancellation month): {}", scheduledDate);
-        }
+        // Note: For cancelled contracts, the selected date is already in inspectionDate
+        // scheduledDate can remain null and be set later by staff when scheduling the actual inspection
 
         AssetInspection inspection = AssetInspection.builder()
                 .contractId(request.contractId())

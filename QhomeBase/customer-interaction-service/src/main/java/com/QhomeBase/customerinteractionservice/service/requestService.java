@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 
 import jakarta.persistence.criteria.Predicate;
 
@@ -190,7 +192,8 @@ public class requestService {
         entity.setRequestCode(dto.getRequestCode() != null ? dto.getRequestCode() : generateRequestCode());
         entity.setResidentId(resident.id());
         entity.setResidentName(residentName);
-        entity.setImagePath(dto.getImagePath());
+        // Normalize imagePath if it contains multiple images/videos (JSON array), preserving order
+        entity.setImagePath(normalizeImagePath(dto.getImagePath()));
         entity.setTitle(dto.getTitle());
         entity.setContent(dto.getContent());
         // Đảm bảo status mặc định là "Pending" (PENDING) khi tạo request
@@ -244,6 +247,43 @@ public class requestService {
 
         log.debug("✅ [Request Rate Limit] Resident {}: {} requests/hour, {} requests/day", 
                 residentId, requestsInLastHour, requestsInLastDay);
+    }
+
+    /**
+     * Normalize imagePath if it contains multiple images/videos
+     * If imagePath is a JSON array, validate and return as JSON (preserving original order)
+     * If imagePath is a single string or null, return as is
+     * Note: This method preserves the order sent by the client to maintain user's selection order
+     */
+    private String normalizeImagePath(String imagePath) {
+        if (imagePath == null || imagePath.trim().isEmpty()) {
+            return imagePath;
+        }
+        
+        try {
+            // Try to parse as JSON array to validate format
+            ObjectMapper objectMapper = new ObjectMapper();
+            List<String> imageList = objectMapper.readValue(imagePath, new TypeReference<List<String>>() {});
+            
+            if (imageList == null || imageList.isEmpty()) {
+                return imagePath;
+            }
+            
+            // Filter out null or empty URLs, but preserve original order
+            List<String> filteredList = new ArrayList<>();
+            for (String url : imageList) {
+                if (url != null && !url.trim().isEmpty()) {
+                    filteredList.add(url);
+                }
+            }
+            
+            // Return as JSON array string, preserving original order
+            return objectMapper.writeValueAsString(filteredList);
+        } catch (Exception e) {
+            // If parsing fails, assume it's a single string or invalid JSON, return as is
+            log.debug("imagePath is not a JSON array or parsing failed, returning as is: {}", e.getMessage());
+            return imagePath;
+        }
     }
 
     public RequestDTO updateFee(UUID requestId, java.math.BigDecimal fee) {

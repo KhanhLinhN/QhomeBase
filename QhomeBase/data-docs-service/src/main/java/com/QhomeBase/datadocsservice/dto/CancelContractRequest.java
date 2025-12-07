@@ -3,6 +3,6 @@ package com.QhomeBase.datadocsservice.dto;
 import java.time.LocalDate;
 
 public record CancelContractRequest(
-        LocalDate scheduledDate // Ngày đã hẹn để nhân viên tới kiểm tra (nếu null thì dùng cuối tháng của tháng hủy hợp đồng)
+        LocalDate scheduledDate // Ngày được chọn sẽ lưu vào inspectionDate thay vì scheduledDate (nếu null thì dùng ngày hiện tại)
 ) {
 }

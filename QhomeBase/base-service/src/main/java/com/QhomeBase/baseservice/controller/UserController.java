@@ -83,8 +83,13 @@ public class UserController {
             if (residentId != null) {
                 response.put("residentId", residentId.toString());
             }
-            if (fullName != null) {
+            // Always include fullName, use username as fallback if fullName is null
+            if (fullName != null && !fullName.trim().isEmpty()) {
                 response.put("fullName", fullName);
+            } else {
+                // Fallback to username if fullName is not available
+                response.put("fullName", accountDto.username() != null ? accountDto.username() : "User");
+                log.debug("fullName not available for userId {}, using username as fallback", userId);
             }
             if (phone != null) {
                 response.put("phoneNumber", phone);

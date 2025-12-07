@@ -28,8 +28,8 @@ public class ContractScheduler {
     
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
-        log.info("Application ready - Running initial contract status checks...");
         contractService.markExpiredContracts();
+        contractService.triggerRenewalReminders();
         sendRenewalReminders();
         markRenewalDeclined();
         log.info("Initial contract status checks completed");
@@ -104,7 +104,7 @@ public class ContractScheduler {
                     // - Contract vẫn trong tháng cuối (daysUntilEndDate > 0 và < 30)
                     // - Lần 1 đã được gửi trước hôm nay (đảm bảo không gửi lần 2 trước lần 1)
                     else if (contract.getRenewalReminderSentAt() != null
-                            && "REMINDED".equals(contract.getRenewalStatus())
+//                            && "REMINDED".equals(contract.getRenewalStatus())
                             && today.getYear() == endDate.getYear()
                             && today.getMonth() == endDate.getMonth()
                             && today.getDayOfMonth() == 8
@@ -131,7 +131,7 @@ public class ContractScheduler {
                     // - Contract vẫn trong tháng cuối (daysUntilEndDate > 0 và < 30)
                     // - Lần 1 đã được gửi trước hôm nay (đảm bảo không gửi lần 3 trước lần 1)
                     else if (contract.getRenewalReminderSentAt() != null
-                            && "REMINDED".equals(contract.getRenewalStatus())
+//                            && "REMINDED".equals(contract.getRenewalStatus())
                             && today.getYear() == endDate.getYear()
                             && today.getMonth() == endDate.getMonth()
                             && today.getDayOfMonth() == 20

@@ -483,6 +483,7 @@ public class ContractService {
 
         int reminderCount = calculateReminderCount(contract);
         boolean isFinalReminder = reminderCount == 3;
+        boolean needsRenewal = calculateNeedsRenewal(contract);
 
         return ContractDto.builder()
                 .id(contract.getId())
@@ -509,6 +510,7 @@ public class ContractService {
                 .renewalStatus(contract.getRenewalStatus())
                 .reminderCount(reminderCount > 0 ? reminderCount : null)
                 .isFinalReminder(isFinalReminder)
+                .needsRenewal(needsRenewal)
                 .files(files)
                 .build();
     }
@@ -818,6 +820,30 @@ public class ContractService {
      * Lần 3: 10 ngày trước endDate (ngày 20 trong tháng)
      */
     /**
+     * Calculate if contract needs renewal (within 1 month before expiration)
+     * Returns true only when contract is in the same time window as reminder 1 (28-32 days before endDate)
+     * This is when the status should show "cần gia hạn" instead of just "đang hoạt động"
+     */
+    private boolean calculateNeedsRenewal(Contract contract) {
+        if (contract.getEndDate() == null || !"ACTIVE".equals(contract.getStatus())) {
+            return false;
+        }
+        
+        // Only RENTAL contracts can need renewal
+        if (!"RENTAL".equals(contract.getContractType())) {
+            return false;
+        }
+        
+        LocalDate today = LocalDate.now();
+        LocalDate endDate = contract.getEndDate();
+        long daysUntilEndDate = ChronoUnit.DAYS.between(today, endDate);
+        
+        // Needs renewal only when in the same window as reminder 1: 28-32 days before endDate
+        // This is when reminder 1 is sent (same time point)
+        return daysUntilEndDate >= 28 && daysUntilEndDate <= 32;
+    }
+
+    /**
      * Calculate reminder count based on:
      * - Lần 1: Trước 30 ngày hết hạn (28-32 ngày trước endDate)
      * - Lần 2: Đúng ngày 8 của tháng endDate (sau khi đã gửi lần 1)
@@ -896,10 +922,12 @@ public class ContractService {
         log.info("Cancelled contract: {} (renewalStatus set to DECLINED)", contractId);
         
         // Always create asset inspection when contract is cancelled
-        // Use today as inspectionDate (the month when user cancels)
-        java.time.LocalDate inspectionDate = java.time.LocalDate.now();
-        // If scheduledDate is null, backend will default to contract endDate
-        baseServiceClient.createAssetInspection(contractId, contract.getUnitId(), inspectionDate, scheduledDate);
+        // Use the selected date (scheduledDate) as inspectionDate instead of scheduledDate
+        // If scheduledDate is null, use today as inspectionDate
+        java.time.LocalDate inspectionDate = scheduledDate != null ? scheduledDate : java.time.LocalDate.now();
+        // The selected date is now stored in inspectionDate, not scheduledDate
+        // Pass null for scheduledDate since we're using inspectionDate instead
+        baseServiceClient.createAssetInspection(contractId, contract.getUnitId(), inspectionDate, null);
         
         return toDto(contract);
     }
@@ -1158,5 +1186,80 @@ public class ContractService {
         
         return toDto(newContract);
     }
+    public void triggerRenewalReminders() {
+        log.info("Manual trigger: Send renewal reminders");
+        java.time.LocalDate today = java.time.LocalDate.now();
+        java.time.LocalDate thirtyDaysFromToday = today.plusDays(30);
+
+        int firstReminderCount = 0;
+        int secondReminderCount = 0;
+
+        List<com.QhomeBase.datadocsservice.model.Contract> firstReminderContracts = findContractsNeedingRenewalReminder();
+        for (com.QhomeBase.datadocsservice.model.Contract contract : firstReminderContracts) {
+            try {
+                if (contract.getEndDate() != null
+                        && contract.getRenewalReminderSentAt() == null
+                        && !contract.getEndDate().isBefore(today)
+                        && !contract.getEndDate().isAfter(thirtyDaysFromToday)) {
+                    sendRenewalReminder(contract.getId());
+                    firstReminderCount++;
+                    log.info("Sent first renewal reminder for contract {} (expires on {}, within 30 days from today)",
+                            contract.getContractNumber(), contract.getEndDate());
+                }
+            } catch (Exception e) {
+                log.error("Error sending first renewal reminder for contract {}", contract.getId(), e);
+            }
+        }
+
+        List<com.QhomeBase.datadocsservice.model.Contract> secondReminderContracts = findContractsNeedingSecondReminder();
+        for (com.QhomeBase.datadocsservice.model.Contract contract : secondReminderContracts) {
+            try {
+                if (contract.getEndDate() != null
+                        && "REMINDED".equals(contract.getRenewalStatus())
+                        && contract.getRenewalReminderSentAt() != null) {
+                    long daysSinceFirstReminder = java.time.temporal.ChronoUnit.DAYS.between(
+                            contract.getRenewalReminderSentAt().toLocalDate(),
+                            today
+                    );
+
+                    if (daysSinceFirstReminder >= 7 && daysSinceFirstReminder < 20) {
+                        sendRenewalReminder(contract.getId());
+                        secondReminderCount++;
+                        log.info("Sent second renewal reminder for contract {} (expires on {}, {} days since first reminder)",
+                                contract.getContractNumber(), contract.getEndDate(), daysSinceFirstReminder);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Error sending second renewal reminder for contract {}", contract.getId(), e);
+            }
+        }
+
+        int thirdReminderCount = 0;
+        List<com.QhomeBase.datadocsservice.model.Contract> thirdReminderContracts = findContractsNeedingThirdReminder();
+        for (com.QhomeBase.datadocsservice.model.Contract contract : thirdReminderContracts) {
+            try {
+                if (contract.getEndDate() != null
+                        && "REMINDED".equals(contract.getRenewalStatus())
+                        && contract.getRenewalReminderSentAt() != null) {
+                    long daysSinceFirstReminder = java.time.temporal.ChronoUnit.DAYS.between(
+                            contract.getRenewalReminderSentAt().toLocalDate(),
+                            today
+                    );
+
+                    if (daysSinceFirstReminder >= 20) {
+                        sendRenewalReminder(contract.getId());
+                        thirdReminderCount++;
+                        log.info("Sent third (FINAL) renewal reminder for contract {} (expires on {}, {} days since first reminder - THIS IS THE DEADLINE)",
+                                contract.getContractNumber(), contract.getEndDate(), daysSinceFirstReminder);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Error sending third renewal reminder for contract {}", contract.getId(), e);
+            }
+        }
+
+
+    }
+
 }
 
