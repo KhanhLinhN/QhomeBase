@@ -235,10 +235,55 @@ public class ContractService {
                                     .build();
                         }
                     })
+                    .sorted((c1, c2) -> {
+                        // Sort by priority: ACTIVE → INACTIVE → CANCELLED → EXPIRED
+                        int priority1 = getStatusPriority(c1.getStatus());
+                        int priority2 = getStatusPriority(c2.getStatus());
+                        if (priority1 != priority2) {
+                            return Integer.compare(priority1, priority2);
+                        }
+                        // If same priority, sort by endDate (most recent first, nulls last)
+                        if (c1.getEndDate() != null && c2.getEndDate() != null) {
+                            return c2.getEndDate().compareTo(c1.getEndDate());
+                        }
+                        if (c1.getEndDate() != null) return -1;
+                        if (c2.getEndDate() != null) return 1;
+                        // If both null, sort by createdAt (most recent first)
+                        if (c1.getCreatedAt() != null && c2.getCreatedAt() != null) {
+                            return c2.getCreatedAt().compareTo(c1.getCreatedAt());
+                        }
+                        return 0;
+                    })
                     .collect(Collectors.toList());
         } catch (Exception e) {
             log.error("[ContractService] Lỗi khi lấy contracts cho unit {}: {}", unitId, e.getMessage(), e);
             throw new RuntimeException("Không thể lấy danh sách hợp đồng: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get priority for contract status sorting
+     * Lower number = higher priority
+     * ACTIVE = 1 (highest priority)
+     * INACTIVE = 2
+     * CANCELLED = 3
+     * EXPIRED = 4 (lowest priority)
+     * Other statuses = 5
+     */
+    private int getStatusPriority(String status) {
+        if (status == null) return 99;
+        String upperStatus = status.toUpperCase();
+        switch (upperStatus) {
+            case "ACTIVE":
+                return 1;
+            case "INACTIVE":
+                return 2;
+            case "CANCELLED":
+                return 3;
+            case "EXPIRED":
+                return 4;
+            default:
+                return 5;
         }
     }
 
