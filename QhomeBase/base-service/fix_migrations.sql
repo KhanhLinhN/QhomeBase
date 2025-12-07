@@ -111,11 +111,7 @@ DO $$ BEGIN
     CREATE TYPE data.asset_type AS ENUM (
         'AIR_CONDITIONER',
         'KITCHEN',
-        'REFRIGERATOR',
-        'WASHING_MACHINE',
         'WATER_HEATER',
-        'FAN',
-        'TELEVISION',
         'FURNITURE',
         'OTHER'
     );

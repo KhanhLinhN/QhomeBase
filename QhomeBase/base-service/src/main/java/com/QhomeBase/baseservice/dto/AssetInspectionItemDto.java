@@ -1,5 +1,6 @@
 package com.QhomeBase.baseservice.dto;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -13,6 +14,8 @@ public record AssetInspectionItemDto(
         String notes,
         Boolean checked,
         OffsetDateTime checkedAt,
-        UUID checkedBy
+        UUID checkedBy,
+        BigDecimal damageCost,
+        BigDecimal purchasePrice
 ) {}
 

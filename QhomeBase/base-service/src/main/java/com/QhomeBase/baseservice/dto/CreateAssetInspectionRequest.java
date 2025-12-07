@@ -7,6 +7,8 @@ public record CreateAssetInspectionRequest(
         UUID contractId,
         UUID unitId,
         LocalDate inspectionDate,
-        String inspectorName
-) {}
+        String inspectorName,
+        UUID inspectorId
+) {
+}
 

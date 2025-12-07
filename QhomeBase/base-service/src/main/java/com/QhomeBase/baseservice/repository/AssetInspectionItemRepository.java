@@ -12,9 +12,10 @@ import java.util.UUID;
 @Repository
 public interface AssetInspectionItemRepository extends JpaRepository<AssetInspectionItem, UUID> {
 
-    List<AssetInspectionItem> findByInspectionId(UUID inspectionId);
-
     @Query("SELECT aii FROM AssetInspectionItem aii WHERE aii.inspection.id = :inspectionId")
+    List<AssetInspectionItem> findByInspectionId(@Param("inspectionId") UUID inspectionId);
+
+    @Query("SELECT aii FROM AssetInspectionItem aii JOIN FETCH aii.asset WHERE aii.inspection.id = :inspectionId")
     List<AssetInspectionItem> findByInspectionIdWithAsset(@Param("inspectionId") UUID inspectionId);
 }
 

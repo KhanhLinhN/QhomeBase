@@ -1,6 +1,10 @@
 package com.QhomeBase.baseservice.service;
 
+import com.QhomeBase.baseservice.client.ContractClient;
+import com.QhomeBase.baseservice.client.FinanceBillingClient;
 import com.QhomeBase.baseservice.dto.*;
+import com.QhomeBase.baseservice.dto.finance.CreateInvoiceLineRequest;
+import com.QhomeBase.baseservice.dto.finance.CreateInvoiceRequest;
 import com.QhomeBase.baseservice.model.*;
 import com.QhomeBase.baseservice.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -8,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -22,37 +28,56 @@ public class AssetInspectionService {
     private final AssetInspectionItemRepository inspectionItemRepository;
     private final AssetRepository assetRepository;
     private final UnitRepository unitRepository;
+    private final FinanceBillingClient financeBillingClient;
+    private final HouseholdService householdService;
+    private final ContractClient contractClient;
 
     @Transactional
     public AssetInspectionDto createInspection(CreateAssetInspectionRequest request, UUID createdBy) {
-        // Check if inspection already exists for this contract
         inspectionRepository.findByContractId(request.contractId())
                 .ifPresent(inspection -> {
                     throw new IllegalArgumentException("Inspection already exists for contract: " + request.contractId());
                 });
 
-        // Get unit
+        ContractDetailDto contract = contractClient.getContractById(request.contractId())
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + request.contractId()));
+
+        if (!"EXPIRED".equalsIgnoreCase(contract.status())) {
+            throw new IllegalArgumentException("Can only create inspection for expired contracts. Contract status: " + contract.status());
+        }
+
         Unit unit = unitRepository.findById(request.unitId())
                 .orElseThrow(() -> new IllegalArgumentException("Unit not found: " + request.unitId()));
 
-        // Create inspection
+        LocalDate inspectionDate = request.inspectionDate();
+        if (inspectionDate == null) {
+            inspectionDate = contract.endDate();
+            if (inspectionDate == null) {
+                throw new IllegalArgumentException("Contract has no end date. Please specify inspection date.");
+            }
+        }
+
         AssetInspection inspection = AssetInspection.builder()
                 .contractId(request.contractId())
                 .unit(unit)
-                .inspectionDate(request.inspectionDate())
+                .inspectionDate(inspectionDate)
                 .status(InspectionStatus.PENDING)
                 .inspectorName(request.inspectorName())
+                .inspectorId(request.inspectorId())
                 .createdBy(createdBy)
                 .build();
 
+        log.info("Creating inspection with inspectorId: {} for contract: {}", request.inspectorId(), request.contractId());
         inspection = inspectionRepository.save(inspection);
+        log.info("Created inspection: {} with inspectorId: {}", inspection.getId(), inspection.getInspectorId());
 
-        // Create inspection items for all active assets in the unit
         List<Asset> assets = assetRepository.findByUnitId(request.unitId())
                 .stream()
                 .filter(Asset::getActive)
                 .collect(Collectors.toList());
 
+        log.info("Found {} active assets in unit {} for inspection {}", assets.size(), request.unitId(), inspection.getId());
+        
         for (Asset asset : assets) {
             AssetInspectionItem item = AssetInspectionItem.builder()
                     .inspection(inspection)
@@ -60,9 +85,10 @@ public class AssetInspectionService {
                     .checked(false)
                     .build();
             inspectionItemRepository.save(item);
+            log.debug("Created inspection item for asset: {} (type: {})", asset.getAssetCode(), asset.getAssetType());
         }
 
-        log.info("Created asset inspection: {} for contract: {}", inspection.getId(), request.contractId());
+        log.info("Created asset inspection: {} for contract: {} with {} items", inspection.getId(), request.contractId(), assets.size());
         return toDto(inspection);
     }
 
@@ -81,6 +107,16 @@ public class AssetInspectionService {
         if (request.conditionStatus() != null) {
             item.setConditionStatus(request.conditionStatus());
         }
+        
+        if (request.damageCost() != null && request.damageCost().compareTo(BigDecimal.ZERO) >= 0) {
+            item.setDamageCost(request.damageCost());
+        } else if (request.conditionStatus() != null) {
+            BigDecimal damageCost = calculateDamageCost(item.getAsset(), request.conditionStatus());
+            item.setDamageCost(damageCost);
+        } else if (request.conditionStatus() == null && request.damageCost() == null && item.getConditionStatus() != null) {
+            BigDecimal damageCost = calculateDamageCost(item.getAsset(), item.getConditionStatus());
+            item.setDamageCost(damageCost);
+        }
         if (request.notes() != null) {
             item.setNotes(request.notes());
         }
@@ -97,8 +133,9 @@ public class AssetInspectionService {
 
         item = inspectionItemRepository.save(item);
 
-        // Update inspection status if all items are checked
         AssetInspection inspection = item.getInspection();
+        updateTotalDamageCost(inspection);
+
         List<AssetInspectionItem> allItems = inspectionItemRepository.findByInspectionId(inspection.getId());
         boolean allChecked = allItems.stream().allMatch(AssetInspectionItem::getChecked);
         if (allChecked && inspection.getStatus() == InspectionStatus.IN_PROGRESS) {
@@ -132,18 +169,80 @@ public class AssetInspectionService {
         AssetInspection inspection = inspectionRepository.findById(inspectionId)
                 .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
 
+        updateTotalDamageCost(inspection);
+        inspection = inspectionRepository.findById(inspectionId).orElse(inspection);
+
         inspection.setStatus(InspectionStatus.COMPLETED);
         inspection.setInspectorNotes(inspectorNotes);
         inspection.setCompletedAt(OffsetDateTime.now());
         inspection.setCompletedBy(userId);
         inspection = inspectionRepository.save(inspection);
 
-        log.info("Completed inspection: {}", inspectionId);
+        log.info("Completed inspection: {} with total damage cost: {}", inspectionId, inspection.getTotalDamageCost());
+        
         return toDto(inspection);
     }
 
+    @Transactional(readOnly = true)
+    public List<AssetInspectionDto> getAllInspections(UUID inspectorId, InspectionStatus status) {
+        List<AssetInspection> inspections;
+        
+        if (inspectorId != null && status != null) {
+            inspections = inspectionRepository.findByInspectorIdAndStatus(inspectorId, status);
+        } else if (inspectorId != null) {
+            inspections = inspectionRepository.findByInspectorId(inspectorId);
+        } else if (status != null) {
+            inspections = inspectionRepository.findByStatus(status);
+        } else {
+            inspections = inspectionRepository.findAll();
+        }
+        
+        return inspections.stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<AssetInspectionDto> getInspectionsByTechnicianId(UUID technicianId) {
+        List<AssetInspection> inspections = inspectionRepository.findByInspectorId(technicianId);
+        return inspections.stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<AssetInspectionDto> getMyAssignments(UUID userId) {
+        if (userId == null) {
+            log.warn("getMyAssignments called with null userId");
+            return java.util.Collections.emptyList();
+        }
+        
+        List<InspectionStatus> activeStatuses = List.of(
+                InspectionStatus.PENDING,
+                InspectionStatus.IN_PROGRESS
+        );
+        
+        try {
+            log.info("Getting assignments for userId: {}", userId);
+            List<AssetInspection> inspections = inspectionRepository.findByInspectorIdAndStatusIn(userId, activeStatuses);
+            log.info("Found {} inspections for userId: {}", inspections.size(), userId);
+            
+            if (!inspections.isEmpty()) {
+                inspections.forEach(ins -> log.debug("Inspection {} has inspectorId: {}", ins.getId(), ins.getInspectorId()));
+            }
+            
+            return inspections.stream()
+                    .map(this::toDto)
+                    .collect(Collectors.toList());
+        } catch (Exception ex) {
+            log.error("Error getting assignments for userId: {}", userId, ex);
+            throw new RuntimeException("Failed to get assignments: " + ex.getMessage(), ex);
+        }
+    }
+
     private AssetInspectionDto toDto(AssetInspection inspection) {
-        List<AssetInspectionItem> items = inspectionItemRepository.findByInspectionId(inspection.getId());
+        List<AssetInspectionItem> items = inspectionItemRepository.findByInspectionIdWithAsset(inspection.getId());
+        log.info("Loading {} items for inspection: {}", items.size(), inspection.getId());
         
         return new AssetInspectionDto(
                 inspection.getId(),
@@ -153,12 +252,15 @@ public class AssetInspectionService {
                 inspection.getInspectionDate(),
                 inspection.getStatus(),
                 inspection.getInspectorName(),
+                inspection.getInspectorId(),
                 inspection.getInspectorNotes(),
                 inspection.getCompletedAt(),
                 inspection.getCompletedBy(),
                 inspection.getCreatedAt(),
                 inspection.getUpdatedAt(),
-                items.stream().map(this::toItemDto).collect(Collectors.toList())
+                items.stream().map(this::toItemDto).collect(Collectors.toList()),
+                inspection.getTotalDamageCost() != null ? inspection.getTotalDamageCost() : BigDecimal.ZERO,
+                inspection.getInvoiceId()
         );
     }
 
@@ -174,8 +276,257 @@ public class AssetInspectionService {
                 item.getNotes(),
                 item.getChecked(),
                 item.getCheckedAt(),
-                item.getCheckedBy()
+                item.getCheckedBy(),
+                item.getDamageCost() != null ? item.getDamageCost() : BigDecimal.ZERO,
+                asset != null && asset.getPurchasePrice() != null ? asset.getPurchasePrice() : BigDecimal.ZERO
         );
+    }
+
+    private BigDecimal calculateDamageCost(Asset asset, String conditionStatus) {
+        if (asset == null || asset.getPurchasePrice() == null) {
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal purchasePrice = asset.getPurchasePrice();
+        
+        if (conditionStatus == null || conditionStatus.trim().isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+
+        String status = conditionStatus.toUpperCase().trim();
+        
+        switch (status) {
+            case "GOOD":
+                return BigDecimal.ZERO;
+            case "DAMAGED":
+                return purchasePrice.multiply(new BigDecimal("0.5"));
+            case "MISSING":
+                return purchasePrice;
+            default:
+                log.warn("Unknown condition status: {}, returning 0", conditionStatus);
+                return BigDecimal.ZERO;
+        }
+    }
+
+    private void updateTotalDamageCost(AssetInspection inspection) {
+        List<AssetInspectionItem> items = inspectionItemRepository.findByInspectionId(inspection.getId());
+        BigDecimal total = items.stream()
+                .map(item -> item.getDamageCost() != null ? item.getDamageCost() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        
+        inspection.setTotalDamageCost(total);
+        inspectionRepository.save(inspection);
+        
+        log.info("Updated total damage cost for inspection {}: {}", inspection.getId(), total);
+    }
+
+    @Transactional
+    public AssetInspectionDto recalculateDamageCost(UUID inspectionId) {
+        AssetInspection inspection = inspectionRepository.findById(inspectionId)
+                .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
+        
+        updateTotalDamageCost(inspection);
+        return toDto(inspection);
+    }
+
+   
+    @Transactional
+    public AssetInspectionDto generateInvoice(UUID inspectionId, UUID createdBy) {
+        AssetInspection inspection = inspectionRepository.findById(inspectionId)
+                .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
+        
+        if (inspection.getStatus() != InspectionStatus.COMPLETED) {
+            throw new IllegalArgumentException("Can only generate invoice for completed inspections");
+        }
+        
+        if (inspection.getTotalDamageCost() == null || inspection.getTotalDamageCost().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("No damage cost to invoice. Total damage cost is zero.");
+        }
+        
+        if (inspection.getInvoiceId() != null) {
+            throw new IllegalArgumentException("Invoice already generated for this inspection. Invoice ID: " + inspection.getInvoiceId());
+        }
+        
+        Unit unit = inspection.getUnit();
+        if (unit == null) {
+            throw new IllegalArgumentException("Unit not found for inspection: " + inspectionId);
+        }
+
+        UUID unitId = unit.getId();
+
+        UUID payerResidentId = householdService.getPayerForUnit(unitId);
+        if (payerResidentId == null) {
+            log.warn("No primary resident found for unit: {}. Proceeding with null payerResidentId.", unitId);
+        }
+
+        String unitCode = unit.getCode() != null ? unit.getCode() : "";
+        String billToName = String.format("Căn hộ %s", unitCode);
+        BigDecimal totalDamageCost = inspection.getTotalDamageCost();
+
+        String description = String.format("Tiền thiệt hại thiết bị - Kiểm tra ngày %s", 
+                inspection.getInspectionDate().toString());
+
+        CreateInvoiceLineRequest invoiceLine = CreateInvoiceLineRequest.builder()
+                .serviceDate(inspection.getInspectionDate())
+                .description(description)
+                .quantity(BigDecimal.ONE)
+                .unit("lần")
+                .unitPrice(totalDamageCost)
+                .taxRate(BigDecimal.ZERO)
+                .serviceCode("ASSET_DAMAGE")
+                .externalRefType("ASSET_INSPECTION")
+                .externalRefId(inspectionId)
+                .build();
+
+        CreateInvoiceRequest invoiceRequest = CreateInvoiceRequest.builder()
+                .dueDate(LocalDate.now().plusDays(7))
+                .currency("VND")
+                .billToName(billToName)
+                .billToAddress(null)
+                .billToContact(null)
+                .payerUnitId(unitId)
+                .payerResidentId(payerResidentId)
+                .cycleId(null)
+                .lines(List.of(invoiceLine))
+                .build();
+        try {
+            com.QhomeBase.baseservice.dto.finance.InvoiceDto invoiceDto = financeBillingClient.createInvoiceSync(invoiceRequest);
+            
+            UUID invoiceId = invoiceDto.getId();
+            inspection.setInvoiceId(invoiceId);
+            inspection = inspectionRepository.save(inspection);
+            
+            log.info("Generated invoice {} for inspection {} with total damage cost: {}", 
+                    invoiceId, inspectionId, inspection.getTotalDamageCost());
+            
+            return toDto(inspection);
+        } catch (Exception e) {
+            log.error("Failed to create invoice in finance-billing-service for inspection: {}", inspectionId, e);
+            throw new RuntimeException("Failed to create invoice: " + e.getMessage(), e);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<AssetInspectionDto> getInspectionsPendingApproval() {
+        List<AssetInspection> inspections = inspectionRepository.findCompletedInspectionsPendingApproval(InspectionStatus.COMPLETED);
+        List<AssetInspection> filteredInspections = inspections.stream()
+                .filter(ai -> ai.getTotalDamageCost() != null 
+                        && ai.getTotalDamageCost().compareTo(BigDecimal.ZERO) > 0)
+                .collect(Collectors.toList());
+        log.info("Found {} inspections pending approval (filtered from {} total)", 
+                filteredInspections.size(), inspections.size());
+        return filteredInspections.stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public AssetInspectionDto approveInspection(UUID inspectionId, UUID approvedBy) {
+        AssetInspection inspection = inspectionRepository.findById(inspectionId)
+                .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
+
+        if (inspection.getStatus() != InspectionStatus.COMPLETED) {
+            throw new IllegalArgumentException("Can only approve completed inspections");
+        }
+
+        if (inspection.getTotalDamageCost() == null || inspection.getTotalDamageCost().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Cannot approve inspection with no damage cost");
+        }
+
+        if (inspection.getInvoiceId() != null) {
+            throw new IllegalArgumentException("Invoice already generated for this inspection");
+        }
+
+        log.info("Admin {} approving inspection {} and generating invoice", approvedBy, inspectionId);
+        return generateInvoice(inspectionId, approvedBy);
+    }
+
+    @Transactional
+    public AssetInspectionDto rejectInspection(UUID inspectionId, String rejectionNotes, UUID rejectedBy) {
+        AssetInspection inspection = inspectionRepository.findById(inspectionId)
+                .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
+
+        if (inspection.getStatus() != InspectionStatus.COMPLETED) {
+            throw new IllegalArgumentException("Can only reject completed inspections");
+        }
+
+        if (inspection.getInvoiceId() != null) {
+            throw new IllegalArgumentException("Cannot reject inspection that already has an invoice");
+        }
+
+        String currentNotes = inspection.getInspectorNotes() != null ? inspection.getInspectorNotes() : "";
+        String rejectionMessage = String.format("\n\n[Admin rejection - %s]: %s", 
+                java.time.OffsetDateTime.now().toString(), 
+                rejectionNotes != null ? rejectionNotes : "Rejected by admin");
+        inspection.setInspectorNotes(currentNotes + rejectionMessage);
+        
+        inspection = inspectionRepository.save(inspection);
+        log.info("Admin {} rejected inspection {}: {}", rejectedBy, inspectionId, rejectionNotes);
+        
+        return toDto(inspection);
+    }
+
+
+    @Transactional
+    public int createInspectionsForExpiredContracts(LocalDate endOfMonth) {
+        log.info("Creating inspections for contracts expired in month ending: {}", endOfMonth);
+        
+        int createdCount = 0;
+        
+        List<Unit> allUnits = unitRepository.findAll();
+        log.info("Checking {} units for expired contracts", allUnits.size());
+        
+        for (Unit unit : allUnits) {
+            try {
+                List<ContractSummary> contracts = contractClient.getContractsByUnit(unit.getId());
+                
+                for (ContractSummary contract : contracts) {
+                    if (contract.endDate() == null) {
+                        continue;
+                    }
+                    
+                    LocalDate contractEndDate = contract.endDate();
+                    boolean expiredInMonth = contractEndDate.getYear() == endOfMonth.getYear() &&
+                                            contractEndDate.getMonth() == endOfMonth.getMonth();
+                    
+                    if (!expiredInMonth) {
+                        continue;
+                    }
+                    
+                    if (inspectionRepository.findByContractId(contract.id()).isPresent()) {
+                        log.debug("Inspection already exists for contract: {}", contract.id());
+                        continue;
+                    }
+                    
+                    if (!"EXPIRED".equalsIgnoreCase(contract.status())) {
+                        continue;
+                    }
+                    
+                    try {
+                        LocalDate inspectionDate = contractEndDate;
+                        CreateAssetInspectionRequest request = new CreateAssetInspectionRequest(
+                                contract.id(),
+                                unit.getId(),
+                                inspectionDate,
+                                null,
+                                null
+                        );
+                        
+                        createInspection(request, null);
+                        createdCount++;
+                        log.info("Created automatic inspection for expired contract: {} in unit: {}", 
+                                contract.id(), unit.getCode());
+                    } catch (IllegalArgumentException e) {
+                        log.debug("Skipping contract {}: {}", contract.id(), e.getMessage());
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Error processing unit {} for expired contracts: {}", unit.getId(), e.getMessage(), e);
+            }
+        }
+        
+        log.info("Created {} automatic inspections for expired contracts ending in month: {}", createdCount, endOfMonth);
+        return createdCount;
     }
 }
 

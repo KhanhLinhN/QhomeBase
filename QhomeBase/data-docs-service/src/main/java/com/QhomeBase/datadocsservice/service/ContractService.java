@@ -712,7 +712,7 @@ public class ContractService {
         
         log.info("Marked contract {} as renewal declined (was: {})", contractId, currentRenewalStatus);
     }
-
+    @Deprecated
     @Transactional
     public ContractDto extendContract(UUID contractId, LocalDate newEndDate, UUID updatedBy) {
         Contract contract = contractRepository.findById(contractId)
