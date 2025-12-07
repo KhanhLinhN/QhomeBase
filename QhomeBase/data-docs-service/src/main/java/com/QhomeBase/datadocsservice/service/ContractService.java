@@ -657,6 +657,8 @@ public class ContractService {
             throw new IllegalArgumentException("Contract must be in PENDING or REMINDED status to send renewal reminder. Current status: " + currentRenewalStatus);
         }
         
+        // Chỉ set renewalReminderSentAt lần đầu tiên (lần 1)
+        // Giữ nguyên thời điểm lần 1 để có thể tính toán lần 2 và lần 3
         if (contract.getRenewalReminderSentAt() == null) {
             contract.setRenewalReminderSentAt(OffsetDateTime.now());
         }
@@ -788,35 +790,27 @@ public class ContractService {
             return 1;
         }
         
-        // Lần 2: Đúng ngày 8 của tháng endDate
-        // Chỉ tính là lần 2 nếu:
-        // - Đã gửi lần 1 (renewalReminderSentAt != null)
-        // - Hôm nay là ngày 8 của tháng endDate
-        // - Contract vẫn trong tháng cuối (daysUntilEndDate > 0 và < 30)
-        if (today.getYear() == endDate.getYear()
-                && today.getMonth() == endDate.getMonth()
-                && today.getDayOfMonth() == 8
-                && daysUntilEndDate > 0 && daysUntilEndDate < 30) {
-            return 2;
+        // Kiểm tra xem có đang trong tháng endDate không
+        boolean isInEndDateMonth = today.getYear() == endDate.getYear()
+                && today.getMonth() == endDate.getMonth();
+        
+        if (isInEndDateMonth && daysUntilEndDate > 0 && daysUntilEndDate < 30) {
+            // Nếu đã qua ngày 20, coi như lần 3 (FINAL)
+            if (today.getDayOfMonth() >= 20) {
+                return 3;
+            }
+            // Nếu đã qua ngày 8, coi như lần 2
+            if (today.getDayOfMonth() >= 8) {
+                return 2;
+            }
+            // Nếu chưa qua ngày 8, nhưng đã gửi lần 1, coi như lần 1
+            // (lần 1 được gửi trước đó, bây giờ đang trong tháng endDate)
+            return 1;
         }
         
-        // Lần 3: Đúng ngày 20 của tháng endDate - BẮT BUỘC
-        // Chỉ tính là lần 3 nếu:
-        // - Đã gửi lần 1 và lần 2 (renewalReminderSentAt != null)
-        // - Hôm nay là ngày 20 của tháng endDate
-        // - Contract vẫn trong tháng cuối (daysUntilEndDate > 0 và < 30)
-        if (today.getYear() == endDate.getYear()
-                && today.getMonth() == endDate.getMonth()
-                && today.getDayOfMonth() == 20
-                && daysUntilEndDate > 0 && daysUntilEndDate < 30) {
-            return 3;
-        }
-        
-        // Fallback: Nếu đã gửi reminder nhưng không phải ngày 8 hoặc 20
-        // Tính dựa trên số ngày kể từ lần nhắc đầu tiên và ngày hiện tại
-        if (daysUntilEndDate > 0 && daysUntilEndDate < 30
-                && today.getYear() == endDate.getYear()
-                && today.getMonth() == endDate.getMonth()) {
+        // Nếu không trong tháng endDate, nhưng đã gửi lần 1 (28-32 ngày trước)
+        // Tính dựa trên số ngày kể từ lần nhắc đầu tiên
+        if (daysUntilEndDate > 0 && daysUntilEndDate < 30) {
             // Nếu đã qua ngày 20, coi như lần 3
             if (today.getDayOfMonth() >= 20) {
                 return 3;

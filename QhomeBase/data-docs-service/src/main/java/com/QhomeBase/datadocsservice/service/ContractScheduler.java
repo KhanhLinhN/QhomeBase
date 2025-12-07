@@ -78,7 +78,6 @@ public class ContractScheduler {
                 }
                 
                 LocalDate endDate = contract.getEndDate();
-                LocalDate endDateMonth = LocalDate.of(endDate.getYear(), endDate.getMonth(), 1);
                 
                 // Calculate days until end date
                 long daysUntilEndDate = ChronoUnit.DAYS.between(today, endDate);
@@ -103,6 +102,7 @@ public class ContractScheduler {
                     // - Đã gửi lần 1 (renewalReminderSentAt != null)
                     // - Hôm nay là ngày 8 của tháng endDate
                     // - Contract vẫn trong tháng cuối (daysUntilEndDate > 0 và < 30)
+                    // - Lần 1 đã được gửi trước hôm nay (đảm bảo không gửi lần 2 trước lần 1)
                     else if (contract.getRenewalReminderSentAt() != null
                             && "REMINDED".equals(contract.getRenewalStatus())
                             && today.getYear() == endDate.getYear()
@@ -111,20 +111,25 @@ public class ContractScheduler {
                             && daysUntilEndDate > 0 && daysUntilEndDate < 30) {
                         // Check if we already sent reminder 2 (by checking if reminder was sent before today)
                         LocalDate firstReminderDate = contract.getRenewalReminderSentAt().toLocalDate();
-                        // Lần 2 chỉ gửi 1 lần vào ngày 8
-                        if (firstReminderDate.isBefore(today)) {
+                        // Lần 2 chỉ gửi 1 lần vào ngày 8, và chỉ gửi nếu lần 1 đã được gửi trước đó
+                        // Kiểm tra: lần 1 phải được gửi trước ngày 8 (không phải cùng ngày 8)
+                        if (firstReminderDate.isBefore(today) && firstReminderDate.getDayOfMonth() != 8) {
                             contractService.sendRenewalReminder(contract.getId());
                             sendReminderNotification(contract, 2, false);
                             secondReminderCount++;
                             log.info("✅ Sent SECOND renewal reminder for contract {} (expires on {}, today is day 8 of endDate month)", 
                                     contract.getContractNumber(), endDate);
+                        } else {
+                            log.debug("⏭️ Skipping reminder 2 for contract {}: firstReminderDate={}, today={}", 
+                                    contract.getContractNumber(), firstReminderDate, today);
                         }
                     }
                     // Lần 3: Đúng ngày 20 của tháng endDate - BẮT BUỘC
                     // Chỉ gửi nếu:
-                    // - Đã gửi lần 1 và lần 2 (renewalReminderSentAt != null)
+                    // - Đã gửi lần 1 (renewalReminderSentAt != null)
                     // - Hôm nay là ngày 20 của tháng endDate
                     // - Contract vẫn trong tháng cuối (daysUntilEndDate > 0 và < 30)
+                    // - Lần 1 đã được gửi trước hôm nay (đảm bảo không gửi lần 3 trước lần 1)
                     else if (contract.getRenewalReminderSentAt() != null
                             && "REMINDED".equals(contract.getRenewalStatus())
                             && today.getYear() == endDate.getYear()
@@ -132,14 +137,18 @@ public class ContractScheduler {
                             && today.getDayOfMonth() == 20
                             && daysUntilEndDate > 0 && daysUntilEndDate < 30) {
                         // Check if we already sent reminder 3 (by checking if reminder was sent before today)
-                        LocalDate lastReminderDate = contract.getRenewalReminderSentAt().toLocalDate();
-                        // Lần 3 chỉ gửi 1 lần vào ngày 20
-                        if (lastReminderDate.isBefore(today)) {
+                        LocalDate firstReminderDate = contract.getRenewalReminderSentAt().toLocalDate();
+                        // Lần 3 chỉ gửi 1 lần vào ngày 20, và chỉ gửi nếu lần 1 đã được gửi trước đó
+                        // Kiểm tra: lần 1 phải được gửi trước ngày 20 (không phải cùng ngày 20)
+                        if (firstReminderDate.isBefore(today) && firstReminderDate.getDayOfMonth() != 20) {
                             contractService.sendRenewalReminder(contract.getId());
                             sendReminderNotification(contract, 3, true);
                             thirdReminderCount++;
                             log.info("✅ Sent THIRD (FINAL) renewal reminder for contract {} (expires on {}, today is day 20 of endDate month - BẮT BUỘC HỦY HOẶC GIA HẠN)", 
                                     contract.getContractNumber(), endDate);
+                        } else {
+                            log.debug("⏭️ Skipping reminder 3 for contract {}: firstReminderDate={}, today={}", 
+                                    contract.getContractNumber(), firstReminderDate, today);
                         }
                     }
                 } catch (Exception e) {
