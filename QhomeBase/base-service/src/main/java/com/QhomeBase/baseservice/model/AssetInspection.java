@@ -37,6 +37,9 @@ public class AssetInspection {
     @Column(name = "inspection_date", nullable = false)
     private LocalDate inspectionDate;
 
+    @Column(name = "scheduled_date")
+    private LocalDate scheduledDate; // Ngày đã hẹn để nhân viên tới kiểm tra
+
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "status", nullable = false)

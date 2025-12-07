@@ -326,7 +326,7 @@ public class InvoiceService {
 
         InvoiceStatus invoiceStatus = request.getStatus() != null ? request.getStatus() : InvoiceStatus.PUBLISHED;
         OffsetDateTime now = OffsetDateTime.now();
-        
+
         Invoice invoice = Invoice.builder()
                 .code(invoiceCode)
                 .issuedAt(now)

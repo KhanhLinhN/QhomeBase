@@ -9,6 +9,7 @@ import com.QhomeBase.datadocsservice.model.ContractFile;
 import com.QhomeBase.datadocsservice.repository.ContractFileRepository;
 import com.QhomeBase.datadocsservice.repository.ContractRepository;
 import com.QhomeBase.datadocsservice.service.vnpay.VnpayService;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
@@ -39,6 +40,7 @@ public class ContractService {
     private final VnpayProperties vnpayProperties;
     private final InvoiceClient invoiceClient;
     private final BaseServiceClient baseServiceClient;
+    private final EntityManager entityManager;
 
     @Transactional
     public ContractDto createContract(CreateContractRequest request, UUID createdBy) {
@@ -436,7 +438,7 @@ public class ContractService {
 
         int reminderCount = calculateReminderCount(contract);
         boolean isFinalReminder = reminderCount == 3;
-        
+
         return ContractDto.builder()
                 .id(contract.getId())
                 .unitId(contract.getUnitId())
@@ -795,6 +797,7 @@ public class ContractService {
                 && today.getMonth() == endDate.getMonth();
         
         if (isInEndDateMonth && daysUntilEndDate > 0 && daysUntilEndDate < 30) {
+            // Đang trong tháng endDate
             // Nếu đã qua ngày 20, coi như lần 3 (FINAL)
             if (today.getDayOfMonth() >= 20) {
                 return 3;
@@ -809,20 +812,9 @@ public class ContractService {
         }
         
         // Nếu không trong tháng endDate, nhưng đã gửi lần 1 (28-32 ngày trước)
-        // Tính dựa trên số ngày kể từ lần nhắc đầu tiên
+        // Chỉ tính là lần 1 (vì lần 2 và 3 chỉ gửi trong tháng endDate)
         if (daysUntilEndDate > 0 && daysUntilEndDate < 30) {
-            // Nếu đã qua ngày 20, coi như lần 3
-            if (today.getDayOfMonth() >= 20) {
-                return 3;
-            }
-            // Nếu đã qua ngày 8, coi như lần 2
-            else if (today.getDayOfMonth() >= 8) {
-                return 2;
-            }
-            // Trước ngày 8, coi như lần 1
-            else {
-                return 1;
-            }
+            return 1;
         }
         
         return 0;
@@ -830,9 +822,10 @@ public class ContractService {
 
     /**
      * Cancel contract (set status to CANCELLED and renewalStatus to DECLINED)
+     * If scheduledDate is provided, creates an asset inspection
      */
     @Transactional
-    public ContractDto cancelContract(UUID contractId, UUID updatedBy) {
+    public ContractDto cancelContract(UUID contractId, UUID updatedBy, java.time.LocalDate scheduledDate) {
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
         
@@ -851,8 +844,27 @@ public class ContractService {
         contract.setUpdatedBy(updatedBy);
         contract = contractRepository.save(contract);
         
+        // Flush to ensure the status change is committed to database before calling base-service
+        // This ensures base-service can see the contract as CANCELLED when it queries
+        entityManager.flush();
+        
         log.info("Cancelled contract: {} (renewalStatus set to DECLINED)", contractId);
+        
+        // Always create asset inspection when contract is cancelled
+        // Use today as inspectionDate (the month when user cancels)
+        java.time.LocalDate inspectionDate = java.time.LocalDate.now();
+        // If scheduledDate is null, backend will default to contract endDate
+        baseServiceClient.createAssetInspection(contractId, contract.getUnitId(), inspectionDate, scheduledDate);
+        
         return toDto(contract);
+    }
+    
+    /**
+     * Cancel contract without scheduled date (backward compatibility)
+     */
+    @Transactional
+    public ContractDto cancelContract(UUID contractId, UUID updatedBy) {
+        return cancelContract(contractId, updatedBy, null);
     }
 
     /**

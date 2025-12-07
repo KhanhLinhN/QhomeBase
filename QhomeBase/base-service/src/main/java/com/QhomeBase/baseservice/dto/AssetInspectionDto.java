@@ -14,6 +14,7 @@ public record AssetInspectionDto(
         UUID unitId,
         String unitCode,
         LocalDate inspectionDate,
+        LocalDate scheduledDate,
         InspectionStatus status,
         String inspectorName,
         UUID inspectorId,

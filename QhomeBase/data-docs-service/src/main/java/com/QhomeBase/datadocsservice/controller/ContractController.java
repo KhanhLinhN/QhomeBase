@@ -573,16 +573,18 @@ public class ContractController {
     }
 
     @PutMapping("/{contractId}/cancel")
-    @Operation(summary = "Cancel contract", description = "Cancel a contract (set status to CANCELLED)")
+    @Operation(summary = "Cancel contract", description = "Cancel a contract (set status to CANCELLED). Optionally provide scheduledDate for asset inspection.")
     public ResponseEntity<ContractDto> cancelContract(
             @PathVariable UUID contractId,
+            @RequestBody(required = false) CancelContractRequest request,
             @RequestParam(value = "updatedBy", required = false) UUID updatedBy) {
         
         if (updatedBy == null) {
             updatedBy = UUID.randomUUID();
         }
         
-        ContractDto contract = contractService.cancelContract(contractId, updatedBy);
+        java.time.LocalDate scheduledDate = request != null ? request.scheduledDate() : null;
+        ContractDto contract = contractService.cancelContract(contractId, updatedBy, scheduledDate);
         return ResponseEntity.ok(contract);
     }
 

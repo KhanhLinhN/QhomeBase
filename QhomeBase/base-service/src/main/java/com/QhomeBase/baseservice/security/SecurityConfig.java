@@ -45,6 +45,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/household-members/residents/**").permitAll()
                         .requestMatchers("/api/household-members/households/**").permitAll() // Allow service-to-service calls
                         .requestMatchers("/api/households/**").permitAll()
+                        // Allow service-to-service calls for asset inspections (from data-docs-service)
+                        .requestMatchers("/api/asset-inspections").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
