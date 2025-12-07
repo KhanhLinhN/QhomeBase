@@ -37,6 +37,8 @@
         <module>customer-interaction-service</module>
         <module>staff-work-service</module>
         <module>iam-service</module>
+        <module>marketplace-service</module>
+        <module>chat-service</module>
         <module>api-gateway</module>
     </modules>
 
@@ -157,8 +159,22 @@
                 <artifactId>lombok</artifactId>
                 <version>1.18.38</version>
             </dependency>
+            
+            <!-- ImageKit SDK -->
+            <dependency>
+                <groupId>com.github.imagekit-developer</groupId>
+                <artifactId>imagekit-java</artifactId>
+                <version>2.0.1</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
+    
+    <repositories>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
+    </repositories>
 
     <build>
         <plugins>

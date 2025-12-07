@@ -103,6 +103,48 @@ spring:
             - Path=/api/customer-interaction/**
           filters:
             - StripPrefix=0
+        # Marketplace Service - Uploads (must be before marketplace-service catch-all)
+        - id: marketplace-service-uploads
+          uri: ${marketplace.service.url:http://localhost:8089}
+          predicates:
+            - Path=/api/marketplace/uploads/**
+          filters:
+            - StripPrefix=2
+        # Marketplace Service Routes (must be before base-service catch-all)
+        - id: marketplace-service
+          uri: ${marketplace.service.url:http://localhost:8089}
+          predicates:
+            - Path=/api/marketplace/**
+          filters:
+            - StripPrefix=2
+        # Chat Service - Direct Invitations (must be before chat-service catch-all)
+        - id: chat-service-direct-invitations
+          uri: ${chat.service.url:http://localhost:8090}
+          predicates:
+            - Path=/api/direct-invitations/**
+          filters:
+            - StripPrefix=0
+        # Chat Service - Direct Chat (must be before chat-service catch-all)
+        - id: chat-service-direct-chat
+          uri: ${chat.service.url:http://localhost:8090}
+          predicates:
+            - Path=/api/direct-chat/**
+          filters:
+            - StripPrefix=0
+        # Chat Service Routes
+        - id: chat-service
+          uri: ${chat.service.url:http://localhost:8090}
+          predicates:
+            - Path=/api/chat/**
+          filters:
+            - StripPrefix=2
+        # Chat Service - Uploads (must be before base-service catch-all)
+        - id: chat-service-uploads
+          uri: ${chat.service.url:http://localhost:8090}
+          predicates:
+            - Path=/uploads/chat/**
+          filters:
+            - StripPrefix=0
         # Staff Work Service Routes (must be before base-service catch-all)
         - id: staff-work-service
           uri: ${staff-work.service.url:http://localhost:8087}

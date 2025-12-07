@@ -29,7 +29,7 @@ public class InvoiceReminderService {
 
     private static final ZoneId ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final int REMINDER_INTERVAL_HOURS = 24;
-    private static final int MAX_REMINDERS = 7;
+    private static final int FINAL_WARNING_REMINDER = 4; // Lần thứ 4 là cảnh báo cuối (cắt điện)
 
     private final InvoiceRepository invoiceRepository;
     private final InvoiceLineRepository invoiceLineRepository;
@@ -47,7 +47,7 @@ public class InvoiceReminderService {
      * Find invoices that need reminder:
      * 1. Status = PUBLISHED (chưa thanh toán)
      * 2. Đã qua 24 giờ từ khi tạo (issued_at + 24h <= now)
-     * 3. Chưa nhắc đủ 7 lần (reminder_count < 7)
+     * 3. Chưa nhắc đủ 4 lần (reminder_count < 4: 3 lần nhắc + 1 lần cảnh báo cuối)
      * 4. Đã qua 24 giờ từ lần nhắc cuối (last_reminder_at + 24h <= now) hoặc chưa nhắc lần nào
      */
     @Transactional(readOnly = true)
@@ -61,7 +61,7 @@ public class InvoiceReminderService {
         // Find invoices that:
         // 1. Status = PUBLISHED
         // 2. Issued at least 24 hours ago
-        // 3. Reminder count < 7
+        // 3. Reminder count < 4 (3 lần nhắc + 1 lần cảnh báo cuối)
         // 4. Last reminder was at least 24 hours ago (or never reminded)
         List<Invoice> allPublished = invoiceRepository.findByStatus(InvoiceStatus.PUBLISHED);
         
@@ -76,10 +76,10 @@ public class InvoiceReminderService {
                         return false; // Chưa đến 24 giờ từ khi tạo
                     }
 
-                    // Check reminder count
+                    // Check reminder count (tối đa 4 lần: 3 nhắc + 1 cảnh báo cuối)
                     int reminderCount = invoice.getReminderCount() != null ? invoice.getReminderCount() : 0;
-                    if (reminderCount >= MAX_REMINDERS) {
-                        return false; // Đã nhắc đủ 7 lần
+                    if (reminderCount >= FINAL_WARNING_REMINDER) {
+                        return false; // Đã nhắc đủ 4 lần
                     }
 
                     // Check if last reminder was at least 24 hours ago (or never reminded)
@@ -91,6 +91,39 @@ public class InvoiceReminderService {
                     }
 
                     return true;
+                })
+                .toList();
+    }
+
+    /**
+     * Find invoices that need to be marked as UNPAID:
+     * 1. Status = PUBLISHED
+     * 2. Đã nhắc đủ 4 lần (3 lần nhắc + 1 lần cảnh báo cuối)
+     * 3. Đã qua 24 giờ từ lần cảnh báo cuối
+     */
+    @Transactional(readOnly = true)
+    public List<Invoice> findInvoicesNeedingUnpaidStatus() {
+        if (!remindersEnabled) {
+            return List.of();
+        }
+
+        OffsetDateTime now = OffsetDateTime.now(ZONE);
+        List<Invoice> allPublished = invoiceRepository.findByStatus(InvoiceStatus.PUBLISHED);
+        
+        return allPublished.stream()
+                .filter(invoice -> {
+                    int reminderCount = invoice.getReminderCount() != null ? invoice.getReminderCount() : 0;
+                    // Phải đã nhắc đủ 4 lần (3 nhắc + 1 cảnh báo cuối)
+                    if (reminderCount < FINAL_WARNING_REMINDER) {
+                        return false;
+                    }
+                    
+                    // Phải đã qua 24 giờ từ lần cảnh báo cuối
+                    if (invoice.getLastReminderAt() == null) {
+                        return false;
+                    }
+                    OffsetDateTime unpaidTime = invoice.getLastReminderAt().plusHours(REMINDER_INTERVAL_HOURS);
+                    return now.isAfter(unpaidTime) || now.isEqual(unpaidTime);
                 })
                 .toList();
     }
@@ -133,15 +166,32 @@ public class InvoiceReminderService {
             // Build notification message
             String invoiceCode = invoice.getCode() != null ? invoice.getCode() : invoice.getId().toString();
             int reminderCount = invoice.getReminderCount() != null ? invoice.getReminderCount() : 0;
-            int remainingReminders = MAX_REMINDERS - reminderCount - 1;
+            int nextReminderCount = reminderCount + 1;
             
-            String title = "Nhắc nhở thanh toán hóa đơn - " + invoiceCode;
-            String message = String.format(
-                    "Bạn có hóa đơn chưa thanh toán với số tiền %s. Hạn thanh toán: %s. Vui lòng thanh toán sớm để tránh gián đoạn dịch vụ.",
-                    amountText,
-                    invoice.getDueDate() != null 
-                            ? invoice.getDueDate().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) 
-                            : "N/A");
+            String title;
+            String message;
+            
+            // Lần thứ 4 là cảnh báo cuối (cắt điện)
+            if (nextReminderCount == FINAL_WARNING_REMINDER) {
+                title = "⚠️ CẢNH BÁO CUỐI: Hóa đơn chưa thanh toán - " + invoiceCode;
+                message = String.format(
+                        "CẢNH BÁO: Bạn có hóa đơn chưa thanh toán với số tiền %s. Hạn thanh toán: %s. "
+                        + "Nếu không thanh toán trong vòng 24 giờ tới, dịch vụ sẽ bị cắt điện. Vui lòng thanh toán ngay!",
+                        amountText,
+                        invoice.getDueDate() != null 
+                                ? invoice.getDueDate().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) 
+                                : "N/A");
+            } else {
+                // Các lần nhắc thông thường (1-3)
+                title = "Nhắc nhở thanh toán hóa đơn - " + invoiceCode;
+                message = String.format(
+                        "Bạn có hóa đơn chưa thanh toán với số tiền %s. Hạn thanh toán: %s. "
+                        + "Vui lòng thanh toán sớm để tránh gián đoạn dịch vụ.",
+                        amountText,
+                        invoice.getDueDate() != null 
+                                ? invoice.getDueDate().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) 
+                                : "N/A");
+            }
 
             // Prepare data payload
             Map<String, String> data = new HashMap<>();
@@ -149,8 +199,8 @@ public class InvoiceReminderService {
             data.put("invoiceCode", invoiceCode);
             data.put("amount", totalAmount.toString());
             data.put("dueDate", invoice.getDueDate() != null ? invoice.getDueDate().toString() : "");
-            data.put("reminderCount", String.valueOf(reminderCount + 1));
-            data.put("remainingReminders", String.valueOf(remainingReminders));
+            data.put("reminderCount", String.valueOf(nextReminderCount));
+            data.put("isFinalWarning", String.valueOf(nextReminderCount == FINAL_WARNING_REMINDER));
 
             // Send notification
             notificationClient.sendResidentNotification(
@@ -169,10 +219,80 @@ public class InvoiceReminderService {
             invoice.setLastReminderAt(OffsetDateTime.now(ZONE));
             invoiceRepository.save(invoice);
 
-            log.info("✅ [InvoiceReminderService] Sent reminder #{} to residentId={}, buildingId={}, invoiceId={}", 
-                    reminderCount + 1, invoice.getPayerResidentId(), buildingId, invoice.getId());
+            log.info("✅ [InvoiceReminderService] Sent reminder #{} {} to residentId={}, buildingId={}, invoiceId={}", 
+                    nextReminderCount, 
+                    nextReminderCount == FINAL_WARNING_REMINDER ? "(FINAL WARNING)" : "",
+                    invoice.getPayerResidentId(), buildingId, invoice.getId());
         } catch (Exception e) {
             log.error("❌ [InvoiceReminderService] Failed to send reminder for invoiceId={}: {}", 
+                    invoice.getId(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Mark invoice as UNPAID status
+     * This is called after final warning (reminder #4) and 24 hours have passed
+     */
+    @Transactional
+    public void markInvoiceAsUnpaid(Invoice invoice) {
+        if (invoice.getStatus() == InvoiceStatus.UNPAID) {
+            log.info("ℹ️ [InvoiceReminderService] Invoice {} is already UNPAID, skipping.", invoice.getId());
+            return;
+        }
+        
+        invoice.setStatus(InvoiceStatus.UNPAID);
+        invoiceRepository.save(invoice);
+        log.info("✅ [InvoiceReminderService] Invoice {} marked as UNPAID.", invoice.getId());
+
+        // Send notification about being marked as UNPAID
+        try {
+            // Get buildingId from unitId
+            UUID buildingId = null;
+            if (invoice.getPayerUnitId() != null) {
+                try {
+                    BaseServiceClient.UnitInfo unitInfo = baseServiceClient.getUnitById(invoice.getPayerUnitId());
+                    if (unitInfo != null && unitInfo.getBuildingId() != null) {
+                        buildingId = unitInfo.getBuildingId();
+                    }
+                } catch (Exception e) {
+                    log.warn("⚠️ [InvoiceReminderService] Failed to get buildingId from unitId {}: {}", 
+                            invoice.getPayerUnitId(), e.getMessage());
+                }
+            }
+
+            // Calculate total amount
+            BigDecimal totalAmount = invoiceLineRepository.findByInvoiceId(invoice.getId()).stream()
+                    .map(InvoiceLine::getLineTotal)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            String invoiceCode = invoice.getCode() != null ? invoice.getCode() : invoice.getId().toString();
+            String title = "Hóa đơn đã chuyển sang trạng thái CHƯA THANH TOÁN - " + invoiceCode;
+            String message = String.format(
+                    "Hóa đơn %s của bạn đã chuyển sang trạng thái CHƯA THANH TOÁN do quá hạn và chưa thanh toán. " +
+                    "Vui lòng thanh toán ngay để khôi phục dịch vụ.",
+                    invoiceCode);
+            
+            Map<String, String> data = new HashMap<>();
+            data.put("invoiceId", invoice.getId().toString());
+            data.put("invoiceCode", invoiceCode);
+            data.put("status", InvoiceStatus.UNPAID.name());
+            data.put("amount", totalAmount.toString());
+
+            notificationClient.sendResidentNotification(
+                    invoice.getPayerResidentId(),
+                    buildingId,
+                    "BILL",
+                    title,
+                    message,
+                    invoice.getId(),
+                    "INVOICE_UNPAID",
+                    data
+            );
+
+            log.info("✅ [InvoiceReminderService] Sent UNPAID notification to residentId={}, buildingId={}, invoiceId={}", 
+                    invoice.getPayerResidentId(), buildingId, invoice.getId());
+        } catch (Exception e) {
+            log.error("❌ [InvoiceReminderService] Failed to send UNPAID notification for invoiceId={}: {}", 
                     invoice.getId(), e.getMessage(), e);
         }
     }

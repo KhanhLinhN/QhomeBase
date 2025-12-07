@@ -46,6 +46,7 @@ public class NotificationService {
                 .scope(request.getScope())
                 .targetRole(request.getTargetRole())
                 .targetBuildingId(request.getTargetBuildingId())
+                .targetResidentId(request.getTargetResidentId())
                 .referenceId(request.getReferenceId())
                 .referenceType(request.getReferenceType())
                 .actionUrl(request.getActionUrl())
@@ -344,7 +345,9 @@ public class NotificationService {
                 type == NotificationType.CARD_REJECTED) {
                 // Card notifications must have targetResidentId and match current resident
                 if (notification.getTargetResidentId() == null) {
-                    log.warn("⚠️ [NotificationService] Card notification {} missing targetResidentId, skipping", notification.getId());
+                    // This is likely an old notification created before targetResidentId was required
+                    // Log at debug level to avoid noise in logs
+                    log.debug("⚠️ [NotificationService] Card notification {} missing targetResidentId (likely old notification), skipping", notification.getId());
                     return false; // Don't show card notifications without targetResidentId
                 }
                 return residentId != null && residentId.equals(notification.getTargetResidentId());
@@ -552,5 +555,14 @@ public class NotificationService {
             
             createNotification(createRequest);
         }
+    }
+
+    /**
+     * Send FCM push notification only (without saving to DB)
+     * Used for chat messages and other real-time notifications that should not appear in notification list
+     */
+    public void sendPushOnly(UUID residentId, String title, String body, Map<String, String> dataPayload) {
+        notificationPushService.sendPushNotificationToResident(residentId, title, body, dataPayload);
+        log.debug("Sent push-only notification to resident: {} (not saved to DB)", residentId);
     }
 }

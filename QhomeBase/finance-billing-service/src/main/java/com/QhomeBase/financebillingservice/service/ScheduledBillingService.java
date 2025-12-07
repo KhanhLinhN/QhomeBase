@@ -128,6 +128,56 @@ public class ScheduledBillingService {
             log.error("❌ [InvoiceReminderJob] Error in scheduled invoice reminder job", e);
         }
     }
+
+    /**
+     * Scheduled job to mark invoices as UNPAID
+     * Runs every hour to check for invoices that need to be marked as UNPAID
+     * Logic:
+     * 1. Find invoices with status = PUBLISHED
+     * 2. Check if reminder count = 4 (3 nhắc + 1 cảnh báo cuối)
+     * 3. Check if 24 hours have passed since final warning
+     * 4. Mark as UNPAID
+     */
+    @Scheduled(cron = "${invoice.reminder.cron:0 0 * * * *}", zone = "Asia/Ho_Chi_Minh")
+    @Transactional
+    public void markInvoicesAsUnpaid() {
+        log.info("🔄 Starting scheduled invoice UNPAID status marking...");
+        
+        try {
+            List<Invoice> invoicesNeedingUnpaid = invoiceReminderService.findInvoicesNeedingUnpaidStatus();
+            
+            if (invoicesNeedingUnpaid.isEmpty()) {
+                log.debug("ℹ️ [InvoiceUnpaidJob] No invoices need to be marked as UNPAID at this time");
+                return;
+            }
+            
+            log.info("📧 Found {} invoices that need to be marked as UNPAID", invoicesNeedingUnpaid.size());
+            
+            int markedCount = 0;
+            for (Invoice invoice : invoicesNeedingUnpaid) {
+                try {
+                    // Double-check status before marking (might have been paid between query and now)
+                    Invoice currentInvoice = invoiceReminderService.getInvoiceRepository().findById(invoice.getId())
+                            .orElse(null);
+                    if (currentInvoice == null || currentInvoice.getStatus() != com.QhomeBase.financebillingservice.model.InvoiceStatus.PUBLISHED) {
+                        log.debug("ℹ️ [InvoiceUnpaidJob] Invoice {} status changed, skipping", invoice.getId());
+                        continue;
+                    }
+                    
+                    invoiceReminderService.markInvoiceAsUnpaid(currentInvoice);
+                    markedCount++;
+                } catch (Exception e) {
+                    log.error("❌ [InvoiceUnpaidJob] Failed to mark invoice {} as UNPAID: {}", 
+                            invoice.getId(), e.getMessage(), e);
+                }
+            }
+            
+            log.info("✅ [InvoiceUnpaidJob] Marked {} invoices as UNPAID out of {} invoices that needed marking", 
+                    markedCount, invoicesNeedingUnpaid.size());
+        } catch (Exception e) {
+            log.error("❌ [InvoiceUnpaidJob] Error in scheduled invoice UNPAID marking job", e);
+        }
+    }
 }
 
 
