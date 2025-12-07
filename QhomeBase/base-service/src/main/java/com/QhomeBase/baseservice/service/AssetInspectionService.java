@@ -356,6 +356,27 @@ public class AssetInspectionService {
         return toDto(inspection);
     }
 
+    /**
+     * Update scheduled date for inspection
+     * Allows multiple updates (no restriction on how many times)
+     */
+    @Transactional
+    public AssetInspectionDto updateScheduledDate(UUID inspectionId, LocalDate scheduledDate) {
+        AssetInspection inspection = inspectionRepository.findById(inspectionId)
+                .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
+        
+        if (scheduledDate == null) {
+            throw new IllegalArgumentException("Scheduled date cannot be null");
+        }
+        
+        // Allow updating scheduledDate multiple times - no restriction
+        inspection.setScheduledDate(scheduledDate);
+        inspection = inspectionRepository.save(inspection);
+        
+        log.info("Updated scheduled date for inspection {} to {}", inspectionId, scheduledDate);
+        return toDto(inspection);
+    }
+
    
     @Transactional
     public AssetInspectionDto generateInvoice(UUID inspectionId, UUID createdBy) {

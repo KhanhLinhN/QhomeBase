@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -651,6 +652,8 @@ public class DirectInvitationService {
 
     /**
      * Get pending invitations for a user
+     * Always returns a list (may be empty) - screen should always be visible like group invitations
+     * Only returns PENDING invitations (not expired)
      */
     public List<DirectInvitationResponse> getPendingInvitations(UUID userId) {
         String accessToken = getCurrentAccessToken();
@@ -662,30 +665,19 @@ public class DirectInvitationService {
         
         if (residentId == null) {
             log.error("Resident not found for user: {}", userId);
-            throw new RuntimeException("Resident not found for user: " + userId);
+            // Return empty list instead of throwing exception - allows screen to always be visible
+            log.warn("Returning empty list for user {} (resident not found) - screen should still be visible", userId);
+            return new ArrayList<>();
         }
 
+        // Get only PENDING invitations (not expired)
         List<DirectInvitation> invitations = invitationRepository
                 .findPendingInvitationsByInviteeId(residentId);
         
         log.info("Found {} pending invitations for residentId: {}", invitations.size(), residentId);
-        for (DirectInvitation inv : invitations) {
-            log.info("  - Invitation ID: {}, Conversation ID: {}, Inviter: {}, Invitee: {}, Status: {}, ExpiresAt: {}", 
-                    inv.getId(), inv.getConversationId(), inv.getInviterId(), inv.getInviteeId(), 
-                    inv.getStatus(), inv.getExpiresAt());
-        }
         
-        // Also check all invitations where this user is invitee (for debugging)
-        List<DirectInvitation> allInvitationsAsInvitee = invitationRepository.findAll().stream()
-                .filter(inv -> inv.getInviteeId().equals(residentId))
-                .collect(Collectors.toList());
-        log.info("Total invitations where user {} is invitee: {}", residentId, allInvitationsAsInvitee.size());
-        for (DirectInvitation inv : allInvitationsAsInvitee) {
-            log.info("  - Invitation ID: {}, Conversation ID: {}, Inviter: {}, Invitee: {}, Status: {}, ExpiresAt: {}", 
-                    inv.getId(), inv.getConversationId(), inv.getInviterId(), inv.getInviteeId(), 
-                    inv.getStatus(), inv.getExpiresAt());
-        }
-
+        // Always return a list (may be empty) - this allows the screen to always be visible
+        // Frontend should display the screen regardless of whether list is empty or not
         return invitations.stream()
                 .map(inv -> toResponse(inv, accessToken))
                 .collect(Collectors.toList());

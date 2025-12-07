@@ -414,11 +414,12 @@ function Start-ServiceWithLog {
     $serviceDir = Join-Path $scriptDir $ServicePath
     $mavenCmd = "mvn spring-boot:run"
     
-    Start-Process powershell -ArgumentList @(
-        "-NoExit",
-        "-Command",
-        "cd '$serviceDir'; Write-Host '$ServiceName (port $Port)' -ForegroundColor $Color; Write-Host ''; $mavenCmd"
-    ) -WindowStyle Normal
+    # Build command string - properly escape single quotes by doubling them for PowerShell
+    $serviceNameEscaped = $ServiceName -replace "'", "''"
+    $serviceDirEscaped = $serviceDir -replace "'", "''"
+    $command = "cd '$serviceDirEscaped'; Write-Host '$serviceNameEscaped (port $Port)' -ForegroundColor $Color; Write-Host ''; $mavenCmd"
+    
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", $command -WindowStyle Normal
     
     # Delay between services to reduce system load
     Write-Host "  Waiting $DelaySeconds seconds before next service..." -ForegroundColor Gray

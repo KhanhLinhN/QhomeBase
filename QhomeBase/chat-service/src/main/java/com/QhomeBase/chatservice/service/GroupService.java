@@ -255,7 +255,17 @@ public class GroupService {
             // Check if there's at least one other admin
             List<GroupMember> admins = groupMemberRepository.findAdminsByGroupId(groupId);
             if (admins.size() <= 1) {
-                throw new RuntimeException("Cannot remove the last admin");
+                // Check if there are other members (non-admin)
+                List<GroupMember> allMembers = groupMemberRepository.findByGroupId(groupId);
+                long otherMembersCount = allMembers.stream()
+                        .filter(m -> !m.getResidentId().equals(memberId))
+                        .count();
+                
+                if (otherMembersCount > 0) {
+                    // There are other members but no other admin - cannot remove
+                    throw new RuntimeException("Cannot remove the last admin. Please promote another member to admin first, or transfer admin rights before leaving.");
+                }
+                // No other members - allow removal (group will be empty)
             }
         }
 
@@ -286,6 +296,45 @@ public class GroupService {
         if (residentId == null) {
             throw new RuntimeException("Resident not found for user: " + userId);
         }
+        
+        // Check if user is the last admin before attempting to leave
+        GroupMember currentMember = groupMemberRepository.findByGroupIdAndResidentId(groupId, residentId)
+                .orElseThrow(() -> new RuntimeException("You are not a member of this group"));
+        
+        if ("ADMIN".equals(currentMember.getRole())) {
+            List<GroupMember> admins = groupMemberRepository.findAdminsByGroupId(groupId);
+            if (admins.size() <= 1) {
+                // User is the last admin - need to promote someone else or handle differently
+                List<GroupMember> allMembers = groupMemberRepository.findByGroupId(groupId);
+                
+                // Filter out the current user
+                List<GroupMember> otherMembers = allMembers.stream()
+                        .filter(m -> !m.getResidentId().equals(residentId))
+                        .collect(Collectors.toList());
+                
+                if (!otherMembers.isEmpty()) {
+                    // Promote the first MODERATOR, or if none, the oldest MEMBER
+                    GroupMember memberToPromote = otherMembers.stream()
+                            .filter(m -> "MODERATOR".equals(m.getRole()))
+                            .findFirst()
+                            .orElse(otherMembers.stream()
+                                    .min((m1, m2) -> m1.getJoinedAt().compareTo(m2.getJoinedAt()))
+                                    .orElse(null));
+                    
+                    if (memberToPromote != null) {
+                        memberToPromote.setRole("ADMIN");
+                        groupMemberRepository.save(memberToPromote);
+                        log.info("Promoted member {} to ADMIN in group {} as the previous admin is leaving", 
+                                memberToPromote.getResidentId(), groupId);
+                    }
+                } else {
+                    // No other members - allow leaving (group will be empty)
+                    log.info("Last admin leaving group {} with no other members", groupId);
+                }
+            }
+        }
+        
+        // Now proceed with removal
         removeMember(groupId, residentId, userId);
     }
 

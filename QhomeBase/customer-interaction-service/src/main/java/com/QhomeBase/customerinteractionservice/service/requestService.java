@@ -159,11 +159,37 @@ public class requestService {
         // Kiểm tra rate limit: số lượng request trong 1 giờ và 24 giờ
         validateRequestRateLimit(resident.id());
 
+        // Validate resident name (họ tên)
+        String residentName = resident.fullName();
+        if (residentName != null) {
+            // Validate: không có ký tự đặc biệt, không có quá nhiều khoảng cách
+            if (!residentName.matches("^[\\p{L}\\s]+$")) {
+                throw new IllegalArgumentException("Họ và tên không được chứa ký tự đặc biệt hoặc số");
+            }
+            // Kiểm tra không có quá nhiều khoảng cách liên tiếp (nhiều hơn 1 khoảng cách)
+            if (residentName.matches(".*\\s{2,}.*")) {
+                throw new IllegalArgumentException("Họ và tên không được có quá nhiều khoảng cách");
+            }
+            // Trim và normalize khoảng cách
+            residentName = residentName.trim().replaceAll("\\s+", " ");
+        }
+
+        // Validate phone number (số điện thoại)
+        String phone = resident.phone();
+        if (phone != null && !phone.trim().isEmpty()) {
+            // Remove all non-digit characters
+            String phoneDigits = phone.replaceAll("[^0-9]", "");
+            // Validate: phải đúng 10 số
+            if (phoneDigits.length() != 10) {
+                throw new IllegalArgumentException("Số điện thoại phải có đúng 10 chữ số");
+            }
+        }
+
         Request entity = new Request();
         entity.setId(dto.getId());
         entity.setRequestCode(dto.getRequestCode() != null ? dto.getRequestCode() : generateRequestCode());
         entity.setResidentId(resident.id());
-        entity.setResidentName(resident.fullName());
+        entity.setResidentName(residentName);
         entity.setImagePath(dto.getImagePath());
         entity.setTitle(dto.getTitle());
         entity.setContent(dto.getContent());
@@ -259,6 +285,17 @@ public class requestService {
                 .orElseThrow(() -> new RuntimeException("Request not found with id: " + requestId));
 
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
+        
+        // Validate working hours: 8:00 - 20:00
+        if ("accept".equalsIgnoreCase(action)) {
+            int currentHour = now.getHour();
+            if (currentHour < 8 || currentHour >= 20) {
+                throw new IllegalStateException(
+                    "Yêu cầu sửa chữa chỉ có thể được xử lý trong giờ hành chính (8:00 - 20:00). " +
+                    "Thời gian hiện tại: " + now.getHour() + ":" + String.format("%02d", now.getMinute())
+                );
+            }
+        }
         
         if ("deny".equalsIgnoreCase(action)) {
             // Deny: update status to Done, create log with note
