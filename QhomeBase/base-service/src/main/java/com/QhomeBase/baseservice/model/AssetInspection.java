@@ -7,6 +7,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
 import org.hibernate.annotations.JdbcTypeCode;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -45,6 +46,9 @@ public class AssetInspection {
     @Column(name = "inspector_name")
     private String inspectorName;
 
+    @Column(name = "inspector_id")
+    private UUID inspectorId;
+
     @Column(name = "inspector_notes", columnDefinition = "TEXT")
     private String inspectorNotes;
 
@@ -56,6 +60,13 @@ public class AssetInspection {
 
     @Column(name = "created_by")
     private UUID createdBy;
+
+    @Column(name = "total_damage_cost", precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal totalDamageCost = BigDecimal.ZERO;
+
+    @Column(name = "invoice_id")
+    private UUID invoiceId;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

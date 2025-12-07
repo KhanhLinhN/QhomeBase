@@ -73,16 +73,9 @@ public class AssetService {
                 .assetType(req.assetType())
                 .assetCode(req.assetCode())
                 .name(req.name())
-                .brand(req.brand())
-                .model(req.model())
-                .serialNumber(req.serialNumber())
-                .description(req.description())
                 .active(req.active() != null ? req.active() : true)
                 .installedAt(req.installedAt())
-                .removedAt(req.removedAt())
-                .warrantyUntil(req.warrantyUntil())
                 .purchasePrice(req.purchasePrice())
-                .purchaseDate(req.purchaseDate())
                 .build();
 
         Asset saved = assetRepository.save(asset);
@@ -103,16 +96,9 @@ public class AssetService {
         }
 
         if (req.name() != null) asset.setName(req.name());
-        if (req.brand() != null) asset.setBrand(req.brand());
-        if (req.model() != null) asset.setModel(req.model());
-        if (req.serialNumber() != null) asset.setSerialNumber(req.serialNumber());
-        if (req.description() != null) asset.setDescription(req.description());
         if (req.active() != null) asset.setActive(req.active());
         if (req.installedAt() != null) asset.setInstalledAt(req.installedAt());
-        if (req.removedAt() != null) asset.setRemovedAt(req.removedAt());
-        if (req.warrantyUntil() != null) asset.setWarrantyUntil(req.warrantyUntil());
         if (req.purchasePrice() != null) asset.setPurchasePrice(req.purchasePrice());
-        if (req.purchaseDate() != null) asset.setPurchaseDate(req.purchaseDate());
 
         Asset updated = assetRepository.save(asset);
         log.info("Updated asset: {}", updated.getId());
@@ -174,31 +160,17 @@ public class AssetService {
             AssetType assetType,
             String assetCode,
             String name,
-            String brand,
-            String model,
-            String serialNumber,
-            String description,
             Boolean active,
             LocalDate installedAt,
-            LocalDate removedAt,
-            LocalDate warrantyUntil,
-            java.math.BigDecimal purchasePrice,
-            LocalDate purchaseDate
+            java.math.BigDecimal purchasePrice
     ) {}
 
     public record UpdateAssetRequest(
             String assetCode,
             String name,
-            String brand,
-            String model,
-            String serialNumber,
-            String description,
             Boolean active,
             LocalDate installedAt,
-            LocalDate removedAt,
-            LocalDate warrantyUntil,
-            java.math.BigDecimal purchasePrice,
-            LocalDate purchaseDate
+            java.math.BigDecimal purchasePrice
     ) {}
 }
 

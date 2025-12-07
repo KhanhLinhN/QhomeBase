@@ -5,8 +5,8 @@ import com.QhomeBase.financebillingservice.dto.InvoiceDto;
 import com.QhomeBase.financebillingservice.model.Invoice;
 import com.QhomeBase.financebillingservice.repository.BuildingInvoiceSummary;
 import com.QhomeBase.financebillingservice.repository.InvoiceRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -14,12 +14,16 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class BillingCycleInvoiceService {
 
     private final InvoiceRepository invoiceRepository;
     private final InvoiceService invoiceService;
+
+    public BillingCycleInvoiceService(InvoiceRepository invoiceRepository, @Lazy InvoiceService invoiceService) {
+        this.invoiceRepository = invoiceRepository;
+        this.invoiceService = invoiceService;
+    }
 
     public List<BuildingInvoiceSummaryDto> summarizeByCycle(UUID cycleId, String serviceCode, String month) {
         List<BuildingInvoiceSummary> summaryRows = invoiceRepository.summarizeByCycleAndBuilding(cycleId, null, null);

@@ -2,6 +2,7 @@ package com.QhomeBase.baseservice.dto;
 
 import com.QhomeBase.baseservice.model.InspectionStatus;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -15,11 +16,14 @@ public record AssetInspectionDto(
         LocalDate inspectionDate,
         InspectionStatus status,
         String inspectorName,
+        UUID inspectorId,
         String inspectorNotes,
         OffsetDateTime completedAt,
         UUID completedBy,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
-        List<AssetInspectionItemDto> items
+        List<AssetInspectionItemDto> items,
+        BigDecimal totalDamageCost,
+        UUID invoiceId
 ) {}
 

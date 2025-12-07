@@ -5,6 +5,8 @@ import com.QhomeBase.baseservice.dto.MeterReadingImportResponse;
 import com.QhomeBase.baseservice.dto.VehicleActivatedEvent;
 import com.QhomeBase.baseservice.dto.finance.BillingCycleDto;
 import com.QhomeBase.baseservice.dto.finance.CreateBillingCycleRequest;
+import com.QhomeBase.baseservice.dto.finance.CreateInvoiceRequest;
+import com.QhomeBase.baseservice.dto.finance.InvoiceDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
@@ -106,5 +108,35 @@ public class FinanceBillingClient {
                             log.warn("Retrying finance service query (attempt {}/3): {}", 
                                 retrySignal.totalRetries() + 1, retrySignal.failure().getMessage())))
                 .doOnError(error -> log.error("Failed to query billing cycles for external id {} after retries", externalCycleId, error));
+    }
+
+    public Mono<InvoiceDto> createInvoice(CreateInvoiceRequest request) {
+        log.debug("Calling finance service to create invoice for unit: {}", request.getPayerUnitId());
+        return financeWebClient
+                .post()
+                .uri("/api/invoices")
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(InvoiceDto.class)
+                .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
+                        .filter(throwable -> throwable instanceof WebClientRequestException)
+                        .doBeforeRetry(retrySignal -> 
+                            log.warn("Retrying finance service invoice creation (attempt {}/3): {}", 
+                                retrySignal.totalRetries() + 1, retrySignal.failure().getMessage())))
+                .doOnSuccess(dto -> log.debug("Finance returned invoice {}", dto != null ? dto.getId() : "null"))
+                .doOnError(error -> log.error("Finance invoice creation failed after retries", error));
+    }
+
+    public InvoiceDto createInvoiceSync(CreateInvoiceRequest request) {
+        try {
+            InvoiceDto invoice = createInvoice(request).block();
+            log.info("Created invoice {} in finance-billing for unit: {}", 
+                    invoice != null ? invoice.getId() : "null",
+                    request.getPayerUnitId());
+            return invoice;
+        } catch (Exception e) {
+            log.error("❌ FAILED to create invoice in finance-billing", e);
+            throw new RuntimeException("Failed to create invoice in finance-billing: " + e.getMessage(), e);
+        }
     }
 }

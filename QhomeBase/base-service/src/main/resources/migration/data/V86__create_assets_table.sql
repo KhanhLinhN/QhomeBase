@@ -5,11 +5,7 @@ DO $$ BEGIN
     CREATE TYPE data.asset_type AS ENUM (
         'AIR_CONDITIONER',
         'KITCHEN',
-        'REFRIGERATOR',
-        'WASHING_MACHINE',
         'WATER_HEATER',
-        'FAN',
-        'TELEVISION',
         'FURNITURE',
         'OTHER'
     );
@@ -48,7 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_assets_active ON data.assets (active);
 CREATE INDEX IF NOT EXISTS idx_assets_code ON data.assets (asset_code);
 
 -- Add comments
-COMMENT ON TABLE data.assets IS 'Tài sản của căn hộ (điều hòa, bếp, tủ lạnh, ...)';
+COMMENT ON TABLE data.assets IS 'Tài sản của căn hộ (điều hòa, bếp, nóng lạnh, nội thất, khác)';
 COMMENT ON COLUMN data.assets.asset_type IS 'Loại tài sản';
 COMMENT ON COLUMN data.assets.asset_code IS 'Mã tài sản (unique)';
 COMMENT ON COLUMN data.assets.name IS 'Tên tài sản';
