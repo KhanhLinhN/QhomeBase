@@ -259,7 +259,8 @@ public class MarketplaceCommentService {
     public MarketplaceComment updateComment(UUID commentId, UUID residentId, String content) {
         log.info("Updating comment: {} by user: {}", commentId, residentId);
 
-        MarketplaceComment comment = commentRepository.findById(commentId)
+        // Load comment with replies using EntityGraph to prevent LazyInitializationException
+        MarketplaceComment comment = commentRepository.findByIdWithReplies(commentId)
                 .orElseThrow(() -> new RuntimeException("Comment not found: " + commentId));
 
         if (!comment.getResidentId().equals(residentId)) {
@@ -267,7 +268,39 @@ public class MarketplaceCommentService {
         }
 
         comment.setContent(content);
-        return commentRepository.save(comment);
+        MarketplaceComment saved = commentRepository.save(comment);
+        
+        // Force initialization of all nested replies recursively to prevent LazyInitializationException
+        // when mapper tries to access it after transaction closes
+        initializeAllRepliesRecursively(saved);
+        
+        return saved;
+    }
+    
+    /**
+     * Recursively initialize all nested replies to prevent LazyInitializationException
+     * This method ensures all nested replies at any depth are loaded within the transaction
+     * by reloading each reply with its nested replies from database
+     */
+    private void initializeAllRepliesRecursively(MarketplaceComment comment) {
+        if (comment.getReplies() != null) {
+            // Force initialization of the replies collection
+            Hibernate.initialize(comment.getReplies());
+            
+            // If replies collection is not empty, recursively initialize each reply
+            if (!comment.getReplies().isEmpty()) {
+                for (MarketplaceComment reply : comment.getReplies()) {
+                    // Reload reply with its nested replies from database to ensure all nested replies are loaded
+                    commentRepository.findByIdWithReplies(reply.getId())
+                            .ifPresent(loadedReply -> {
+                                // Force initialization of nested replies for the loaded reply
+                                initializeAllRepliesRecursively(loadedReply);
+                                // Update the reply in the collection with the loaded one
+                                reply.setReplies(loadedReply.getReplies());
+                            });
+                }
+            }
+        }
     }
 
     /**
@@ -285,6 +318,12 @@ public class MarketplaceCommentService {
 
         MarketplaceComment comment = commentRepository.findById(commentId)
                 .orElseThrow(() -> new RuntimeException("Comment not found: " + commentId));
+
+        // Force initialization of replies collection to prevent LazyInitializationException
+        // when accessing it later in the method
+        if (comment.getReplies() != null) {
+            Hibernate.initialize(comment.getReplies());
+        }
 
         MarketplacePost post = comment.getPost();
         UUID postOwnerId = post.getResidentId();
