@@ -53,23 +53,65 @@ public class FileStorageService {
     }
 
     /**
+     * Upload video to ImageKit for post
+     * Returns map with key: original (ImageKit URL)
+     * Note: ImageKit supports video uploads, so we can use the same uploadImage method
+     */
+    public Map<String, String> uploadVideo(MultipartFile file, String postId) throws IOException {
+        log.info("📤 [FileStorageService] Uploading video to ImageKit for post: {}", postId);
+        
+        // Upload to ImageKit with folder "marketplace/posts/{postId}"
+        // ImageKit supports video files, so we can use uploadImage method
+        String videoUrl = imageKitService.uploadImage(file, "marketplace/posts/" + postId);
+
+        Map<String, String> videoUrls = new HashMap<>();
+        videoUrls.put("original", videoUrl);
+
+        log.info("✅ [FileStorageService] Uploaded video to ImageKit: {}", videoUrl);
+        return videoUrls;
+    }
+
+    /**
      * Upload processed images (thumbnail, medium, large) to ImageKit
-     * Note: For now, we upload the original image only. ImageKit can generate transformations on-the-fly.
+     * Uploads both original and thumbnail if available
      */
     public Map<String, String> uploadProcessedImages(Map<String, byte[]> processedImages, String postId, String baseFileName) throws IOException {
         log.info("📤 [FileStorageService] Uploading processed images to ImageKit for post: {}", postId);
         
-        // For ImageKit, we can use transformations. For now, upload original if available
-        // In the future, we can upload different sizes or use ImageKit transformations
         Map<String, String> imageUrls = new HashMap<>();
-
-        // Upload original if available
+        String folder = "marketplace/posts/" + postId;
+        
+        // Determine file extension from baseFileName
+        String fileExtension = baseFileName != null && baseFileName.contains(".")
+                ? baseFileName.substring(baseFileName.lastIndexOf("."))
+                : ".jpg";
+        
+        // Upload original image if available
         if (processedImages.containsKey("original")) {
-            // Note: This would require converting byte[] back to MultipartFile
-            // For now, we'll use the original upload method
-            log.warn("⚠️ [FileStorageService] Processed images upload not fully implemented for ImageKit. Using original image.");
+            byte[] originalBytes = processedImages.get("original");
+            String originalFileName = baseFileName != null ? baseFileName : UUID.randomUUID().toString() + fileExtension;
+            String originalUrl = imageKitService.uploadImageFromBytes(originalBytes, originalFileName, folder);
+            imageUrls.put("original", originalUrl);
+            log.info("✅ [FileStorageService] Uploaded original image: {}", originalUrl);
         }
-
+        
+        // Upload thumbnail if available
+        if (processedImages.containsKey("thumbnail")) {
+            byte[] thumbnailBytes = processedImages.get("thumbnail");
+            String thumbnailFileName = baseFileName != null 
+                    ? baseFileName.replace(fileExtension, "_thumb" + fileExtension)
+                    : UUID.randomUUID().toString() + "_thumb" + fileExtension;
+            String thumbnailUrl = imageKitService.uploadImageFromBytes(thumbnailBytes, thumbnailFileName, folder);
+            imageUrls.put("thumbnail", thumbnailUrl);
+            log.info("✅ [FileStorageService] Uploaded thumbnail image: {}", thumbnailUrl);
+        }
+        
+        // Ensure at least original URL is present
+        if (imageUrls.isEmpty()) {
+            throw new IOException("No processed images to upload. Processed images map is empty or doesn't contain 'original' key.");
+        }
+        
+        log.info("✅ [FileStorageService] Successfully uploaded {} processed image(s) to ImageKit", imageUrls.size());
         return imageUrls;
     }
 

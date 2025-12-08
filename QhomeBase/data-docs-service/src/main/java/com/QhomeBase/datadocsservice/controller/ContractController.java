@@ -163,86 +163,65 @@ public class ContractController {
     }
 
     @PostMapping("/renewal/trigger-reminders")
-    @Operation(summary = "Trigger renewal reminders manually", description = "Manually trigger the renewal reminder job (for testing). This sends reminders for contracts expiring within 30 days.")
+    @Operation(summary = "Trigger renewal reminders manually", description = "Manually trigger the renewal reminder job (for testing). " +
+            "Sends reminders based on current date: " +
+            "- Reminder 1: 28-32 days before endDate " +
+            "- Reminder 2: Day 8 of endDate month " +
+            "- Reminder 3: Day 20 of endDate month (FINAL)")
     public ResponseEntity<Map<String, Object>> triggerRenewalReminders() {
-        log.info("Manual trigger: Send renewal reminders");
+        log.info("Manual trigger: Send renewal reminders via ContractService.triggerRenewalReminders()");
+        
+        // Use the updated logic in ContractService that checks day of month
+        contractService.triggerRenewalReminders();
+        
+        // Note: The actual counts are logged in ContractService.triggerRenewalReminders()
+        // We return a success message here
         java.time.LocalDate today = java.time.LocalDate.now();
-        java.time.LocalDate thirtyDaysFromToday = today.plusDays(30);
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "message", "Renewal reminders triggered manually. Check logs for details.",
+            "currentDate", today.toString(),
+            "note", "Reminder 2 is sent on day 8 of endDate month, Reminder 3 is sent on day 20 of endDate month. " +
+                    "Today is day " + today.getDayOfMonth() + ", so reminder 3 will only be sent on day 20."
+        ));
+    }
+    
+    @PostMapping("/renewal/trigger-reminder-3-test")
+    @Operation(summary = "Force trigger reminder 3 for testing", description = "Force send reminder 3 for contracts that have sent reminder 1, " +
+            "regardless of current date. This is for testing purposes only.")
+    public ResponseEntity<Map<String, Object>> triggerReminder3ForTesting() {
+        log.info("Manual trigger: Force send reminder 3 for testing");
+        java.time.LocalDate today = java.time.LocalDate.now();
         
-        int firstReminderCount = 0;
-        int secondReminderCount = 0;
+        List<com.QhomeBase.datadocsservice.model.Contract> contracts = contractService.findContractsNeedingRenewalReminder();
+        int thirdReminderCount = 0;
         
-        List<com.QhomeBase.datadocsservice.model.Contract> firstReminderContracts = contractService.findContractsNeedingRenewalReminder();
-        for (com.QhomeBase.datadocsservice.model.Contract contract : firstReminderContracts) {
+        for (com.QhomeBase.datadocsservice.model.Contract contract : contracts) {
             try {
                 if (contract.getEndDate() != null 
-                        && contract.getRenewalReminderSentAt() == null
-                        && !contract.getEndDate().isBefore(today)
-                        && !contract.getEndDate().isAfter(thirtyDaysFromToday)) {
+                        && "REMINDED".equals(contract.getRenewalStatus())
+                        && contract.getRenewalReminderSentAt() != null
+                        && contract.getEndDate().getYear() == today.getYear()
+                        && contract.getEndDate().getMonth() == today.getMonth()
+                        && java.time.temporal.ChronoUnit.DAYS.between(today, contract.getEndDate()) > 0
+                        && java.time.temporal.ChronoUnit.DAYS.between(today, contract.getEndDate()) < 30) {
+                    
+                    // Force send reminder 3 for testing (bypass day 20 check)
                     contractService.sendRenewalReminder(contract.getId());
-                    firstReminderCount++;
-                    log.info("Sent first renewal reminder for contract {} (expires on {}, within 30 days from today)", 
+                    thirdReminderCount++;
+                    log.info("✅ [TEST] Force sent THIRD (FINAL) renewal reminder for contract {} (expires on {})", 
                             contract.getContractNumber(), contract.getEndDate());
                 }
             } catch (Exception e) {
-                log.error("Error sending first renewal reminder for contract {}", contract.getId(), e);
-            }
-        }
-        
-        List<com.QhomeBase.datadocsservice.model.Contract> secondReminderContracts = contractService.findContractsNeedingSecondReminder();
-        for (com.QhomeBase.datadocsservice.model.Contract contract : secondReminderContracts) {
-            try {
-                if (contract.getEndDate() != null 
-                        && "REMINDED".equals(contract.getRenewalStatus())
-                        && contract.getRenewalReminderSentAt() != null) {
-                    long daysSinceFirstReminder = java.time.temporal.ChronoUnit.DAYS.between(
-                        contract.getRenewalReminderSentAt().toLocalDate(),
-                        today
-                    );
-                    
-                    if (daysSinceFirstReminder >= 7 && daysSinceFirstReminder < 20) {
-                        contractService.sendRenewalReminder(contract.getId());
-                        secondReminderCount++;
-                        log.info("Sent second renewal reminder for contract {} (expires on {}, {} days since first reminder)", 
-                                contract.getContractNumber(), contract.getEndDate(), daysSinceFirstReminder);
-                    }
-                }
-            } catch (Exception e) {
-                log.error("Error sending second renewal reminder for contract {}", contract.getId(), e);
-            }
-        }
-        
-        int thirdReminderCount = 0;
-        List<com.QhomeBase.datadocsservice.model.Contract> thirdReminderContracts = contractService.findContractsNeedingThirdReminder();
-        for (com.QhomeBase.datadocsservice.model.Contract contract : thirdReminderContracts) {
-            try {
-                if (contract.getEndDate() != null 
-                        && "REMINDED".equals(contract.getRenewalStatus())
-                        && contract.getRenewalReminderSentAt() != null) {
-                    long daysSinceFirstReminder = java.time.temporal.ChronoUnit.DAYS.between(
-                        contract.getRenewalReminderSentAt().toLocalDate(),
-                        today
-                    );
-                    
-                    if (daysSinceFirstReminder >= 20) {
-                        contractService.sendRenewalReminder(contract.getId());
-                        thirdReminderCount++;
-                        log.info("Sent third (FINAL) renewal reminder for contract {} (expires on {}, {} days since first reminder - THIS IS THE DEADLINE)", 
-                                contract.getContractNumber(), contract.getEndDate(), daysSinceFirstReminder);
-                    }
-                }
-            } catch (Exception e) {
-                log.error("Error sending third renewal reminder for contract {}", contract.getId(), e);
+                log.error("Error force sending reminder 3 for contract {}", contract.getId(), e);
             }
         }
         
         return ResponseEntity.ok(Map.of(
             "success", true,
-            "message", "Renewal reminders triggered manually",
-            "firstRemindersSent", firstReminderCount,
-            "secondRemindersSent", secondReminderCount,
+            "message", "Force triggered reminder 3 for testing",
             "thirdRemindersSent", thirdReminderCount,
-            "totalSent", firstReminderCount + secondReminderCount + thirdReminderCount
+            "note", "This bypasses the day 20 check. For production, reminder 3 is only sent on day 20 of endDate month."
         ));
     }
 

@@ -94,6 +94,61 @@ public class AsyncImageProcessingService {
     }
 
     /**
+     * Process thumbnail asynchronously and update existing image
+     * This is used when image is already uploaded and saved to database
+     */
+    @Async("imageProcessingExecutor")
+    @Transactional
+    public CompletableFuture<Void> processThumbnailAsync(
+            byte[] fileBytes,
+            String originalFilename,
+            String contentType,
+            UUID postId,
+            String baseFileName,
+            UUID existingImageId) {
+        try {
+            log.info("Starting async thumbnail processing for image: {}, post: {}", existingImageId, postId);
+            
+            // Get existing image
+            MarketplacePostImage existingImage = imageRepository.findById(existingImageId)
+                    .orElseThrow(() -> new RuntimeException("Image not found: " + existingImageId));
+            
+            // Create a temporary MultipartFile-like wrapper from bytes
+            MultipartFileWrapper fileWrapper = new MultipartFileWrapper(
+                    fileBytes, originalFilename, contentType);
+            
+            // Validate image
+            imageProcessingService.validateImage(fileWrapper);
+            
+            // Process image (resize, thumbnail)
+            Map<String, byte[]> processedImages = imageProcessingService.processImage(fileWrapper);
+            
+            // Upload processed images (thumbnail)
+            Map<String, String> imageUrls = fileStorageService.uploadProcessedImages(
+                    processedImages, postId.toString(), baseFileName);
+            
+            // Get thumbnail URL
+            String thumbnailUrl = imageUrls.get("thumbnail");
+            
+            // Update existing image with thumbnail URL
+            if (thumbnailUrl != null && !thumbnailUrl.isEmpty()) {
+                existingImage.setThumbnailUrl(thumbnailUrl);
+                imageRepository.save(existingImage);
+                log.info("✅ [AsyncImageProcessingService] Updated thumbnail for image: {}, thumbnailUrl: {}", 
+                        existingImageId, thumbnailUrl);
+            } else {
+                log.warn("⚠️ [AsyncImageProcessingService] No thumbnail URL returned for image: {}", existingImageId);
+            }
+            
+            return CompletableFuture.completedFuture(null);
+            
+        } catch (Exception e) {
+            log.error("Error processing thumbnail asynchronously for image: {}", existingImageId, e);
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    /**
      * Simple wrapper to convert bytes to MultipartFile-like interface
      */
     private static class MultipartFileWrapper implements MultipartFile {

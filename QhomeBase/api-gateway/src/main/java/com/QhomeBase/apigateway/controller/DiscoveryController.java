@@ -6,11 +6,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URI;
+import java.net.*;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -66,10 +67,20 @@ public class DiscoveryController {
         info.put("apiBasePath", "/api");
         info.put("discoveryMethod", publicUrl != null ? "ngrok" : "local");
         
+        // Get local IP addresses (for mobile hotspot and local network discovery)
+        Map<String, String> localIps = getLocalIpAddresses();
+        info.put("localIps", localIps);
+        
+        // Get the primary local IP (non-loopback, non-link-local)
+        String primaryLocalIp = getPrimaryLocalIp();
+        info.put("primaryLocalIp", primaryLocalIp);
+        
         // Build full API URL
         String apiUrl = publicUrl != null && !publicUrl.isEmpty()
             ? publicUrl + "/api" 
-            : "http://localhost:" + serverPort + "/api";
+            : (primaryLocalIp != null 
+                ? "http://" + primaryLocalIp + ":" + serverPort + "/api"
+                : "http://localhost:" + serverPort + "/api");
         info.put("apiUrl", apiUrl);
         
         return ResponseEntity.ok(info);
@@ -152,6 +163,67 @@ public class DiscoveryController {
         } catch (Exception e) {
             // Ngrok API not available - this is expected if ngrok is not running
             // or not on the same machine
+        }
+        return null;
+    }
+
+    /**
+     * Get local IP addresses of the server
+     * Returns all non-loopback, non-link-local IPv4 addresses
+     */
+    private Map<String, String> getLocalIpAddresses() {
+        Map<String, String> ipAddresses = new HashMap<>();
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface networkInterface = interfaces.nextElement();
+                // Skip loopback and inactive interfaces
+                if (networkInterface.isLoopback() || !networkInterface.isUp()) {
+                    continue;
+                }
+                
+                Enumeration<InetAddress> addresses = networkInterface.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress address = addresses.nextElement();
+                    // Only IPv4 addresses, skip loopback and link-local
+                    if (address instanceof Inet4Address && !address.isLoopbackAddress() && !address.isLinkLocalAddress()) {
+                        String ip = address.getHostAddress();
+                        String interfaceName = networkInterface.getName();
+                        ipAddresses.put(interfaceName, ip);
+                    }
+                }
+            }
+        } catch (SocketException e) {
+            // Error getting network interfaces
+        }
+        return ipAddresses;
+    }
+    
+    /**
+     * Get the primary local IP address (first non-loopback, non-link-local IPv4)
+     * This is the IP that mobile devices should use to connect
+     */
+    private String getPrimaryLocalIp() {
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface networkInterface = interfaces.nextElement();
+                // Skip loopback and inactive interfaces
+                if (networkInterface.isLoopback() || !networkInterface.isUp()) {
+                    continue;
+                }
+                
+                Enumeration<InetAddress> addresses = networkInterface.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress address = addresses.nextElement();
+                    // Only IPv4 addresses, skip loopback and link-local
+                    if (address instanceof Inet4Address && !address.isLoopbackAddress() && !address.isLinkLocalAddress()) {
+                        return address.getHostAddress();
+                    }
+                }
+            }
+        } catch (SocketException e) {
+            // Error getting network interfaces
         }
         return null;
     }

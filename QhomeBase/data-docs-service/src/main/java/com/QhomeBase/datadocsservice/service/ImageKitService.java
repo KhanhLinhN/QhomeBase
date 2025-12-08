@@ -115,8 +115,8 @@ public class ImageKitService {
                 throw new IOException("Failed to upload image to ImageKit: " + errorMessage);
             }
             
-            log.info("✅ [ImageKit] Image uploaded successfully: {}", result.getUrl());
-            return result.getUrl();
+                log.info("✅ [ImageKit] Image uploaded successfully: {}", result.getUrl());
+                return result.getUrl();
         } catch (IllegalArgumentException e) {
             log.error("❌ [ImageKit] Invalid argument: {}", e.getMessage(), e);
             throw e;

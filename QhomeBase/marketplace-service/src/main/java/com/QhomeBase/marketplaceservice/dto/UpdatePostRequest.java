@@ -33,5 +33,8 @@ public class UpdatePostRequest {
 
     // IDs of images to delete
     private List<String> imagesToDelete;
+
+    // ID of video to delete (only one video allowed per post)
+    private String videoToDelete;
 }
 

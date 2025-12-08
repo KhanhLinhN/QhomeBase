@@ -32,7 +32,57 @@ public class ContractScheduler {
         contractService.triggerRenewalReminders();
         sendRenewalReminders();
         markRenewalDeclined();
+        //trigger for third sent
+        triggerReminder3ForTesting();
+        
         log.info("Initial contract status checks completed");
+    }
+    
+
+    private void triggerReminder3ForTesting() {
+        try {
+            log.info("🔧 [ContractScheduler] Force triggering reminder 3 for testing");
+            LocalDate today = LocalDate.now();
+            
+            List<Contract> contracts = contractService.findContractsNeedingRenewalReminder();
+            int thirdReminderCount = 0;
+            
+            for (Contract contract : contracts) {
+                if (contract.getEndDate() == null || !"RENTAL".equals(contract.getContractType()) 
+                        || !"ACTIVE".equals(contract.getStatus())) {
+                    continue;
+                }
+                
+                LocalDate endDate = contract.getEndDate();
+                long daysUntilEndDate = ChronoUnit.DAYS.between(today, endDate);
+                
+                // Check if contract is eligible for reminder 3 (has sent reminder 1, in endDate month, not expired)
+                if (contract.getRenewalReminderSentAt() != null
+                        && today.getYear() == endDate.getYear()
+                        && today.getMonth() == endDate.getMonth()
+                        && daysUntilEndDate > 0 && daysUntilEndDate < 30) {
+                    
+                    try {
+                        // Force send reminder 3 for testing (bypass day 20 check)
+                        contractService.sendRenewalReminder(contract.getId());
+                        sendReminderNotification(contract, 3, true);
+                        thirdReminderCount++;
+                        log.info("✅ [TEST] Force sent THIRD (FINAL) renewal reminder for contract {} (expires on {})", 
+                                contract.getContractNumber(), endDate);
+                    } catch (Exception e) {
+                        log.error("Error force sending reminder 3 for contract {}", contract.getId(), e);
+                    }
+                }
+            }
+            
+            if (thirdReminderCount > 0) {
+                log.info("🔧 [ContractScheduler] Force triggered {} reminder 3(s) for testing", thirdReminderCount);
+            } else {
+                log.debug("🔧 [ContractScheduler] No contracts eligible for force reminder 3");
+            }
+        } catch (Exception e) {
+            log.error("Error in force trigger reminder 3 for testing", e);
+        }
     }
 
     @Scheduled(cron = "0 0 0 * * ?")

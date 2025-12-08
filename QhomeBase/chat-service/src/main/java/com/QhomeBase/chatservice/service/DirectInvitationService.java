@@ -164,12 +164,26 @@ public class DirectInvitationService {
         }
 
         // Ensure participant1_id < participant2_id for uniqueness
-        UUID participant1Id = inviterResidentId.compareTo(inviteeResidentId) < 0 
-            ? inviterResidentId 
-            : inviteeResidentId;
-        UUID participant2Id = inviterResidentId.compareTo(inviteeResidentId) < 0 
-            ? inviteeResidentId 
-            : inviterResidentId;
+        // PostgreSQL compares UUIDs lexicographically (as strings), so we use toString().compareTo()
+        int comparison = inviterResidentId.toString().compareTo(inviteeResidentId.toString());
+        UUID participant1Id = comparison < 0 ? inviterResidentId : inviteeResidentId;
+        UUID participant2Id = comparison < 0 ? inviteeResidentId : inviterResidentId;
+        
+        // Log for debugging
+        log.debug("Participant ordering: participant1Id={}, participant2Id={}, comparison={}", 
+                participant1Id, participant2Id, comparison);
+        
+        // Final validation: ensure participant1Id < participant2Id
+        if (participant1Id.toString().compareTo(participant2Id.toString()) >= 0) {
+            log.error("CRITICAL: Participant ordering failed! participant1Id={}, participant2Id={}", 
+                    participant1Id, participant2Id);
+            // Swap to fix
+            UUID temp = participant1Id;
+            participant1Id = participant2Id;
+            participant2Id = temp;
+            log.warn("Swapped participants: participant1Id={}, participant2Id={}", 
+                    participant1Id, participant2Id);
+        }
 
         // Check if conversation already exists
         Conversation conversation = conversationRepository
@@ -381,7 +395,8 @@ public class DirectInvitationService {
                 } else if (!existingInvitation.isExpired()) {
                     // PENDING and not expired - return existing (no reverse invitation)
                     log.info("Invitation already exists and is pending: {}", existingInvitation.getId());
-                    throw new RuntimeException("Invitation already exists and is pending");
+                    // Return existing invitation response instead of throwing exception
+                    invitation = existingInvitation;
                 } else {
                     // PENDING but expired - update to new expiration
                     log.info("Invitation exists but expired, updating expiration: {}", existingInvitation.getId());

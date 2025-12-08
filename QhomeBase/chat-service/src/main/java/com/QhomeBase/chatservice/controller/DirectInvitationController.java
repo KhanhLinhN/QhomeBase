@@ -15,6 +15,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -30,7 +31,7 @@ public class DirectInvitationController {
     @PostMapping
     @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Create invitation", description = "Create a direct chat invitation")
-    public ResponseEntity<DirectInvitationResponse> createInvitation(
+    public ResponseEntity<?> createInvitation(
             @RequestBody CreateDirectInvitationRequest request,
             Authentication authentication) {
         log.info("=== DirectInvitationController.createInvitation ===");
@@ -46,8 +47,18 @@ public class DirectInvitationController {
         log.info("User roles: {}", principal.roles());
         log.info("Request: {}", request);
         
-        DirectInvitationResponse invitation = invitationService.createInvitation(userId, request);
-        return ResponseEntity.ok(invitation);
+        try {
+            DirectInvitationResponse invitation = invitationService.createInvitation(userId, request);
+            return ResponseEntity.ok(invitation);
+        } catch (RuntimeException e) {
+            log.warn("Failed to create invitation: {}", e.getMessage());
+            // Return error response with clear message
+            return ResponseEntity.badRequest().body(Map.of(
+                "error", true,
+                "message", e.getMessage() != null ? e.getMessage() : "Không thể tạo lời mời. Vui lòng thử lại.",
+                "code", "INVITATION_ERROR"
+            ));
+        }
     }
 
     @PostMapping("/{invitationId}/accept")

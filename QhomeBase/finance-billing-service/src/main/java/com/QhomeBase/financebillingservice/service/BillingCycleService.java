@@ -8,6 +8,7 @@ import com.QhomeBase.financebillingservice.model.BillingCycle;
 import com.QhomeBase.financebillingservice.repository.BillingCycleRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -71,11 +72,28 @@ public class BillingCycleService {
 
     @Transactional
     public BillingCycleDto createBillingCycle(CreateBillingCycleRequest request) {
-        log.info("Creating billing cycle period: {} to {}",
-                request.getPeriodFrom(), request.getPeriodTo());
+        log.info("Creating billing cycle: name={}, period: {} to {}",
+                request.getName(), request.getPeriodFrom(), request.getPeriodTo());
 
         if (request.getPeriodFrom().isAfter(request.getPeriodTo())) {
             throw new IllegalArgumentException("Period From must be before Period To");
+        }
+
+        // Check if billing cycle with same (name, periodFrom, periodTo) already exists
+        Optional<BillingCycle> existingCycle = billingCycleRepository.findByNameAndPeriod(
+                request.getName(),
+                request.getPeriodFrom(),
+                request.getPeriodTo());
+
+        if (existingCycle.isPresent()) {
+            BillingCycle existing = existingCycle.get();
+            log.warn("Billing cycle already exists with same (name, periodFrom, periodTo): name={}, periodFrom={}, periodTo={}, existingId={}",
+                    request.getName(), request.getPeriodFrom(), request.getPeriodTo(), existing.getId());
+            
+            // Return existing cycle instead of throwing error
+            // This makes the operation idempotent
+            log.info("Returning existing billing cycle with ID: {}", existing.getId());
+            return mapDto(existing);
         }
 
         BillingCycle billingCycle = BillingCycle.builder()
@@ -163,8 +181,20 @@ public class BillingCycleService {
                         .externalCycleId(readingCycle.id())
                         .build();
 
-                BillingCycleDto created = createBillingCycle(request);
-                createdCycles.add(created);
+                try {
+                    BillingCycleDto created = createBillingCycle(request);
+                    createdCycles.add(created);
+                } catch (DataIntegrityViolationException e) {
+                    // Handle race condition: if cycle was created by another thread/request
+                    log.warn("Billing cycle already exists (possibly created concurrently) for reading cycle {}: {}", 
+                            readingCycleId, e.getMessage());
+                    // Try to find and return existing cycle
+                    Optional<BillingCycle> existing = billingCycleRepository.findByNameAndPeriod(
+                            request.getName(), request.getPeriodFrom(), request.getPeriodTo());
+                    if (existing.isPresent()) {
+                        createdCycles.add(mapDto(existing.get()));
+                    }
+                }
             } catch (Exception e) {
                 log.error("Failed to create billing cycle for reading cycle {}: {}", readingCycleId, e.getMessage(), e);
             }

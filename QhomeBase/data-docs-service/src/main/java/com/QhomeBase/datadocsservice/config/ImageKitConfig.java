@@ -16,7 +16,7 @@ public class ImageKitConfig {
     @Bean
     public ImageKit imageKit() {
         try {
-            ImageKit imageKit = ImageKit.getInstance();
+        ImageKit imageKit = ImageKit.getInstance();
             
             // Validate configuration
             if (imageKitProperties.getPublicKey() == null || imageKitProperties.getPublicKey().isEmpty()) {
@@ -32,17 +32,17 @@ public class ImageKitConfig {
                 throw new IllegalStateException("ImageKit URL endpoint is not configured");
             }
             
-            io.imagekit.sdk.config.Configuration config = new io.imagekit.sdk.config.Configuration(
-                    imageKitProperties.getPublicKey(),
-                    imageKitProperties.getPrivateKey(),
-                    imageKitProperties.getUrlEndpoint()
-            );
-            imageKit.setConfig(config);
+        io.imagekit.sdk.config.Configuration config = new io.imagekit.sdk.config.Configuration(
+                imageKitProperties.getPublicKey(),
+                imageKitProperties.getPrivateKey(),
+                imageKitProperties.getUrlEndpoint()
+        );
+        imageKit.setConfig(config);
             log.info("✅ [ImageKitConfig] ImageKit configured successfully");
             log.info("✅ [ImageKitConfig] Endpoint: {}", imageKitProperties.getUrlEndpoint());
             log.info("✅ [ImageKitConfig] Public key: {}...", 
                     imageKitProperties.getPublicKey().substring(0, Math.min(20, imageKitProperties.getPublicKey().length())));
-            return imageKit;
+        return imageKit;
         } catch (Exception e) {
             log.error("❌ [ImageKitConfig] Failed to configure ImageKit: {}", e.getMessage(), e);
             throw new IllegalStateException("Failed to configure ImageKit: " + e.getMessage(), e);

@@ -67,15 +67,44 @@ public class NotificationClient {
 
     private void sendNotification(Map<String, Object> payload) {
         try {
-            URI uri = URI.create(notificationServiceBaseUrl + "/api/notifications");
+            // Use /api/notifications/internal endpoint which allows inter-service calls without authentication
+            URI uri = URI.create(notificationServiceBaseUrl + "/api/notifications/internal");
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
+            // Convert payload to InternalNotificationRequest format
+            // InternalNotificationRequest uses: type (NotificationType enum), title, message, residentId, buildingId, referenceId, referenceType, actionUrl
+            Map<String, Object> internalPayload = new HashMap<>();
+            // type should be NotificationType enum value (SYSTEM)
+            internalPayload.put("type", "SYSTEM");
+            internalPayload.put("title", payload.get("title"));
+            internalPayload.put("message", payload.get("message"));
+            // Map targetResidentId -> residentId
+            if (payload.get("targetResidentId") != null) {
+                internalPayload.put("residentId", payload.get("targetResidentId"));
+            }
+            // Map targetBuildingId -> buildingId
+            if (payload.get("targetBuildingId") != null) {
+                internalPayload.put("buildingId", payload.get("targetBuildingId"));
+            }
+            if (payload.get("referenceId") != null) {
+                internalPayload.put("referenceId", payload.get("referenceId"));
+            }
+            if (payload.get("referenceType") != null) {
+                internalPayload.put("referenceType", payload.get("referenceType"));
+            }
+            if (payload.get("actionUrl") != null) {
+                internalPayload.put("actionUrl", payload.get("actionUrl"));
+            }
+
+            log.debug("📤 [NotificationClient] Sending internal notification to: {}", uri);
+            log.debug("📤 [NotificationClient] Payload: {}", internalPayload);
+
             ResponseEntity<Void> response = restTemplate.exchange(
                     uri,
                     HttpMethod.POST,
-                    new HttpEntity<>(payload, headers),
+                    new HttpEntity<>(internalPayload, headers),
                     Void.class
             );
 
