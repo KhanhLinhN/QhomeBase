@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -51,6 +52,13 @@ public class MessageService {
         // Check if user is a member
         GroupMember member = groupMemberRepository.findByGroupIdAndResidentId(groupId, residentId)
                 .orElseThrow(() -> new RuntimeException("You are not a member of this group"));
+
+        // If group was hidden for this user, unhide it when they send a new message
+        if (member.getHiddenAt() != null) {
+            member.setHiddenAt(null);
+            groupMemberRepository.save(member);
+            log.info("Unhid group {} for user {} because they sent a new message", groupId, residentId);
+        }
 
         // Validate message type and content
         String messageType = request.getMessageType() != null ? request.getMessageType() : "TEXT";
@@ -142,6 +150,16 @@ public class MessageService {
                 log.warn("Failed to save file metadata for message {}: {}", message.getId(), e.getMessage());
                 // Don't fail the message creation if file metadata save fails
             }
+        }
+        
+        // Unhide group for all members who had hidden it (when someone sends a new message)
+        List<GroupMember> hiddenMembers = groupMemberRepository.findByGroupIdAndHiddenAtIsNotNull(groupId);
+        for (GroupMember hiddenMember : hiddenMembers) {
+            hiddenMember.setHiddenAt(null);
+            groupMemberRepository.save(hiddenMember);
+        }
+        if (!hiddenMembers.isEmpty()) {
+            log.info("Unhid group {} for {} members because a new message was sent", groupId, hiddenMembers.size());
         }
         
         // Notify via WebSocket
@@ -436,6 +454,44 @@ public class MessageService {
         }
 
         return builder.build();
+    }
+
+    /**
+     * Delete all messages sent by a user in a group from a specific time onwards
+     */
+    @Transactional
+    public void deleteUserMessagesFromGroup(UUID groupId, UUID senderId, OffsetDateTime fromTime) {
+        List<Message> messages = messageRepository.findMessagesByGroupIdAndSenderIdFromTime(
+            groupId, senderId, fromTime
+        );
+        
+        for (Message message : messages) {
+            message.setIsDeleted(true);
+            message.setContent(null); // Clear content for deleted messages
+            // Keep file/image URLs for now, but mark as deleted
+        }
+        
+        messageRepository.saveAll(messages);
+        log.info("Deleted {} messages from user {} in group {} from {}", 
+                messages.size(), senderId, groupId, fromTime);
+    }
+
+    /**
+     * Delete all files/images uploaded by a user in a group from a specific time onwards
+     */
+    @Transactional
+    public void deleteUserFilesFromGroup(UUID groupId, UUID senderId, OffsetDateTime fromTime) {
+        // Use GroupFileService to get files and delete them
+        List<com.QhomeBase.chatservice.model.GroupFile> files = 
+            groupFileService.findFilesByGroupIdAndSenderIdFromTime(groupId, senderId, fromTime);
+        
+        // Delete the GroupFile records (soft delete - actual files can be cleaned up separately)
+        for (com.QhomeBase.chatservice.model.GroupFile file : files) {
+            groupFileService.deleteFileMetadata(file.getId());
+        }
+        
+        log.info("Deleted {} files from user {} in group {} from {}", 
+                files.size(), senderId, groupId, fromTime);
     }
 
     private String getCurrentAccessToken() {

@@ -16,7 +16,7 @@ import java.util.UUID;
 public interface GroupRepository extends JpaRepository<Group, UUID> {
 
     @Query("SELECT g FROM Group g WHERE g.id IN " +
-           "(SELECT gm.group.id FROM GroupMember gm WHERE gm.residentId = :residentId) " +
+           "(SELECT gm.group.id FROM GroupMember gm WHERE gm.residentId = :residentId AND gm.hiddenAt IS NULL) " +
            "AND g.isActive = true " +
            "ORDER BY g.updatedAt DESC")
     Page<Group> findGroupsByResidentId(@Param("residentId") UUID residentId, Pageable pageable);

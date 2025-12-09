@@ -12,6 +12,12 @@ import java.util.UUID;
 
 @Repository
 public interface FriendshipRepository extends JpaRepository<Friendship, UUID> {
+    
+    /**
+     * Check UUID order in PostgreSQL (returns true if uuid1 < uuid2 in PostgreSQL)
+     */
+    @Query(value = "SELECT :uuid1 < :uuid2", nativeQuery = true)
+    boolean isUuid1LessThanUuid2(@Param("uuid1") UUID uuid1, @Param("uuid2") UUID uuid2);
 
     /**
      * Find friendship between two users

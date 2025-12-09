@@ -53,5 +53,18 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
         @Param("excludeSenderId") UUID excludeSenderId,
         @Param("lastReadAt") OffsetDateTime lastReadAt
     );
+
+    /**
+     * Find messages sent by a user in a group from a specific time onwards
+     */
+    @Query("SELECT m FROM Message m WHERE m.groupId = :groupId " +
+           "AND m.senderId = :senderId " +
+           "AND m.createdAt >= :fromTime " +
+           "AND m.isDeleted = false")
+    List<Message> findMessagesByGroupIdAndSenderIdFromTime(
+        @Param("groupId") UUID groupId,
+        @Param("senderId") UUID senderId,
+        @Param("fromTime") OffsetDateTime fromTime
+    );
 }
 

@@ -2,8 +2,12 @@ package com.QhomeBase.chatservice.service;
 
 import com.QhomeBase.chatservice.model.Conversation;
 import com.QhomeBase.chatservice.model.ConversationParticipant;
+import com.QhomeBase.chatservice.model.DirectChatFile;
+import com.QhomeBase.chatservice.model.DirectMessage;
 import com.QhomeBase.chatservice.repository.ConversationParticipantRepository;
 import com.QhomeBase.chatservice.repository.ConversationRepository;
+import com.QhomeBase.chatservice.repository.DirectChatFileRepository;
+import com.QhomeBase.chatservice.repository.DirectMessageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,6 +24,8 @@ public class ConversationHideService {
 
     private final ConversationParticipantRepository conversationParticipantRepository;
     private final ConversationRepository conversationRepository;
+    private final DirectMessageRepository directMessageRepository;
+    private final DirectChatFileRepository directChatFileRepository;
     private final ResidentInfoService residentInfoService;
 
     /**
@@ -39,15 +45,25 @@ public class ConversationHideService {
                     .findByConversationIdAndResidentId(conversationId, residentId)
                     .orElseThrow(() -> new RuntimeException("You are not a participant of this conversation"));
 
-            // Mark as hidden
+            OffsetDateTime deleteTime = OffsetDateTime.now();
+
+            // Mark as hidden (set hiddenAt)
             participant.setIsHidden(true);
-            participant.setHiddenAt(OffsetDateTime.now());
+            participant.setHiddenAt(deleteTime);
             
             // Reset lastReadAt to null so that when a new message arrives,
             // it will be considered as the first message (like Messenger)
             participant.setLastReadAt(null);
             
             conversationParticipantRepository.save(participant);
+
+            // Delete all messages sent by this user from the deletion time onwards
+            deleteUserMessagesFromConversation(conversationId, residentId, deleteTime);
+
+            // Delete all files/images uploaded by this user from the deletion time onwards
+            deleteUserFilesFromConversation(conversationId, residentId, deleteTime);
+
+            log.info("User {} hid conversation {} and deleted their messages/files from {}", residentId, conversationId, deleteTime);
 
             // Check if both participants have hidden the conversation
             Conversation conversation = conversationRepository.findById(conversationId)
@@ -97,6 +113,42 @@ public class ConversationHideService {
         } catch (Exception e) {
             log.error("Error unhiding direct conversation: {}", e.getMessage(), e);
         }
+    }
+
+    /**
+     * Delete all messages sent by a user in a conversation from a specific time onwards
+     */
+    @Transactional
+    private void deleteUserMessagesFromConversation(UUID conversationId, UUID senderId, OffsetDateTime fromTime) {
+        List<DirectMessage> messages = directMessageRepository.findMessagesByConversationIdAndSenderIdFromTime(
+            conversationId, senderId, fromTime
+        );
+        
+        for (DirectMessage message : messages) {
+            message.setIsDeleted(true);
+            message.setContent(null); // Clear content for deleted messages
+            // Keep file/image URLs for now, but mark as deleted
+        }
+        
+        directMessageRepository.saveAll(messages);
+        log.info("Deleted {} messages from user {} in conversation {} from {}", 
+                messages.size(), senderId, conversationId, fromTime);
+    }
+
+    /**
+     * Delete all files/images uploaded by a user in a conversation from a specific time onwards
+     */
+    @Transactional
+    private void deleteUserFilesFromConversation(UUID conversationId, UUID senderId, OffsetDateTime fromTime) {
+        List<DirectChatFile> files = directChatFileRepository.findFilesByConversationIdAndSenderIdFromTime(
+            conversationId, senderId, fromTime
+        );
+        
+        // Delete the DirectChatFile records (soft delete - actual files can be cleaned up separately)
+        directChatFileRepository.deleteAll(files);
+        
+        log.info("Deleted {} files from user {} in conversation {} from {}", 
+                files.size(), senderId, conversationId, fromTime);
     }
 
     private String getCurrentAccessToken() {

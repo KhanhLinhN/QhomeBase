@@ -67,26 +67,60 @@ public class DirectChatService {
         String accessToken = getCurrentAccessToken();
         UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
         if (residentId == null) {
+            log.error("❌ [DirectChatService] getConversations - Resident not found for userId: {}", userId);
             throw new RuntimeException("Resident not found for user: " + userId);
         }
 
+        log.info("🔍 [DirectChatService] getConversations - userId: {}, residentId: {}", userId, residentId);
+        
         List<Conversation> conversations = conversationRepository
                 .findActiveConversationsByUserId(residentId);
+        
+        log.info("🔍 [DirectChatService] Found {} ACTIVE conversations from DB for residentId: {}", conversations.size(), residentId);
 
-        return conversations.stream()
+        List<ConversationResponse> filteredConversations = conversations.stream()
                 .filter(conv -> {
+                    log.debug("🔍 [DirectChatService] Filtering conversation: id={}, status={}, participant1Id={}, participant2Id={}", 
+                            conv.getId(), conv.getStatus(), conv.getParticipant1Id(), conv.getParticipant2Id());
+                    
                     // Filter out DELETED conversations (both participants have hidden)
                     if ("DELETED".equals(conv.getStatus())) {
+                        log.debug("❌ [DirectChatService] Filtered out DELETED conversation: {}", conv.getId());
                         return false;
                     }
+                    
                     // Filter out conversations hidden by current user
                     ConversationParticipant participant = participantRepository
                             .findByConversationIdAndResidentId(conv.getId(), residentId)
                             .orElse(null);
-                    return participant == null || !Boolean.TRUE.equals(participant.getIsHidden());
+                    
+                    if (participant == null) {
+                        log.warn("⚠️ [DirectChatService] Participant not found for conversation: {}, residentId: {}", conv.getId(), residentId);
+                        return true; // Include if participant not found (shouldn't happen normally)
+                    }
+                    
+                    boolean isHidden = Boolean.TRUE.equals(participant.getIsHidden());
+                    log.debug("🔍 [DirectChatService] Conversation: {}, participant.isHidden: {}, hiddenAt: {}", 
+                            conv.getId(), isHidden, participant.getHiddenAt());
+                    
+                    if (isHidden) {
+                        log.debug("❌ [DirectChatService] Filtered out HIDDEN conversation: {} for residentId: {}", conv.getId(), residentId);
+                        return false;
+                    }
+                    
+                    log.debug("✅ [DirectChatService] Including conversation: {}", conv.getId());
+                    return true;
                 })
-                .map(conv -> toConversationResponse(conv, residentId, accessToken))
+                .map(conv -> {
+                    log.debug("📝 [DirectChatService] Converting conversation to response: {}", conv.getId());
+                    return toConversationResponse(conv, residentId, accessToken);
+                })
                 .collect(Collectors.toList());
+        
+        log.info("✅ [DirectChatService] getConversations returning {} filtered conversations for userId: {}, residentId: {}", 
+                filteredConversations.size(), userId, residentId);
+        
+        return filteredConversations;
     }
 
     /**
@@ -252,10 +286,18 @@ public class DirectChatService {
         conversation.setUpdatedAt(OffsetDateTime.now());
         conversationRepository.save(conversation);
 
-        // Update sender's lastReadAt to mark message as read
+        // Unhide conversation for sender if it was hidden (when they send a new message)
         ConversationParticipant senderParticipant = participantRepository
                 .findByConversationIdAndResidentId(conversationId, residentId)
                 .orElse(null);
+        if (senderParticipant != null && Boolean.TRUE.equals(senderParticipant.getIsHidden())) {
+            senderParticipant.setIsHidden(false);
+            senderParticipant.setHiddenAt(null);
+            participantRepository.save(senderParticipant);
+            log.info("Conversation {} unhidden for sender {} because they sent a new message", conversationId, residentId);
+        }
+        
+        // Update sender's lastReadAt to mark message as read
         if (senderParticipant != null) {
             OffsetDateTime createdAt = message.getCreatedAt();
             if (createdAt == null) {
@@ -276,21 +318,21 @@ public class DirectChatService {
             }
         }
 
+        // Unhide conversation for all participants who had hidden it (when someone sends a new message)
+        List<ConversationParticipant> allParticipants = participantRepository.findByConversationId(conversationId);
+        for (ConversationParticipant participant : allParticipants) {
+            if (Boolean.TRUE.equals(participant.getIsHidden())) {
+                participant.setIsHidden(false);
+                participant.setHiddenAt(null);
+                // Reset lastReadAt to null so the new message is considered as the first message
+                participant.setLastReadAt(null);
+                participantRepository.save(participant);
+                log.info("Conversation {} unhidden for participant {} (new message received). lastReadAt reset to null.", conversationId, participant.getResidentId());
+            }
+        }
+        
         // Notify via WebSocket
         notificationService.notifyDirectMessage(conversationId, response);
-
-        // Unhide conversation if it was hidden (when new message arrives)
-        ConversationParticipant otherParticipant = participantRepository
-                .findByConversationIdAndResidentId(conversationId, otherParticipantId)
-                .orElse(null);
-        if (otherParticipant != null && Boolean.TRUE.equals(otherParticipant.getIsHidden())) {
-            otherParticipant.setIsHidden(false);
-            otherParticipant.setHiddenAt(null);
-            // Reset lastReadAt to null so the new message is considered as the first message
-            otherParticipant.setLastReadAt(null);
-            participantRepository.save(otherParticipant);
-            log.info("Conversation {} unhidden for resident {} (new message received). lastReadAt reset to null.", conversationId, otherParticipantId);
-        }
         
         // If conversation was DELETED (both participants had hidden it), reset to ACTIVE
         if ("DELETED".equals(conversation.getStatus())) {

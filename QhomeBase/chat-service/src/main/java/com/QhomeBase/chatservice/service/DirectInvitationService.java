@@ -597,6 +597,17 @@ public class DirectInvitationService {
         conversation.setStatus("ACTIVE");
         conversationRepository.save(conversation);
 
+        // Unhide conversation for both participants when invitation is accepted
+        List<ConversationParticipant> participants = participantRepository.findByConversationId(conversation.getId());
+        for (ConversationParticipant participant : participants) {
+            if (Boolean.TRUE.equals(participant.getIsHidden())) {
+                participant.setIsHidden(false);
+                participant.setHiddenAt(null);
+                participantRepository.save(participant);
+                log.info("Unhidden conversation {} for participant {} when invitation accepted", conversation.getId(), participant.getResidentId());
+            }
+        }
+
         // Check if there's a reverse invitation (invitee invited inviter) and auto-accept it
         UUID inviterId = invitation.getInviterId();
         UUID inviteeId = invitation.getInviteeId();

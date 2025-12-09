@@ -66,5 +66,18 @@ public interface DirectMessageRepository extends JpaRepository<DirectMessage, UU
         @Param("afterTimestamp") OffsetDateTime afterTimestamp,
         Pageable pageable
     );
+
+    /**
+     * Find messages sent by a user in a conversation from a specific time onwards
+     */
+    @Query("SELECT m FROM DirectMessage m WHERE m.conversationId = :conversationId " +
+           "AND m.senderId = :senderId " +
+           "AND m.createdAt >= :fromTime " +
+           "AND m.isDeleted = false")
+    List<DirectMessage> findMessagesByConversationIdAndSenderIdFromTime(
+        @Param("conversationId") UUID conversationId,
+        @Param("senderId") UUID senderId,
+        @Param("fromTime") OffsetDateTime fromTime
+    );
 }
 

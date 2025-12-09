@@ -45,7 +45,9 @@ public class DirectChatController {
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
         
+        log.info("📋 [DirectChatController] getConversations called - userId: {}", userId);
         List<ConversationResponse> conversations = directChatService.getConversations(userId);
+        log.info("📋 [DirectChatController] getConversations returning {} conversations for userId: {}", conversations.size(), userId);
         return ResponseEntity.ok(conversations);
     }
 

@@ -57,5 +57,8 @@ public class GroupMember {
 
     @Column(name = "muted_by_user_id")
     private UUID mutedByUserId; // User who set the mute
+
+    @Column(name = "hidden_at")
+    private OffsetDateTime hiddenAt; // Timestamp when user hid/deleted the group. NULL means visible.
 }
 
