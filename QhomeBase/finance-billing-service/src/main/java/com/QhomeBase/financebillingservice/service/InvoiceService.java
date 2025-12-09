@@ -748,8 +748,14 @@ public class InvoiceService {
         String orderInfo = "Thanh toán hóa đơn " + (invoice.getCode() != null ? invoice.getCode() : invoiceId);
         String returnUrl = vnpayProperties.getReturnUrl();
 
-        log.info("💳 [InvoiceService] Creating VNPAY URL for invoice={}, user={}, amount={}, ip={}, orderId={}",
-                invoiceId, userId, totalAmount, clientIp, orderId);
+        // Set vnpayInitiatedAt to track when payment was initiated
+        // This is used to auto-expire pending payments after 10 minutes
+        invoice.setVnpayInitiatedAt(OffsetDateTime.now());
+        invoice.setPaymentGateway("VNPAY");
+        invoiceRepository.save(invoice);
+
+        log.info("💳 [InvoiceService] Creating VNPAY URL for invoice={}, user={}, amount={}, ip={}, orderId={}, initiatedAt={}",
+                invoiceId, userId, totalAmount, clientIp, orderId, invoice.getVnpayInitiatedAt());
 
         return vnpayService.createPaymentUrl(orderId, orderInfo, totalAmount, clientIp, returnUrl);
     }
@@ -789,6 +795,8 @@ public class InvoiceService {
                 invoice.setPaymentGateway("VNPAY");
                 // Use current time for payment date to ensure accurate timestamp
                 invoice.setPaidAt(OffsetDateTime.now());
+                // Clear vnpayInitiatedAt since payment is now complete
+                invoice.setVnpayInitiatedAt(null);
                 invoiceRepository.save(invoice);
                 notifyPaymentSuccess(invoice, params);
                 log.info("✅ [InvoiceService] Invoice {} marked as PAID via VNPAY (txnRef: {})", invoiceId, txnRef);

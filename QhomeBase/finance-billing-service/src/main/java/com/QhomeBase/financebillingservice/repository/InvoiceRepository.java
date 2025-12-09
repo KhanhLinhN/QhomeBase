@@ -92,4 +92,20 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
     and i.cycle_id = :cycleId
 """, nativeQuery = true)
     List<Invoice> findByServiceCodeAndAndCycle(@Param("cycleID") UUID cycleID, @Param("serviceCode") String serviceCode);
+
+    /**
+     * Tìm các invoice có VNPay payment đang pending quá thời gian timeout
+     * - paymentGateway = 'VNPAY'
+     * - status != 'PAID'
+     * - vnpayInitiatedAt != null và đã quá threshold
+     */
+    @Query(value = """
+        SELECT i.*
+        FROM billing.invoices i
+        WHERE i.payment_gateway = 'VNPAY'
+          AND i.status != 'PAID'
+          AND i.vnpay_initiated_at IS NOT NULL
+          AND i.vnpay_initiated_at < :threshold
+    """, nativeQuery = true)
+    List<Invoice> findExpiredVnpayPayments(@Param("threshold") java.time.OffsetDateTime threshold);
 }

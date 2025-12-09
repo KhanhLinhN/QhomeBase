@@ -75,6 +75,9 @@ public class Invoice {
     @Column(name = "vnp_response_code")
     private String vnpResponseCode;
 
+    @Column(name = "vnpay_initiated_at")
+    private OffsetDateTime vnpayInitiatedAt;
+
     @Column(name = "paid_at")
     private OffsetDateTime paidAt;
 

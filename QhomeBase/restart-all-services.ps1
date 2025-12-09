@@ -417,7 +417,10 @@ function Start-ServiceWithLog {
     # Build command string - properly escape single quotes by doubling them for PowerShell
     $serviceNameEscaped = $ServiceName -replace "'", "''"
     $serviceDirEscaped = $serviceDir -replace "'", "''"
-    $command = "cd '$serviceDirEscaped'; Write-Host '$serviceNameEscaped (port $Port)' -ForegroundColor $Color; Write-Host ''; $mavenCmd"
+    $portValue = $Port
+    $colorValue = $Color
+    # Build command using string concatenation to avoid quote escaping issues
+    $command = 'cd ''' + $serviceDirEscaped + '''; Write-Host ''' + $serviceNameEscaped + ' (port ' + $portValue + ')' + ''' -ForegroundColor ' + $colorValue + '; Write-Host ''''; ' + $mavenCmd
     
     Start-Process powershell -ArgumentList "-NoExit", "-Command", $command -WindowStyle Normal
     
@@ -501,8 +504,10 @@ if ($isNgrok) {
     Write-Host "   - Chat Service: http://localhost:8090" -ForegroundColor White
     if ($baseUrl -and $baseUrl -ne "http://localhost:8989") {
         Write-Host ""
-        Write-Host "   Flutter app should connect to: $baseUrl" -ForegroundColor Cyan
-        Write-Host "   VNPay return URLs will use: $baseUrl" -ForegroundColor Cyan
+        $flutterMsg = "   Flutter app should connect to: $baseUrl"
+        $vnpayMsg = "   VNPay return URLs will use: $baseUrl"
+        Write-Host $flutterMsg -ForegroundColor Cyan
+        Write-Host $vnpayMsg -ForegroundColor Cyan
     }
 }
 Write-Host ""

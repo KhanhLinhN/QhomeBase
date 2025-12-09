@@ -194,4 +194,104 @@ public class ImageKitService {
         
         throw new IOException("Failed to upload image to ImageKit after " + maxRetries + " attempts");
     }
+
+    /**
+     * Get video streaming URL from ImageKit URL
+     * ImageKit videos can be streamed directly, but we may need to add transformation parameters
+     * or ensure the URL is in the correct format for ExoPlayer
+     * 
+     * For video streaming, ImageKit URLs work directly without transformation.
+     * However, if hotlink protection is enabled, we may need to:
+     * 1. Disable hotlink protection in ImageKit dashboard, OR
+     * 2. Use signed URLs with expiration, OR
+     * 3. Add transformation parameters to bypass protection
+     * 
+     * @param imageKitUrl The original ImageKit URL
+     * @return The video URL optimized for streaming
+     */
+    public String getVideoStreamingUrl(String imageKitUrl) {
+        if (imageKitUrl == null || imageKitUrl.isEmpty()) {
+            return imageKitUrl;
+        }
+        
+        // ImageKit URLs are already optimized for streaming
+        // Return URL as-is - ImageKit handles video streaming natively
+        // If 403 errors occur, check ImageKit dashboard for:
+        // 1. Hotlink protection settings (should be disabled or allow your domain)
+        // 2. Access control settings (should allow public access for videos)
+        
+        log.debug("📹 [ImageKit] Video streaming URL: {}", imageKitUrl);
+        return imageKitUrl;
+    }
+
+    /**
+     * Generate a signed URL for ImageKit resource to bypass hotlink protection
+     * This uses ImageKit SDK to sign the URL with private key
+     * 
+     * @param imageKitUrl The original ImageKit URL
+     * @param expireSeconds Optional expiration time in seconds (default: 3600 = 1 hour)
+     * @return Signed URL that bypasses hotlink protection
+     */
+    public String getSignedUrl(String imageKitUrl, Long expireSeconds) {
+        if (imageKitUrl == null || imageKitUrl.isEmpty()) {
+            return imageKitUrl;
+        }
+        
+        try {
+            // Extract path from ImageKit URL
+            // Example: https://ik.imagekit.io/fbxjffpvr/marketplace/posts/.../video.mp4
+            // Path: marketplace/posts/.../video.mp4 (without leading slash)
+            String urlEndpoint = imageKit.getConfig().getUrlEndpoint();
+            String path = imageKitUrl;
+            
+            if (imageKitUrl.startsWith(urlEndpoint)) {
+                path = imageKitUrl.substring(urlEndpoint.length());
+                // Remove leading slash if present
+                if (path.startsWith("/")) {
+                    path = path.substring(1);
+                }
+            } else if (imageKitUrl.contains("ik.imagekit.io")) {
+                // Extract path after domain
+                // URL format: https://ik.imagekit.io/{imagekitId}/path/to/file
+                int imagekitIdEnd = imageKitUrl.indexOf("/", imageKitUrl.indexOf("ik.imagekit.io") + "ik.imagekit.io".length());
+                if (imagekitIdEnd > 0) {
+                    int pathStart = imageKitUrl.indexOf("/", imagekitIdEnd + 1);
+                    if (pathStart > 0) {
+                        path = imageKitUrl.substring(pathStart + 1); // +1 to skip leading slash
+                    }
+                }
+            }
+            
+            // Generate signed URL using ImageKit SDK
+            java.util.Map<String, Object> options = new java.util.HashMap<>();
+            options.put("path", path);
+            options.put("signed", true);
+            // ImageKit SDK expects Integer, not Long
+            int expireSecondsInt = (expireSeconds != null && expireSeconds > 0) 
+                    ? expireSeconds.intValue() 
+                    : 3600; // Default: 1 hour
+            options.put("expireSeconds", expireSecondsInt);
+            
+            String signedUrl = imageKit.getUrl(options);
+            log.info("📹 [ImageKit] Generated signed URL (expires in {}s): {}", 
+                    expireSeconds != null ? expireSeconds : 3600, signedUrl);
+            return signedUrl;
+            
+        } catch (Exception e) {
+            log.warn("⚠️ [ImageKit] Failed to generate signed URL, using original URL: {}", e.getMessage());
+            log.debug("⚠️ [ImageKit] Exception details: ", e);
+            return imageKitUrl; // Fallback to original URL
+        }
+    }
+
+    /**
+     * Check if URL is an ImageKit URL
+     */
+    public boolean isImageKitUrl(String url) {
+        if (url == null || url.isEmpty()) {
+            return false;
+        }
+        // Check if URL contains ImageKit endpoint
+        return url.contains("ik.imagekit.io") || url.contains("imagekit.io");
+    }
 }

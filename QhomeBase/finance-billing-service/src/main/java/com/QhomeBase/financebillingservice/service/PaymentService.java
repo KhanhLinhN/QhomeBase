@@ -114,6 +114,7 @@ public class PaymentService {
             case CASH -> "CASH";
             case BANK_TRANSFER -> "BANK";
             case MOMO -> "MOMO";
+            case ZALOPAY -> "ZALOPAY";
         };
         return String.format("PAY-%s-%s", methodCode, timestamp);
     }

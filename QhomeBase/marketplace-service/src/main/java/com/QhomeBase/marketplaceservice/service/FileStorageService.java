@@ -54,8 +54,8 @@ public class FileStorageService {
 
     /**
      * Upload video to ImageKit for post
-     * Returns map with key: original (ImageKit URL)
-     * Note: ImageKit supports video uploads, so we can use the same uploadImage method
+     * Returns map with key: original (ImageKit URL optimized for streaming)
+     * Note: ImageKit supports video uploads and streaming natively
      */
     public Map<String, String> uploadVideo(MultipartFile file, String postId) throws IOException {
         log.info("📤 [FileStorageService] Uploading video to ImageKit for post: {}", postId);
@@ -63,11 +63,14 @@ public class FileStorageService {
         // Upload to ImageKit with folder "marketplace/posts/{postId}"
         // ImageKit supports video files, so we can use uploadImage method
         String videoUrl = imageKitService.uploadImage(file, "marketplace/posts/" + postId);
+        
+        // Get optimized streaming URL (ImageKit URLs are already optimized, but we can add transformations if needed)
+        String streamingUrl = imageKitService.getVideoStreamingUrl(videoUrl);
 
         Map<String, String> videoUrls = new HashMap<>();
-        videoUrls.put("original", videoUrl);
+        videoUrls.put("original", streamingUrl);
 
-        log.info("✅ [FileStorageService] Uploaded video to ImageKit: {}", videoUrl);
+        log.info("✅ [FileStorageService] Uploaded video to ImageKit: {} (streaming URL: {})", videoUrl, streamingUrl);
         return videoUrls;
     }
 
@@ -180,7 +183,7 @@ public class FileStorageService {
 
     /**
      * Upload comment video to ImageKit
-     * Returns the video URL
+     * Returns the video URL optimized for streaming
      */
     public String uploadCommentVideo(MultipartFile file, String postId) throws IOException {
         log.info("📤 [FileStorageService] Uploading comment video to ImageKit for post: {}", postId);
@@ -188,8 +191,11 @@ public class FileStorageService {
         // Upload to ImageKit with folder "marketplace/comments/{postId}"
         String videoUrl = imageKitService.uploadImage(file, "marketplace/comments/" + postId);
         
-        log.info("✅ [FileStorageService] Uploaded comment video to ImageKit: {}", videoUrl);
-        return videoUrl;
+        // Get optimized streaming URL
+        String streamingUrl = imageKitService.getVideoStreamingUrl(videoUrl);
+        
+        log.info("✅ [FileStorageService] Uploaded comment video to ImageKit: {} (streaming URL: {})", videoUrl, streamingUrl);
+        return streamingUrl;
     }
 
     /**
