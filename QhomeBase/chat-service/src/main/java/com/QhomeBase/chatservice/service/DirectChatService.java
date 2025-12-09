@@ -13,6 +13,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -36,6 +39,11 @@ public class DirectChatService {
     private final FcmPushService fcmPushService;
     private final FriendshipService friendshipService;
     private final DirectMessageDeletionRepository messageDeletionRepository;
+
+    @Value("${marketplace.service.url:http://localhost:8082}")
+    private String marketplaceServiceUrl;
+
+    private final WebClient webClient = WebClient.builder().build();
 
     private String getCurrentAccessToken() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -952,7 +960,8 @@ public class DirectChatService {
             try {
                 com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
                 java.util.Map<String, Object> marketplaceData = objectMapper.readValue(message.getContent(), java.util.Map.class);
-                builder.postId((String) marketplaceData.get("postId"));
+                String postId = (String) marketplaceData.get("postId");
+                builder.postId(postId);
                 builder.postTitle((String) marketplaceData.get("postTitle"));
                 builder.postThumbnailUrl((String) marketplaceData.get("postThumbnailUrl"));
                 Object priceObj = marketplaceData.get("postPrice");
@@ -964,6 +973,12 @@ public class DirectChatService {
                     }
                 }
                 builder.deepLink((String) marketplaceData.get("deepLink"));
+                
+                // Check post status from marketplace service
+                if (postId != null && !postId.isEmpty()) {
+                    String postStatus = checkPostStatus(postId, accessToken);
+                    builder.postStatus(postStatus);
+                }
             } catch (Exception e) {
                 log.warn("Failed to parse marketplace_post data: {}", e.getMessage());
             }
@@ -976,6 +991,44 @@ public class DirectChatService {
         }
 
         return builder.build();
+    }
+
+    /**
+     * Check post status from marketplace service
+     * Returns "ACTIVE", "SOLD", "DELETED", or null if check fails
+     */
+    private String checkPostStatus(String postId, String accessToken) {
+        try {
+            String url = UriComponentsBuilder
+                    .fromUriString(marketplaceServiceUrl)
+                    .path("/api/marketplace/posts/{postId}")
+                    .buildAndExpand(postId)
+                    .toUriString();
+            
+            org.springframework.web.reactive.function.client.WebClient.RequestHeadersSpec<?> requestSpec = webClient
+                    .get()
+                    .uri(url);
+            
+            // Add authorization header if access token is available
+            if (accessToken != null && !accessToken.isEmpty()) {
+                requestSpec = requestSpec.header("Authorization", "Bearer " + accessToken);
+            }
+            
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = (Map<String, Object>) requestSpec
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+            
+            if (response != null && response.get("status") != null) {
+                return response.get("status").toString();
+            }
+        } catch (Exception e) {
+            log.debug("Failed to check post status for postId {}: {}", postId, e.getMessage());
+            // If post not found or error, assume DELETED
+            return "DELETED";
+        }
+        return null;
     }
 
     /**

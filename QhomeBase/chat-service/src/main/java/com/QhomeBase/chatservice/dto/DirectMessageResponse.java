@@ -38,5 +38,6 @@ public class DirectMessageResponse {
     private String postThumbnailUrl;
     private Double postPrice;
     private String deepLink;
+    private String postStatus; // ACTIVE, SOLD, DELETED - checked from marketplace service
 }
 

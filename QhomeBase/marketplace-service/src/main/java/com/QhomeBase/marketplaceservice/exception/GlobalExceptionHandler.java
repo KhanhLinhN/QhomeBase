@@ -20,6 +20,12 @@ public class GlobalExceptionHandler {
         log.error("Runtime exception: ", e);
         Map<String, String> error = new HashMap<>();
         error.put("error", e.getMessage());
+        
+        // Check if it's a "Post not found" exception and return 404 instead of 400
+        if (e.getMessage() != null && e.getMessage().contains("Post not found")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+        }
+        
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
