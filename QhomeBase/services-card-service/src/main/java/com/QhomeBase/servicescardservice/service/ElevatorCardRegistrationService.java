@@ -850,14 +850,40 @@ public class ElevatorCardRegistrationService {
             }
 
             orderIdToRegistrationId.remove(orderId);
-            return new ElevatorCardPaymentResult(registration.getId(), true, responseCode, true);
+            
+            // Tạo thông báo thành công dựa trên loại yêu cầu
+            String requestType = registration.getRequestType();
+            String successMessage;
+            if ("RENEWAL".equals(requestType)) {
+                successMessage = "Gia hạn thẻ thang máy thành công";
+            } else {
+                successMessage = "Đăng ký thẻ thang máy thành công";
+            }
+            
+            return new ElevatorCardPaymentResult(
+                registration.getId(), 
+                true, 
+                responseCode, 
+                true,
+                requestType,
+                successMessage
+            );
         }
 
         registration.setStatus(STATUS_READY_FOR_PAYMENT);
         registration.setPaymentStatus("UNPAID");
         repository.save(registration);
         orderIdToRegistrationId.remove(orderId);
-        return new ElevatorCardPaymentResult(registration.getId(), false, responseCode, signatureValid);
+        
+        String errorMessage = "Thanh toán không thành công. Vui lòng thử lại.";
+        return new ElevatorCardPaymentResult(
+            registration.getId(), 
+            false, 
+            responseCode, 
+            signatureValid,
+            registration.getRequestType(),
+            errorMessage
+        );
     }
 
     private void applyResolvedAddress(ElevatorCardRegistration registration,
@@ -1225,7 +1251,11 @@ public class ElevatorCardRegistrationService {
 
     public record ElevatorCardPaymentResponse(UUID registrationId, String paymentUrl) {}
 
-    public record ElevatorCardPaymentResult(UUID registrationId, boolean success, String responseCode, boolean signatureValid) {}
+    public record ElevatorCardPaymentResult(UUID registrationId, boolean success, String responseCode, boolean signatureValid, String requestType, String message) {
+        public ElevatorCardPaymentResult(UUID registrationId, boolean success, String responseCode, boolean signatureValid) {
+            this(registrationId, success, responseCode, signatureValid, null, null);
+        }
+    }
 
     /**
      * Lấy danh sách thành viên trong căn hộ (bao gồm chủ căn hộ và household members)

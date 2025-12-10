@@ -761,14 +761,40 @@ public class ResidentCardRegistrationService {
             }
 
             orderIdToRegistrationId.remove(orderId);
-            return new ResidentCardPaymentResult(registration.getId(), true, responseCode, true);
+            
+            // Tạo thông báo thành công dựa trên loại yêu cầu
+            String requestType = registration.getRequestType();
+            String successMessage;
+            if ("RENEWAL".equals(requestType)) {
+                successMessage = "Gia hạn thẻ cư dân thành công";
+            } else {
+                successMessage = "Đăng ký thẻ cư dân thành công";
+            }
+            
+            return new ResidentCardPaymentResult(
+                registration.getId(), 
+                true, 
+                responseCode, 
+                true,
+                requestType,
+                successMessage
+            );
         }
 
         registration.setStatus(STATUS_READY_FOR_PAYMENT);
         registration.setPaymentStatus("UNPAID");
         repository.save(registration);
         orderIdToRegistrationId.remove(orderId);
-        return new ResidentCardPaymentResult(registration.getId(), false, responseCode, signatureValid);
+        
+        String errorMessage = "Thanh toán không thành công. Vui lòng thử lại.";
+        return new ResidentCardPaymentResult(
+            registration.getId(), 
+            false, 
+            responseCode, 
+            signatureValid,
+            registration.getRequestType(),
+            errorMessage
+        );
     }
 
     private void applyResolvedAddressForResident(ResidentCardRegistration registration,
@@ -1065,7 +1091,11 @@ public class ResidentCardRegistrationService {
 
     public record ResidentCardPaymentResponse(UUID registrationId, String paymentUrl) {}
 
-    public record ResidentCardPaymentResult(UUID registrationId, boolean success, String responseCode, boolean signatureValid) {}
+    public record ResidentCardPaymentResult(UUID registrationId, boolean success, String responseCode, boolean signatureValid, String requestType, String message) {
+        public ResidentCardPaymentResult(UUID registrationId, boolean success, String responseCode, boolean signatureValid) {
+            this(registrationId, success, responseCode, signatureValid, null, null);
+        }
+    }
 
     /**
      * Format BigDecimal price to VND string (e.g., 30000 -> "30.000 VND")

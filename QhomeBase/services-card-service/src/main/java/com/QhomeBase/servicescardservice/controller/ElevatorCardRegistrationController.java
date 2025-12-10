@@ -360,10 +360,19 @@ public class ElevatorCardRegistrationController {
         String responseCode = result.responseCode() != null 
                 ? java.net.URLEncoder.encode(result.responseCode(), java.nio.charset.StandardCharsets.UTF_8)
                 : "";
+        String message = result.message() != null 
+                ? java.net.URLEncoder.encode(result.message(), java.nio.charset.StandardCharsets.UTF_8)
+                : "";
+        String requestType = result.requestType() != null 
+                ? java.net.URLEncoder.encode(result.requestType(), java.nio.charset.StandardCharsets.UTF_8)
+                : "";
+        
         String redirectUrl = new StringBuilder("qhomeapp://vnpay-elevator-card-result")
                 .append("?registrationId=").append(registrationId)
                 .append("&responseCode=").append(responseCode)
                 .append("&success=").append(result.success())
+                .append("&requestType=").append(requestType)
+                .append("&message=").append(message)
                 .toString();
         response.sendRedirect(redirectUrl);
         HttpStatus status = result.success() ? HttpStatus.OK : HttpStatus.BAD_REQUEST;
@@ -404,6 +413,8 @@ public class ElevatorCardRegistrationController {
         body.put("registrationId", result.registrationId() != null ? result.registrationId().toString() : null);
         body.put("responseCode", result.responseCode());
         body.put("signatureValid", result.signatureValid());
+        body.put("requestType", result.requestType());
+        body.put("message", result.message());
         body.put("params", params);
         return body;
     }

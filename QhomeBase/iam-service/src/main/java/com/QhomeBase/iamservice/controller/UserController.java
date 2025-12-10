@@ -215,7 +215,7 @@ public class UserController {
     }
     
     @GetMapping("/{userId}/account-info")
-    @PreAuthorize("@authz.canViewUser(#userId)")
+    @PreAuthorize("@authz.canViewUser(#userId) or hasRole('RESIDENT')")
     @Transactional(readOnly = true)
     public ResponseEntity<UserAccountDto> getUserAccountInfo(@PathVariable UUID userId) {
         return userService.findUserWithRolesById(userId)
