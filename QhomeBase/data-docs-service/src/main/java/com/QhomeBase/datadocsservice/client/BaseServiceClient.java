@@ -7,8 +7,10 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.ConnectException;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
@@ -42,6 +44,14 @@ public class BaseServiceClient {
                 }
             }
             return Optional.empty();
+        } catch (ResourceAccessException ex) {
+            // Connection refused or service unavailable - log as WARN, not ERROR
+            if (ex.getCause() instanceof ConnectException) {
+                log.warn("⚠️ [BaseServiceClient] Base-service unavailable (connection refused) for unitId: {}. This is normal if base-service is not running.", unitId);
+            } else {
+                log.warn("⚠️ [BaseServiceClient] Network error connecting to base-service for unitId: {}", unitId, ex);
+            }
+            return Optional.empty();
         } catch (Exception ex) {
             log.error("❌ [BaseServiceClient] Error getting primary residentId for unitId: {}", unitId, ex);
             return Optional.empty();
@@ -69,6 +79,14 @@ public class BaseServiceClient {
                 }
             }
             return Optional.empty();
+        } catch (ResourceAccessException ex) {
+            // Connection refused or service unavailable - log as WARN, not ERROR
+            if (ex.getCause() instanceof ConnectException) {
+                log.warn("⚠️ [BaseServiceClient] Base-service unavailable (connection refused) for unitId: {}. This is normal if base-service is not running.", unitId);
+            } else {
+                log.warn("⚠️ [BaseServiceClient] Network error connecting to base-service for unitId: {}", unitId, ex);
+            }
+            return Optional.empty();
         } catch (Exception ex) {
             log.error("❌ [BaseServiceClient] Error getting buildingId for unitId: {}", unitId, ex);
             return Optional.empty();
@@ -88,6 +106,14 @@ public class BaseServiceClient {
                 if (codeObj != null) {
                     return Optional.of(codeObj.toString());
                 }
+            }
+            return Optional.empty();
+        } catch (ResourceAccessException ex) {
+            // Connection refused or service unavailable - log as WARN, not ERROR
+            if (ex.getCause() instanceof ConnectException) {
+                log.warn("⚠️ [BaseServiceClient] Base-service unavailable (connection refused) for unitId: {}. This is normal if base-service is not running.", unitId);
+            } else {
+                log.warn("⚠️ [BaseServiceClient] Network error connecting to base-service for unitId: {}", unitId, ex);
             }
             return Optional.empty();
         } catch (Exception ex) {
@@ -144,6 +170,14 @@ public class BaseServiceClient {
             } else {
                 log.error("❌ [BaseServiceClient] Failed to create asset inspection. Status: {}", response.getStatusCode());
             }
+        } catch (ResourceAccessException ex) {
+            // Connection refused or service unavailable - log as WARN, not ERROR
+            if (ex.getCause() instanceof ConnectException) {
+                log.warn("⚠️ [BaseServiceClient] Base-service unavailable (connection refused) when creating asset inspection for contract: {}. This is normal if base-service is not running.", contractId);
+            } else {
+                log.warn("⚠️ [BaseServiceClient] Network error connecting to base-service when creating asset inspection for contract: {}", contractId, ex);
+            }
+            // Don't throw exception - allow contract cancellation to proceed even if inspection creation fails
         } catch (Exception ex) {
             log.error("❌ [BaseServiceClient] Error creating asset inspection for contract: {}", contractId, ex);
             // Don't throw exception - allow contract cancellation to proceed even if inspection creation fails

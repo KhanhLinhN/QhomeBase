@@ -511,6 +511,7 @@ public class ContractService {
                 .reminderCount(reminderCount > 0 ? reminderCount : null)
                 .isFinalReminder(isFinalReminder)
                 .needsRenewal(needsRenewal)
+                .renewedContractId(contract.getRenewedContractId())
                 .files(files)
                 .build();
     }
@@ -538,6 +539,7 @@ public class ContractService {
                 .renewalReminderSentAt(contract.getRenewalReminderSentAt())
                 .renewalDeclinedAt(contract.getRenewalDeclinedAt())
                 .renewalStatus(contract.getRenewalStatus())
+                .renewedContractId(contract.getRenewedContractId())
                 .files(null)
                 .build();
     }
@@ -1043,9 +1045,112 @@ public class ContractService {
             throw new IllegalArgumentException("Contract must be ACTIVE and in REMINDED status to renew");
         }
         
-        // Validate dates
-        if (newStartDate.isAfter(newEndDate)) {
-            throw new IllegalArgumentException("Start date must be before or equal to end date");
+        // Check if contract has already been renewed
+        if (oldContract.getRenewedContractId() != null) {
+            throw new IllegalArgumentException("Hợp đồng này đã được gia hạn thành công. Không thể gia hạn lại.");
+        }
+        
+        // Validate dates: Ngày kết thúc phải sau ngày bắt đầu và không được trùng nhau
+        if (newStartDate.isAfter(newEndDate) || newStartDate.isEqual(newEndDate)) {
+            throw new IllegalArgumentException("Ngày kết thúc phải sau ngày bắt đầu và không được trùng nhau");
+        }
+        
+        // Validate: Gia hạn phải ít nhất 3 tháng
+        // Tính số tháng từ đầu tháng bắt đầu đến đầu tháng kết thúc
+        long monthsBetween = java.time.temporal.ChronoUnit.MONTHS.between(
+            newStartDate.withDayOfMonth(1), 
+            newEndDate.withDayOfMonth(1)
+        );
+        if (monthsBetween < 3) {
+            throw new IllegalArgumentException("Gia hạn hợp đồng phải ít nhất 3 tháng. Ngày kết thúc phải cách ngày bắt đầu ít nhất 3 tháng.");
+        }
+        
+        // Check for overlapping contracts (không được trùng thời gian)
+        List<Contract> existingContracts = contractRepository.findByUnitId(oldContract.getUnitId());
+        String oldContractNumber = oldContract.getContractNumber();
+        
+        log.debug("Checking overlap for contract renewal. Old contract: {}, Old contract number: {}", 
+                oldContractId, oldContractNumber);
+        
+        for (Contract existing : existingContracts) {
+            // Skip the old contract itself and cancelled/expired contracts
+            if (existing.getId().equals(oldContractId) || 
+                "CANCELLED".equals(existing.getStatus()) || 
+                "EXPIRED".equals(existing.getStatus())) {
+                log.debug("Skipping contract {} - same ID or cancelled/expired", existing.getId());
+                continue;
+            }
+            
+            String existingContractNumber = existing.getContractNumber();
+            
+            // Skip renewal contracts (RENEW) of the same original contract
+            // These are contracts that were created from renewing this same contract
+            // Format: {oldContractNumber}-RENEW-{timestamp}
+            if (existingContractNumber != null && 
+                existingContractNumber.startsWith(oldContractNumber + "-RENEW-")) {
+                log.debug("Skipping RENEW contract {} - same original contract", existingContractNumber);
+                continue;
+            }
+            
+            // Also skip if this existing contract is the one that the old contract was renewed into
+            // (i.e., oldContract.getRenewedContractId() == existing.getId())
+            if (oldContract.getRenewedContractId() != null && 
+                oldContract.getRenewedContractId().equals(existing.getId())) {
+                log.debug("Skipping contract {} - this is the renewed contract", existing.getId());
+                continue;
+            }
+            
+            // Also skip if existing contract is a RENEW contract that was created from the same original contract
+            // Check by extracting the original contract number from RENEW contract number
+            if (existingContractNumber != null && existingContractNumber.contains("-RENEW-")) {
+                String originalContractNumber = existingContractNumber.substring(0, existingContractNumber.indexOf("-RENEW-"));
+                if (originalContractNumber.equals(oldContractNumber)) {
+                    log.debug("Skipping RENEW contract {} - same original contract number {}", 
+                            existingContractNumber, originalContractNumber);
+                    continue;
+                }
+            }
+            
+            // Skip INACTIVE and PENDING contracts - these are renewal contracts that haven't been paid yet
+            // Only check overlap with ACTIVE contracts
+            if ("INACTIVE".equals(existing.getStatus()) || "PENDING".equals(existing.getStatus())) {
+                log.debug("Skipping contract {} - status is {} (not yet active/paid)", 
+                        existingContractNumber, existing.getStatus());
+                continue;
+            }
+            
+            // Check if dates overlap (only for ACTIVE contracts)
+            // Only check overlap if existing contract's end date is in the future (still active)
+            // If existing contract has already ended, allow new contract to start
+            if (existing.getStartDate() != null && existing.getEndDate() != null) {
+                LocalDate today = LocalDate.now();
+                
+                // Skip if existing contract has already ended (endDate is in the past)
+                // This allows new contracts to start after old contracts have expired
+                if (existing.getEndDate().isBefore(today)) {
+                    log.debug("Skipping contract {} - end date {} is in the past", 
+                            existingContractNumber, existing.getEndDate());
+                    continue;
+                }
+                
+                // Check if new contract starts before existing contract ends
+                // Only consider it an overlap if new start date is before existing end date
+                // If new start date equals existing end date, it's considered consecutive (no overlap)
+                boolean overlaps = newStartDate.isBefore(existing.getEndDate()) && 
+                                 newEndDate.isAfter(existing.getStartDate());
+                
+                if (overlaps) {
+                    log.warn("Overlap detected: Existing contract {} ({}) overlaps with new renewal period {} to {}", 
+                            existingContractNumber, existing.getId(), newStartDate, newEndDate);
+                    throw new IllegalArgumentException(
+                        String.format("Hợp đồng mới trùng thời gian với hợp đồng hiện có (Số hợp đồng: %s, từ %s đến %s). " +
+                                    "Vui lòng chọn khoảng thời gian khác.",
+                        existing.getContractNumber(),
+                        existing.getStartDate(),
+                        existing.getEndDate())
+                    );
+                }
+            }
         }
         
         // Check if start date is today - if not, status should be INACTIVE
@@ -1091,6 +1196,124 @@ public class ContractService {
             
             if (oldContract.getMonthlyRent() == null) {
                 throw new IllegalArgumentException("Contract monthly rent is required for renewal");
+            }
+            
+            // Check if contract has already been renewed
+            if (oldContract.getRenewedContractId() != null) {
+                throw new IllegalArgumentException("Hợp đồng này đã được gia hạn thành công. Không thể gia hạn lại.");
+            }
+            
+            // Validate dates: Ngày kết thúc phải sau ngày bắt đầu và không được trùng nhau
+            if (newStartDate.isAfter(newEndDate) || newStartDate.isEqual(newEndDate)) {
+                throw new IllegalArgumentException("Ngày kết thúc phải sau ngày bắt đầu và không được trùng nhau");
+            }
+            
+            // Validate: Gia hạn phải ít nhất 3 tháng
+            long monthsBetween = java.time.temporal.ChronoUnit.MONTHS.between(
+                newStartDate.withDayOfMonth(1), 
+                newEndDate.withDayOfMonth(1)
+            );
+            if (monthsBetween < 3) {
+                throw new IllegalArgumentException("Gia hạn hợp đồng phải ít nhất 3 tháng. Ngày kết thúc phải cách ngày bắt đầu ít nhất 3 tháng.");
+            }
+            
+            // Check for overlapping contracts (không được trùng thời gian)
+            List<Contract> existingContracts = contractRepository.findByUnitId(oldContract.getUnitId());
+            String oldContractNumber = oldContract.getContractNumber();
+            
+            log.info("🔍 Checking overlap for contract renewal. Old contract ID: {}, Old contract number: {}", 
+                    contractId, oldContractNumber);
+            log.info("🔍 Total existing contracts found: {}", existingContracts.size());
+            
+            for (Contract existing : existingContracts) {
+                String existingContractNumber = existing.getContractNumber();
+                log.info("🔍 Checking contract: {} ({}), status: {}", 
+                        existingContractNumber, existing.getId(), existing.getStatus());
+                
+                // Skip the old contract itself and cancelled/expired contracts
+                if (existing.getId().equals(contractId) || 
+                    "CANCELLED".equals(existing.getStatus()) || 
+                    "EXPIRED".equals(existing.getStatus())) {
+                    log.info("✅ Skipping contract {} - same ID or cancelled/expired", existing.getId());
+                    continue;
+                }
+                
+                // Skip renewal contracts (RENEW) of the same original contract
+                // These are contracts that were created from renewing this same contract
+                // Format: {oldContractNumber}-RENEW-{timestamp}
+                if (existingContractNumber != null) {
+                    String checkPrefix = oldContractNumber + "-RENEW-";
+                    log.info("🔍 Checking if {} starts with {}", existingContractNumber, checkPrefix);
+                    if (existingContractNumber.startsWith(checkPrefix)) {
+                        log.info("✅ Skipping RENEW contract {} - same original contract (startsWith check)", existingContractNumber);
+                        continue;
+                    }
+                    
+                    // Also skip if existing contract is a RENEW contract that was created from the same original contract
+                    // Check by extracting the original contract number from RENEW contract number
+                    if (existingContractNumber.contains("-RENEW-")) {
+                        String originalContractNumber = existingContractNumber.substring(0, existingContractNumber.indexOf("-RENEW-"));
+                        log.info("🔍 Extracted original contract number from RENEW: {} (from {}), comparing with {}", 
+                                originalContractNumber, existingContractNumber, oldContractNumber);
+                        if (originalContractNumber.equals(oldContractNumber)) {
+                            log.info("✅ Skipping RENEW contract {} - same original contract number {}", 
+                                    existingContractNumber, originalContractNumber);
+                            continue;
+                        } else {
+                            log.info("⚠️ RENEW contract {} has different original contract number: {} vs {}", 
+                                    existingContractNumber, originalContractNumber, oldContractNumber);
+                        }
+                    }
+                }
+                
+                // Also skip if this existing contract is the one that the old contract was renewed into
+                // (i.e., oldContract.getRenewedContractId() == existing.getId())
+                if (oldContract.getRenewedContractId() != null && 
+                    oldContract.getRenewedContractId().equals(existing.getId())) {
+                    log.info("✅ Skipping contract {} - this is the renewed contract", existing.getId());
+                    continue;
+                }
+                
+                // Skip INACTIVE and PENDING contracts - these are renewal contracts that haven't been paid yet
+                // Only check overlap with ACTIVE contracts
+                if ("INACTIVE".equals(existing.getStatus()) || "PENDING".equals(existing.getStatus())) {
+                    log.info("✅ Skipping contract {} - status is {} (not yet active/paid)", 
+                            existingContractNumber, existing.getStatus());
+                    continue;
+                }
+                
+                // Check if dates overlap (only for ACTIVE contracts)
+                // Only check overlap if existing contract's end date is in the future (still active)
+                // If existing contract has already ended, allow new contract to start
+                if (existing.getStartDate() != null && existing.getEndDate() != null) {
+                    LocalDate today = LocalDate.now();
+                    
+                    // Skip if existing contract has already ended (endDate is in the past)
+                    // This allows new contracts to start after old contracts have expired
+                    if (existing.getEndDate().isBefore(today)) {
+                        log.info("✅ Skipping contract {} - end date {} is in the past", 
+                                existingContractNumber, existing.getEndDate());
+                        continue;
+                    }
+                    
+                    // Check if new contract starts before existing contract ends
+                    // Only consider it an overlap if new start date is before existing end date
+                    // If new start date equals existing end date, it's considered consecutive (no overlap)
+                    boolean overlaps = newStartDate.isBefore(existing.getEndDate()) && 
+                                     newEndDate.isAfter(existing.getStartDate());
+                    
+                    if (overlaps) {
+                        log.warn("❌ Overlap detected: Existing contract {} ({}) overlaps with new renewal period {} to {}", 
+                                existingContractNumber, existing.getId(), newStartDate, newEndDate);
+                        throw new IllegalArgumentException(
+                            String.format("Hợp đồng mới trùng thời gian với hợp đồng hiện có (Số hợp đồng: %s, từ %s đến %s). " +
+                                        "Vui lòng chọn khoảng thời gian khác.",
+                            existing.getContractNumber(),
+                            existing.getStartDate(),
+                            existing.getEndDate())
+                        );
+                    }
+                }
             }
             
             // Create new contract first (with PENDING status, will be activated after payment)
@@ -1266,6 +1489,23 @@ public class ContractService {
         
         newContract.setRenewalStatus("PENDING"); // Reset for new cycle
         newContract = contractRepository.save(newContract);
+        
+        // Find and update the old contract to mark it as renewed
+        // The new contract number format is: {oldContractNumber}-RENEW-{timestamp}
+        String newContractNumber = newContract.getContractNumber();
+        if (newContractNumber != null && newContractNumber.contains("-RENEW-")) {
+            String oldContractNumber = newContractNumber.substring(0, newContractNumber.indexOf("-RENEW-"));
+            Optional<Contract> oldContractOpt = contractRepository.findByContractNumber(oldContractNumber);
+            if (oldContractOpt.isPresent()) {
+                Contract oldContract = oldContractOpt.get();
+                oldContract.setRenewedContractId(newContract.getId());
+                contractRepository.save(oldContract);
+                log.info("Marked old contract {} as renewed with new contract {}", 
+                        oldContract.getId(), newContract.getId());
+            } else {
+                log.warn("Could not find old contract with number: {}", oldContractNumber);
+            }
+        }
         
         log.info("Completed contract renewal payment: contractId={}, invoiceId={}, vnpayTxnRef={}", 
                 newContract.getId(), invoiceId, vnpayTransactionRef);

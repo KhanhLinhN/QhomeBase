@@ -42,6 +42,7 @@ public class ContractDto {
     private Integer reminderCount; // Calculated: 1, 2, or 3 based on days since first reminder
     private Boolean isFinalReminder; // true if reminderCount == 3
     private Boolean needsRenewal; // true if contract is within 1 month before expiration (28-32 days before endDate, same as reminder 1)
+    private UUID renewedContractId; // ID of the new contract created when this contract is renewed successfully
     private List<ContractFileDto> files;
 }
 
