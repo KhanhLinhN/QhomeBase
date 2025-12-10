@@ -145,7 +145,6 @@ public class MarketplaceCommentController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
 
-        // Service method handles transaction and ensures replies are initialized
         MarketplaceComment comment = commentService.updateComment(commentId, residentId, request.getContent());
         CommentResponse response = mapper.toCommentResponse(comment);
         return ResponseEntity.ok(response);

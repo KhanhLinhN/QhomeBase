@@ -21,6 +21,7 @@ import java.util.List;
 public class PaymentPendingExpiryJob {
 
     private static final String STATUS_READY_FOR_PAYMENT = "READY_FOR_PAYMENT";
+    private static final String STATUS_PAYMENT_FAILED = "PAYMENT_FAILED";
     private static final String STATUS_CANCELLED = "CANCELLED";
 
     private final ResidentCardRegistrationRepository residentRepo;
@@ -147,6 +148,8 @@ public class PaymentPendingExpiryJob {
             for (RegisterServiceRequest registration : legacyVehiclePayments) {
                 if (!"PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
                     registration.setPaymentStatus("PAYMENT_FAILED");
+                    // Set status to PAYMENT_FAILED when payment expires
+                    registration.setStatus(STATUS_PAYMENT_FAILED);
                     if (registration.getAdminNote() == null || registration.getAdminNote().isBlank()) {
                         registration.setAdminNote("Thanh toán VNPay quá thời gian (" + pendingTtlMinutes + " phút) - migrated from PAYMENT_APPROVAL");
                     }
@@ -170,6 +173,8 @@ public class PaymentPendingExpiryJob {
                 // Chỉ expire nếu chưa được thanh toán
                 if (!"PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
                     registration.setPaymentStatus("PAYMENT_FAILED");
+                    // Set status to PAYMENT_FAILED when payment expires
+                    registration.setStatus(STATUS_PAYMENT_FAILED);
                     if (registration.getAdminNote() == null || registration.getAdminNote().isBlank()) {
                         registration.setAdminNote("Thanh toán VNPay quá thời gian (" + pendingTtlMinutes + " phút)");
                     }
@@ -197,6 +202,8 @@ public class PaymentPendingExpiryJob {
                 // Chỉ expire nếu chưa được thanh toán
                 if (!"PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
                     registration.setPaymentStatus("PAYMENT_FAILED");
+                    // Set status to PAYMENT_FAILED when payment expires
+                    registration.setStatus(STATUS_PAYMENT_FAILED);
                     if (registration.getAdminNote() == null || registration.getAdminNote().isBlank()) {
                         registration.setAdminNote("Thanh toán VNPay quá thời gian (" + pendingTtlMinutes + " phút)");
                     }
@@ -224,6 +231,8 @@ public class PaymentPendingExpiryJob {
                 // Chỉ expire nếu chưa được thanh toán
                 if (!"PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
                     registration.setPaymentStatus("PAYMENT_FAILED");
+                    // Set status to PAYMENT_FAILED when payment expires
+                    registration.setStatus(STATUS_PAYMENT_FAILED);
                     if (registration.getAdminNote() == null || registration.getAdminNote().isBlank()) {
                         registration.setAdminNote("Thanh toán VNPay quá thời gian (" + pendingTtlMinutes + " phút)");
                     }

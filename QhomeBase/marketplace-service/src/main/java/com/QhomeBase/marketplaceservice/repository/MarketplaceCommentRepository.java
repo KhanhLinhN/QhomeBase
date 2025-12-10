@@ -32,8 +32,5 @@ public interface MarketplaceCommentRepository extends JpaRepository<MarketplaceC
     
     @Query("SELECT COUNT(c) FROM MarketplaceComment c WHERE c.post.id = :postId AND c.deletedAt IS NULL")
     Long countActiveCommentsByPostId(@Param("postId") UUID postId);
-    
-    @Query("SELECT DISTINCT c FROM MarketplaceComment c LEFT JOIN FETCH c.replies WHERE c.id = :id")
-    java.util.Optional<MarketplaceComment> findByIdWithReplies(@Param("id") UUID id);
 }
 
