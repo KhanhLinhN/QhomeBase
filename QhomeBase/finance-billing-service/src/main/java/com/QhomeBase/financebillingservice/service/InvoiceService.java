@@ -804,13 +804,25 @@ public class InvoiceService {
                 log.info("ℹ️ [InvoiceService] Duplicate VNPAY callback received for already paid invoice {} (txnRef: {})", 
                         invoiceId, txnRef);
             }
-            return new VnpayCallbackResult(invoiceId, true, responseCode, true);
+            return new VnpayCallbackResult(
+                invoiceId, 
+                true, 
+                responseCode, 
+                true,
+                "Đã thanh toán hóa đơn thành công"
+            );
         }
 
         invoiceRepository.save(invoice);
         log.warn("⚠️ [InvoiceService] VNPAY payment failed for invoice {} (txnRef: {}) - responseCode={}, validSignature={}",
                 invoiceId, txnRef, responseCode, signatureValid);
-        return new VnpayCallbackResult(invoiceId, false, responseCode, signatureValid);
+        return new VnpayCallbackResult(
+            invoiceId, 
+            false, 
+            responseCode, 
+            signatureValid,
+            "Thanh toán không thành công. Vui lòng thử lại."
+        );
     }
 
     public UUID getInvoiceIdFromTxnRef(String txnRef) {
@@ -1151,7 +1163,11 @@ public class InvoiceService {
         return result;
     }
     
-    public record VnpayCallbackResult(UUID invoiceId, boolean success, String responseCode, boolean signatureValid) {}
+    public record VnpayCallbackResult(UUID invoiceId, boolean success, String responseCode, boolean signatureValid, String message) {
+        public VnpayCallbackResult(UUID invoiceId, boolean success, String responseCode, boolean signatureValid) {
+            this(invoiceId, success, responseCode, signatureValid, null);
+        }
+    }
 
     private void notifyPaymentSuccess(Invoice invoice, Map<String, String> params) {
         if (invoice.getPayerResidentId() == null) {
