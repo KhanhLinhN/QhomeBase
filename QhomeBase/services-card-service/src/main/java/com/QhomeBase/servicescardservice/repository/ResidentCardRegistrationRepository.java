@@ -78,4 +78,18 @@ public interface ResidentCardRegistrationRepository extends JpaRepository<Reside
      * Tìm các thẻ đã duyệt và đã thanh toán để cập nhật trạng thái (NEEDS_RENEWAL, SUSPENDED)
      */
     List<ResidentCardRegistration> findByStatusAndPaymentStatus(String status, String paymentStatus);
+
+    /**
+     * Tìm các thẻ có VNPay payment đang pending quá thời gian timeout
+     * Tìm các registration có:
+     * - payment_status = 'PAYMENT_IN_PROGRESS'
+     * - payment_gateway = 'VNPAY' hoặc vnpay_transaction_ref IS NOT NULL
+     * - vnpay_initiated_at < threshold (quá 10 phút)
+     */
+    @Query("SELECT r FROM ResidentCardRegistration r " +
+           "WHERE r.paymentStatus = 'PAYMENT_IN_PROGRESS' " +
+           "AND (r.paymentGateway = 'VNPAY' OR r.vnpayTransactionRef IS NOT NULL) " +
+           "AND r.vnpayInitiatedAt IS NOT NULL " +
+           "AND r.vnpayInitiatedAt < :threshold")
+    List<ResidentCardRegistration> findExpiredVnpayPayments(@Param("threshold") OffsetDateTime threshold);
 }

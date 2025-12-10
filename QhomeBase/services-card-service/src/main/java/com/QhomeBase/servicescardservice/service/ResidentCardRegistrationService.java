@@ -556,10 +556,13 @@ public class ResidentCardRegistrationService {
         
         var paymentResult = vnpayService.createPaymentUrlWithRef(orderId, orderInfo, totalAmount, clientIp, returnUrl);
         
-        // Save transaction reference to all registrations
+        // Save transaction reference to all registrations and set payment status
         String txnRef = paymentResult.transactionRef();
+        OffsetDateTime now = OffsetDateTime.now();
         for (ResidentCardRegistration registration : registrations) {
             registration.setVnpayTransactionRef(txnRef);
+            registration.setPaymentStatus("PAYMENT_IN_PROGRESS");
+            registration.setVnpayInitiatedAt(now);
             repository.save(registration);
         }
 

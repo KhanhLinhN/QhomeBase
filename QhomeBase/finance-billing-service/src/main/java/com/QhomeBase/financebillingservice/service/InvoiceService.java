@@ -749,7 +749,7 @@ public class InvoiceService {
         String returnUrl = vnpayProperties.getReturnUrl();
 
         // Set vnpayInitiatedAt to track when payment was initiated
-        // This is used to auto-expire pending payments after 10 minutes
+        // Note: For invoices, we don't auto-expire payments. Status only changes to PAID when payment succeeds.
         invoice.setVnpayInitiatedAt(OffsetDateTime.now());
         invoice.setPaymentGateway("VNPAY");
         invoiceRepository.save(invoice);

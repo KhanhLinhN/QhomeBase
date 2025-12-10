@@ -72,6 +72,9 @@ public class ElevatorCardRegistration {
     @Column(name = "vnpay_transaction_ref")
     private String vnpayTransactionRef;
 
+    @Column(name = "vnpay_initiated_at")
+    private OffsetDateTime vnpayInitiatedAt;
+
     @Column(name = "admin_note")
     private String adminNote;
 

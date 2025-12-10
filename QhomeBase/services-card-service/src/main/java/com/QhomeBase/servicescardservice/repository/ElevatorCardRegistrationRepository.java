@@ -86,4 +86,18 @@ public interface ElevatorCardRegistrationRepository extends JpaRepository<Elevat
      * Tìm các thẻ đã duyệt và đã thanh toán để cập nhật trạng thái (NEEDS_RENEWAL, SUSPENDED)
      */
     List<ElevatorCardRegistration> findByStatusAndPaymentStatus(String status, String paymentStatus);
+
+    /**
+     * Tìm các thẻ có VNPay payment đang pending quá thời gian timeout
+     * Tìm các registration có:
+     * - payment_status = 'PAYMENT_IN_PROGRESS'
+     * - payment_gateway = 'VNPAY' hoặc vnpay_transaction_ref IS NOT NULL
+     * - vnpay_initiated_at < threshold (quá 10 phút)
+     */
+    @Query("SELECT e FROM ElevatorCardRegistration e " +
+           "WHERE e.paymentStatus = 'PAYMENT_IN_PROGRESS' " +
+           "AND (e.paymentGateway = 'VNPAY' OR e.vnpayTransactionRef IS NOT NULL) " +
+           "AND e.vnpayInitiatedAt IS NOT NULL " +
+           "AND e.vnpayInitiatedAt < :threshold")
+    List<ElevatorCardRegistration> findExpiredVnpayPayments(@Param("threshold") OffsetDateTime threshold);
 }

@@ -14,13 +14,13 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
- * Scheduled job to automatically expire VNPay payments that have been pending for more than 10 minutes.
- * This job runs every minute to check for invoices with:
- * - paymentGateway = "VNPAY"
- * - status != "PAID"
- * - vnpayInitiatedAt != null and more than 10 minutes ago
+ * DISABLED: Invoice payment expiry job.
  * 
- * When found, it marks the payment as failed by setting vnpResponseCode to "TIMEOUT".
+ * For invoices (tiền điện, tiền nước), payments should NOT be auto-expired.
+ * The system only checks if payment is successful and updates status to PAID.
+ * If user doesn't complete payment, the invoice status remains unchanged.
+ * 
+ * This job is kept for reference but is disabled. Only card registrations use payment expiry logic.
  */
 @Component
 @RequiredArgsConstructor
@@ -36,12 +36,21 @@ public class VnpayPaymentExpiryJob {
     private long sweepIntervalMs;
 
     /**
-     * Chạy mỗi phút để check và expire các payment VNPay quá thời gian
-     * Default: check mỗi 60 giây (60000ms)
+     * DISABLED: Invoice payments should not be auto-expired.
+     * For invoices (tiền điện, tiền nước), the system only checks if payment is successful
+     * and updates status to PAID. If user doesn't complete payment, status remains unchanged.
+     * 
+     * This job is kept for reference but is disabled.
      */
-    @Scheduled(fixedDelayString = "${vnpay.payment.sweep-interval-ms:60000}")
+    // @Scheduled(fixedDelayString = "${vnpay.payment.sweep-interval-ms:60000}")
     @Transactional
     public void expirePendingVnpayPayments() {
+        // DISABLED: Invoice payments should not be auto-expired
+        // Only card registrations use payment expiry logic
+        log.debug("⏭️ [VnpayPaymentExpiryJob] Invoice payment expiry is disabled - invoices only update status when payment succeeds");
+        return;
+        
+        /* Original implementation (disabled):
         try {
             final OffsetDateTime threshold = OffsetDateTime.now().minusMinutes(timeoutMinutes);
             
@@ -83,5 +92,6 @@ public class VnpayPaymentExpiryJob {
         } catch (Exception e) {
             log.error("❌ [VnpayPaymentExpiryJob] Error expiring pending VNPay payments", e);
         }
+        */
     }
 }
