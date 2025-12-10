@@ -55,11 +55,27 @@ public class ResidentCardRegistrationService {
     private final NotificationClient notificationClient;
     private final CardFeeReminderService cardFeeReminderService;
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final BaseServiceClient baseServiceClient;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
     @Transactional
     public ResidentCardRegistrationDto createRegistration(UUID userId, ResidentCardRegistrationCreateDto dto) {
+        return createRegistration(userId, dto, null);
+    }
+
+    @Transactional
+    public ResidentCardRegistrationDto createRegistration(UUID userId, ResidentCardRegistrationCreateDto dto, String accessToken) {
         validatePayload(dto);
+
+        // Kiểm tra xem cư dân đã được duyệt thành thành viên chưa
+        if (dto.residentId() != null) {
+            boolean isApproved = baseServiceClient.isResidentMemberApproved(dto.residentId(), accessToken);
+            if (!isApproved) {
+                throw new IllegalStateException(
+                    "Cư dân chưa được duyệt thành thành viên. Vui lòng đợi admin duyệt yêu cầu tạo tài khoản trước khi đăng ký thẻ cư dân."
+                );
+            }
+        }
 
         // Normalize citizenId: loại bỏ tất cả ký tự không phải số
         String normalizedCitizenId = dto.citizenId() != null 
@@ -119,7 +135,15 @@ public class ResidentCardRegistrationService {
     public ResidentCardPaymentResponse createAndInitiatePayment(UUID userId,
                                                                ResidentCardRegistrationCreateDto dto,
                                                                HttpServletRequest request) {
-        ResidentCardRegistrationDto created = createRegistration(userId, dto);
+        return createAndInitiatePayment(userId, dto, request, null);
+    }
+
+    @Transactional
+    public ResidentCardPaymentResponse createAndInitiatePayment(UUID userId,
+                                                               ResidentCardRegistrationCreateDto dto,
+                                                               HttpServletRequest request,
+                                                               String accessToken) {
+        ResidentCardRegistrationDto created = createRegistration(userId, dto, accessToken);
         return initiatePayment(userId, created.id(), request);
     }
 

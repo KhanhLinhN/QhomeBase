@@ -56,12 +56,29 @@ public class ElevatorCardRegistrationService {
     private final NotificationClient notificationClient;
     private final CardFeeReminderService cardFeeReminderService;
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final BaseServiceClient baseServiceClient;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
     @Transactional
     @SuppressWarnings({"NullAway", "DataFlowIssue"})
     public ElevatorCardRegistrationDto createRegistration(UUID userId, ElevatorCardRegistrationCreateDto dto) {
+        return createRegistration(userId, dto, null);
+    }
+
+    @Transactional
+    @SuppressWarnings({"NullAway", "DataFlowIssue"})
+    public ElevatorCardRegistrationDto createRegistration(UUID userId, ElevatorCardRegistrationCreateDto dto, String accessToken) {
         validatePayload(dto);
+
+        // Kiểm tra xem cư dân đã được duyệt thành thành viên chưa
+        if (dto.residentId() != null) {
+            boolean isApproved = baseServiceClient.isResidentMemberApproved(dto.residentId(), accessToken);
+            if (!isApproved) {
+                throw new IllegalStateException(
+                    "Cư dân chưa được duyệt thành thành viên. Vui lòng đợi admin duyệt yêu cầu tạo tài khoản trước khi đăng ký thẻ thang máy."
+                );
+            }
+        }
 
         ElevatorCardRegistration registration = ElevatorCardRegistration.builder()
                 .userId(userId)
@@ -150,7 +167,15 @@ public class ElevatorCardRegistrationService {
     public ElevatorCardPaymentResponse createAndInitiatePayment(UUID userId,
                                                                 ElevatorCardRegistrationCreateDto dto,
                                                                 HttpServletRequest request) {
-        ElevatorCardRegistrationDto created = createRegistration(userId, dto);
+        return createAndInitiatePayment(userId, dto, request, null);
+    }
+
+    @Transactional
+    public ElevatorCardPaymentResponse createAndInitiatePayment(UUID userId,
+                                                                ElevatorCardRegistrationCreateDto dto,
+                                                                HttpServletRequest request,
+                                                                String accessToken) {
+        ElevatorCardRegistrationDto created = createRegistration(userId, dto, accessToken);
         return initiatePayment(userId, created.id(), request);
     }
 

@@ -178,7 +178,8 @@ public class ResidentCardRegistrationController {
                     .body(Map.of("message", "Unauthorized"));
         }
         try {
-            ResidentCardRegistrationDto created = registrationService.createRegistration(userId, dto);
+            String accessToken = extractAccessToken(headers);
+            ResidentCardRegistrationDto created = registrationService.createRegistration(userId, dto, accessToken);
             Map<String, Object> body = new HashMap<>();
             body.put("id", created.id() != null ? created.id().toString() : null);
             body.put("status", created.status());
@@ -207,7 +208,8 @@ public class ResidentCardRegistrationController {
         }
         log.info("✅ [ResidentCard] UserId: {}", userId);
         try {
-            ResidentCardPaymentResponse response = registrationService.createAndInitiatePayment(userId, dto, request);
+            String accessToken = extractAccessToken(headers);
+            ResidentCardPaymentResponse response = registrationService.createAndInitiatePayment(userId, dto, request, accessToken);
             Map<String, Object> body = new HashMap<>();
             body.put("registrationId", response.registrationId() != null ? response.registrationId().toString() : null);
             body.put("paymentUrl", response.paymentUrl());
@@ -367,6 +369,14 @@ public class ResidentCardRegistrationController {
         body.put("signatureValid", result.signatureValid());
         body.put("params", params);
         return body;
+    }
+
+    private String extractAccessToken(HttpHeaders headers) {
+        String authHeader = headers.getFirst(HttpHeaders.AUTHORIZATION);
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+        return null;
     }
 }
 
