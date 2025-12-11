@@ -984,7 +984,7 @@ public class ContractService {
      * If scheduledDate is provided, creates an asset inspection
      */
     @Transactional
-    public ContractDto cancelContract(UUID contractId, UUID updatedBy, java.time.LocalDate scheduledDate) {
+    public ContractDto cancelContract(UUID contractId, UUID updatedBy, java.time.LocalDate scheduledDate, UUID userId, String accessToken) {
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
         
@@ -994,6 +994,17 @@ public class ContractService {
         
         if (!"ACTIVE".equals(contract.getStatus())) {
             throw new IllegalArgumentException("Only ACTIVE contracts can be cancelled");
+        }
+        
+        // Kiểm tra quyền OWNER/TENANT: chỉ OWNER hoặc TENANT mới được hủy gia hạn hợp đồng
+        if (userId != null && contract.getUnitId() != null) {
+            boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, contract.getUnitId(), accessToken);
+            if (!isOwner) {
+                throw new IllegalStateException(
+                    "Chỉ chủ căn hộ (OWNER hoặc người thuê TENANT) mới được hủy gia hạn hợp đồng. " +
+                    "Thành viên hộ gia đình không được phép hủy gia hạn."
+                );
+            }
         }
         
         contract.setStatus("CANCELLED");
@@ -1025,7 +1036,7 @@ public class ContractService {
      */
     @Transactional
     public ContractDto cancelContract(UUID contractId, UUID updatedBy) {
-        return cancelContract(contractId, updatedBy, null);
+        return cancelContract(contractId, updatedBy, null, null, null);
     }
 
     /**
@@ -1033,7 +1044,7 @@ public class ContractService {
      * This will be called from the controller which will handle VNPay payment
      */
     @Transactional
-    public ContractDto renewContract(UUID oldContractId, LocalDate newStartDate, LocalDate newEndDate, UUID createdBy) {
+    public ContractDto renewContract(UUID oldContractId, LocalDate newStartDate, LocalDate newEndDate, UUID createdBy, UUID userId, String accessToken) {
         Contract oldContract = contractRepository.findById(oldContractId)
                 .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + oldContractId));
         
@@ -1048,6 +1059,17 @@ public class ContractService {
         // Check if contract has already been renewed
         if (oldContract.getRenewedContractId() != null) {
             throw new IllegalArgumentException("Hợp đồng này đã được gia hạn thành công. Không thể gia hạn lại.");
+        }
+        
+        // Kiểm tra quyền OWNER/TENANT: chỉ OWNER hoặc TENANT mới được gia hạn hợp đồng
+        if (userId != null && oldContract.getUnitId() != null) {
+            boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, oldContract.getUnitId(), accessToken);
+            if (!isOwner) {
+                throw new IllegalStateException(
+                    "Chỉ chủ căn hộ (OWNER hoặc người thuê TENANT) mới được gia hạn hợp đồng. " +
+                    "Thành viên hộ gia đình không được phép gia hạn."
+                );
+            }
         }
         
         // Validate dates: Ngày kết thúc phải sau ngày bắt đầu và không được trùng nhau
@@ -1185,7 +1207,9 @@ public class ContractService {
                                                            LocalDate newStartDate, 
                                                            LocalDate newEndDate,
                                                            UUID createdBy,
-                                                           String clientIp) {
+                                                           String clientIp,
+                                                           UUID userId,
+                                                           String accessToken) {
         try {
             Contract oldContract = contractRepository.findById(contractId)
                     .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
@@ -1201,6 +1225,17 @@ public class ContractService {
             // Check if contract has already been renewed
             if (oldContract.getRenewedContractId() != null) {
                 throw new IllegalArgumentException("Hợp đồng này đã được gia hạn thành công. Không thể gia hạn lại.");
+            }
+            
+            // Kiểm tra quyền OWNER/TENANT: chỉ OWNER hoặc TENANT mới được gia hạn hợp đồng
+            if (userId != null && oldContract.getUnitId() != null) {
+                boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, oldContract.getUnitId(), accessToken);
+                if (!isOwner) {
+                    throw new IllegalStateException(
+                        "Chỉ chủ căn hộ (OWNER hoặc người thuê TENANT) mới được gia hạn hợp đồng. " +
+                        "Thành viên hộ gia đình không được phép gia hạn."
+                    );
+                }
             }
             
             // Validate dates: Ngày kết thúc phải sau ngày bắt đầu và không được trùng nhau

@@ -681,41 +681,27 @@ public class InvoiceService {
         UUID residentId = residentRepository.findResidentIdByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy cư dân cho user: " + userId));
 
-        // Kiểm tra quyền: cho phép thanh toán nếu invoice thuộc căn hộ của user
-        // (tất cả thành viên trong cùng căn hộ có thể thanh toán invoice của căn hộ đó)
-        if (unitFilter != null && !unitFilter.equals(invoice.getPayerUnitId())) {
-            throw new IllegalArgumentException("Hóa đơn không thuộc căn hộ đã chọn");
-        }
-        
-        // Nếu không có unitFilter, kiểm tra xem invoice có thuộc căn hộ của resident không
-        if (unitFilter == null && invoice.getPayerUnitId() != null) {
-            // Kiểm tra xem resident có thuộc căn hộ này không
-            try {
-                BaseServiceClient.ServiceInfo.HouseholdInfo household = baseServiceClient.getCurrentHouseholdByUnitId(invoice.getPayerUnitId());
-                if (household != null && household.getId() != null) {
-                    List<BaseServiceClient.ServiceInfo.HouseholdMemberInfo> members = baseServiceClient.getActiveMembersByHouseholdId(household.getId());
-                    boolean isMember = members.stream()
-                            .anyMatch(member -> member.getResidentId() != null && member.getResidentId().equals(residentId));
-                    if (!isMember && household.getPrimaryResidentId() != null && !household.getPrimaryResidentId().equals(residentId)) {
-                        throw new IllegalArgumentException("Bạn không có quyền thanh toán hóa đơn này");
-                    }
-                } else {
-                    // Fallback: kiểm tra payerResidentId
-                    if (!residentId.equals(invoice.getPayerResidentId())) {
-                        throw new IllegalArgumentException("Bạn không có quyền thanh toán hóa đơn này");
-                    }
-                }
-            } catch (Exception e) {
-                // Fallback: kiểm tra payerResidentId
-                if (!residentId.equals(invoice.getPayerResidentId())) {
-                    throw new IllegalArgumentException("Bạn không có quyền thanh toán hóa đơn này");
-                }
+        // Kiểm tra quyền OWNER: chỉ OWNER mới được thanh toán hóa đơn điện/nước cho căn hộ
+        UUID unitIdToCheck = unitFilter != null ? unitFilter : invoice.getPayerUnitId();
+        if (unitIdToCheck != null) {
+            boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, unitIdToCheck);
+            if (!isOwner) {
+                throw new IllegalStateException(
+                    "Chỉ chủ căn hộ (OWNER) mới được thanh toán hóa đơn điện, nước cho căn hộ. " +
+                    "Thành viên hộ gia đình không được phép thanh toán."
+                );
             }
         } else if (invoice.getPayerUnitId() == null) {
             // Nếu invoice không có payerUnitId, chỉ cho phép payerResidentId thanh toán
+            // Nhưng vẫn cần kiểm tra OWNER nếu có thể
             if (!residentId.equals(invoice.getPayerResidentId())) {
                 throw new IllegalArgumentException("Bạn không có quyền thanh toán hóa đơn này");
             }
+        }
+        
+        // Kiểm tra invoice có thuộc căn hộ đã chọn không
+        if (unitFilter != null && !unitFilter.equals(invoice.getPayerUnitId())) {
+            throw new IllegalArgumentException("Hóa đơn không thuộc căn hộ đã chọn");
         }
 
         if (InvoiceStatus.PAID.equals(invoice.getStatus())) {

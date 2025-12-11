@@ -225,6 +225,95 @@ public class HouseHoldMemberService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Lấy thông tin household và danh sách thành viên theo residentId
+     * Trả về Map chứa: unitCode, primaryResidentName, members (bao gồm cả primary resident)
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getHouseholdInfoWithMembersByResidentId(UUID residentId) {
+        List<HouseholdMember> members = householdMemberRepository
+                .findActiveMembersByResidentId(residentId);
+        
+        if (members.isEmpty()) {
+            return java.util.Map.of(
+                "unitCode", null,
+                "primaryResidentName", null,
+                "primaryResidentId", null,
+                "members", java.util.List.of()
+            );
+        }
+        
+        // Lấy household từ member đầu tiên (thường resident chỉ thuộc 1 household tại 1 thời điểm)
+        HouseholdMember firstMember = members.get(0);
+        Household household = householdRepository.findById(firstMember.getHouseholdId())
+                .orElse(null);
+        
+        if (household == null) {
+            return java.util.Map.of(
+                "unitCode", null,
+                "primaryResidentName", null,
+                "primaryResidentId", null,
+                "members", members.stream().map(this::toDto).collect(Collectors.toList())
+            );
+        }
+        
+        // Lấy unit code
+        String unitCode = null;
+        Unit unit = unitRepository.findById(household.getUnitId()).orElse(null);
+        if (unit != null) {
+            unitCode = unit.getCode();
+        }
+        
+        // Lấy primary resident name
+        String primaryResidentName = null;
+        UUID primaryResidentId = household.getPrimaryResidentId();
+        if (primaryResidentId != null) {
+            Resident primaryResident = residentRepository.findById(primaryResidentId).orElse(null);
+            if (primaryResident != null) {
+                primaryResidentName = primaryResident.getFullName();
+            }
+        }
+        
+        // Lấy tất cả members trong household (bao gồm cả primary resident nếu có trong household_members)
+        List<HouseholdMember> allHouseholdMembers = householdMemberRepository
+                .findActiveMembersByHouseholdId(household.getId());
+        
+        // Nếu primary resident không có trong household_members, thêm vào danh sách
+        boolean hasPrimaryInMembers = allHouseholdMembers.stream()
+                .anyMatch(m -> primaryResidentId != null && m.getResidentId().equals(primaryResidentId));
+        
+        List<HouseholdMemberDto> memberDtos = allHouseholdMembers.stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+        
+        // Nếu primary resident không có trong members, thêm vào đầu danh sách
+        if (!hasPrimaryInMembers && primaryResidentId != null && primaryResidentName != null) {
+            HouseholdMemberDto primaryDto = new HouseholdMemberDto(
+                    null, // id
+                    household.getId(), // householdId
+                    primaryResidentId, // residentId
+                    primaryResidentName, // residentName
+                    null, // residentEmail
+                    null, // residentPhone
+                    "Chủ hộ", // relation
+                    null, // proofOfRelationImageUrl
+                    true, // isPrimary
+                    null, // joinedAt
+                    null, // leftAt
+                    null, // createdAt
+                    null  // updatedAt
+            );
+            memberDtos.add(0, primaryDto);
+        }
+        
+        return java.util.Map.of(
+                "unitCode", unitCode != null ? unitCode : "",
+                "primaryResidentName", primaryResidentName != null ? primaryResidentName : "",
+                "primaryResidentId", primaryResidentId != null ? primaryResidentId.toString() : "",
+                "members", memberDtos
+        );
+    }
+
     @Transactional(readOnly = true)
     public HouseholdMemberDto toDto(HouseholdMember member) {
         if (member == null) {

@@ -83,4 +83,94 @@ public class BaseServiceClient {
             return false;
         }
     }
+
+    /**
+     * Kiểm tra xem user có phải là OWNER (chủ căn hộ) của unit không
+     * OWNER được định nghĩa là:
+     * - household.kind == OWNER HOẶC TENANT (người mua hoặc người thuê căn hộ)
+     * - VÀ user là primaryResidentId của household đó
+     * @param userId ID của user
+     * @param unitId ID của căn hộ
+     * @param accessToken Access token để authenticate với base-service
+     * @return true nếu user là OWNER của unit, false nếu không
+     */
+    public boolean isOwnerOfUnit(UUID userId, UUID unitId, String accessToken) {
+        if (userId == null || unitId == null) {
+            log.warn("⚠️ [BaseServiceClient] userId or unitId is null");
+            return false;
+        }
+
+        try {
+            // Lấy household info từ base-service
+            String url = baseServiceUrl + "/households/units/" + unitId + "/current";
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            if (accessToken != null && !accessToken.isEmpty()) {
+                headers.setBearerAuth(accessToken);
+            }
+            
+            HttpEntity<Void> request = new HttpEntity<>(headers);
+            
+            log.debug("🔍 [BaseServiceClient] Checking if user {} is OWNER of unit {}", userId, unitId);
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    request,
+                    Map.class
+            );
+            
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Map<String, Object> household = response.getBody();
+                
+                // Kiểm tra household kind - OWNER hoặc TENANT đều được coi là chủ căn hộ
+                Object kindObj = household.get("kind");
+                if (kindObj == null) {
+                    log.debug("⚠️ [BaseServiceClient] Household kind is null");
+                    return false;
+                }
+                String kind = kindObj.toString();
+                if (!"OWNER".equalsIgnoreCase(kind) && !"TENANT".equalsIgnoreCase(kind)) {
+                    log.debug("⚠️ [BaseServiceClient] Household kind is not OWNER or TENANT: {}", kind);
+                    return false;
+                }
+                
+                // Kiểm tra primaryResidentId
+                Object primaryResidentIdObj = household.get("primaryResidentId");
+                if (primaryResidentIdObj == null) {
+                    log.debug("⚠️ [BaseServiceClient] Household has no primaryResidentId");
+                    return false;
+                }
+                
+                // Lấy residentId từ userId
+                String residentUrl = baseServiceUrl + "/residents/by-user/" + userId;
+                ResponseEntity<Map> residentResponse = restTemplate.exchange(
+                        residentUrl,
+                        HttpMethod.GET,
+                        request,
+                        Map.class
+                );
+                
+                if (residentResponse.getStatusCode().is2xxSuccessful() && residentResponse.getBody() != null) {
+                    Map<String, Object> resident = residentResponse.getBody();
+                    Object residentIdObj = resident.get("id");
+                    
+                    if (residentIdObj != null) {
+                        String residentId = residentIdObj.toString();
+                        String primaryResidentId = primaryResidentIdObj.toString();
+                        
+                        boolean isOwner = residentId.equals(primaryResidentId);
+                        log.debug("✅ [BaseServiceClient] User {} isOwner of unit {}: {}", userId, unitId, isOwner);
+                        return isOwner;
+                    }
+                }
+            }
+            
+            return false;
+        } catch (RestClientException e) {
+            log.error("❌ [BaseServiceClient] Error checking if user {} is OWNER of unit {}: {}", 
+                    userId, unitId, e.getMessage());
+            return false;
+        }
+    }
 }

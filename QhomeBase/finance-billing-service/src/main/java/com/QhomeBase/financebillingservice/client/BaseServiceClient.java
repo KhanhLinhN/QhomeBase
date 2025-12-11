@@ -92,13 +92,47 @@ public class BaseServiceClient {
         }
     }
 
+    @SuppressWarnings("unchecked")
     public ServiceInfo.HouseholdInfo getCurrentHouseholdByUnitId(UUID unitId) {
         try {
-            return webClient.get()
+            Map<String, Object> householdMap = (Map<String, Object>) (Object) webClient.get()
                     .uri("/api/households/units/{unitId}/current", unitId)
                     .retrieve()
-                    .bodyToMono(ServiceInfo.HouseholdInfo.class)
+                    .bodyToMono(Map.class)
                     .block();
+            
+            if (householdMap == null) {
+                return null;
+            }
+            
+            ServiceInfo.HouseholdInfo household = new ServiceInfo.HouseholdInfo();
+            
+            Object idObj = householdMap.get("id");
+            if (idObj != null) {
+                UUID id = idObj instanceof UUID ? (UUID) idObj : UUID.fromString(idObj.toString());
+                household.setId(id);
+            }
+            
+            Object unitIdObj = householdMap.get("unitId");
+            if (unitIdObj != null) {
+                UUID unitIdUuid = unitIdObj instanceof UUID ? (UUID) unitIdObj : UUID.fromString(unitIdObj.toString());
+                household.setUnitId(unitIdUuid);
+            }
+            
+            Object primaryResidentIdObj = householdMap.get("primaryResidentId");
+            if (primaryResidentIdObj != null) {
+                UUID primaryResidentId = primaryResidentIdObj instanceof UUID 
+                        ? (UUID) primaryResidentIdObj 
+                        : UUID.fromString(primaryResidentIdObj.toString());
+                household.setPrimaryResidentId(primaryResidentId);
+            }
+            
+            Object kindObj = householdMap.get("kind");
+            if (kindObj != null) {
+                household.setKind(kindObj.toString());
+            }
+            
+            return household;
         } catch (Exception e) {
             log.warn("Error fetching current household for unit {} from base-service: {}", unitId, e.getMessage());
             return null;
@@ -278,10 +312,85 @@ public class BaseServiceClient {
                 household.setPrimaryResidentId(primaryResidentId);
             }
             
+            Object kindObj = householdMap.get("kind");
+            if (kindObj != null) {
+                household.setKind(kindObj.toString());
+            }
+            
             return household;
         } catch (Exception e) {
             log.warn("Error fetching household {} from base-service: {}", householdId, e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Kiểm tra xem user có phải là OWNER (chủ căn hộ) của unit không
+     * OWNER được định nghĩa là:
+     * - household.kind == OWNER HOẶC TENANT (người mua hoặc người thuê căn hộ)
+     * - VÀ user là primaryResidentId của household đó
+     * @param userId ID của user
+     * @param unitId ID của căn hộ
+     * @return true nếu user là OWNER của unit, false nếu không
+     */
+    public boolean isOwnerOfUnit(UUID userId, UUID unitId) {
+        if (userId == null || unitId == null) {
+            log.warn("⚠️ [BaseServiceClient] userId or unitId is null");
+            return false;
+        }
+
+        try {
+            // Lấy household info từ base-service
+            ServiceInfo.HouseholdInfo household = getCurrentHouseholdByUnitId(unitId);
+            if (household == null || household.getId() == null) {
+                log.debug("⚠️ [BaseServiceClient] No household found for unit {}", unitId);
+                return false;
+            }
+            
+            // Kiểm tra household kind - OWNER hoặc TENANT đều được coi là chủ căn hộ
+            if (!household.isOwner() && !household.isTenant()) {
+                log.debug("⚠️ [BaseServiceClient] Household kind is not OWNER or TENANT: {}", household.getKind());
+                return false;
+            }
+            
+            // Kiểm tra primaryResidentId
+            if (household.getPrimaryResidentId() == null) {
+                log.debug("⚠️ [BaseServiceClient] Household has no primaryResidentId");
+                return false;
+            }
+            
+            // Lấy residentId từ userId
+            @SuppressWarnings("unchecked")
+            Map<String, Object> residentMap = (Map<String, Object>) (Object) webClient.get()
+                    .uri("/api/residents/by-user/{userId}", userId)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+            
+            if (residentMap == null) {
+                log.debug("⚠️ [BaseServiceClient] No resident found for userId {}", userId);
+                return false;
+            }
+            
+            Object residentIdObj = residentMap.get("id");
+            if (residentIdObj == null) {
+                return false;
+            }
+            
+            UUID residentId;
+            if (residentIdObj instanceof UUID) {
+                residentId = (UUID) residentIdObj;
+            } else {
+                residentId = UUID.fromString(residentIdObj.toString());
+            }
+            
+            boolean isOwner = residentId.equals(household.getPrimaryResidentId());
+            log.debug("✅ [BaseServiceClient] User {} isOwner of unit {}: {}", userId, unitId, isOwner);
+            return isOwner;
+        } catch (Exception e) {
+            log.error("❌ [BaseServiceClient] Error checking if user {} is OWNER of unit {}: {}", 
+                    userId, unitId, e.getMessage());
+            return false;
         }
     }
 
@@ -367,6 +476,7 @@ public class BaseServiceClient {
             private UUID id;
             private UUID unitId;
             private UUID primaryResidentId;
+            private String kind; // OWNER, TENANT, SERVICE
 
             public UUID getId() {
                 return id;
@@ -390,6 +500,22 @@ public class BaseServiceClient {
 
             public void setPrimaryResidentId(UUID primaryResidentId) {
                 this.primaryResidentId = primaryResidentId;
+            }
+
+            public String getKind() {
+                return kind;
+            }
+
+            public void setKind(String kind) {
+                this.kind = kind;
+            }
+            
+            public boolean isOwner() {
+                return "OWNER".equalsIgnoreCase(kind);
+            }
+            
+            public boolean isTenant() {
+                return "TENANT".equalsIgnoreCase(kind);
             }
         }
 

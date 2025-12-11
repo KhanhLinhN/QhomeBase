@@ -70,6 +70,27 @@ public class ElevatorCardRegistrationService {
     public ElevatorCardRegistrationDto createRegistration(UUID userId, ElevatorCardRegistrationCreateDto dto, String accessToken) {
         validatePayload(dto);
 
+        // Kiểm tra quyền OWNER: chỉ OWNER mới được đăng ký thẻ cho thành viên khác
+        // Thành viên chỉ được đăng ký cho chính mình
+        UUID requesterResidentId = residentUnitLookupService.resolveByUser(userId, dto.unitId())
+                .map(info -> info.residentId())
+                .orElse(null);
+        
+        if (requesterResidentId == null) {
+            throw new IllegalStateException("Không tìm thấy thông tin cư dân của bạn. Vui lòng thử lại sau.");
+        }
+        
+        // Kiểm tra xem user có phải OWNER không
+        boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, dto.unitId(), accessToken);
+        
+        // Nếu không phải OWNER, chỉ được đăng ký cho chính mình
+        if (!isOwner && !requesterResidentId.equals(dto.residentId())) {
+            throw new IllegalStateException(
+                "Chỉ chủ căn hộ (OWNER) mới được đăng ký thẻ thang máy cho thành viên khác. " +
+                "Thành viên chỉ được đăng ký thẻ cho chính mình."
+            );
+        }
+
         // Kiểm tra xem cư dân đã được duyệt thành thành viên chưa
         if (dto.residentId() != null) {
             boolean isApproved = baseServiceClient.isResidentMemberApproved(dto.residentId(), accessToken);
@@ -1260,12 +1281,23 @@ public class ElevatorCardRegistrationService {
     /**
      * Lấy danh sách thành viên trong căn hộ (bao gồm chủ căn hộ và household members)
      * Tương tự như ResidentCard nhưng check thẻ thang máy thay vì thẻ cư dân
+     * Chỉ OWNER mới được xem danh sách thành viên để đăng ký cho nhiều người
      */
-    public List<Map<String, Object>> getHouseholdMembersByUnit(UUID unitId) {
+    public List<Map<String, Object>> getHouseholdMembersByUnit(UUID unitId, UUID userId, String accessToken) {
         if (unitId == null) {
             log.warn("⚠️ [ElevatorCard] getHouseholdMembersByUnit called with null unitId");
             return List.of();
         }
+        
+        // Kiểm tra quyền OWNER: chỉ OWNER mới được xem danh sách thành viên để đăng ký cho nhiều người
+        boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, unitId, accessToken);
+        if (!isOwner) {
+            log.warn("⚠️ [ElevatorCard] User {} is not OWNER of unit {}, cannot get household members list", userId, unitId);
+            throw new IllegalStateException("Chỉ chủ căn hộ (OWNER) mới được xem danh sách thành viên để đăng ký thẻ. Thành viên chỉ được đăng ký thẻ cho chính mình.");
+        }
+        
+        // Log để debug: xác nhận user là OWNER
+        log.info("✅ [ElevatorCard] User {} được xác nhận là OWNER/TENANT của unit {}", userId, unitId);
         
         try {
             MapSqlParameterSource params = new MapSqlParameterSource()
@@ -1274,6 +1306,7 @@ public class ElevatorCardRegistrationService {
             log.debug("🔍 [ElevatorCard] Đang lấy danh sách thành viên trong căn hộ unitId: {}", unitId);
             
             // Query để lấy danh sách thành viên và check xem họ đã có thẻ thang máy được approve chưa
+            // Thêm thông tin về household kind để Flutter có thể verify
             List<Map<String, Object>> members = jdbcTemplate.query("""
                     SELECT DISTINCT
                         r.id AS resident_id,
@@ -1282,6 +1315,7 @@ public class ElevatorCardRegistrationService {
                         r.phone AS phone_number,
                         r.email AS email,
                         r.dob AS date_of_birth,
+                        h.kind AS household_kind,
                         CASE 
                             WHEN EXISTS (
                                 SELECT 1 FROM card.elevator_card_registration ecr
@@ -1317,10 +1351,19 @@ public class ElevatorCardRegistrationService {
                     ? rs.getDate("date_of_birth").toString() : null);
                 member.put("hasApprovedCard", rs.getBoolean("has_approved_card"));
                 member.put("waitingForApproval", rs.getBoolean("waiting_for_approval"));
+                // Thêm household kind vào response để Flutter có thể verify
+                String householdKind = rs.getString("household_kind");
+                member.put("householdKind", householdKind);
                 return member;
             });
             
-            log.info("✅ [ElevatorCard] Căn hộ {} có {} thành viên", unitId, members.size());
+            // Log household kind để debug
+            if (!members.isEmpty()) {
+                String householdKind = (String) members.get(0).get("householdKind");
+                log.info("✅ [ElevatorCard] Căn hộ {} có {} thành viên, household kind: {}", unitId, members.size(), householdKind);
+            } else {
+                log.warn("⚠️ [ElevatorCard] Căn hộ {} không có thành viên nào trong household_members", unitId);
+            }
             return members;
         } catch (Exception e) {
             log.error("❌ [ElevatorCard] Không thể lấy danh sách thành viên trong căn hộ unitId: {}", unitId, e);

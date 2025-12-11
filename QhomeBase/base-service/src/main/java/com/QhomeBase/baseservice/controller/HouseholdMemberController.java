@@ -68,5 +68,17 @@ public class HouseholdMemberController {
             return ResponseEntity.badRequest().build();
         }
     }
+
+    @GetMapping("/residents/{residentId}/household-info")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RESIDENT')")
+    public ResponseEntity<?> getHouseholdInfoWithMembersByResidentId(@PathVariable UUID residentId) {
+        try {
+            java.util.Map<String, Object> result = householdMemberService.getHouseholdInfoWithMembersByResidentId(residentId);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.warn("Failed to get household info for resident {}: {}", residentId, e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
 }
 
