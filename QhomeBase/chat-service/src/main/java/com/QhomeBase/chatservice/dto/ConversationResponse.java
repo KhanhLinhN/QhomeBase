@@ -24,6 +24,8 @@ public class ConversationResponse {
     private Long unreadCount; // Unread message count for current user
     private OffsetDateTime lastReadAt; // Last read timestamp for current user
     private Boolean isBlockedByOther; // True if current user is blocked by the other participant
+    private Boolean isBlockedByMe; // True if current user has blocked the other participant
+    private Boolean areFriends; // True if current user and other participant are friends (active friendship)
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 }

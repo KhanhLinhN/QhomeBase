@@ -48,5 +48,17 @@ public interface DirectInvitationRepository extends JpaRepository<DirectInvitati
         @Param("inviterId") UUID inviterId,
         @Param("inviteeId") UUID inviteeId
     );
+    
+    /**
+     * Find invitations between two users (bidirectional)
+     */
+    @Query("SELECT i FROM DirectInvitation i WHERE " +
+           "((i.inviterId = :userId1 AND i.inviteeId = :userId2) OR " +
+           "(i.inviterId = :userId2 AND i.inviteeId = :userId1)) " +
+           "ORDER BY i.createdAt DESC")
+    List<DirectInvitation> findInvitationsBetweenUsers(
+        @Param("userId1") UUID userId1,
+        @Param("userId2") UUID userId2
+    );
 }
 

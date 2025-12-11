@@ -1,7 +1,9 @@
 package com.QhomeBase.chatservice.service;
 
 import com.QhomeBase.chatservice.model.Block;
+import com.QhomeBase.chatservice.model.DirectInvitation;
 import com.QhomeBase.chatservice.repository.BlockRepository;
+import com.QhomeBase.chatservice.repository.DirectInvitationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,7 @@ public class BlockService {
 
     private final BlockRepository blockRepository;
     private final FriendshipService friendshipService;
+    private final DirectInvitationRepository invitationRepository;
 
     /**
      * Block a user
@@ -78,10 +81,25 @@ public class BlockService {
         // Conversation status should already be ACTIVE (we don't change it when blocking)
         // No need to reset status here
 
-        // Reactivate friendship if exists
-        friendshipService.createOrActivateFriendship(blockerId, blockedId);
+        // Do NOT reactivate friendship - users are no longer friends after block/unblock
+        // They need to send invitation again to become friends and chat directly
+        // Friendship remains inactive/deleted - users must re-establish friendship through invitation
+        
+        // Reset ACCEPTED invitations to PENDING so users can see and accept them again
+        // Find all invitations between the two users (bidirectional)
+        List<DirectInvitation> invitations = invitationRepository.findInvitationsBetweenUsers(blockerId, blockedId);
+        
+        for (DirectInvitation inv : invitations) {
+            if ("ACCEPTED".equals(inv.getStatus())) {
+                inv.setStatus("PENDING");
+                inv.setRespondedAt(null);
+                invitationRepository.save(inv);
+                log.info("Reset ACCEPTED invitation {} to PENDING after unblock ({} -> {})", 
+                        inv.getId(), inv.getInviterId(), inv.getInviteeId());
+            }
+        }
 
-        log.info("User {} unblocked user {}. Messages sent during block will now be visible. Friendship reactivated.", blockerId, blockedId);
+        log.info("User {} unblocked user {}. Friendship remains inactive - invitations reset to PENDING so users can accept again.", blockerId, blockedId);
     }
 
     /**

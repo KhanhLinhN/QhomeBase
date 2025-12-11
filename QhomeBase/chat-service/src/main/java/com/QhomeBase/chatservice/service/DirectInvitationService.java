@@ -272,24 +272,34 @@ public class DirectInvitationService {
                             .orElse(null);
                     
                     if (existingInv != null) {
-                        // Return existing invitation response
+                        // Check if existing invitation is ACCEPTED - if so, reset to PENDING so user can see it
+                        if ("ACCEPTED".equals(existingInv.getStatus())) {
+                            log.info("Conversation ACTIVE but existing invitation is ACCEPTED. Resetting to PENDING so user can see it. Invitation ID: {}", existingInv.getId());
+                            existingInv.setStatus("PENDING");
+                            existingInv.setRespondedAt(null);
+                            existingInv.setInitialMessage(request.getInitialMessage());
+                            existingInv.setExpiresAt(OffsetDateTime.now().plusDays(7));
+                            existingInv = invitationRepository.save(existingInv);
+                            log.info("Reset invitation from ACCEPTED to PENDING. ID: {}", existingInv.getId());
+                        }
+                        // Return existing invitation response (now PENDING)
                         log.info("Conversation already ACTIVE, returning existing invitation ID: {}", existingInv.getId());
                         return toResponse(existingInv, accessToken);
                     } else {
-                        // Conversation ACTIVE but no invitation found - this shouldn't happen normally
-                        // But to prevent error, create a new ACCEPTED invitation
-                        log.warn("Conversation ACTIVE but no invitation found. Creating ACCEPTED invitation for consistency.");
+                        // Conversation ACTIVE but no invitation found - create new PENDING invitation
+                        // This allows user to see the invitation even if conversation is ACTIVE
+                        log.info("Conversation ACTIVE but no invitation found. Creating new PENDING invitation.");
                         DirectInvitation newInvitation = DirectInvitation.builder()
                                 .conversation(conversation)
                                 .conversationId(conversation.getId())
                                 .inviterId(inviterResidentId)
                                 .inviteeId(inviteeResidentId)
-                                .status("ACCEPTED")
+                                .status("PENDING")
                                 .initialMessage(request.getInitialMessage())
                                 .expiresAt(OffsetDateTime.now().plusDays(7))
-                                .respondedAt(OffsetDateTime.now())
                                 .build();
                         newInvitation = invitationRepository.save(newInvitation);
+                        log.info("Created new PENDING invitation ID: {}", newInvitation.getId());
                         return toResponse(newInvitation, accessToken);
                     }
                 }
