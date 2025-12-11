@@ -236,72 +236,76 @@ public class DirectInvitationService {
                 }
             }
             
-            // If conversation exists and is ACTIVE, check if there's a reverse invitation
-            // If reverse invitation exists and is PENDING, it means both users want to chat
+            // If conversation exists and is ACTIVE, check if users are actually friends
+            // After block/unblock, conversation may be ACTIVE but friendship is inactive
+            // In that case, don't auto-accept - require explicit acceptance
             if ("ACTIVE".equals(conversation.getStatus())) {
-                // Check for reverse invitation before throwing error
-                Optional<DirectInvitation> reverseInvitationCheck = invitationRepository
-                        .findByConversationAndParticipants(conversation.getId(), inviteeResidentId, inviterResidentId);
+                // Check if users are actually friends (friendship is active)
+                boolean areFriends = friendshipService.areFriends(inviterResidentId, inviteeResidentId);
                 
-                if (reverseInvitationCheck.isPresent() && "PENDING".equals(reverseInvitationCheck.get().getStatus())) {
-                    // Both users want to chat - auto-accept reverse invitation and create friendship
-                    log.info("Conversation ACTIVE but reverse invitation PENDING. Auto-accepting reverse invitation and creating friendship.");
+                if (areFriends) {
+                    // Users are friends - check for reverse invitation
+                    Optional<DirectInvitation> reverseInvitationCheck = invitationRepository
+                            .findByConversationAndParticipants(conversation.getId(), inviteeResidentId, inviterResidentId);
                     
-                    DirectInvitation reverseInv = reverseInvitationCheck.get();
-                    reverseInv.setStatus("ACCEPTED");
-                    reverseInv.setRespondedAt(OffsetDateTime.now());
-                    invitationRepository.save(reverseInv);
-                    log.info("Auto-accepted reverse invitation ID: {}", reverseInv.getId());
-                    
-                    // Create or activate friendship
-                    friendshipService.createOrActivateFriendship(inviterResidentId, inviteeResidentId);
-                    log.info("Friendship created/activated between {} and {} (conversation ACTIVE with reverse invitation)", inviterResidentId, inviteeResidentId);
-                    
-                    // Notify both users
-                    notificationService.notifyDirectInvitationAccepted(
-                            reverseInv.getInviterId(),
-                            conversation.getId(),
-                            toResponse(reverseInv, accessToken));
-                    
-                    // Return the reverse invitation response
-                    return toResponse(reverseInv, accessToken);
-                } else {
-                    // No reverse invitation - check if there's an existing invitation from inviter to invitee
-                    DirectInvitation existingInv = invitationRepository
-                            .findByConversationAndParticipants(conversation.getId(), inviterResidentId, inviteeResidentId)
-                            .orElse(null);
-                    
-                    if (existingInv != null) {
-                        // Check if existing invitation is ACCEPTED - if so, reset to PENDING so user can see it
-                        if ("ACCEPTED".equals(existingInv.getStatus())) {
-                            log.info("Conversation ACTIVE but existing invitation is ACCEPTED. Resetting to PENDING so user can see it. Invitation ID: {}", existingInv.getId());
-                            existingInv.setStatus("PENDING");
-                            existingInv.setRespondedAt(null);
-                            existingInv.setInitialMessage(request.getInitialMessage());
-                            existingInv.setExpiresAt(OffsetDateTime.now().plusDays(7));
-                            existingInv = invitationRepository.save(existingInv);
-                            log.info("Reset invitation from ACCEPTED to PENDING. ID: {}", existingInv.getId());
-                        }
-                        // Return existing invitation response (now PENDING)
-                        log.info("Conversation already ACTIVE, returning existing invitation ID: {}", existingInv.getId());
-                        return toResponse(existingInv, accessToken);
-                    } else {
-                        // Conversation ACTIVE but no invitation found - create new PENDING invitation
-                        // This allows user to see the invitation even if conversation is ACTIVE
-                        log.info("Conversation ACTIVE but no invitation found. Creating new PENDING invitation.");
-                        DirectInvitation newInvitation = DirectInvitation.builder()
-                                .conversation(conversation)
-                                .conversationId(conversation.getId())
-                                .inviterId(inviterResidentId)
-                                .inviteeId(inviteeResidentId)
-                                .status("PENDING")
-                                .initialMessage(request.getInitialMessage())
-                                .expiresAt(OffsetDateTime.now().plusDays(7))
-                                .build();
-                        newInvitation = invitationRepository.save(newInvitation);
-                        log.info("Created new PENDING invitation ID: {}", newInvitation.getId());
-                        return toResponse(newInvitation, accessToken);
+                    if (reverseInvitationCheck.isPresent() && "PENDING".equals(reverseInvitationCheck.get().getStatus())) {
+                        // Both users want to chat and are friends - auto-accept reverse invitation
+                        log.info("Conversation ACTIVE, users are friends, and reverse invitation PENDING. Auto-accepting reverse invitation.");
+                        
+                        DirectInvitation reverseInv = reverseInvitationCheck.get();
+                        reverseInv.setStatus("ACCEPTED");
+                        reverseInv.setRespondedAt(OffsetDateTime.now());
+                        invitationRepository.save(reverseInv);
+                        log.info("Auto-accepted reverse invitation ID: {}", reverseInv.getId());
+                        
+                        // Notify both users
+                        notificationService.notifyDirectInvitationAccepted(
+                                reverseInv.getInviterId(),
+                                conversation.getId(),
+                                toResponse(reverseInv, accessToken));
+                        
+                        // Return the reverse invitation response
+                        return toResponse(reverseInv, accessToken);
                     }
+                }
+                
+                // Check if there's an existing invitation from inviter to invitee
+                // This handles both cases: users are friends or not friends
+                DirectInvitation existingInv = invitationRepository
+                        .findByConversationAndParticipants(conversation.getId(), inviterResidentId, inviteeResidentId)
+                        .orElse(null);
+                
+                if (existingInv != null) {
+                    // Check if existing invitation is ACCEPTED - if so, reset to PENDING so user can see it
+                    if ("ACCEPTED".equals(existingInv.getStatus())) {
+                        log.info("Conversation ACTIVE but existing invitation is ACCEPTED. Resetting to PENDING so user can see it. Invitation ID: {}", existingInv.getId());
+                        existingInv.setStatus("PENDING");
+                        existingInv.setRespondedAt(null);
+                        existingInv.setInitialMessage(request.getInitialMessage());
+                        existingInv.setExpiresAt(OffsetDateTime.now().plusDays(7));
+                        existingInv = invitationRepository.save(existingInv);
+                        log.info("Reset invitation from ACCEPTED to PENDING. ID: {}", existingInv.getId());
+                    }
+                    // Return existing invitation response (now PENDING)
+                    log.info("Conversation already ACTIVE, returning existing invitation ID: {}", existingInv.getId());
+                    return toResponse(existingInv, accessToken);
+                } else {
+                    // Conversation ACTIVE but no invitation found - create new PENDING invitation
+                    // This allows user to see the invitation even if conversation is ACTIVE
+                    // After block/unblock, users are NOT friends, so invitation requires explicit acceptance
+                    log.info("Conversation ACTIVE but no invitation found. Creating new PENDING invitation.");
+                    DirectInvitation newInvitation = DirectInvitation.builder()
+                            .conversation(conversation)
+                            .conversationId(conversation.getId())
+                            .inviterId(inviterResidentId)
+                            .inviteeId(inviteeResidentId)
+                            .status("PENDING")
+                            .initialMessage(request.getInitialMessage())
+                            .expiresAt(OffsetDateTime.now().plusDays(7))
+                            .build();
+                    newInvitation = invitationRepository.save(newInvitation);
+                    log.info("Created new PENDING invitation ID: {}", newInvitation.getId());
+                    return toResponse(newInvitation, accessToken);
                 }
             }
             // If conversation status is BLOCKED, reset to PENDING to allow new invitations
@@ -368,8 +372,12 @@ public class DirectInvitationService {
             // If invitation exists
             if ("PENDING".equals(existingInvitation.getStatus())) {
                 // Check if there's a reverse invitation PENDING - if so, both users want to chat
-                if (reverseInvitation.isPresent() && "PENDING".equals(reverseInvitation.get().getStatus())) {
-                    log.info("Found mutual invitations (both PENDING). Auto-accepting both invitations and creating friendship.");
+                // BUT: Only auto-accept if users are actually friends (friendship is active)
+                // After block/unblock, friendship is inactive, so don't auto-accept
+                boolean areFriends = friendshipService.areFriends(inviterResidentId, inviteeResidentId);
+                
+                if (reverseInvitation.isPresent() && "PENDING".equals(reverseInvitation.get().getStatus()) && areFriends) {
+                    log.info("Found mutual invitations (both PENDING) and users are friends. Auto-accepting both invitations and creating friendship.");
                     
                     // Auto-accept existing invitation (A->B)
                     existingInvitation.setStatus("ACCEPTED");
@@ -402,6 +410,11 @@ public class DirectInvitationService {
                             invitation.getInviterId(),
                             conversation.getId(),
                             toResponse(invitation, accessToken));
+                } else if (reverseInvitation.isPresent() && "PENDING".equals(reverseInvitation.get().getStatus()) && !areFriends) {
+                    // Mutual invitations but users are NOT friends (after block/unblock)
+                    // Don't auto-accept - require explicit acceptance
+                    log.info("Found mutual invitations (both PENDING) but users are NOT friends (friendship inactive). Not auto-accepting - requires explicit acceptance.");
+                    invitation = existingInvitation;
                 } else if (!existingInvitation.isExpired()) {
                     // PENDING and not expired - return existing (no reverse invitation)
                     log.info("Invitation already exists and is pending: {}", existingInvitation.getId());
@@ -481,51 +494,18 @@ public class DirectInvitationService {
             }
         } else {
             // Create new invitation
-            // Check if reverse invitation exists and is PENDING - if so, both users want to chat
+            // Check if reverse invitation exists and is PENDING - if so, inform user that other person already sent invitation
             if (reverseInvitation.isPresent() && "PENDING".equals(reverseInvitation.get().getStatus())) {
-                log.info("Reverse invitation exists and is PENDING. Both users want to chat. Auto-accepting both invitations.");
+                log.info("Reverse invitation exists and is PENDING. User {} already sent invitation to {}.", 
+                        reverseInvitation.get().getInviterId(), reverseInvitation.get().getInviteeId());
                 
-                // Auto-accept reverse invitation
-                DirectInvitation reverseInv = reverseInvitation.get();
-                reverseInv.setStatus("ACCEPTED");
-                reverseInv.setRespondedAt(OffsetDateTime.now());
-                invitationRepository.save(reverseInv);
-                log.info("Auto-accepted reverse invitation ID: {}", reverseInv.getId());
+                // Get inviter name for error message
+                String inviterName = residentInfoService.getResidentName(reverseInvitation.get().getInviterId(), accessToken);
+                String errorMessage = inviterName != null 
+                    ? inviterName + " đã gửi lời mời cho bạn rồi. Vui lòng vào mục lời mời để xác nhận."
+                    : "Người dùng này đã gửi lời mời cho bạn rồi. Vui lòng vào mục lời mời để xác nhận.";
                 
-                // Activate conversation
-                conversation.setStatus("ACTIVE");
-                conversation = conversationRepository.save(conversation);
-                log.info("Activated conversation ID: {}", conversation.getId());
-                
-                // Create invitation and immediately accept it
-                invitation = DirectInvitation.builder()
-                        .conversation(conversation)
-                        .conversationId(conversation.getId())
-                        .inviterId(inviterResidentId)
-                        .inviteeId(inviteeResidentId)
-                        .status("ACCEPTED")
-                        .initialMessage(request.getInitialMessage())
-                        .expiresAt(OffsetDateTime.now().plusDays(7))
-                        .respondedAt(OffsetDateTime.now())
-                        .build();
-                invitation = invitationRepository.save(invitation);
-                
-                log.info("Created and auto-accepted invitation ID: {}, Inviter: {}, Invitee: {}", 
-                        invitation.getId(), invitation.getInviterId(), invitation.getInviteeId());
-                
-                // Create or activate friendship between both users
-                friendshipService.createOrActivateFriendship(inviterResidentId, inviteeResidentId);
-                log.info("Friendship created/activated between {} and {} (mutual invitations)", inviterResidentId, inviteeResidentId);
-                
-                // Notify both users that conversation is now active
-                notificationService.notifyDirectInvitationAccepted(
-                        reverseInv.getInviterId(),
-                        conversation.getId(),
-                        toResponse(reverseInv, accessToken));
-                notificationService.notifyDirectInvitationAccepted(
-                        invitation.getInviterId(),
-                        conversation.getId(),
-                        toResponse(invitation, accessToken));
+                throw new RuntimeException(errorMessage);
             } else {
                 // Create new invitation normally
                 invitation = DirectInvitation.builder()

@@ -184,17 +184,51 @@ public class GroupInvitationService {
                 log.info("Resident {} is already a member of group {}", residentId, groupId);
                 continue;
             }
-
-            // Check if there's already a pending invitation (try both formats)
-            Optional<GroupInvitation> existing = invitationRepository.findPendingByGroupIdAndPhone(groupId, phoneForStorage);
-            if (existing.isEmpty() && !phoneForStorage.startsWith("0")) {
-                // Also try with leading zero
-                existing = invitationRepository.findPendingByGroupIdAndPhone(groupId, "0" + phoneForStorage);
+            
+            // Check if this user (residentId) has already sent a PENDING invitation to the inviter for this group
+            // This handles the case: A invites B to group, B doesn't know, B invites A to same group
+            Optional<GroupInvitation> reverseInvitation = invitationRepository.findPendingByGroupIdAndInviterInvitee(
+                    groupId, residentId, inviterResidentId);
+            if (reverseInvitation.isPresent()) {
+                // Get invitee name (the person who sent the reverse invitation)
+                Map<String, Object> inviteeInfo = residentInfoService.getResidentInfo(residentId);
+                String inviteeName = inviteeInfo != null ? (String) inviteeInfo.get("fullName") : null;
+                String message = inviteeName != null 
+                    ? inviteeName + " đã gửi lời mời cho bạn rồi. Vui lòng vào mục lời mời để xác nhận."
+                    : "Người dùng này đã gửi lời mời cho bạn rồi. Vui lòng vào mục lời mời để xác nhận.";
+                skippedPhones.add(phone + " (" + message + ")");
+                log.info("Resident {} has already sent PENDING invitation to {} for group {}. Skipping.", 
+                        residentId, inviterResidentId, groupId);
+                continue;
             }
-            if (existing.isPresent()) {
+
+            // Check if there's already an invitation (PENDING, DECLINED, or EXPIRED)
+            // First check for PENDING invitation
+            Optional<GroupInvitation> existingPending = invitationRepository.findPendingByGroupIdAndPhone(groupId, phoneForStorage);
+            if (existingPending.isEmpty() && !phoneForStorage.startsWith("0")) {
+                // Also try with leading zero
+                existingPending = invitationRepository.findPendingByGroupIdAndPhone(groupId, "0" + phoneForStorage);
+            }
+            if (existingPending.isPresent()) {
                 skippedPhones.add(phone + " (Đã có lời mời đang chờ)");
                 log.info("Pending invitation already exists for phone {} in group {}", phoneForStorage, groupId);
                 continue;
+            }
+            
+            // Check for DECLINED or EXPIRED invitation - if found, update to PENDING instead of creating new
+            List<GroupInvitation> existingInvitations = invitationRepository.findByGroupIdAndPhone(groupId, phoneForStorage);
+            if (existingInvitations.isEmpty() && !phoneForStorage.startsWith("0")) {
+                // Also try with leading zero
+                existingInvitations = invitationRepository.findByGroupIdAndPhone(groupId, "0" + phoneForStorage);
+            }
+            
+            GroupInvitation existingInvitation = null;
+            if (!existingInvitations.isEmpty()) {
+                // Find the most recent DECLINED or EXPIRED invitation
+                existingInvitation = existingInvitations.stream()
+                        .filter(inv -> "DECLINED".equals(inv.getStatus()) || "EXPIRED".equals(inv.getStatus()))
+                        .findFirst()
+                        .orElse(null);
             }
 
             // Check if inviter has blocked the invitee or vice versa
@@ -205,18 +239,30 @@ public class GroupInvitationService {
                 continue;
             }
 
-            // Create invitation
-            GroupInvitation invitation = GroupInvitation.builder()
-                    .group(group)
-                    .groupId(groupId)
-                    .inviterId(inviterResidentId)
-                    .inviteePhone(phoneForStorage)
-                    .inviteeResidentId(residentId)
-                    .status("PENDING")
-                    .expiresAt(OffsetDateTime.now().plusDays(7))
-                    .build();
-
-            invitation = invitationRepository.save(invitation);
+            // If existing DECLINED or EXPIRED invitation found, update it to PENDING
+            GroupInvitation invitation;
+            if (existingInvitation != null) {
+                log.info("Found existing {} invitation for phone {} in group {}, updating to PENDING: {}", 
+                        existingInvitation.getStatus(), phoneForStorage, groupId, existingInvitation.getId());
+                existingInvitation.setStatus("PENDING");
+                existingInvitation.setInviteeResidentId(residentId);
+                existingInvitation.setExpiresAt(OffsetDateTime.now().plusDays(7));
+                existingInvitation.setRespondedAt(null);
+                invitation = invitationRepository.save(existingInvitation);
+                log.info("Updated invitation from {} to PENDING. ID: {}", existingInvitation.getStatus(), invitation.getId());
+            } else {
+                // Create new invitation
+                invitation = GroupInvitation.builder()
+                        .group(group)
+                        .groupId(groupId)
+                        .inviterId(inviterResidentId)
+                        .inviteePhone(phoneForStorage)
+                        .inviteeResidentId(residentId)
+                        .status("PENDING")
+                        .expiresAt(OffsetDateTime.now().plusDays(7))
+                        .build();
+                invitation = invitationRepository.save(invitation);
+            }
 
             log.info("✅ [GroupInvitationService] Created invitation - ID: {}, GroupId: {}, InviteeResidentId: {}, InviteePhone: {}, Status: {}", 
                 invitation.getId(), groupId, residentId, phoneForStorage, invitation.getStatus());
