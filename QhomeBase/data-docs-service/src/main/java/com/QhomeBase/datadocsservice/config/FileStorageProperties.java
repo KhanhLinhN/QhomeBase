@@ -11,6 +11,7 @@ public class FileStorageProperties {
     
     private String location;
     private String baseUrl;
+    private String gatewayUrl; // API Gateway URL for public access (e.g., http://localhost:8989)
 }
 
 

@@ -138,17 +138,21 @@ public class VideoStorageService {
             
             VideoStorage saved = videoStorageRepository.save(videoStorage);
             
-            // Update fileUrl to point to stream endpoint
-            // baseUrl is like "http://localhost:8082/api/files", we need "http://localhost:8082"
-            String baseUrl = fileStorageProperties.getBaseUrl();
-            // Remove "/api/files" suffix if present to get base server URL
-            if (baseUrl.endsWith("/api/files")) {
-                baseUrl = baseUrl.substring(0, baseUrl.length() - "/api/files".length());
-            } else if (baseUrl.endsWith("/api/files/")) {
-                baseUrl = baseUrl.substring(0, baseUrl.length() - "/api/files/".length());
+            // Update fileUrl to point to stream endpoint via API Gateway
+            // Use gateway URL for public access (ExoPlayer cannot send auth headers)
+            String gatewayBaseUrl = fileStorageProperties.getGatewayUrl();
+            if (gatewayBaseUrl == null || gatewayBaseUrl.isEmpty()) {
+                // Fallback: extract from baseUrl and replace port with gateway port
+                String baseUrl = fileStorageProperties.getBaseUrl();
+                if (baseUrl.endsWith("/api/files")) {
+                    baseUrl = baseUrl.substring(0, baseUrl.length() - "/api/files".length());
+                } else if (baseUrl.endsWith("/api/files/")) {
+                    baseUrl = baseUrl.substring(0, baseUrl.length() - "/api/files/".length());
+                }
+                gatewayBaseUrl = baseUrl.replace(":8082", ":8989");
             }
             String fileUrl = String.format("%s/api/videos/stream/%s",
-                    baseUrl,
+                    gatewayBaseUrl,
                     saved.getId().toString());
             saved.setFileUrl(fileUrl);
             saved = videoStorageRepository.save(saved);
