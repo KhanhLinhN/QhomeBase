@@ -202,17 +202,31 @@ public class GroupInvitationService {
                 continue;
             }
 
-            // Check if there's already an invitation (PENDING, DECLINED, or EXPIRED)
-            // First check for PENDING invitation
+            // Check if there's already a PENDING invitation from inviter to this phone
+            // If A already sent PENDING invitation to B, skip and inform A (don't throw exception to allow processing other phones)
             Optional<GroupInvitation> existingPending = invitationRepository.findPendingByGroupIdAndPhone(groupId, phoneForStorage);
             if (existingPending.isEmpty() && !phoneForStorage.startsWith("0")) {
                 // Also try with leading zero
                 existingPending = invitationRepository.findPendingByGroupIdAndPhone(groupId, "0" + phoneForStorage);
             }
             if (existingPending.isPresent()) {
-                skippedPhones.add(phone + " (Đã có lời mời đang chờ)");
-                log.info("Pending invitation already exists for phone {} in group {}", phoneForStorage, groupId);
-                continue;
+                // Check if this is the same inviter (A sending invitation to B again)
+                if (existingPending.get().getInviterId().equals(inviterResidentId)) {
+                    log.info("⚠️ User {} already sent PENDING invitation to phone {} for group {}. Skipping duplicate invitation.", 
+                            inviterResidentId, phoneForStorage, groupId);
+                    log.info("   Existing invitation details - ID: {}, Status: {}, Inviter: {}, InviteePhone: {}", 
+                            existingPending.get().getId(), existingPending.get().getStatus(), 
+                            existingPending.get().getInviterId(), existingPending.get().getInviteePhone());
+                    // Add to skippedPhones with clear message instead of throwing exception
+                    // This allows processing other phone numbers in the same request
+                    skippedPhones.add(phone + " (Bạn đã gửi lời mời rồi. Vui lòng đợi phản hồi từ người dùng.)");
+                    continue;
+                } else {
+                    // Different inviter - this is a reverse invitation case, skip with message
+                    skippedPhones.add(phone + " (Đã có lời mời đang chờ)");
+                    log.info("Pending invitation already exists for phone {} in group {} (from different inviter)", phoneForStorage, groupId);
+                    continue;
+                }
             }
             
             // Check for DECLINED or EXPIRED invitation - if found, update to PENDING instead of creating new
