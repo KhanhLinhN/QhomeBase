@@ -199,17 +199,28 @@ public class ContractService {
     public ContractDto getContractById(UUID contractId) {
         Contract contract = contractRepository.findByIdWithFiles(contractId)
                 .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
-        return toDto(contract);
+        return toDto(contract, null, null);
+    }
+    
+    public ContractDto getContractById(UUID contractId, UUID userId, String accessToken) {
+        Contract contract = contractRepository.findByIdWithFiles(contractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+        return toDto(contract, userId, accessToken);
     }
 
     @Transactional(readOnly = true)
     public List<ContractDto> getContractsByUnitId(UUID unitId) {
+        return getContractsByUnitId(unitId, null, null);
+    }
+    
+    @Transactional(readOnly = true)
+    public List<ContractDto> getContractsByUnitId(UUID unitId, UUID userId, String accessToken) {
         try {
             List<Contract> contracts = contractRepository.findByUnitId(unitId);
             return contracts.stream()
                     .map(contract -> {
                         try {
-                            return toDto(contract);
+                            return toDto(contract, userId, accessToken);
                         } catch (Exception e) {
                             log.error("[ContractService] Lỗi khi convert contract {} sang DTO: {}", 
                                     contract.getId(), e.getMessage(), e);
@@ -295,9 +306,14 @@ public class ContractService {
     }
 
     public List<ContractDto> getActiveContractsByUnit(UUID unitId) {
+        return getActiveContractsByUnit(unitId, null, null);
+    }
+    
+    @Transactional(readOnly = true)
+    public List<ContractDto> getActiveContractsByUnit(UUID unitId, UUID userId, String accessToken) {
         List<Contract> contracts = contractRepository.findActiveContractsByUnit(unitId, LocalDate.now());
         return contracts.stream()
-                .map(this::toDto)
+                .map(c -> toDto(c, userId, accessToken))
                 .collect(Collectors.toList());
     }
 
@@ -459,6 +475,10 @@ public class ContractService {
     }
 
     private ContractDto toDto(Contract contract) {
+        return toDto(contract, null, null);
+    }
+    
+    private ContractDto toDto(Contract contract, UUID userId, String accessToken) {
         List<ContractFileDto> files = List.of();
         try {
             if (contract.getFiles() != null) {
@@ -484,6 +504,42 @@ public class ContractService {
         int reminderCount = calculateReminderCount(contract);
         boolean isFinalReminder = reminderCount == 3;
         boolean needsRenewal = calculateNeedsRenewal(contract);
+
+        // Check permission: isOwner, canRenew, canCancel, canExtend
+        boolean isOwner = false;
+        boolean canRenew = false;
+        boolean canCancel = false;
+        boolean canExtend = false;
+        String permissionMessage = null;
+        
+        if (userId != null && contract.getUnitId() != null && accessToken != null) {
+            try {
+                isOwner = baseServiceClient.isOwnerOfUnit(userId, contract.getUnitId(), accessToken);
+                
+                if (isOwner) {
+                    // OWNER/TENANT can renew, cancel, extend if contract is in valid state
+                    if ("RENTAL".equals(contract.getContractType()) && "ACTIVE".equals(contract.getStatus())) {
+                        // Can renew if contract is renewable (not already renewed, in REMINDED status)
+                        canRenew = contract.getRenewedContractId() == null 
+                                && ("REMINDED".equals(contract.getRenewalStatus()) || "PENDING".equals(contract.getRenewalStatus()));
+                        
+                        // Can cancel if contract is active
+                        canCancel = true;
+                        
+                        // Can extend if contract has endDate
+                        canExtend = contract.getEndDate() != null;
+                    }
+                } else {
+                    // Not OWNER/TENANT - household member
+                    permissionMessage = "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng";
+                }
+            } catch (Exception e) {
+                log.warn("⚠️ [ContractService] Error checking permission for contract {}: {}", 
+                        contract.getId(), e.getMessage());
+                // If check fails, default to no permission
+                permissionMessage = "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng";
+            }
+        }
 
         return ContractDto.builder()
                 .id(contract.getId())
@@ -513,6 +569,11 @@ public class ContractService {
                 .needsRenewal(needsRenewal)
                 .renewedContractId(contract.getRenewedContractId())
                 .files(files)
+                .isOwner(isOwner)
+                .canRenew(canRenew)
+                .canCancel(canCancel)
+                .canExtend(canExtend)
+                .permissionMessage(permissionMessage)
                 .build();
     }
 
@@ -767,7 +828,7 @@ public class ContractService {
     }
     @Deprecated
     @Transactional
-    public ContractDto extendContract(UUID contractId, LocalDate newEndDate, UUID updatedBy) {
+    public ContractDto extendContract(UUID contractId, LocalDate newEndDate, UUID updatedBy, UUID userId, String accessToken) {
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
         
@@ -786,6 +847,17 @@ public class ContractService {
         if (newEndDate.isBefore(contract.getEndDate()) || newEndDate.isEqual(contract.getEndDate())) {
             throw new IllegalArgumentException("New end date must be after current end date");
         }
+
+        // Kiểm tra quyền OWNER/TENANT: chỉ OWNER hoặc TENANT mới được gia hạn hợp đồng
+        if (userId != null && contract.getUnitId() != null) {
+            boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, contract.getUnitId(), accessToken);
+            if (!isOwner) {
+                throw new IllegalStateException(
+                    "Chỉ chủ căn hộ (OWNER hoặc người thuê TENANT) mới được gia hạn hợp đồng. " +
+                    "Thành viên hộ gia đình không được phép gia hạn."
+                );
+            }
+        }
         
         contract.setEndDate(newEndDate);
         contract.setRenewalStatus("PENDING");
@@ -797,7 +869,12 @@ public class ContractService {
         log.info("Extended contract {} to new end date: {}. Renewal status reset to PENDING for new cycle.", 
                 contractId, newEndDate);
         
-        return toDto(contract);
+        return toDto(contract, userId, accessToken);
+    }
+    
+    // Overload method for backward compatibility
+    public ContractDto extendContract(UUID contractId, LocalDate newEndDate, UUID updatedBy) {
+        return extendContract(contractId, newEndDate, updatedBy, null, null);
     }
 
     /**
@@ -806,12 +883,16 @@ public class ContractService {
      */
     @Transactional(readOnly = true)
     public List<ContractDto> getContractsNeedingPopup(UUID unitId) {
+        return getContractsNeedingPopup(unitId, null, null);
+    }
+    
+    public List<ContractDto> getContractsNeedingPopup(UUID unitId, UUID userId, String accessToken) {
         List<Contract> contracts = contractRepository.findByUnitIdAndStatus(unitId, "ACTIVE");
         return contracts.stream()
                 .filter(c -> "RENTAL".equals(c.getContractType()))
                 .filter(c -> "REMINDED".equals(c.getRenewalStatus()))
                 .filter(c -> c.getRenewalReminderSentAt() != null)
-                .map(this::toDto)
+                .map(c -> toDto(c, userId, accessToken))
                 .collect(Collectors.toList());
     }
 

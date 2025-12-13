@@ -44,5 +44,12 @@ public class ContractDto {
     private Boolean needsRenewal; // true if contract is within 1 month before expiration (28-32 days before endDate, same as reminder 1)
     private UUID renewedContractId; // ID of the new contract created when this contract is renewed successfully
     private List<ContractFileDto> files;
+    
+    // Permission fields for UI
+    private Boolean isOwner; // true if current user is OWNER or TENANT of the unit
+    private Boolean canRenew; // true if user can renew contract (isOwner && contract is renewable)
+    private Boolean canCancel; // true if user can cancel contract (isOwner && contract is cancellable)
+    private Boolean canExtend; // true if user can extend contract (isOwner && contract is extendable)
+    private String permissionMessage; // Message to display if user doesn't have permission (e.g., "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng")
 }
 

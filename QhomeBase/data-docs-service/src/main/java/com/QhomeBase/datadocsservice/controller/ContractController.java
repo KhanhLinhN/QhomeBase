@@ -73,15 +73,23 @@ public class ContractController {
 
     @GetMapping("/{contractId}")
     @Operation(summary = "Get contract", description = "Get contract by ID")
-    public ResponseEntity<ContractDto> getContract(@PathVariable UUID contractId) {
-        ContractDto contract = contractService.getContractById(contractId);
+    public ResponseEntity<ContractDto> getContract(
+            @PathVariable UUID contractId,
+            @RequestHeader HttpHeaders headers) {
+        String accessToken = extractAccessToken(headers);
+        UUID userId = extractUserIdFromHeaders(headers);
+        ContractDto contract = contractService.getContractById(contractId, userId, accessToken);
         return ResponseEntity.ok(contract);
     }
 
     @GetMapping("/unit/{unitId}")
     @Operation(summary = "Get contracts by unit", description = "Get all contracts for a specific unit")
-    public ResponseEntity<List<ContractDto>> getContractsByUnit(@PathVariable UUID unitId) {
-        List<ContractDto> contracts = contractService.getContractsByUnitId(unitId);
+    public ResponseEntity<List<ContractDto>> getContractsByUnit(
+            @PathVariable UUID unitId,
+            @RequestHeader HttpHeaders headers) {
+        String accessToken = extractAccessToken(headers);
+        UUID userId = extractUserIdFromHeaders(headers);
+        List<ContractDto> contracts = contractService.getContractsByUnitId(unitId, userId, accessToken);
         return ResponseEntity.ok(contracts);
     }
 
@@ -94,8 +102,12 @@ public class ContractController {
 
     @GetMapping("/unit/{unitId}/active")
     @Operation(summary = "Get active contracts by unit", description = "Get active contracts for a specific unit")
-    public ResponseEntity<List<ContractDto>> getActiveContractsByUnit(@PathVariable UUID unitId) {
-        List<ContractDto> contracts = contractService.getActiveContractsByUnit(unitId);
+    public ResponseEntity<List<ContractDto>> getActiveContractsByUnit(
+            @PathVariable UUID unitId,
+            @RequestHeader HttpHeaders headers) {
+        String accessToken = extractAccessToken(headers);
+        UUID userId = extractUserIdFromHeaders(headers);
+        List<ContractDto> contracts = contractService.getActiveContractsByUnit(unitId, userId, accessToken);
         return ResponseEntity.ok(contracts);
     }
 
@@ -159,8 +171,16 @@ public class ContractController {
     public ResponseEntity<ContractDto> extendContract(
             @PathVariable UUID contractId,
             @RequestParam("newEndDate") java.time.LocalDate newEndDate,
+            @RequestHeader HttpHeaders headers,
             @RequestParam(value = "updatedBy", required = false) UUID updatedBy) {
-        ContractDto contract = contractService.extendContract(contractId, newEndDate, updatedBy);
+        String accessToken = extractAccessToken(headers);
+        UUID userId = extractUserIdFromHeaders(headers);
+        
+        if (updatedBy == null) {
+            updatedBy = userId != null ? userId : UUID.randomUUID();
+        }
+        
+        ContractDto contract = contractService.extendContract(contractId, newEndDate, updatedBy, userId, accessToken);
         return ResponseEntity.ok(contract);
     }
 
@@ -528,8 +548,12 @@ public class ContractController {
 
     @GetMapping("/unit/{unitId}/popup")
     @Operation(summary = "Get contracts needing popup", description = "Get contracts that need to show popup to resident (renewal reminders)")
-    public ResponseEntity<List<ContractDto>> getContractsNeedingPopup(@PathVariable UUID unitId) {
-        List<ContractDto> contracts = contractService.getContractsNeedingPopup(unitId);
+    public ResponseEntity<List<ContractDto>> getContractsNeedingPopup(
+            @PathVariable UUID unitId,
+            @RequestHeader HttpHeaders headers) {
+        String accessToken = extractAccessToken(headers);
+        UUID userId = extractUserIdFromHeaders(headers);
+        List<ContractDto> contracts = contractService.getContractsNeedingPopup(unitId, userId, accessToken);
         return ResponseEntity.ok(contracts);
     }
 
