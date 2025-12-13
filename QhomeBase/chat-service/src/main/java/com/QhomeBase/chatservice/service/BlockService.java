@@ -3,9 +3,12 @@ package com.QhomeBase.chatservice.service;
 import com.QhomeBase.chatservice.model.Block;
 import com.QhomeBase.chatservice.model.Conversation;
 import com.QhomeBase.chatservice.model.DirectInvitation;
+import com.QhomeBase.chatservice.model.GroupInvitation;
 import com.QhomeBase.chatservice.repository.BlockRepository;
 import com.QhomeBase.chatservice.repository.ConversationRepository;
 import com.QhomeBase.chatservice.repository.DirectInvitationRepository;
+import com.QhomeBase.chatservice.repository.GroupInvitationRepository;
+import com.QhomeBase.chatservice.repository.GroupMemberRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,6 +27,8 @@ public class BlockService {
     private final FriendshipService friendshipService;
     private final DirectInvitationRepository invitationRepository;
     private final ConversationRepository conversationRepository;
+    private final GroupInvitationRepository groupInvitationRepository;
+    private final GroupMemberRepository groupMemberRepository;
 
     /**
      * Block a user
@@ -70,7 +75,41 @@ public class BlockService {
         // Deactivate friendship if exists
         friendshipService.deactivateFriendship(blockerId, blockedId);
 
-        log.info("User {} blocked user {}. Conversation status changed to BLOCKED. Friendship deactivated.", blockerId, blockedId);
+        // Delete PENDING direct invitations from blocker to blocked user
+        // When A blocks B, any PENDING invitation from A to B should be deleted
+        // B will not see the invitation anymore, and A needs to re-invite after unblock
+        List<DirectInvitation> directInvitations = invitationRepository.findInvitationsBetweenUsers(blockerId, blockedId);
+        for (DirectInvitation inv : directInvitations) {
+            // Only delete invitations from blocker to blocked (A -> B)
+            // Also delete reverse invitations (B -> A) since they can't chat anyway
+            if ("PENDING".equals(inv.getStatus())) {
+                invitationRepository.delete(inv);
+                log.info("Deleted PENDING direct invitation {} after block ({} -> {}). Status was: {}", 
+                        inv.getId(), inv.getInviterId(), inv.getInviteeId(), inv.getStatus());
+            }
+        }
+
+        // Delete PENDING group invitations from blocker to blocked user
+        // When A blocks B, any PENDING group invitation from A to B should be deleted
+        // But only if B is not already a member of that group
+        List<GroupInvitation> groupInvitations = groupInvitationRepository.findPendingInvitationsFromInviterToInvitee(blockerId, blockedId);
+        for (GroupInvitation inv : groupInvitations) {
+            // Check if blocked user is already a member of the group
+            boolean isMember = groupMemberRepository.existsByGroupIdAndResidentId(inv.getGroupId(), blockedId);
+            
+            if (!isMember) {
+                // B is not a member yet - delete the invitation
+                groupInvitationRepository.delete(inv);
+                log.info("Deleted PENDING group invitation {} after block (Inviter: {}, GroupId: {}, Invitee: {}). B is not a member yet.", 
+                        inv.getId(), inv.getInviterId(), inv.getGroupId(), inv.getInviteeResidentId());
+            } else {
+                // B is already a member - don't delete invitation, just log
+                log.info("Skipped deleting group invitation {} after block (Inviter: {}, GroupId: {}, Invitee: {}). B is already a member of the group.", 
+                        inv.getId(), inv.getInviterId(), inv.getGroupId(), inv.getInviteeResidentId());
+            }
+        }
+
+        log.info("User {} blocked user {}. Conversation status changed to BLOCKED. Friendship deactivated. PENDING invitations deleted.", blockerId, blockedId);
     }
 
     /**

@@ -229,22 +229,6 @@ public class GroupInvitationService {
                 }
             }
             
-            // Check for DECLINED or EXPIRED invitation - if found, update to PENDING instead of creating new
-            List<GroupInvitation> existingInvitations = invitationRepository.findByGroupIdAndPhone(groupId, phoneForStorage);
-            if (existingInvitations.isEmpty() && !phoneForStorage.startsWith("0")) {
-                // Also try with leading zero
-                existingInvitations = invitationRepository.findByGroupIdAndPhone(groupId, "0" + phoneForStorage);
-            }
-            
-            GroupInvitation existingInvitation = null;
-            if (!existingInvitations.isEmpty()) {
-                // Find the most recent DECLINED or EXPIRED invitation
-                existingInvitation = existingInvitations.stream()
-                        .filter(inv -> "DECLINED".equals(inv.getStatus()) || "EXPIRED".equals(inv.getStatus()))
-                        .findFirst()
-                        .orElse(null);
-            }
-
             // Check if inviter has blocked the invitee or vice versa
             if (blockRepository.findByBlockerIdAndBlockedId(inviterResidentId, residentId).isPresent() ||
                 blockRepository.findByBlockerIdAndBlockedId(residentId, inviterResidentId).isPresent()) {
@@ -253,30 +237,17 @@ public class GroupInvitationService {
                 continue;
             }
 
-            // If existing DECLINED or EXPIRED invitation found, update it to PENDING
-            GroupInvitation invitation;
-            if (existingInvitation != null) {
-                log.info("Found existing {} invitation for phone {} in group {}, updating to PENDING: {}", 
-                        existingInvitation.getStatus(), phoneForStorage, groupId, existingInvitation.getId());
-                existingInvitation.setStatus("PENDING");
-                existingInvitation.setInviteeResidentId(residentId);
-                existingInvitation.setExpiresAt(OffsetDateTime.now().plusDays(7));
-                existingInvitation.setRespondedAt(null);
-                invitation = invitationRepository.save(existingInvitation);
-                log.info("Updated invitation from {} to PENDING. ID: {}", existingInvitation.getStatus(), invitation.getId());
-            } else {
-                // Create new invitation
-                invitation = GroupInvitation.builder()
-                        .group(group)
-                        .groupId(groupId)
-                        .inviterId(inviterResidentId)
-                        .inviteePhone(phoneForStorage)
-                        .inviteeResidentId(residentId)
-                        .status("PENDING")
-                        .expiresAt(OffsetDateTime.now().plusDays(7))
-                        .build();
-                invitation = invitationRepository.save(invitation);
-            }
+            // Create new invitation (invitations don't expire, so we always create new ones)
+            // DECLINED invitations are deleted (like direct invitations), so we don't need to check for them
+            GroupInvitation invitation = GroupInvitation.builder()
+                    .group(group)
+                    .groupId(groupId)
+                    .inviterId(inviterResidentId)
+                    .inviteePhone(phoneForStorage)
+                    .inviteeResidentId(residentId)
+                    .status("PENDING")
+                    .build();
+            invitation = invitationRepository.save(invitation);
 
             log.info("✅ [GroupInvitationService] Created invitation - ID: {}, GroupId: {}, InviteeResidentId: {}, InviteePhone: {}, Status: {}", 
                 invitation.getId(), groupId, residentId, phoneForStorage, invitation.getStatus());
@@ -562,10 +533,26 @@ public class GroupInvitationService {
             }
         }
 
-        invitation.setStatus("DECLINED");
-        invitation.setInviteeResidentId(residentId);
-        invitation.setRespondedAt(OffsetDateTime.now());
-        invitationRepository.save(invitation);
+        // Delete invitation when declined - this resets state to "chưa gửi lời mời"
+        // After decline, users are in "chưa gửi lời mời" state and can send new invitation
+        // This matches the behavior of direct chat invitations
+        UUID inviterId = invitation.getInviterId();
+        UUID groupId = invitation.getGroupId();
+        UUID deletedInvitationId = invitation.getId();
+        
+        // Delete the invitation
+        invitationRepository.delete(invitation);
+        log.info("Deleted group invitation {} after decline (Inviter: {}, GroupId: {}, Invitee: {}). Users are now in 'chưa gửi lời mời' state.", 
+                deletedInvitationId, inviterId, groupId, residentId);
+        
+        // Notify inviter via WebSocket (if notification service supports group invitations)
+        // Note: Group invitation declined notification may need to be implemented separately
+        try {
+            // TODO: Implement group invitation declined notification if needed
+            log.debug("Group invitation declined notification not yet implemented");
+        } catch (Exception e) {
+            log.warn("Failed to send group invitation declined notification: {}", e.getMessage());
+        }
     }
 
     private GroupInvitationResponse toInvitationResponse(GroupInvitation invitation) {

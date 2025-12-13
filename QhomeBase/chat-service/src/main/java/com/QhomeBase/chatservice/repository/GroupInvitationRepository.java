@@ -32,5 +32,14 @@ public interface GroupInvitationRepository extends JpaRepository<GroupInvitation
     
     @Query("SELECT gi FROM GroupInvitation gi WHERE gi.groupId = :groupId AND gi.inviterId = :inviterId AND gi.inviteeResidentId = :inviteeResidentId AND gi.status = 'PENDING'")
     Optional<GroupInvitation> findPendingByGroupIdAndInviterInvitee(@Param("groupId") UUID groupId, @Param("inviterId") UUID inviterId, @Param("inviteeResidentId") UUID inviteeResidentId);
+    
+    /**
+     * Find PENDING group invitations from inviter to invitee (across all groups)
+     * Used when blocker blocks blocked user - need to delete pending invitations
+     */
+    @Query("SELECT gi FROM GroupInvitation gi WHERE gi.inviterId = :inviterId AND gi.inviteeResidentId = :inviteeResidentId AND gi.status = 'PENDING'")
+    List<GroupInvitation> findPendingInvitationsFromInviterToInvitee(
+            @Param("inviterId") UUID inviterId,
+            @Param("inviteeResidentId") UUID inviteeResidentId);
 }
 
