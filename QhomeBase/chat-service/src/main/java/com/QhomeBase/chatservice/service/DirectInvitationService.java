@@ -308,6 +308,75 @@ public class DirectInvitationService {
                     return toResponse(newInvitation, accessToken);
                 }
             }
+            
+            // If conversation status is BLOCKED or PENDING (after unblock), create new PENDING invitation
+            // Users need to send invitation and get acceptance to chat again
+            if ("BLOCKED".equals(conversation.getStatus()) || "PENDING".equals(conversation.getStatus())) {
+                log.info("Conversation status is {} (after block/unblock). Checking for existing/reverse invitations.", conversation.getStatus());
+                
+                // First check for reverse invitation (invitee invited inviter) - if PENDING, inform user
+                Optional<DirectInvitation> reverseInvitation = invitationRepository
+                        .findByConversationAndParticipants(conversation.getId(), inviteeResidentId, inviterResidentId);
+                
+                if (reverseInvitation.isPresent() && "PENDING".equals(reverseInvitation.get().getStatus())) {
+                    log.info("⚠️ Reverse invitation exists and is PENDING. User {} already sent invitation to {}. Cannot create new invitation.", 
+                            reverseInvitation.get().getInviterId(), reverseInvitation.get().getInviteeId());
+                    log.info("   Reverse invitation details - ID: {}, Status: {}, Inviter: {}, Invitee: {}", 
+                            reverseInvitation.get().getId(), reverseInvitation.get().getStatus(), 
+                            reverseInvitation.get().getInviterId(), reverseInvitation.get().getInviteeId());
+                    
+                    // Get inviter name for error message
+                    String inviterName = residentInfoService.getResidentName(reverseInvitation.get().getInviterId(), accessToken);
+                    String errorMessage = inviterName != null 
+                        ? inviterName + " đã gửi lời mời cho bạn rồi. Vui lòng vào mục lời mời để xác nhận."
+                        : "Người dùng này đã gửi lời mời cho bạn rồi. Vui lòng vào mục lời mời để xác nhận.";
+                    
+                    throw new RuntimeException(errorMessage);
+                }
+                
+                // Check if there's an existing invitation from inviter to invitee
+                DirectInvitation existingInv = invitationRepository
+                        .findByConversationAndParticipants(conversation.getId(), inviterResidentId, inviteeResidentId)
+                        .orElse(null);
+                
+                if (existingInv != null) {
+                    // If existing invitation is PENDING and not expired, inform user they already sent invitation
+                    if ("PENDING".equals(existingInv.getStatus()) && !existingInv.isExpired()) {
+                        log.info("⚠️ Existing invitation is PENDING and not expired. User {} already sent invitation to {}. Cannot create new invitation.", 
+                                inviterResidentId, inviteeResidentId);
+                        log.info("   Existing invitation details - ID: {}, Status: {}, Inviter: {}, Invitee: {}", 
+                                existingInv.getId(), existingInv.getStatus(), 
+                                existingInv.getInviterId(), existingInv.getInviteeId());
+                        throw new RuntimeException("Bạn đã gửi lời mời rồi. Vui lòng đợi phản hồi từ người dùng.");
+                    }
+                    
+                    // Update existing invitation to PENDING if it's not already (for DECLINED/EXPIRED cases)
+                    if (!"PENDING".equals(existingInv.getStatus())) {
+                        existingInv.setStatus("PENDING");
+                        existingInv.setRespondedAt(null);
+                        existingInv.setInitialMessage(request.getInitialMessage());
+                        existingInv.setExpiresAt(OffsetDateTime.now().plusDays(7));
+                        existingInv = invitationRepository.save(existingInv);
+                        log.info("Updated existing invitation to PENDING. ID: {}", existingInv.getId());
+                    }
+                    return toResponse(existingInv, accessToken);
+                } else {
+                    // Create new PENDING invitation
+                    DirectInvitation newInvitation = DirectInvitation.builder()
+                            .conversation(conversation)
+                            .conversationId(conversation.getId())
+                            .inviterId(inviterResidentId)
+                            .inviteeId(inviteeResidentId)
+                            .status("PENDING")
+                            .initialMessage(request.getInitialMessage())
+                            .expiresAt(OffsetDateTime.now().plusDays(7))
+                            .build();
+                    newInvitation = invitationRepository.save(newInvitation);
+                    log.info("Created new PENDING invitation ID: {} for conversation with status {}", 
+                            newInvitation.getId(), conversation.getStatus());
+                    return toResponse(newInvitation, accessToken);
+                }
+            }
             // If conversation status is BLOCKED, reset to PENDING to allow new invitations
             if ("BLOCKED".equals(conversation.getStatus())) {
                 log.info("Conversation status is BLOCKED, resetting to PENDING: {}", conversation.getId());
@@ -416,10 +485,11 @@ public class DirectInvitationService {
                     log.info("Found mutual invitations (both PENDING) but users are NOT friends (friendship inactive). Not auto-accepting - requires explicit acceptance.");
                     invitation = existingInvitation;
                 } else if (!existingInvitation.isExpired()) {
-                    // PENDING and not expired - return existing (no reverse invitation)
-                    log.info("Invitation already exists and is pending: {}", existingInvitation.getId());
-                    // Return existing invitation response instead of throwing exception
-                    invitation = existingInvitation;
+                    // PENDING and not expired - user already sent invitation, inform them
+                    log.info("Invitation already exists and is pending: {}. User {} already sent invitation to {}.", 
+                            existingInvitation.getId(), inviterResidentId, inviteeResidentId);
+                    // Throw exception to inform user they already sent invitation
+                    throw new RuntimeException("Bạn đã gửi lời mời rồi. Vui lòng đợi phản hồi từ người dùng.");
                 } else {
                     // PENDING but expired - update to new expiration
                     log.info("Invitation exists but expired, updating expiration: {}", existingInvitation.getId());
@@ -496,7 +566,10 @@ public class DirectInvitationService {
             // Create new invitation
             // Check if reverse invitation exists and is PENDING - if so, inform user that other person already sent invitation
             if (reverseInvitation.isPresent() && "PENDING".equals(reverseInvitation.get().getStatus())) {
-                log.info("Reverse invitation exists and is PENDING. User {} already sent invitation to {}.", 
+                log.info("⚠️ Reverse invitation exists and is PENDING. User {} already sent invitation to {}. Cannot create new invitation.", 
+                        reverseInvitation.get().getInviterId(), reverseInvitation.get().getInviteeId());
+                log.info("   Reverse invitation details - ID: {}, Status: {}, Inviter: {}, Invitee: {}", 
+                        reverseInvitation.get().getId(), reverseInvitation.get().getStatus(), 
                         reverseInvitation.get().getInviterId(), reverseInvitation.get().getInviteeId());
                 
                 // Get inviter name for error message
@@ -508,6 +581,9 @@ public class DirectInvitationService {
                 throw new RuntimeException(errorMessage);
             } else {
                 // Create new invitation normally
+                log.info("📝 Creating new invitation - Inviter: {}, Invitee: {}, Conversation: {}", 
+                        inviterResidentId, inviteeResidentId, conversation.getId());
+                
                 invitation = DirectInvitation.builder()
                         .conversation(conversation)
                         .conversationId(conversation.getId())
@@ -519,13 +595,23 @@ public class DirectInvitationService {
                         .build();
                 invitation = invitationRepository.save(invitation);
                 
-                log.info("Created new invitation ID: {}, Inviter: {}, Invitee: {}", 
-                        invitation.getId(), invitation.getInviterId(), invitation.getInviteeId());
+                log.info("✅ Created new invitation ID: {}, Status: PENDING, Inviter: {}, Invitee: {}, ExpiresAt: {}, CreatedAt: {}", 
+                        invitation.getId(), invitation.getInviterId(), invitation.getInviteeId(), 
+                        invitation.getExpiresAt(), invitation.getCreatedAt());
+                
+                // Verify invitation was saved correctly
+                Optional<DirectInvitation> savedInvitation = invitationRepository.findById(invitation.getId());
+                if (savedInvitation.isPresent()) {
+                    log.info("✅ Verified invitation saved correctly - ID: {}, Status: {}", 
+                            savedInvitation.get().getId(), savedInvitation.get().getStatus());
+                } else {
+                    log.error("❌ ERROR: Invitation was not saved correctly! ID: {}", invitation.getId());
+                }
             }
         }
         
-        log.info("Created invitation ID: {}, Inviter: {}, Invitee: {}", 
-                invitation.getId(), invitation.getInviterId(), invitation.getInviteeId());
+        log.info("✅ Final invitation - ID: {}, Status: {}, Inviter: {}, Invitee: {}, ExpiresAt: {}", 
+                invitation.getId(), invitation.getStatus(), invitation.getInviterId(), invitation.getInviteeId(), invitation.getExpiresAt());
 
         // If initial message provided, create it as a message
         if (request.getInitialMessage() != null && !request.getInitialMessage().trim().isEmpty()) {
@@ -650,19 +736,28 @@ public class DirectInvitationService {
             throw new RuntimeException("Invitation has already been responded to");
         }
 
-        // Update invitation
-        invitation.setStatus("DECLINED");
-        invitation.setRespondedAt(OffsetDateTime.now());
-        invitationRepository.save(invitation);
-
-        // Close conversation
+        // Delete invitation when declined - this resets state to "chưa gửi lời mời"
+        // After decline, users are in "chưa gửi lời mời" state and can send new invitation
+        UUID inviterId = invitation.getInviterId();
+        UUID inviteeId = invitation.getInviteeId();
+        UUID deletedInvitationId = invitation.getId();
+        
         Conversation conversation = invitation.getConversation();
-        conversation.setStatus("CLOSED");
-        conversationRepository.save(conversation);
+        
+        // Delete the invitation
+        invitationRepository.delete(invitation);
+        log.info("Deleted invitation {} after decline ({} -> {}). Users are now in 'chưa gửi lời mời' state.", 
+                deletedInvitationId, inviterId, inviteeId);
 
-        // Notify inviter via WebSocket
+        // Don't close conversation - keep it ACTIVE or PENDING so users can still see it
+        // Users can send invitation again later if they want
+        // After decline, invitation is deleted, so users are in "chưa gửi lời mời" state
+        log.info("Conversation {} status remains {} (not changed to CLOSED). Users can still see conversation and send invitation again.", 
+                conversation.getId(), conversation.getStatus());
+
+        // Notify inviter via WebSocket (use saved variables since invitation is deleted)
         notificationService.notifyDirectInvitationDeclined(
-                invitation.getInviterId(),
+                inviterId,
                 conversation.getId());
     }
 
@@ -691,6 +786,22 @@ public class DirectInvitationService {
                 .findPendingInvitationsByInviteeId(residentId);
         
         log.info("Found {} pending invitations for residentId: {}", invitations.size(), residentId);
+        
+        // Log details of each invitation for debugging
+        for (DirectInvitation inv : invitations) {
+            log.info("  - Invitation ID: {}, Status: {}, Inviter: {}, Invitee: {}, ExpiresAt: {}, CreatedAt: {}", 
+                    inv.getId(), inv.getStatus(), inv.getInviterId(), inv.getInviteeId(), inv.getExpiresAt(), inv.getCreatedAt());
+        }
+        
+        // Also check if there are any invitations where this user is the inviter (for debugging)
+        List<DirectInvitation> sentInvitations = invitationRepository.findAll().stream()
+                .filter(inv -> inv.getInviterId().equals(residentId) && "PENDING".equals(inv.getStatus()))
+                .collect(Collectors.toList());
+        log.info("Found {} sent PENDING invitations for residentId: {} (as inviter)", sentInvitations.size(), residentId);
+        for (DirectInvitation inv : sentInvitations) {
+            log.info("  - Sent Invitation ID: {}, Status: {}, Inviter: {}, Invitee: {}, ExpiresAt: {}", 
+                    inv.getId(), inv.getStatus(), inv.getInviterId(), inv.getInviteeId(), inv.getExpiresAt());
+        }
         
         // Always return a list (may be empty) - this allows the screen to always be visible
         // Frontend should display the screen regardless of whether list is empty or not

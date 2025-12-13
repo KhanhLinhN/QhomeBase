@@ -81,10 +81,12 @@ public class DirectChatService {
 
         log.info("🔍 [DirectChatService] getConversations - userId: {}, residentId: {}", userId, residentId);
         
+        // Get conversations including ACTIVE, BLOCKED, and PENDING (but not DELETED)
+        // This allows blocked conversations to still be visible in the list
         List<Conversation> conversations = conversationRepository
-                .findActiveConversationsByUserId(residentId);
+                .findVisibleConversationsByUserId(residentId);
         
-        log.info("🔍 [DirectChatService] Found {} ACTIVE conversations from DB for residentId: {}", conversations.size(), residentId);
+        log.info("🔍 [DirectChatService] Found {} visible conversations (ACTIVE/BLOCKED/PENDING) from DB for residentId: {}", conversations.size(), residentId);
 
         List<ConversationResponse> filteredConversations = conversations.stream()
                 .filter(conv -> {

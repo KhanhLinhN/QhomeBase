@@ -3,7 +3,6 @@ package com.QhomeBase.apigateway.controller;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.*;
@@ -20,8 +19,20 @@ import java.util.Map;
  * This allows Flutter app to automatically discover ngrok URL without manual input
  */
 @RestController
-@RequestMapping("/api/discovery")
 public class DiscoveryController {
+    
+    @GetMapping("/")
+    public ResponseEntity<Map<String, Object>> root() {
+        Map<String, Object> info = new HashMap<>();
+        info.put("service", "QhomeBase API Gateway");
+        info.put("status", "running");
+        info.put("version", "1.0.0");
+        Map<String, String> endpoints = new HashMap<>();
+        endpoints.put("discovery", "/api/discovery/info");
+        endpoints.put("health", "/api/health");
+        info.put("endpoints", endpoints);
+        return ResponseEntity.ok(info);
+    }
 
     @Value("${vnpay.base-url:}")
     private String vnpayBaseUrl;
@@ -36,7 +47,7 @@ public class DiscoveryController {
      * Returns ngrok URL if available, or local network info
      * Flutter app can call this endpoint to automatically discover backend URL
      */
-    @GetMapping("/info")
+    @GetMapping("/api/discovery/info")
     public ResponseEntity<Map<String, Object>> getDiscoveryInfo() {
         Map<String, Object> info = new HashMap<>();
         
@@ -53,8 +64,17 @@ public class DiscoveryController {
         }
         
         // Priority 2: Try to auto-detect from ngrok API if not set
+        Map<String, String> ngrokUrls = tryGetNgrokUrlsFromApi(); // Returns both HTTP and HTTPS
+        String httpUrl = ngrokUrls.get("http");
+        String httpsUrl = ngrokUrls.get("https");
+        
+        // Prefer HTTP URL to avoid ngrok warning page issues
         if (publicUrl == null || publicUrl.isEmpty()) {
-            publicUrl = tryGetNgrokUrlFromApi();
+            if (httpUrl != null) {
+                publicUrl = httpUrl;
+            } else if (httpsUrl != null) {
+                publicUrl = httpsUrl;
+            }
         }
         
         // Final validation - only return valid URLs
@@ -63,9 +83,21 @@ public class DiscoveryController {
         }
         
         info.put("publicUrl", publicUrl); // ngrok URL if available, null if localhost or invalid
+        info.put("httpUrl", httpUrl); // HTTP tunnel URL if available
+        info.put("httpsUrl", httpsUrl); // HTTPS tunnel URL if available
         info.put("localPort", serverPort);
         info.put("apiBasePath", "/api");
         info.put("discoveryMethod", publicUrl != null ? "ngrok" : "local");
+        
+        // Add SSL information to help Flutter handle certificate validation
+        boolean isHttps = publicUrl != null && publicUrl.startsWith("https://");
+        info.put("isHttps", isHttps);
+        if (isHttps) {
+            info.put("sslWarning", "HTTPS detected. Consider using HTTP tunnel to avoid ngrok warning page.");
+            if (httpUrl != null) {
+                info.put("recommendation", "HTTP tunnel available. Use HTTP URL to avoid ngrok warning page: " + httpUrl);
+            }
+        }
         
         // Get local IP addresses (for mobile hotspot and local network discovery)
         Map<String, String> localIps = getLocalIpAddresses();
@@ -126,10 +158,13 @@ public class DiscoveryController {
     }
 
     /**
-     * Try to get ngrok URL from ngrok API
+     * Try to get ngrok URLs from ngrok API
      * This works if ngrok is running on the same machine
+     * Ngrok free plan provides both HTTP and HTTPS tunnels
+     * Returns both URLs so Flutter can choose HTTP to avoid warning page
      */
-    private String tryGetNgrokUrlFromApi() {
+    private Map<String, String> tryGetNgrokUrlsFromApi() {
+        Map<String, String> result = new HashMap<>();
         try {
             HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(2))
@@ -144,27 +179,57 @@ public class DiscoveryController {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             
             if (response.statusCode() == 200 && response.body() != null) {
-                // Simple JSON parsing - look for "public_url" with "https://"
                 String body = response.body();
-                int httpsIndex = body.indexOf("\"public_url\":\"https://");
-                if (httpsIndex != -1) {
-                    int start = httpsIndex + "\"public_url\":\"".length();
+                
+                // Ngrok API returns JSON with tunnels array
+                // Each tunnel has "public_url" field
+                // We need to parse all tunnels and find HTTP first, then HTTPS
+                
+                String httpUrl = null;
+                String httpsUrl = null;
+                
+                // Parse all "public_url" entries
+                int searchIndex = 0;
+                while (true) {
+                    int urlIndex = body.indexOf("\"public_url\":\"", searchIndex);
+                    if (urlIndex == -1) {
+                        break;
+                    }
+                    
+                    int start = urlIndex + "\"public_url\":\"".length();
                     int end = body.indexOf("\"", start);
                     if (end != -1) {
-                        String ngrokUrl = body.substring(start, end);
+                        String url = body.substring(start, end);
                         // Remove trailing slash if present
-                        if (ngrokUrl.endsWith("/")) {
-                            ngrokUrl = ngrokUrl.substring(0, ngrokUrl.length() - 1);
+                        if (url.endsWith("/")) {
+                            url = url.substring(0, url.length() - 1);
                         }
-                        return ngrokUrl;
+                        
+                        // Store HTTP and HTTPS URLs separately
+                        if (url.startsWith("http://") && httpUrl == null) {
+                            httpUrl = url;
+                        } else if (url.startsWith("https://") && httpsUrl == null) {
+                            httpsUrl = url;
+                        }
+                        
+                        searchIndex = end + 1;
+                    } else {
+                        break;
                     }
+                }
+                
+                if (httpUrl != null) {
+                    result.put("http", httpUrl);
+                }
+                if (httpsUrl != null) {
+                    result.put("https", httpsUrl);
                 }
             }
         } catch (Exception e) {
             // Ngrok API not available - this is expected if ngrok is not running
             // or not on the same machine
         }
-        return null;
+        return result;
     }
 
     /**
@@ -228,15 +293,4 @@ public class DiscoveryController {
         return null;
     }
 
-    /**
-     * Health check endpoint for discovery
-     */
-    @GetMapping("/health")
-    public ResponseEntity<Map<String, Object>> health() {
-        Map<String, Object> health = new HashMap<>();
-        health.put("status", "UP");
-        health.put("service", "api-gateway");
-        health.put("timestamp", System.currentTimeMillis());
-        return ResponseEntity.ok(health);
-    }
 }

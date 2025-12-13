@@ -1,8 +1,10 @@
 package com.QhomeBase.chatservice.service;
 
 import com.QhomeBase.chatservice.model.Block;
+import com.QhomeBase.chatservice.model.Conversation;
 import com.QhomeBase.chatservice.model.DirectInvitation;
 import com.QhomeBase.chatservice.repository.BlockRepository;
+import com.QhomeBase.chatservice.repository.ConversationRepository;
 import com.QhomeBase.chatservice.repository.DirectInvitationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -20,6 +23,7 @@ public class BlockService {
     private final BlockRepository blockRepository;
     private final FriendshipService friendshipService;
     private final DirectInvitationRepository invitationRepository;
+    private final ConversationRepository conversationRepository;
 
     /**
      * Block a user
@@ -46,14 +50,27 @@ public class BlockService {
                 .build();
         blockRepository.save(block);
 
-        // Don't change conversation status - keep it ACTIVE so both users can still see the conversation
-        // The blocker can still send messages, but the blocked user won't receive FCM notifications
-        // and will see "User not found" message in the chat input area
+        // Change conversation status from ACTIVE to BLOCKED
+        // After block, users cannot chat until unblock + invitation + accept
+        UUID participant1Id = blockerId.compareTo(blockedId) < 0 ? blockerId : blockedId;
+        UUID participant2Id = blockerId.compareTo(blockedId) < 0 ? blockedId : blockerId;
+        
+        Optional<Conversation> conversationOpt = conversationRepository
+                .findConversationBetweenParticipants(participant1Id, participant2Id);
+        
+        if (conversationOpt.isPresent()) {
+            Conversation conversation = conversationOpt.get();
+            if ("ACTIVE".equals(conversation.getStatus())) {
+                conversation.setStatus("BLOCKED");
+                conversationRepository.save(conversation);
+                log.info("Changed conversation {} status from ACTIVE to BLOCKED after block", conversation.getId());
+            }
+        }
 
         // Deactivate friendship if exists
         friendshipService.deactivateFriendship(blockerId, blockedId);
 
-        log.info("User {} blocked user {}. Conversation remains ACTIVE. Friendship deactivated.", blockerId, blockedId);
+        log.info("User {} blocked user {}. Conversation status changed to BLOCKED. Friendship deactivated.", blockerId, blockedId);
     }
 
     /**
@@ -78,28 +95,41 @@ public class BlockService {
         Block block = blockOpt.get();
         blockRepository.delete(block);
 
-        // Conversation status should already be ACTIVE (we don't change it when blocking)
-        // No need to reset status here
+        // Change conversation status from BLOCKED to PENDING
+        // After unblock, users cannot chat until invitation is sent and accepted
+        UUID participant1Id = blockerId.compareTo(blockedId) < 0 ? blockerId : blockedId;
+        UUID participant2Id = blockerId.compareTo(blockedId) < 0 ? blockedId : blockerId;
+        
+        Optional<Conversation> conversationOpt = conversationRepository
+                .findConversationBetweenParticipants(participant1Id, participant2Id);
+        
+        if (conversationOpt.isPresent()) {
+            Conversation conversation = conversationOpt.get();
+            if ("BLOCKED".equals(conversation.getStatus()) || "ACTIVE".equals(conversation.getStatus())) {
+                conversation.setStatus("PENDING");
+                conversationRepository.save(conversation);
+                log.info("Changed conversation {} status from {} to PENDING after unblock", 
+                        conversation.getId(), conversation.getStatus());
+            }
+        }
 
         // Do NOT reactivate friendship - users are no longer friends after block/unblock
         // They need to send invitation again to become friends and chat directly
         // Friendship remains inactive/deleted - users must re-establish friendship through invitation
         
-        // Reset ACCEPTED invitations to PENDING so users can see and accept them again
-        // Find all invitations between the two users (bidirectional)
+        // Cancel/delete all invitations between the two users (bidirectional)
+        // After unblock, all invitations are cancelled - users are in "chưa gửi lời mời" state
+        // They need to send a new invitation to start chatting again
         List<DirectInvitation> invitations = invitationRepository.findInvitationsBetweenUsers(blockerId, blockedId);
         
         for (DirectInvitation inv : invitations) {
-            if ("ACCEPTED".equals(inv.getStatus())) {
-                inv.setStatus("PENDING");
-                inv.setRespondedAt(null);
-                invitationRepository.save(inv);
-                log.info("Reset ACCEPTED invitation {} to PENDING after unblock ({} -> {})", 
-                        inv.getId(), inv.getInviterId(), inv.getInviteeId());
-            }
+            // Delete all invitations (PENDING, ACCEPTED, DECLINED) to reset to "chưa gửi lời mời" state
+            invitationRepository.delete(inv);
+            log.info("Deleted invitation {} after unblock ({} -> {}). Status was: {}", 
+                    inv.getId(), inv.getInviterId(), inv.getInviteeId(), inv.getStatus());
         }
 
-        log.info("User {} unblocked user {}. Friendship remains inactive - invitations reset to PENDING so users can accept again.", blockerId, blockedId);
+        log.info("User {} unblocked user {}. Conversation status changed to PENDING. Friendship remains inactive - all invitations deleted. Users are now in 'chưa gửi lời mời' state and need to send new invitation.", blockerId, blockedId);
     }
 
     /**

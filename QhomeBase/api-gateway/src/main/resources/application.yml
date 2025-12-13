@@ -180,6 +180,13 @@ spring:
             - Path=/api/health
           filters:
             - StripPrefix=0
+        # Root endpoint (must be before discovery)
+        - id: root-endpoint
+          uri: http://localhost:${server.port:8989}
+          predicates:
+            - Path=/
+          filters:
+            - StripPrefix=0
         # Discovery endpoint (must be before catch-all routes)
         - id: discovery-service
           uri: http://localhost:${server.port:8989}
