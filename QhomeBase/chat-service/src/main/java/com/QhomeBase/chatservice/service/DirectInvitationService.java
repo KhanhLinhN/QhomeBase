@@ -222,7 +222,6 @@ public class DirectInvitationService {
                     log.info("Resetting ACCEPTED invitation {} to PENDING after conversation DELETED reset", inv.getId());
                     inv.setStatus("PENDING");
                     inv.setRespondedAt(null);
-                    inv.setExpiresAt(OffsetDateTime.now().plusDays(7));
                     invitationRepository.save(inv);
                 }
                 
@@ -231,7 +230,6 @@ public class DirectInvitationService {
                     log.info("Resetting ACCEPTED invitation {} to PENDING after conversation DELETED reset", inv.getId());
                     inv.setStatus("PENDING");
                     inv.setRespondedAt(null);
-                    inv.setExpiresAt(OffsetDateTime.now().plusDays(7));
                     invitationRepository.save(inv);
                 }
             }
@@ -282,7 +280,6 @@ public class DirectInvitationService {
                         existingInv.setStatus("PENDING");
                         existingInv.setRespondedAt(null);
                         existingInv.setInitialMessage(request.getInitialMessage());
-                        existingInv.setExpiresAt(OffsetDateTime.now().plusDays(7));
                         existingInv = invitationRepository.save(existingInv);
                         log.info("Reset invitation from ACCEPTED to PENDING. ID: {}", existingInv.getId());
                     }
@@ -301,7 +298,6 @@ public class DirectInvitationService {
                             .inviteeId(inviteeResidentId)
                             .status("PENDING")
                             .initialMessage(request.getInitialMessage())
-                            .expiresAt(OffsetDateTime.now().plusDays(7))
                             .build();
                     newInvitation = invitationRepository.save(newInvitation);
                     log.info("Created new PENDING invitation ID: {}", newInvitation.getId());
@@ -340,9 +336,9 @@ public class DirectInvitationService {
                         .orElse(null);
                 
                 if (existingInv != null) {
-                    // If existing invitation is PENDING and not expired, inform user they already sent invitation
-                    if ("PENDING".equals(existingInv.getStatus()) && !existingInv.isExpired()) {
-                        log.info("⚠️ Existing invitation is PENDING and not expired. User {} already sent invitation to {}. Cannot create new invitation.", 
+                    // If existing invitation is PENDING, inform user they already sent invitation
+                    if ("PENDING".equals(existingInv.getStatus())) {
+                        log.info("⚠️ Existing invitation is PENDING. User {} already sent invitation to {}. Cannot create new invitation.", 
                                 inviterResidentId, inviteeResidentId);
                         log.info("   Existing invitation details - ID: {}, Status: {}, Inviter: {}, Invitee: {}", 
                                 existingInv.getId(), existingInv.getStatus(), 
@@ -350,12 +346,11 @@ public class DirectInvitationService {
                         throw new RuntimeException("Bạn đã gửi lời mời rồi. Vui lòng đợi phản hồi từ người dùng.");
                     }
                     
-                    // Update existing invitation to PENDING if it's not already (for DECLINED/EXPIRED cases)
+                    // Update existing invitation to PENDING if it's not already (for DECLINED cases)
                     if (!"PENDING".equals(existingInv.getStatus())) {
                         existingInv.setStatus("PENDING");
                         existingInv.setRespondedAt(null);
                         existingInv.setInitialMessage(request.getInitialMessage());
-                        existingInv.setExpiresAt(OffsetDateTime.now().plusDays(7));
                         existingInv = invitationRepository.save(existingInv);
                         log.info("Updated existing invitation to PENDING. ID: {}", existingInv.getId());
                     }
@@ -369,7 +364,6 @@ public class DirectInvitationService {
                             .inviteeId(inviteeResidentId)
                             .status("PENDING")
                             .initialMessage(request.getInitialMessage())
-                            .expiresAt(OffsetDateTime.now().plusDays(7))
                             .build();
                     newInvitation = invitationRepository.save(newInvitation);
                     log.info("Created new PENDING invitation ID: {} for conversation with status {}", 
@@ -484,20 +478,12 @@ public class DirectInvitationService {
                     // Don't auto-accept - require explicit acceptance
                     log.info("Found mutual invitations (both PENDING) but users are NOT friends (friendship inactive). Not auto-accepting - requires explicit acceptance.");
                     invitation = existingInvitation;
-                } else if (!existingInvitation.isExpired()) {
-                    // PENDING and not expired - user already sent invitation, inform them
+                } else {
+                    // PENDING - user already sent invitation, inform them
                     log.info("Invitation already exists and is pending: {}. User {} already sent invitation to {}.", 
                             existingInvitation.getId(), inviterResidentId, inviteeResidentId);
                     // Throw exception to inform user they already sent invitation
                     throw new RuntimeException("Bạn đã gửi lời mời rồi. Vui lòng đợi phản hồi từ người dùng.");
-                } else {
-                    // PENDING but expired - update to new expiration
-                    log.info("Invitation exists but expired, updating expiration: {}", existingInvitation.getId());
-                    existingInvitation.setExpiresAt(OffsetDateTime.now().plusDays(7));
-                    existingInvitation.setInitialMessage(request.getInitialMessage());
-                    existingInvitation.setRespondedAt(null);
-                    invitation = invitationRepository.save(existingInvitation);
-                    log.info("Updated expired invitation ID: {}", invitation.getId());
                 }
             } else if ("ACCEPTED".equals(existingInvitation.getStatus())) {
                 // Already accepted - check conversation status
@@ -546,18 +532,16 @@ public class DirectInvitationService {
                         existingInvitation.setStatus("PENDING");
                         existingInvitation.setRespondedAt(null);
                         existingInvitation.setInitialMessage(request.getInitialMessage());
-                        existingInvitation.setExpiresAt(OffsetDateTime.now().plusDays(7));
                         invitation = invitationRepository.save(existingInvitation);
                         log.info("Reset invitation from ACCEPTED to PENDING. ID: {}", invitation.getId());
                     }
                 }
             } else {
-                // DECLINED or EXPIRED - update to PENDING
+                // DECLINED - update to PENDING
                 log.info("Invitation exists with status {}, updating to PENDING: {}", 
                         existingInvitation.getStatus(), existingInvitation.getId());
                 existingInvitation.setStatus("PENDING");
                 existingInvitation.setInitialMessage(request.getInitialMessage());
-                existingInvitation.setExpiresAt(OffsetDateTime.now().plusDays(7));
                 existingInvitation.setRespondedAt(null);
                 invitation = invitationRepository.save(existingInvitation);
                 log.info("Updated invitation from {} to PENDING. ID: {}", existingInvitation.getStatus(), invitation.getId());
@@ -591,13 +575,12 @@ public class DirectInvitationService {
                         .inviteeId(inviteeResidentId)
                         .status("PENDING")
                         .initialMessage(request.getInitialMessage())
-                        .expiresAt(OffsetDateTime.now().plusDays(7))
                         .build();
                 invitation = invitationRepository.save(invitation);
                 
-                log.info("✅ Created new invitation ID: {}, Status: PENDING, Inviter: {}, Invitee: {}, ExpiresAt: {}, CreatedAt: {}", 
+                log.info("✅ Created new invitation ID: {}, Status: PENDING, Inviter: {}, Invitee: {}, CreatedAt: {}", 
                         invitation.getId(), invitation.getInviterId(), invitation.getInviteeId(), 
-                        invitation.getExpiresAt(), invitation.getCreatedAt());
+                        invitation.getCreatedAt());
                 
                 // Verify invitation was saved correctly
                 Optional<DirectInvitation> savedInvitation = invitationRepository.findById(invitation.getId());
@@ -610,8 +593,8 @@ public class DirectInvitationService {
             }
         }
         
-        log.info("✅ Final invitation - ID: {}, Status: {}, Inviter: {}, Invitee: {}, ExpiresAt: {}", 
-                invitation.getId(), invitation.getStatus(), invitation.getInviterId(), invitation.getInviteeId(), invitation.getExpiresAt());
+        log.info("✅ Final invitation - ID: {}, Status: {}, Inviter: {}, Invitee: {}", 
+                invitation.getId(), invitation.getStatus(), invitation.getInviterId(), invitation.getInviteeId());
 
         // If initial message provided, create it as a message
         if (request.getInitialMessage() != null && !request.getInitialMessage().trim().isEmpty()) {
@@ -649,13 +632,6 @@ public class DirectInvitationService {
         // Verify invitee
         if (!invitation.getInviteeId().equals(residentId)) {
             throw new RuntimeException("This invitation is not for you");
-        }
-
-        // Check if expired
-        if (invitation.isExpired()) {
-            invitation.setStatus("EXPIRED");
-            invitationRepository.save(invitation);
-            throw new RuntimeException("Invitation has expired");
         }
 
         // Check if already responded
@@ -764,7 +740,7 @@ public class DirectInvitationService {
     /**
      * Get pending invitations for a user
      * Always returns a list (may be empty) - screen should always be visible like group invitations
-     * Only returns PENDING invitations (not expired)
+     * Returns all PENDING invitations (invitations no longer expire, only accept/decline changes status)
      */
     public List<DirectInvitationResponse> getPendingInvitations(UUID userId) {
         String accessToken = getCurrentAccessToken();
@@ -781,7 +757,7 @@ public class DirectInvitationService {
             return new ArrayList<>();
         }
 
-        // Get only PENDING invitations (not expired)
+        // Get all PENDING invitations (invitations no longer expire)
         List<DirectInvitation> invitations = invitationRepository
                 .findPendingInvitationsByInviteeId(residentId);
         
