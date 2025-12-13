@@ -215,6 +215,27 @@ public class ResidentController {
         }
     }
 
+    @GetMapping("/search-by-phone")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORTER', 'RESIDENT')")
+    public ResponseEntity<List<ResidentDto>> searchResidentsByPhone(
+            @RequestParam("prefix") String phonePrefix) {
+        try {
+            log.info("🔍 [ResidentController] Searching residents by phone prefix: '{}'", phonePrefix);
+            List<ResidentDto> residents = residentService.searchByPhonePrefix(phonePrefix);
+            log.info("✅ [ResidentController] Found {} residents matching phone prefix: '{}'", residents.size(), phonePrefix);
+            if (residents.isEmpty()) {
+                log.debug("⚠️ [ResidentController] No residents found. This could mean:");
+                log.debug("   1. No residents have phone numbers starting with '{}'", phonePrefix);
+                log.debug("   2. All matching residents have status != ACTIVE");
+                log.debug("   3. Phone number format in database differs from search prefix");
+            }
+            return ResponseEntity.ok(residents);
+        } catch (Exception e) {
+            log.error("❌ [ResidentController] Failed to search residents by phone prefix '{}': {}", phonePrefix, e.getMessage(), e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
     @GetMapping("/me")
     @PreAuthorize("hasRole('RESIDENT')")
     public ResponseEntity<ResidentDto> getMyResident(Authentication authentication) {

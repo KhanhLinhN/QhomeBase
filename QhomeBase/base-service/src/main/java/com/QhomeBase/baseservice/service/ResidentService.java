@@ -50,6 +50,60 @@ public class ResidentService {
                 .toList();
     }
 
+    public List<ResidentDto> searchByPhonePrefix(String phonePrefix) {
+        if (!StringUtils.hasText(phonePrefix) || phonePrefix.length() < 3) {
+            return Collections.emptyList();
+        }
+        // Normalize phone: remove all non-digit characters
+        String normalizedPhone = phonePrefix.replaceAll("[^0-9]", "");
+        
+        if (normalizedPhone.length() < 3) {
+            return Collections.emptyList();
+        }
+        
+        log.debug("Searching residents by phone prefix - original: '{}', normalized: '{}'", phonePrefix, normalizedPhone);
+        
+        List<Resident> residents = new java.util.ArrayList<>();
+        
+        // If prefix starts with 0, try with 0 first, then without 0
+        if (normalizedPhone.startsWith("0")) {
+            // Try with leading zero (as-is)
+            log.debug("Trying search with prefix: '{}'", normalizedPhone);
+            residents = residentRepository.findByPhonePrefix(normalizedPhone);
+            log.debug("Found {} residents with prefix '{}'", residents.size(), normalizedPhone);
+            
+            // If no results, try without leading zero
+            if (residents.isEmpty() && normalizedPhone.length() > 1) {
+                String withoutZero = normalizedPhone.substring(1);
+                log.debug("Trying search without leading zero: '{}'", withoutZero);
+                residents = residentRepository.findByPhonePrefix(withoutZero);
+                log.debug("Found {} residents with prefix '{}'", residents.size(), withoutZero);
+            }
+        } else {
+            // If prefix doesn't start with 0, try with 0 first, then without 0
+            String withZero = "0" + normalizedPhone;
+            log.debug("Trying search with leading zero: '{}'", withZero);
+            residents = residentRepository.findByPhonePrefix(withZero);
+            log.debug("Found {} residents with prefix '{}'", residents.size(), withZero);
+            
+            // If no results, try without leading zero
+            if (residents.isEmpty()) {
+                log.debug("Trying search without leading zero: '{}'", normalizedPhone);
+                residents = residentRepository.findByPhonePrefix(normalizedPhone);
+                log.debug("Found {} residents with prefix '{}'", residents.size(), normalizedPhone);
+            }
+        }
+        
+        // Limit to 10 results for performance
+        List<ResidentDto> result = residents.stream()
+                .limit(10)
+                .map(this::toDto)
+                .toList();
+        
+        log.debug("Returning {} residents for phone prefix '{}'", result.size(), phonePrefix);
+        return result;
+    }
+
     public ResidentDto getById(UUID residentId) {
         Resident resident = residentRepository.findById(residentId)
                 .orElseThrow(() -> new IllegalArgumentException("Resident not found: " + residentId));
