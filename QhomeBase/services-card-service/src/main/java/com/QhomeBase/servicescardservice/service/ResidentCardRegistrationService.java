@@ -201,9 +201,28 @@ public class ResidentCardRegistrationService {
 
         if ("APPROVE".equalsIgnoreCase(decision) || "APPROVED".equalsIgnoreCase(decision)) {
             // Approve logic
-            if (!STATUS_PENDING_REVIEW.equalsIgnoreCase(registration.getStatus()) 
-                    && !STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(registration.getStatus())) {
-                throw new IllegalStateException("Đăng ký không ở trạng thái chờ duyệt. Trạng thái hiện tại: " + registration.getStatus());
+            // Save old status to check if status is actually changing
+            String oldStatus = registration.getStatus();
+            
+            if (!STATUS_PENDING_REVIEW.equalsIgnoreCase(oldStatus) 
+                    && !STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(oldStatus)) {
+                throw new IllegalStateException("Đăng ký không ở trạng thái chờ duyệt. Trạng thái hiện tại: " + oldStatus);
+            }
+
+            // Check if status is actually changing from PENDING/READY_FOR_PAYMENT to APPROVED
+            // Only send notification if status is changing (not already APPROVED)
+            boolean statusChanging = !STATUS_APPROVED.equalsIgnoreCase(oldStatus);
+            
+            if (!statusChanging) {
+                log.warn("⚠️ [ResidentCard] Registration {} already approved. Status not changing. Skipping notification.", 
+                        registrationId);
+                // Still allow update of adminNote, issueMessage, issueTime if provided
+                if (request.note() != null) {
+                    registration.setAdminNote(request.note());
+                }
+                registration.setUpdatedAt(now);
+                ResidentCardRegistration saved = repository.save(registration);
+                return toDto(saved);
             }
 
             registration.setStatus("APPROVED");
@@ -234,16 +253,31 @@ public class ResidentCardRegistrationService {
                 }
             }
 
-            // Send notification to resident
-            sendCardApprovalNotification(saved, request.issueMessage(), request.issueTime());
-
-            log.info("✅ [ResidentCard] Admin {} đã approve đăng ký {}", adminId, registrationId);
+            // Send notification to resident ONLY if status changed from PENDING/READY_FOR_PAYMENT to APPROVED
+            if (statusChanging) {
+                sendCardApprovalNotification(saved, request.issueMessage(), request.issueTime());
+                log.info("✅ [ResidentCard] Admin {} đã approve đăng ký {} (status changed from {} to APPROVED). Notification sent.", 
+                        adminId, registrationId, oldStatus);
+            } else {
+                log.info("✅ [ResidentCard] Admin {} đã approve đăng ký {} (status unchanged, notification skipped).", 
+                        adminId, registrationId);
+            }
+            
             return toDto(saved);
         } else if ("REJECT".equalsIgnoreCase(decision) || "REJECTED".equalsIgnoreCase(decision)) {
             // Reject logic
-            if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
+            // Save old status to check if status is actually changing
+            String oldStatus = registration.getStatus();
+            
+            if (STATUS_REJECTED.equalsIgnoreCase(oldStatus)) {
                 throw new IllegalStateException("Đăng ký đã bị từ chối");
             }
+
+            // Check if status is actually changing from PENDING/READY_FOR_PAYMENT to REJECTED
+            // Only send notification if status is changing (not already REJECTED)
+            boolean statusChanging = !STATUS_REJECTED.equalsIgnoreCase(oldStatus) 
+                    && (STATUS_PENDING_REVIEW.equalsIgnoreCase(oldStatus) 
+                        || STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(oldStatus));
 
             registration.setStatus(STATUS_REJECTED);
             registration.setAdminNote(request.note());
@@ -251,17 +285,32 @@ public class ResidentCardRegistrationService {
 
             ResidentCardRegistration saved = repository.save(registration);
 
-            // Send notification to resident
-            sendCardRejectionNotification(saved, request.note());
-
-            log.info("✅ [ResidentCard] Admin {} đã reject đăng ký {}", adminId, registrationId);
+            // Send notification to resident ONLY if status changed from PENDING/READY_FOR_PAYMENT to REJECTED
+            if (statusChanging) {
+                sendCardRejectionNotification(saved, request.note());
+                log.info("✅ [ResidentCard] Admin {} đã reject đăng ký {} (status changed from {} to REJECTED). Notification sent.", 
+                        adminId, registrationId, oldStatus);
+            } else {
+                log.info("✅ [ResidentCard] Admin {} đã reject đăng ký {} (status unchanged, notification skipped).", 
+                        adminId, registrationId);
+            }
+            
             return toDto(saved);
         } else if ("CANCEL".equalsIgnoreCase(decision) || "CANCELLED".equalsIgnoreCase(decision)) {
             // Admin cancel logic - set status to REJECTED (bị từ chối)
             // Note: Cư dân hủy sẽ set status = CANCELLED, admin hủy sẽ set status = REJECTED
-            if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
+            // Save old status to check if status is actually changing
+            String oldStatus = registration.getStatus();
+            
+            if (STATUS_REJECTED.equalsIgnoreCase(oldStatus)) {
                 throw new IllegalStateException("Đăng ký đã bị từ chối");
             }
+
+            // Check if status is actually changing from PENDING/READY_FOR_PAYMENT to REJECTED
+            // Only send notification if status is changing (not already REJECTED)
+            boolean statusChanging = !STATUS_REJECTED.equalsIgnoreCase(oldStatus) 
+                    && (STATUS_PENDING_REVIEW.equalsIgnoreCase(oldStatus) 
+                        || STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(oldStatus));
 
             registration.setStatus(STATUS_REJECTED);
             registration.setAdminNote(request.note());
@@ -269,10 +318,16 @@ public class ResidentCardRegistrationService {
 
             ResidentCardRegistration saved = repository.save(registration);
 
-            // Send notification to resident (admin cancel = reject)
-            sendCardRejectionNotification(saved, request.note());
-
-            log.info("✅ [ResidentCard] Admin {} đã cancel (reject) đăng ký {}", adminId, registrationId);
+            // Send notification to resident ONLY if status changed from PENDING/READY_FOR_PAYMENT to REJECTED
+            if (statusChanging) {
+                sendCardRejectionNotification(saved, request.note());
+                log.info("✅ [ResidentCard] Admin {} đã cancel (reject) đăng ký {} (status changed from {} to REJECTED). Notification sent.", 
+                        adminId, registrationId, oldStatus);
+            } else {
+                log.info("✅ [ResidentCard] Admin {} đã cancel (reject) đăng ký {} (status unchanged, notification skipped).", 
+                        adminId, registrationId);
+            }
+            
             return toDto(saved);
         } else {
             throw new IllegalArgumentException("Invalid decision: " + decision + ". Must be APPROVE, REJECT, or CANCEL");
@@ -281,6 +336,17 @@ public class ResidentCardRegistrationService {
 
     private void sendCardApprovalNotification(ResidentCardRegistration registration, String issueMessage, OffsetDateTime issueTime) {
         try {
+            // Check if already approved - don't send notification if already approved to avoid duplicate
+            if (STATUS_APPROVED.equalsIgnoreCase(registration.getStatus()) 
+                    && registration.getApprovedAt() != null 
+                    && registration.getApprovedBy() != null) {
+                // Double-check: if approvedAt was set before this call, skip notification
+                // This prevents duplicate notifications if method is called multiple times
+                log.warn("⚠️ [ResidentCard] Registration {} already approved. Skipping notification to avoid duplicate FCM push.", 
+                        registration.getId());
+                return;
+            }
+            
             // CARD_APPROVED is PRIVATE - only resident who created the request can see
             // Get residentId from userId (người tạo request) instead of residentId (người được đăng ký thẻ)
             UUID requesterResidentId = residentUnitLookupService.resolveByUser(

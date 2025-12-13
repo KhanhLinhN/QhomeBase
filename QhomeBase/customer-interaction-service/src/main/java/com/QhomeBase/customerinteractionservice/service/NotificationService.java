@@ -58,11 +58,11 @@ public class NotificationService {
 
         // Chỉ gửi realtime notification và FCM push khi:
         // 1. scope = EXTERNAL (riêng tư cho cư dân)
-        // 2. createdAt = today (không phải tương lai)
+        // 2. createdAt <= now (realtime)
         if (shouldSendNotification(savedNotification)) {
             sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
             notificationPushService.sendPushNotification(savedNotification);
-            log.info("✅ [NotificationService] Sent realtime and FCM push notification for notification {} (EXTERNAL, createdAt = today)", savedNotification.getId());
+            log.info("✅ [NotificationService] Sent realtime and FCM push notification for notification {} (EXTERNAL, createdAt <= now)", savedNotification.getId());
         } else {
             log.info("⏭️ [NotificationService] Skipped sending notification for notification {} (scope={}, createdAt={})", 
                     savedNotification.getId(), savedNotification.getScope(), savedNotification.getCreatedAt());
@@ -117,11 +117,11 @@ public class NotificationService {
 
         // Chỉ gửi realtime notification và FCM push khi:
         // 1. scope = EXTERNAL (riêng tư cho cư dân)
-        // 2. createdAt = today (không phải tương lai)
+        // 2. createdAt <= now (realtime)
         if (shouldSendNotification(updatedNotification)) {
             sendWebSocketNotification(updatedNotification, "NOTIFICATION_UPDATED");
             notificationPushService.sendPushNotification(updatedNotification);
-            log.info("✅ [NotificationService] Sent realtime and FCM push notification for updated notification {} (EXTERNAL, createdAt = today)", updatedNotification.getId());
+            log.info("✅ [NotificationService] Sent realtime and FCM push notification for updated notification {} (EXTERNAL, createdAt <= now)", updatedNotification.getId());
         } else {
             log.info("⏭️ [NotificationService] Skipped sending notification for updated notification {} (scope={}, createdAt={})", 
                     updatedNotification.getId(), updatedNotification.getScope(), updatedNotification.getCreatedAt());
@@ -264,7 +264,7 @@ public class NotificationService {
      * Kiểm tra xem có nên gửi notification (realtime + FCM push) không.
      * Chỉ gửi khi:
      * 1. scope = EXTERNAL (riêng tư cho cư dân)
-     * 2. createdAt = today (không phải tương lai)
+     * 2. createdAt <= now (realtime) - chỉ gửi khi tạo notification ở thời điểm hiện tại hoặc quá khứ
      */
     private boolean shouldSendNotification(Notification notification) {
         // Chỉ gửi cho notification có scope EXTERNAL (cho cư dân)
@@ -272,24 +272,20 @@ public class NotificationService {
             return false;
         }
         
-        // Chỉ gửi khi createdAt là hôm nay (không phải tương lai)
         Instant now = Instant.now();
         Instant createdAt = notification.getCreatedAt();
+        
         if (createdAt == null) {
             return false;
         }
         
-        // Kiểm tra createdAt không phải tương lai
+        // Chỉ gửi khi createdAt <= now (realtime)
+        // Nếu createdAt > now (không thể xảy ra trong thực tế, nhưng check để an toàn), không gửi
         if (createdAt.isAfter(now)) {
             return false; // createdAt là tương lai, không gửi notification
         }
         
-        // Kiểm tra createdAt là cùng ngày với hiện tại
-        // So sánh ngày (không tính giờ)
-        java.time.LocalDate createdAtDate = java.time.LocalDate.ofInstant(createdAt, java.time.ZoneId.systemDefault());
-        java.time.LocalDate nowDate = java.time.LocalDate.ofInstant(now, java.time.ZoneId.systemDefault());
-        
-        return createdAtDate.equals(nowDate);
+        return true; // createdAt <= now, gửi notification (realtime)
     }
 
     private void validateNotificationScope(NotificationScope scope, String targetRole, UUID targetBuildingId) {
@@ -480,27 +476,53 @@ public class NotificationService {
             }
         }
         
-        // If residentId is provided, send directly to that resident (private notification)
+            // If residentId is provided, send directly to that resident (private notification)
         if (request.getResidentId() != null) {
-            Map<String, String> dataPayload = new HashMap<>();
-            dataPayload.put("type", request.getType() != null ? request.getType().name() : "SYSTEM");
-            if (request.getReferenceId() != null) {
-                dataPayload.put("referenceId", request.getReferenceId().toString());
+            // Check if notification already exists for this referenceId, type, and residentId
+            // This prevents duplicate FCM push and WebSocket notifications when admin approves/denies the same request multiple times
+            boolean shouldSendNotifications = true;
+            if (request.getReferenceId() != null && request.getType() != null) {
+                List<com.QhomeBase.customerinteractionservice.model.Notification> existingNotifications = 
+                        notificationRepository.findByReferenceIdAndTypeAndTargetResidentId(
+                                request.getReferenceId(),
+                                request.getType(),
+                                request.getResidentId()
+                        );
+                
+                if (!existingNotifications.isEmpty()) {
+                    log.warn("⚠️ [NotificationService] Notification already exists for referenceId={}, type={}, residentId={}. " +
+                            "Skipping FCM push and WebSocket to avoid duplicate. Existing notification ID: {}", 
+                            request.getReferenceId(), request.getType(), request.getResidentId(), 
+                            existingNotifications.get(0).getId());
+                    // Skip both FCM push and WebSocket notification
+                    shouldSendNotifications = false;
+                }
             }
-            if (request.getReferenceType() != null) {
-                dataPayload.put("referenceType", request.getReferenceType());
-            }
-            if (request.getData() != null) {
-                dataPayload.putAll(request.getData());
-            }
+            
+            if (shouldSendNotifications) {
+                // No existing notification - safe to send FCM push and WebSocket
+                Map<String, String> dataPayload = new HashMap<>();
+                dataPayload.put("type", request.getType() != null ? request.getType().name() : "SYSTEM");
+                if (request.getReferenceId() != null) {
+                    dataPayload.put("referenceId", request.getReferenceId().toString());
+                }
+                if (request.getReferenceType() != null) {
+                    dataPayload.put("referenceType", request.getReferenceType());
+                }
+                if (request.getData() != null) {
+                    dataPayload.putAll(request.getData());
+                }
 
-            // Send push notification directly to resident
-            notificationPushService.sendPushNotificationToResident(
-                    request.getResidentId(),
-                    request.getTitle(),
-                    request.getMessage(),
-                    dataPayload
-            );
+                // Send push notification directly to resident (only if no existing notification)
+                notificationPushService.sendPushNotificationToResident(
+                        request.getResidentId(),
+                        request.getTitle(),
+                        request.getMessage(),
+                        dataPayload
+                );
+                log.info("✅ [NotificationService] Sent FCM push notification for referenceId={}, type={}, residentId={}", 
+                        request.getReferenceId(), request.getType(), request.getResidentId());
+            }
 
             // Also save to DB with scope EXTERNAL and targetResidentId for specific resident
             // IMPORTANT: When residentId is provided, always set targetResidentId and targetBuildingId = null
@@ -524,18 +546,22 @@ public class NotificationService {
 
             Notification savedNotification = notificationRepository.save(notification);
             
-            log.info("📡 [NotificationService] Preparing to send WebSocket notification: residentId={}, notificationId={}, type={}", 
-                    request.getResidentId(), savedNotification.getId(), type);
-            
-            // Send WebSocket notification - will automatically route to resident-specific channel
-            // since targetResidentId is set, it won't broadcast to building/external channels
-            sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
-            
-            // Push notification đã được gửi ở trên (dòng 440) qua sendPushNotificationToResident
-            // Không cần gọi sendPushNotification nữa để tránh gửi trùng
-            
-            log.info("✅ Created internal notification for residentId: {} | Notification ID: {} | Type: {} | WebSocket sent to /topic/notifications/resident/{}", 
-                    request.getResidentId(), savedNotification.getId(), type, request.getResidentId());
+            // Send WebSocket notification ONLY if we also sent FCM push (i.e., no duplicate)
+            // This ensures both FCM and WebSocket are sent together, or both are skipped together
+            if (shouldSendNotifications) {
+                log.info("📡 [NotificationService] Preparing to send WebSocket notification: residentId={}, notificationId={}, type={}", 
+                        request.getResidentId(), savedNotification.getId(), type);
+                
+                // Send WebSocket notification - will automatically route to resident-specific channel
+                // since targetResidentId is set, it won't broadcast to building/external channels
+                sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
+                
+                log.info("✅ Created internal notification for residentId: {} | Notification ID: {} | Type: {} | FCM push and WebSocket sent to /topic/notifications/resident/{}", 
+                        request.getResidentId(), savedNotification.getId(), type, request.getResidentId());
+            } else {
+                log.info("⏭️ Created internal notification for residentId: {} | Notification ID: {} | Type: {} | FCM push and WebSocket skipped (duplicate notification)", 
+                        request.getResidentId(), savedNotification.getId(), type);
+            }
         } else {
             // Fallback to regular notification creation
             CreateNotificationRequest createRequest = CreateNotificationRequest.builder()
