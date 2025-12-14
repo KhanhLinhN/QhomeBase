@@ -144,6 +144,13 @@ public class AssetInspectionController {
         return ResponseEntity.ok(result);
     }
 
+    @PutMapping("/{inspectionId}/scheduled-date")
+    public ResponseEntity<AssetInspectionDto> updateScheduledDate(
+            @PathVariable UUID inspectionId,
+            @RequestBody UpdateAssetInspectionRequest request) {
+        AssetInspectionDto result = inspectionService.updateScheduledDate(inspectionId, request.scheduledDate());
+        return ResponseEntity.ok(result);
+    }
 
 }
 

@@ -40,27 +40,34 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 List<String> perms = claims.get("perms", List.class);
 
                 System.out.println("=== JWT AUTH FILTER DEBUG ===");
+                System.out.println("Request path: " + request.getRequestURI());
                 System.out.println("UID: " + uid);
                 System.out.println("Username: " + username);
                 System.out.println("Roles from JWT: " + roles);
                 System.out.println("Perms from JWT: " + perms);
 
                 var authorities = new ArrayList<SimpleGrantedAuthority>();
-                for (String role : roles) {
-                    if (role != null) {
-                        // Normalize role: convert to uppercase and ensure ROLE_ prefix
-                        String normalizedRole = role.toUpperCase();
-                        // If role already has ROLE_ prefix, don't add it again
-                        if (!normalizedRole.startsWith("ROLE_")) {
-                            normalizedRole = "ROLE_" + normalizedRole;
+                if (roles != null) {
+                    for (String role : roles) {
+                        if (role != null) {
+                            // Normalize role: convert to uppercase and ensure ROLE_ prefix
+                            String normalizedRole = role.toUpperCase();
+                            // If role already has ROLE_ prefix, don't add it again
+                            if (!normalizedRole.startsWith("ROLE_")) {
+                                normalizedRole = "ROLE_" + normalizedRole;
+                            }
+                            authorities.add(new SimpleGrantedAuthority(normalizedRole));
+                            System.out.println("Added authority: " + normalizedRole);
                         }
-                        authorities.add(new SimpleGrantedAuthority(normalizedRole));
-                        System.out.println("Added authority: " + normalizedRole);
                     }
+                } else {
+                    System.out.println("⚠️ WARNING: Roles list is null!");
                 }
-                for (String perm : perms) {
-                    if (perm != null) {
-                        authorities.add(new SimpleGrantedAuthority("PERM_" + perm));
+                if (perms != null) {
+                    for (String perm : perms) {
+                        if (perm != null) {
+                            authorities.add(new SimpleGrantedAuthority("PERM_" + perm));
+                        }
                     }
                 }
                 System.out.println("All authorities: " + authorities);

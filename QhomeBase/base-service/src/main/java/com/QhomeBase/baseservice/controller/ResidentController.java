@@ -194,6 +194,27 @@ public class ResidentController {
         }
     }
 
+    @GetMapping(value = "/by-phone/{phone}", produces = "application/json")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORTER', 'RESIDENT')")
+    public ResponseEntity<Map<String, Object>> getResidentByPhone(@PathVariable("phone") String phone) {
+        try {
+            log.info("Getting resident by phone: {}", phone);
+            ResidentDto resident = residentService.getByPhone(phone);
+            log.info("Found resident: id={}, phone={}, name={}", resident.id(), resident.phone(), resident.fullName());
+            // Return as Map to match what chat-service expects
+            Map<String, Object> response = Map.of(
+                "id", resident.id().toString(),
+                "fullName", resident.fullName() != null ? resident.fullName() : "",
+                "phone", resident.phone() != null ? resident.phone() : "",
+                "email", resident.email() != null ? resident.email() : ""
+            );
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to get resident by phone {}: {}", phone, e.getMessage());
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     @GetMapping("/me")
     @PreAuthorize("hasRole('RESIDENT')")
     public ResponseEntity<ResidentDto> getMyResident(Authentication authentication) {

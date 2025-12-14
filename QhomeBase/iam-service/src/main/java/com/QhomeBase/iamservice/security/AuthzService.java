@@ -65,7 +65,7 @@ public class AuthzService {
     
     public boolean canViewUser(UUID userId) {
         var p = principal();
-        return hasPerm("iam.user.read") || hasAnyRole(Set.of("ADMIN")) || (p != null && p.uid().equals(userId)) || isGlobalAdmin();
+        return hasPerm("iam.user.read") || hasPerm("base.resident.approve") || hasAnyRole(Set.of("ADMIN")) || (p != null && p.uid().equals(userId)) || isGlobalAdmin();
     }
     
     public boolean canViewAllUsers() {

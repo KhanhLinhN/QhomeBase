@@ -1,6 +1,7 @@
 package com.QhomeBase.financebillingservice.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -28,6 +29,36 @@ public class GlobalExceptionHandler {
         headers.set(HttpHeaders.CONTENT_TYPE, "application/json; charset=UTF-8");
         
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .headers(headers)
+                .body(errorResponse);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, String>> handleDataIntegrityViolationException(DataIntegrityViolationException ex) {
+        log.error("DataIntegrityViolationException: {}", ex.getMessage(), ex);
+        
+        String message = ex.getMessage();
+        String userMessage = "Dữ liệu đã tồn tại trong hệ thống";
+        
+        // Check if it's a duplicate key violation for billing cycles
+        if (message != null && message.contains("uq_billing_cycles")) {
+            userMessage = "Chu kỳ thanh toán với cùng tên và khoảng thời gian đã tồn tại. Vui lòng kiểm tra lại.";
+        } else if (message != null && message.contains("duplicate key")) {
+            userMessage = "Dữ liệu đã tồn tại trong hệ thống. Vui lòng kiểm tra lại.";
+        }
+        
+        Map<String, String> errorResponse = new HashMap<>();
+        errorResponse.put("message", userMessage);
+        errorResponse.put("error", "DataIntegrityViolationException");
+        errorResponse.put("details", message != null && message.length() > 200 
+                ? message.substring(0, 200) + "..." 
+                : message);
+        
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set(HttpHeaders.CONTENT_TYPE, "application/json; charset=UTF-8");
+        
+        return ResponseEntity.status(HttpStatus.CONFLICT)
                 .headers(headers)
                 .body(errorResponse);
     }

@@ -106,4 +106,17 @@ public interface RegisterServiceRequestRepository extends JpaRepository<Register
             @Param("licensePlate") String licensePlate,
             @Param("excludeId") UUID excludeId
     );
+
+    /**
+     * Tìm các vehicle card registrations có VNPay payment đang in-progress quá thời gian timeout
+     * @param threshold Thời điểm threshold (hiện tại - 10 phút)
+     * @return Danh sách registrations cần expire
+     */
+    @Query("""
+            SELECT r FROM RegisterServiceRequest r
+            WHERE UPPER(r.paymentStatus) = 'PAYMENT_IN_PROGRESS'
+              AND r.vnpayInitiatedAt IS NOT NULL
+              AND r.vnpayInitiatedAt < :threshold
+            """)
+    List<RegisterServiceRequest> findExpiredVnpayPayments(@Param("threshold") OffsetDateTime threshold);
 }

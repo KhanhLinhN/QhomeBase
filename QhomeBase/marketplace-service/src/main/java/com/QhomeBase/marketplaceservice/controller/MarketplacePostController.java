@@ -25,6 +25,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -41,6 +42,7 @@ public class MarketplacePostController {
     private final MarketplaceCategoryService categoryService;
     private final RateLimitService rateLimitService;
     private final ImageProcessingService imageProcessingService;
+    private final VideoProcessingService videoProcessingService;
     private final FileStorageService fileStorageService;
     private final AsyncImageProcessingService asyncImageProcessingService;
     private final MarketplaceMapper mapper;
@@ -133,6 +135,7 @@ public class MarketplacePostController {
     public ResponseEntity<PostResponse> createPost(
             @RequestPart("data") String dataJson,
             @RequestPart(value = "images", required = false) List<MultipartFile> images,
+            @RequestPart(value = "video", required = false) MultipartFile video,
             Authentication authentication) {
         
         // Manually deserialize JSON string to CreatePostRequest
@@ -192,6 +195,16 @@ public class MarketplacePostController {
             }
         }
 
+        // Validate video (max 20 seconds, should be validated on client side)
+        if (video != null && !video.isEmpty()) {
+            try {
+                videoProcessingService.validateVideo(video);
+            } catch (IllegalArgumentException e) {
+                log.error("Invalid video: {}", e.getMessage());
+                return ResponseEntity.badRequest().build();
+            }
+        }
+
         // Parse scope from request
         PostScope postScope = PostScope.BUILDING; // Default
         if (request.getScope() != null && !request.getScope().isEmpty()) {
@@ -240,40 +253,82 @@ public class MarketplacePostController {
 
         MarketplacePost saved = postService.createPost(post);
 
-        // Upload images asynchronously
-        // Copy bytes before async processing to avoid file deletion issues
+        // Upload images synchronously first to get URLs immediately
+        // Then process thumbnails asynchronously
         if (images != null && !images.isEmpty()) {
             for (int i = 0; i < images.size(); i++) {
                 MultipartFile image = images.get(i);
                 try {
-                    // Copy bytes before async processing
-                    byte[] imageBytes = image.getBytes();
-                    String baseFileName = UUID.randomUUID().toString() + ".jpg";
-                    asyncImageProcessingService.processImageAsync(
-                            imageBytes, 
-                            image.getOriginalFilename(), 
-                            image.getContentType(),
-                            saved.getId(), 
-                            baseFileName,
-                            i); // Sort order
+                    // Upload original image synchronously to get URL immediately
+                    Map<String, String> imageUrls = fileStorageService.uploadImage(image, saved.getId().toString());
+                    String originalUrl = imageUrls.get("original");
+                    
+                    if (originalUrl != null && !originalUrl.isEmpty()) {
+                        // Save image to database immediately with original URL
+                        MarketplacePostImage postImage = MarketplacePostImage.builder()
+                                .post(saved)
+                                .imageUrl(originalUrl)
+                                .thumbnailUrl(null) // Will be set later by async processing
+                                .sortOrder(i)
+                                .build();
+                        imageRepository.save(postImage);
+                        log.info("✅ [MarketplacePostController] Saved image immediately: {}", originalUrl);
+                        
+                        // Process thumbnail asynchronously and update later
+                        byte[] imageBytes = image.getBytes();
+                        String baseFileName = UUID.randomUUID().toString() + ".jpg";
+                        asyncImageProcessingService.processThumbnailAsync(
+                                imageBytes,
+                                image.getOriginalFilename(),
+                                image.getContentType(),
+                                saved.getId(),
+                                baseFileName,
+                                postImage.getId()); // Pass image ID to update later
+                    }
                 } catch (Exception e) {
-                    log.error("Error copying image bytes for async processing: {}", e.getMessage());
+                    log.error("Error uploading image: {}", e.getMessage(), e);
                 }
             }
         }
 
+        // Upload video if provided
+        if (video != null && !video.isEmpty()) {
+            try {
+                // Upload video synchronously
+                Map<String, String> videoUrls = fileStorageService.uploadVideo(video, saved.getId().toString());
+                String videoUrl = videoUrls.get("original");
+                
+                if (videoUrl != null && !videoUrl.isEmpty()) {
+                    // Save video to database as an image entry (using imageUrl field for video URL)
+                    MarketplacePostImage postVideo = MarketplacePostImage.builder()
+                            .post(saved)
+                            .imageUrl(videoUrl)
+                            .thumbnailUrl(null) // Videos don't have thumbnails in this implementation
+                            .sortOrder(images != null ? images.size() : 0) // Add after images
+                            .build();
+                    imageRepository.save(postVideo);
+                    log.info("✅ [MarketplacePostController] Saved video: {}", videoUrl);
+                }
+            } catch (Exception e) {
+                log.error("Error uploading video: {}", e.getMessage(), e);
+            }
+        }
+
+        // Refresh post to ensure images are loaded (lazy loading)
+        MarketplacePost refreshedPost = postService.getPostById(saved.getId());
+
         // Notify new post
-        notificationService.notifyNewPost(request.getBuildingId(), saved.getId(), saved.getTitle());
+        notificationService.notifyNewPost(request.getBuildingId(), refreshedPost.getId(), refreshedPost.getTitle());
         
         // Send initial stats
         notificationService.notifyPostStatsUpdate(
-                saved.getId(), 
+                refreshedPost.getId(), 
                 0L, // likeCount removed
-                saved.getCommentCount(), 
-                saved.getViewCount()
+                refreshedPost.getCommentCount(), 
+                refreshedPost.getViewCount()
         );
 
-        PostResponse response = mapper.toPostResponse(saved);
+        PostResponse response = mapper.toPostResponse(refreshedPost);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -284,6 +339,7 @@ public class MarketplacePostController {
             @PathVariable UUID id,
             @RequestPart("data") String dataJson,
             @RequestPart(value = "images", required = false) List<MultipartFile> newImages,
+            @RequestPart(value = "video", required = false) MultipartFile video,
             Authentication authentication) {
         
         // Manually deserialize JSON string to UpdatePostRequest
@@ -339,6 +395,55 @@ public class MarketplacePostController {
         }
 
         MarketplacePost updated = postService.updatePost(id, post);
+
+        // Validate video if provided
+        if (video != null && !video.isEmpty()) {
+            try {
+                videoProcessingService.validateVideo(video);
+            } catch (IllegalArgumentException e) {
+                log.error("Invalid video: {}", e.getMessage());
+                return ResponseEntity.badRequest().build();
+            }
+        }
+
+        // Handle video deletion
+        if (request.getVideoToDelete() != null && !request.getVideoToDelete().isEmpty()) {
+            try {
+                UUID videoId = UUID.fromString(request.getVideoToDelete());
+                // Find video in database (stored as MarketplacePostImage)
+                var videoOpt = imageRepository.findById(videoId);
+                if (videoOpt.isPresent()) {
+                    MarketplacePostImage videoImage = videoOpt.get();
+                    // Verify video belongs to this post
+                    if (videoImage.getPost().getId().equals(id)) {
+                        // Delete from database
+                        imageRepository.delete(videoImage);
+                        log.info("Deleted video from database: {}", videoId);
+                        
+                        // Delete from storage
+                        String videoUrl = videoImage.getImageUrl();
+                        if (videoUrl != null && videoUrl.contains("/uploads/")) {
+                            String[] parts = videoUrl.split("/uploads/");
+                            if (parts.length > 1) {
+                                String filePath = parts[1]; // {postId}/{fileName}
+                                String[] pathParts = filePath.split("/");
+                                if (pathParts.length > 1) {
+                                    String fileName = pathParts[1];
+                                    fileStorageService.deleteImage(id.toString(), fileName);
+                                    log.info("Deleted video file from storage: {}", fileName);
+                                }
+                            }
+                        }
+                    } else {
+                        log.warn("Video {} does not belong to post {}", videoId, id);
+                    }
+                } else {
+                    log.warn("Video not found in database: {}", videoId);
+                }
+            } catch (Exception e) {
+                log.error("Error deleting video {}: {}", request.getVideoToDelete(), e.getMessage(), e);
+            }
+        }
 
         // Handle image deletion
         if (request.getImagesToDelete() != null && !request.getImagesToDelete().isEmpty()) {
@@ -397,31 +502,76 @@ public class MarketplacePostController {
             }
         }
 
-        // Handle new images
-        // Copy bytes before async processing to avoid file deletion issues
+        // Handle new images - upload synchronously first to get URLs immediately
+        // Then process thumbnails asynchronously
         if (newImages != null && !newImages.isEmpty()) {
             // Get current image count to determine sort order
             int currentImageCount = updated.getImages().size();
             for (int i = 0; i < newImages.size(); i++) {
                 MultipartFile image = newImages.get(i);
                 try {
-                    // Copy bytes before async processing
-                    byte[] imageBytes = image.getBytes();
-                    String baseFileName = UUID.randomUUID().toString() + ".jpg";
-                    asyncImageProcessingService.processImageAsync(
-                            imageBytes, 
-                            image.getOriginalFilename(), 
-                            image.getContentType(),
-                            updated.getId(), 
-                            baseFileName,
-                            currentImageCount + i); // Sort order
+                    // Upload original image synchronously to get URL immediately
+                    Map<String, String> imageUrls = fileStorageService.uploadImage(image, updated.getId().toString());
+                    String originalUrl = imageUrls.get("original");
+                    
+                    if (originalUrl != null && !originalUrl.isEmpty()) {
+                        // Save image to database immediately with original URL
+                        MarketplacePostImage postImage = MarketplacePostImage.builder()
+                                .post(updated)
+                                .imageUrl(originalUrl)
+                                .thumbnailUrl(null) // Will be set later by async processing
+                                .sortOrder(currentImageCount + i)
+                                .build();
+                        imageRepository.save(postImage);
+                        log.info("✅ [MarketplacePostController] Saved new image immediately: {}", originalUrl);
+                        
+                        // Process thumbnail asynchronously and update later
+                        byte[] imageBytes = image.getBytes();
+                        String baseFileName = UUID.randomUUID().toString() + ".jpg";
+                        asyncImageProcessingService.processThumbnailAsync(
+                                imageBytes,
+                                image.getOriginalFilename(),
+                                image.getContentType(),
+                                updated.getId(),
+                                baseFileName,
+                                postImage.getId()); // Pass image ID to update later
+                    }
                 } catch (Exception e) {
-                    log.error("Error copying image bytes for async processing: {}", e.getMessage());
+                    log.error("Error uploading image: {}", e.getMessage(), e);
                 }
             }
         }
 
-        PostResponse response = mapper.toPostResponse(updated);
+        // Handle video upload if provided
+        if (video != null && !video.isEmpty()) {
+            try {
+                // Upload video synchronously
+                Map<String, String> videoUrls = fileStorageService.uploadVideo(video, updated.getId().toString());
+                String videoUrl = videoUrls.get("original");
+                
+                if (videoUrl != null && !videoUrl.isEmpty()) {
+                    // Get current image count to determine sort order
+                    int currentImageCount = updated.getImages().size();
+                    
+                    // Save video to database as an image entry (using imageUrl field for video URL)
+                    MarketplacePostImage postVideo = MarketplacePostImage.builder()
+                            .post(updated)
+                            .imageUrl(videoUrl)
+                            .thumbnailUrl(null) // Videos don't have thumbnails
+                            .sortOrder(currentImageCount) // Add after images
+                            .build();
+                    imageRepository.save(postVideo);
+                    log.info("✅ [MarketplacePostController] Saved video: {}", videoUrl);
+                }
+            } catch (Exception e) {
+                log.error("Error uploading video: {}", e.getMessage(), e);
+            }
+        }
+
+        // Refresh post to ensure images are loaded (lazy loading)
+        MarketplacePost refreshedPost = postService.getPostById(updated.getId());
+        
+        PostResponse response = mapper.toPostResponse(refreshedPost);
         return ResponseEntity.ok(response);
     }
 

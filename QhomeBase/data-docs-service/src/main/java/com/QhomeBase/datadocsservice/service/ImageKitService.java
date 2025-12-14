@@ -32,9 +32,43 @@ public class ImageKitService {
         try {
             log.info("📤 [ImageKit] Uploading image: {} to folder: {}", file.getOriginalFilename(), folder);
             
+            // Validate file
+            if (file == null || file.isEmpty()) {
+                log.error("❌ [ImageKit] File is null or empty");
+                throw new IllegalArgumentException("File cannot be null or empty");
+            }
+            
+            // Validate file size (max 50MB before base64 encoding)
+            long fileSize = file.getSize();
+            if (fileSize > 50 * 1024 * 1024) {
+                log.error("❌ [ImageKit] File too large: {} bytes (max 50MB)", fileSize);
+                throw new IllegalArgumentException("File size exceeds maximum limit of 50MB");
+            }
+            
             // Convert file to base64
-            byte[] fileBytes = file.getBytes();
-            String base64File = Base64.getEncoder().encodeToString(fileBytes);
+            log.debug("📤 [ImageKit] Reading file bytes (size: {} bytes)...", fileSize);
+            byte[] fileBytes;
+            try {
+                fileBytes = file.getBytes();
+            } catch (IOException e) {
+                log.error("❌ [ImageKit] Failed to read file bytes: {}", e.getMessage(), e);
+                throw new IOException("Failed to read file: " + e.getMessage(), e);
+            }
+            
+            if (fileBytes == null || fileBytes.length == 0) {
+                log.error("❌ [ImageKit] File bytes are null or empty");
+                throw new IllegalArgumentException("File bytes cannot be null or empty");
+            }
+            
+            log.debug("📤 [ImageKit] Encoding {} bytes to base64...", fileBytes.length);
+            String base64File;
+            try {
+                base64File = Base64.getEncoder().encodeToString(fileBytes);
+                log.debug("📤 [ImageKit] Base64 encoding completed (length: {} chars)", base64File.length());
+            } catch (Exception e) {
+                log.error("❌ [ImageKit] Failed to encode file to base64: {}", e.getMessage(), e);
+                throw new IOException("Failed to encode file to base64: " + e.getMessage(), e);
+            }
             
             // Generate unique filename
             String originalFileName = file.getOriginalFilename();
@@ -53,17 +87,52 @@ public class ImageKitService {
             }
             
             // Upload to ImageKit
-            Result result = imageKit.upload(fileCreateRequest);
+            log.debug("📤 [ImageKit] Calling imageKit.upload() with fileName: {}, folder: {}", fileName, folder);
+            Result result;
+            try {
+                result = imageKit.upload(fileCreateRequest);
+                log.debug("📤 [ImageKit] Upload call completed, result: {}", result != null ? "not null" : "null");
+            } catch (RuntimeException e) {
+                log.error("❌ [ImageKit] RuntimeException from ImageKit SDK: {}", e.getMessage(), e);
+                log.error("❌ [ImageKit] Exception class: {}", e.getClass().getName());
+                if (e.getCause() != null) {
+                    log.error("❌ [ImageKit] Caused by: {}", e.getCause().getMessage(), e.getCause());
+                }
+                throw new IOException("ImageKit upload failed: " + e.getMessage(), e);
+            }
             
-            if (result != null && result.getUrl() != null) {
+            if (result == null) {
+                String errorMessage = "Upload failed: ImageKit returned null result";
+                log.error("❌ [ImageKit] {}", errorMessage);
+                throw new IOException("Failed to upload image to ImageKit: " + errorMessage);
+            }
+            
+            if (result.getUrl() == null || result.getUrl().isEmpty()) {
+                // Log additional info from result if available
+                log.error("❌ [ImageKit] Upload failed: URL is null or empty");
+                log.error("❌ [ImageKit] Result toString: {}", result.toString());
+                String errorMessage = "Upload failed: ImageKit returned result without URL";
+                throw new IOException("Failed to upload image to ImageKit: " + errorMessage);
+            }
+            
                 log.info("✅ [ImageKit] Image uploaded successfully: {}", result.getUrl());
                 return result.getUrl();
-            } else {
-                log.error("❌ [ImageKit] Upload failed: result is null or URL is null");
-                throw new IOException("Failed to upload image to ImageKit");
-            }
+        } catch (IllegalArgumentException e) {
+            log.error("❌ [ImageKit] Invalid argument: {}", e.getMessage(), e);
+            throw e;
+        } catch (IOException e) {
+            log.error("❌ [ImageKit] IO error uploading image: {}", e.getMessage(), e);
+            throw e;
+        } catch (RuntimeException e) {
+            log.error("❌ [ImageKit] RuntimeException uploading image: {}", e.getMessage(), e);
+            log.error("❌ [ImageKit] Exception class: {}", e.getClass().getName());
+            throw new IOException("Error uploading image to ImageKit: " + e.getMessage(), e);
         } catch (Exception e) {
-            log.error("❌ [ImageKit] Error uploading image: {}", e.getMessage(), e);
+            log.error("❌ [ImageKit] Unexpected error uploading image: {}", e.getMessage(), e);
+            log.error("❌ [ImageKit] Exception class: {}", e.getClass().getName());
+            if (e.getCause() != null) {
+                log.error("❌ [ImageKit] Caused by: {}", e.getCause().getMessage(), e.getCause());
+            }
             throw new IOException("Error uploading image to ImageKit: " + e.getMessage(), e);
         }
     }

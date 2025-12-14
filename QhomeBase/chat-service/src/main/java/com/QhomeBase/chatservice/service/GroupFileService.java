@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.QhomeBase.chatservice.dto.GroupFilePagedResponse;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -191,6 +192,24 @@ public class GroupFileService {
                 .fileUrl(groupFile.getFileUrl())
                 .createdAt(groupFile.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * Find files uploaded by a user in a group from a specific time onwards
+     */
+    @Transactional(readOnly = true)
+    public List<GroupFile> findFilesByGroupIdAndSenderIdFromTime(
+            UUID groupId, UUID senderId, java.time.OffsetDateTime fromTime) {
+        return groupFileRepository.findFilesByGroupIdAndSenderIdFromTime(groupId, senderId, fromTime);
+    }
+
+    /**
+     * Delete file metadata by ID
+     */
+    @Transactional
+    public void deleteFileMetadata(UUID fileId) {
+        groupFileRepository.deleteById(fileId);
+        log.info("Deleted file metadata: {}", fileId);
     }
 
     private String getCurrentAccessToken() {

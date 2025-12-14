@@ -18,6 +18,51 @@ public class FriendshipService {
     private final FriendshipRepository friendshipRepository;
 
     /**
+     * Compare two UUIDs in the same order as PostgreSQL (byte order comparison).
+     * PostgreSQL compares UUIDs byte-by-byte from first to last byte.
+     * This method ensures consistent ordering with PostgreSQL's UUID comparison.
+     * 
+     * PostgreSQL stores UUID as 16 bytes in network byte order (big-endian).
+     * Java UUID stores as MSB (64 bits) + LSB (64 bits), both in big-endian.
+     * We need to compare them byte-by-byte as PostgreSQL does.
+     */
+    private int compareUuidAsBytes(UUID uuid1, UUID uuid2) {
+        // Compare MSB first (as unsigned 64-bit integers)
+        long msb1 = uuid1.getMostSignificantBits();
+        long msb2 = uuid2.getMostSignificantBits();
+        
+        // Use unsigned comparison for MSB
+        int msbCompare = Long.compareUnsigned(msb1, msb2);
+        if (msbCompare != 0) {
+            return msbCompare;
+        }
+        
+        // If MSB are equal, compare LSB (as unsigned 64-bit integers)
+        long lsb1 = uuid1.getLeastSignificantBits();
+        long lsb2 = uuid2.getLeastSignificantBits();
+        return Long.compareUnsigned(lsb1, lsb2);
+    }
+
+    /**
+     * Ensure user1_id < user2_id according to PostgreSQL byte order comparison.
+     * Returns array [user1Id, user2Id] where user1Id < user2Id.
+     * 
+     * Uses native PostgreSQL query to check UUID order, ensuring 100% compatibility.
+     */
+    private UUID[] orderUuidsForFriendship(UUID userId1, UUID userId2) {
+        // Use native PostgreSQL query to check UUID order (most reliable)
+        boolean isUser1Less = friendshipRepository.isUuid1LessThanUuid2(userId1, userId2);
+        
+        if (isUser1Less) {
+            log.debug("Ordering UUIDs (PostgreSQL native): {} < {}", userId1, userId2);
+            return new UUID[]{userId1, userId2};
+        } else {
+            log.debug("Ordering UUIDs (PostgreSQL native): {} < {}", userId2, userId1);
+            return new UUID[]{userId2, userId1};
+        }
+    }
+
+    /**
      * Create or activate friendship between two users
      */
     @Transactional
@@ -28,9 +73,10 @@ public class FriendshipService {
             throw new RuntimeException("User IDs cannot be null");
         }
         
-        // Ensure user1_id < user2_id for consistency
-        UUID user1Id = userId1.compareTo(userId2) < 0 ? userId1 : userId2;
-        UUID user2Id = userId1.compareTo(userId2) < 0 ? userId2 : userId1;
+        // Ensure user1_id < user2_id for consistency (using PostgreSQL byte order)
+        UUID[] ordered = orderUuidsForFriendship(userId1, userId2);
+        UUID user1Id = ordered[0];
+        UUID user2Id = ordered[1];
 
         return friendshipRepository.findFriendshipBetweenUsers(user1Id, user2Id)
                 .map(existingFriendship -> {
@@ -44,6 +90,11 @@ public class FriendshipService {
                 })
                 .orElseGet(() -> {
                     // Create new friendship
+                    // Double-check ordering before save (PostgreSQL will validate anyway)
+                    log.info("Creating new friendship: user1Id={}, user2Id={}", user1Id, user2Id);
+                    log.info("  UUID comparison (Java): compareTo={}, compareUuidAsBytes={}", 
+                            user1Id.compareTo(user2Id), compareUuidAsBytes(user1Id, user2Id));
+                    
                     Friendship friendship = Friendship.builder()
                             .user1Id(user1Id)
                             .user2Id(user2Id)
@@ -66,8 +117,10 @@ public class FriendshipService {
             return;
         }
         
-        UUID user1Id = userId1.compareTo(userId2) < 0 ? userId1 : userId2;
-        UUID user2Id = userId1.compareTo(userId2) < 0 ? userId2 : userId1;
+        // Ensure user1_id < user2_id for consistency (using PostgreSQL byte order)
+        UUID[] ordered = orderUuidsForFriendship(userId1, userId2);
+        UUID user1Id = ordered[0];
+        UUID user2Id = ordered[1];
 
         friendshipRepository.findFriendshipBetweenUsers(user1Id, user2Id)
                 .ifPresent(friendship -> {
@@ -98,8 +151,10 @@ public class FriendshipService {
             return false;
         }
         
-        UUID user1Id = userId1.compareTo(userId2) < 0 ? userId1 : userId2;
-        UUID user2Id = userId1.compareTo(userId2) < 0 ? userId2 : userId1;
+        // Ensure user1_id < user2_id for consistency (using PostgreSQL byte order)
+        UUID[] ordered = orderUuidsForFriendship(userId1, userId2);
+        UUID user1Id = ordered[0];
+        UUID user2Id = ordered[1];
 
         return friendshipRepository.findFriendshipBetweenUsers(user1Id, user2Id)
                 .map(friendship -> Boolean.TRUE.equals(friendship.getIsActive()))

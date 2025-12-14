@@ -13,6 +13,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -36,6 +39,11 @@ public class DirectChatService {
     private final FcmPushService fcmPushService;
     private final FriendshipService friendshipService;
     private final DirectMessageDeletionRepository messageDeletionRepository;
+
+    @Value("${marketplace.service.url:http://localhost:8082}")
+    private String marketplaceServiceUrl;
+
+    private final WebClient webClient = WebClient.builder().build();
 
     private String getCurrentAccessToken() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -67,26 +75,60 @@ public class DirectChatService {
         String accessToken = getCurrentAccessToken();
         UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
         if (residentId == null) {
+            log.error("❌ [DirectChatService] getConversations - Resident not found for userId: {}", userId);
             throw new RuntimeException("Resident not found for user: " + userId);
         }
 
+        log.info("🔍 [DirectChatService] getConversations - userId: {}, residentId: {}", userId, residentId);
+        
         List<Conversation> conversations = conversationRepository
                 .findActiveConversationsByUserId(residentId);
+        
+        log.info("🔍 [DirectChatService] Found {} ACTIVE conversations from DB for residentId: {}", conversations.size(), residentId);
 
-        return conversations.stream()
+        List<ConversationResponse> filteredConversations = conversations.stream()
                 .filter(conv -> {
+                    log.debug("🔍 [DirectChatService] Filtering conversation: id={}, status={}, participant1Id={}, participant2Id={}", 
+                            conv.getId(), conv.getStatus(), conv.getParticipant1Id(), conv.getParticipant2Id());
+                    
                     // Filter out DELETED conversations (both participants have hidden)
                     if ("DELETED".equals(conv.getStatus())) {
+                        log.debug("❌ [DirectChatService] Filtered out DELETED conversation: {}", conv.getId());
                         return false;
                     }
+                    
                     // Filter out conversations hidden by current user
                     ConversationParticipant participant = participantRepository
                             .findByConversationIdAndResidentId(conv.getId(), residentId)
                             .orElse(null);
-                    return participant == null || !Boolean.TRUE.equals(participant.getIsHidden());
+                    
+                    if (participant == null) {
+                        log.warn("⚠️ [DirectChatService] Participant not found for conversation: {}, residentId: {}", conv.getId(), residentId);
+                        return true; // Include if participant not found (shouldn't happen normally)
+                    }
+                    
+                    boolean isHidden = Boolean.TRUE.equals(participant.getIsHidden());
+                    log.debug("🔍 [DirectChatService] Conversation: {}, participant.isHidden: {}, hiddenAt: {}", 
+                            conv.getId(), isHidden, participant.getHiddenAt());
+                    
+                    if (isHidden) {
+                        log.debug("❌ [DirectChatService] Filtered out HIDDEN conversation: {} for residentId: {}", conv.getId(), residentId);
+                        return false;
+                    }
+                    
+                    log.debug("✅ [DirectChatService] Including conversation: {}", conv.getId());
+                    return true;
                 })
-                .map(conv -> toConversationResponse(conv, residentId, accessToken))
+                .map(conv -> {
+                    log.debug("📝 [DirectChatService] Converting conversation to response: {}", conv.getId());
+                    return toConversationResponse(conv, residentId, accessToken);
+                })
                 .collect(Collectors.toList());
+        
+        log.info("✅ [DirectChatService] getConversations returning {} filtered conversations for userId: {}, residentId: {}", 
+                filteredConversations.size(), userId, residentId);
+        
+        return filteredConversations;
     }
 
     /**
@@ -252,10 +294,18 @@ public class DirectChatService {
         conversation.setUpdatedAt(OffsetDateTime.now());
         conversationRepository.save(conversation);
 
-        // Update sender's lastReadAt to mark message as read
+        // Unhide conversation for sender if it was hidden (when they send a new message)
         ConversationParticipant senderParticipant = participantRepository
                 .findByConversationIdAndResidentId(conversationId, residentId)
                 .orElse(null);
+        if (senderParticipant != null && Boolean.TRUE.equals(senderParticipant.getIsHidden())) {
+            senderParticipant.setIsHidden(false);
+            senderParticipant.setHiddenAt(null);
+            participantRepository.save(senderParticipant);
+            log.info("Conversation {} unhidden for sender {} because they sent a new message", conversationId, residentId);
+        }
+        
+        // Update sender's lastReadAt to mark message as read
         if (senderParticipant != null) {
             OffsetDateTime createdAt = message.getCreatedAt();
             if (createdAt == null) {
@@ -276,21 +326,21 @@ public class DirectChatService {
             }
         }
 
+        // Unhide conversation for all participants who had hidden it (when someone sends a new message)
+        List<ConversationParticipant> allParticipants = participantRepository.findByConversationId(conversationId);
+        for (ConversationParticipant participant : allParticipants) {
+            if (Boolean.TRUE.equals(participant.getIsHidden())) {
+                participant.setIsHidden(false);
+                participant.setHiddenAt(null);
+                // Reset lastReadAt to null so the new message is considered as the first message
+                participant.setLastReadAt(null);
+                participantRepository.save(participant);
+                log.info("Conversation {} unhidden for participant {} (new message received). lastReadAt reset to null.", conversationId, participant.getResidentId());
+            }
+        }
+        
         // Notify via WebSocket
         notificationService.notifyDirectMessage(conversationId, response);
-
-        // Unhide conversation if it was hidden (when new message arrives)
-        ConversationParticipant otherParticipant = participantRepository
-                .findByConversationIdAndResidentId(conversationId, otherParticipantId)
-                .orElse(null);
-        if (otherParticipant != null && Boolean.TRUE.equals(otherParticipant.getIsHidden())) {
-            otherParticipant.setIsHidden(false);
-            otherParticipant.setHiddenAt(null);
-            // Reset lastReadAt to null so the new message is considered as the first message
-            otherParticipant.setLastReadAt(null);
-            participantRepository.save(otherParticipant);
-            log.info("Conversation {} unhidden for resident {} (new message received). lastReadAt reset to null.", conversationId, otherParticipantId);
-        }
         
         // If conversation was DELETED (both participants had hidden it), reset to ACTIVE
         if ("DELETED".equals(conversation.getStatus())) {
@@ -441,10 +491,67 @@ public class DirectChatService {
     }
 
     /**
-     * Delete a message
-     * @param deleteType "FOR_ME" - only delete for current user, "FOR_EVERYONE" - delete for everyone
-     * Only the sender can delete their own message
+     * Update/edit a direct message
+     * Only the sender can edit their own TEXT messages
      */
+    @Transactional
+    public DirectMessageResponse updateMessage(UUID conversationId, UUID messageId, String content, UUID userId) {
+        String accessToken = getCurrentAccessToken();
+        UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+        if (residentId == null) {
+            throw new RuntimeException("Resident not found for user: " + userId);
+        }
+
+        // Check conversation exists and user is a participant
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new RuntimeException("Conversation not found"));
+
+        if (!conversation.isParticipant(residentId)) {
+            throw new RuntimeException("You are not a participant in this conversation");
+        }
+
+        // Find message
+        DirectMessage message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new RuntimeException("Message not found"));
+
+        // Verify message belongs to this conversation
+        if (!message.getConversationId().equals(conversationId)) {
+            throw new RuntimeException("Message does not belong to this conversation");
+        }
+
+        // System messages cannot be edited
+        if ("SYSTEM".equals(message.getMessageType())) {
+            throw new RuntimeException("System messages cannot be edited");
+        }
+
+        // Only sender can edit their own message
+        if (message.getSenderId() == null || !message.getSenderId().equals(residentId)) {
+            throw new RuntimeException("You can only edit your own messages");
+        }
+
+        // Cannot edit deleted messages
+        if (Boolean.TRUE.equals(message.getIsDeleted())) {
+            throw new RuntimeException("Cannot edit deleted message");
+        }
+
+        // Only text messages can be edited
+        if (!"TEXT".equals(message.getMessageType())) {
+            throw new RuntimeException("Only text messages can be edited");
+        }
+
+        // Update message
+        message.setContent(content);
+        message.setIsEdited(true);
+        message = messageRepository.save(message);
+
+        DirectMessageResponse response = toDirectMessageResponse(message, accessToken);
+        
+        // Notify via WebSocket
+        notificationService.notifyDirectMessageUpdated(conversationId, response);
+
+        return response;
+    }
+
     @Transactional
     public void deleteMessage(UUID conversationId, UUID messageId, UUID userId, String deleteType) {
         String accessToken = getCurrentAccessToken();
@@ -853,7 +960,8 @@ public class DirectChatService {
             try {
                 com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
                 java.util.Map<String, Object> marketplaceData = objectMapper.readValue(message.getContent(), java.util.Map.class);
-                builder.postId((String) marketplaceData.get("postId"));
+                String postId = (String) marketplaceData.get("postId");
+                builder.postId(postId);
                 builder.postTitle((String) marketplaceData.get("postTitle"));
                 builder.postThumbnailUrl((String) marketplaceData.get("postThumbnailUrl"));
                 Object priceObj = marketplaceData.get("postPrice");
@@ -865,6 +973,12 @@ public class DirectChatService {
                     }
                 }
                 builder.deepLink((String) marketplaceData.get("deepLink"));
+                
+                // Check post status from marketplace service
+                if (postId != null && !postId.isEmpty()) {
+                    String postStatus = checkPostStatus(postId, accessToken);
+                    builder.postStatus(postStatus);
+                }
             } catch (Exception e) {
                 log.warn("Failed to parse marketplace_post data: {}", e.getMessage());
             }
@@ -877,6 +991,44 @@ public class DirectChatService {
         }
 
         return builder.build();
+    }
+
+    /**
+     * Check post status from marketplace service
+     * Returns "ACTIVE", "SOLD", "DELETED", or null if check fails
+     */
+    private String checkPostStatus(String postId, String accessToken) {
+        try {
+            String url = UriComponentsBuilder
+                    .fromUriString(marketplaceServiceUrl)
+                    .path("/api/marketplace/posts/{postId}")
+                    .buildAndExpand(postId)
+                    .toUriString();
+            
+            org.springframework.web.reactive.function.client.WebClient.RequestHeadersSpec<?> requestSpec = webClient
+                    .get()
+                    .uri(url);
+            
+            // Add authorization header if access token is available
+            if (accessToken != null && !accessToken.isEmpty()) {
+                requestSpec = requestSpec.header("Authorization", "Bearer " + accessToken);
+            }
+            
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = (Map<String, Object>) requestSpec
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+            
+            if (response != null && response.get("status") != null) {
+                return response.get("status").toString();
+            }
+        } catch (Exception e) {
+            log.debug("Failed to check post status for postId {}: {}", postId, e.getMessage());
+            // If post not found or error, assume DELETED
+            return "DELETED";
+        }
+        return null;
     }
 
     /**

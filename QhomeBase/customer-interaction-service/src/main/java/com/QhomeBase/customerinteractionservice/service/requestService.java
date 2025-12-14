@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 
 import jakarta.persistence.criteria.Predicate;
 
@@ -159,12 +161,39 @@ public class requestService {
         // Kiểm tra rate limit: số lượng request trong 1 giờ và 24 giờ
         validateRequestRateLimit(resident.id());
 
+        // Validate resident name (họ tên)
+        String residentName = resident.fullName();
+        if (residentName != null) {
+            // Validate: không có ký tự đặc biệt, không có quá nhiều khoảng cách
+            if (!residentName.matches("^[\\p{L}\\s]+$")) {
+                throw new IllegalArgumentException("Họ và tên không được chứa ký tự đặc biệt hoặc số");
+            }
+            // Kiểm tra không có quá nhiều khoảng cách liên tiếp (nhiều hơn 1 khoảng cách)
+            if (residentName.matches(".*\\s{2,}.*")) {
+                throw new IllegalArgumentException("Họ và tên không được có quá nhiều khoảng cách");
+            }
+            // Trim và normalize khoảng cách
+            residentName = residentName.trim().replaceAll("\\s+", " ");
+        }
+
+        // Validate phone number (số điện thoại)
+        String phone = resident.phone();
+        if (phone != null && !phone.trim().isEmpty()) {
+            // Remove all non-digit characters
+            String phoneDigits = phone.replaceAll("[^0-9]", "");
+            // Validate: phải đúng 10 số
+            if (phoneDigits.length() != 10) {
+                throw new IllegalArgumentException("Số điện thoại phải có đúng 10 chữ số");
+            }
+        }
+
         Request entity = new Request();
         entity.setId(dto.getId());
         entity.setRequestCode(dto.getRequestCode() != null ? dto.getRequestCode() : generateRequestCode());
         entity.setResidentId(resident.id());
-        entity.setResidentName(resident.fullName());
-        entity.setImagePath(dto.getImagePath());
+        entity.setResidentName(residentName);
+        // Normalize imagePath if it contains multiple images/videos (JSON array), preserving order
+        entity.setImagePath(normalizeImagePath(dto.getImagePath()));
         entity.setTitle(dto.getTitle());
         entity.setContent(dto.getContent());
         // Đảm bảo status mặc định là "Pending" (PENDING) khi tạo request
@@ -220,6 +249,43 @@ public class requestService {
                 residentId, requestsInLastHour, requestsInLastDay);
     }
 
+    /**
+     * Normalize imagePath if it contains multiple images/videos
+     * If imagePath is a JSON array, validate and return as JSON (preserving original order)
+     * If imagePath is a single string or null, return as is
+     * Note: This method preserves the order sent by the client to maintain user's selection order
+     */
+    private String normalizeImagePath(String imagePath) {
+        if (imagePath == null || imagePath.trim().isEmpty()) {
+            return imagePath;
+        }
+        
+        try {
+            // Try to parse as JSON array to validate format
+            ObjectMapper objectMapper = new ObjectMapper();
+            List<String> imageList = objectMapper.readValue(imagePath, new TypeReference<List<String>>() {});
+            
+            if (imageList == null || imageList.isEmpty()) {
+                return imagePath;
+            }
+            
+            // Filter out null or empty URLs, but preserve original order
+            List<String> filteredList = new ArrayList<>();
+            for (String url : imageList) {
+                if (url != null && !url.trim().isEmpty()) {
+                    filteredList.add(url);
+                }
+            }
+            
+            // Return as JSON array string, preserving original order
+            return objectMapper.writeValueAsString(filteredList);
+        } catch (Exception e) {
+            // If parsing fails, assume it's a single string or invalid JSON, return as is
+            log.debug("imagePath is not a JSON array or parsing failed, returning as is: {}", e.getMessage());
+            return imagePath;
+        }
+    }
+
     public RequestDTO updateFee(UUID requestId, java.math.BigDecimal fee) {
         Request request = requestRepository.findById(requestId)
                 .orElseThrow(() -> new RuntimeException("Request not found with id: " + requestId));
@@ -259,6 +325,17 @@ public class requestService {
                 .orElseThrow(() -> new RuntimeException("Request not found with id: " + requestId));
 
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
+        
+        // Validate working hours: 8:00 - 20:00
+        if ("accept".equalsIgnoreCase(action)) {
+            int currentHour = now.getHour();
+            if (currentHour < 8 || currentHour >= 20) {
+                throw new IllegalStateException(
+                    "Yêu cầu sửa chữa chỉ có thể được xử lý trong giờ hành chính (8:00 - 20:00). " +
+                    "Thời gian hiện tại: " + now.getHour() + ":" + String.format("%02d", now.getMinute())
+                );
+            }
+        }
         
         if ("deny".equalsIgnoreCase(action)) {
             // Deny: update status to Done, create log with note

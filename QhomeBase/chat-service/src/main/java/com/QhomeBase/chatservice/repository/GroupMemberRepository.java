@@ -26,5 +26,11 @@ public interface GroupMemberRepository extends JpaRepository<GroupMember, UUID> 
     Long countByGroupId(@Param("groupId") UUID groupId);
 
     boolean existsByGroupIdAndResidentId(UUID groupId, UUID residentId);
+
+    /**
+     * Find all members of a group who have hidden it (hiddenAt IS NOT NULL)
+     */
+    @Query("SELECT gm FROM GroupMember gm WHERE gm.groupId = :groupId AND gm.hiddenAt IS NOT NULL")
+    List<GroupMember> findByGroupIdAndHiddenAtIsNotNull(@Param("groupId") UUID groupId);
 }
 

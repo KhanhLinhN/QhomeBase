@@ -55,11 +55,27 @@ public class ResidentCardRegistrationService {
     private final NotificationClient notificationClient;
     private final CardFeeReminderService cardFeeReminderService;
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final BaseServiceClient baseServiceClient;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
     @Transactional
     public ResidentCardRegistrationDto createRegistration(UUID userId, ResidentCardRegistrationCreateDto dto) {
+        return createRegistration(userId, dto, null);
+    }
+
+    @Transactional
+    public ResidentCardRegistrationDto createRegistration(UUID userId, ResidentCardRegistrationCreateDto dto, String accessToken) {
         validatePayload(dto);
+
+        // Kiểm tra xem cư dân đã được duyệt thành thành viên chưa
+        if (dto.residentId() != null) {
+            boolean isApproved = baseServiceClient.isResidentMemberApproved(dto.residentId(), accessToken);
+            if (!isApproved) {
+                throw new IllegalStateException(
+                    "Cư dân chưa được duyệt thành thành viên. Vui lòng đợi admin duyệt yêu cầu tạo tài khoản trước khi đăng ký thẻ cư dân."
+                );
+            }
+        }
 
         // Normalize citizenId: loại bỏ tất cả ký tự không phải số
         String normalizedCitizenId = dto.citizenId() != null 
@@ -119,7 +135,15 @@ public class ResidentCardRegistrationService {
     public ResidentCardPaymentResponse createAndInitiatePayment(UUID userId,
                                                                ResidentCardRegistrationCreateDto dto,
                                                                HttpServletRequest request) {
-        ResidentCardRegistrationDto created = createRegistration(userId, dto);
+        return createAndInitiatePayment(userId, dto, request, null);
+    }
+
+    @Transactional
+    public ResidentCardPaymentResponse createAndInitiatePayment(UUID userId,
+                                                               ResidentCardRegistrationCreateDto dto,
+                                                               HttpServletRequest request,
+                                                               String accessToken) {
+        ResidentCardRegistrationDto created = createRegistration(userId, dto, accessToken);
         return initiatePayment(userId, created.id(), request);
     }
 
@@ -556,10 +580,13 @@ public class ResidentCardRegistrationService {
         
         var paymentResult = vnpayService.createPaymentUrlWithRef(orderId, orderInfo, totalAmount, clientIp, returnUrl);
         
-        // Save transaction reference to all registrations
+        // Save transaction reference to all registrations and set payment status
         String txnRef = paymentResult.transactionRef();
+        OffsetDateTime now = OffsetDateTime.now();
         for (ResidentCardRegistration registration : registrations) {
             registration.setVnpayTransactionRef(txnRef);
+            registration.setPaymentStatus("PAYMENT_IN_PROGRESS");
+            registration.setVnpayInitiatedAt(now);
             repository.save(registration);
         }
 
@@ -734,14 +761,40 @@ public class ResidentCardRegistrationService {
             }
 
             orderIdToRegistrationId.remove(orderId);
-            return new ResidentCardPaymentResult(registration.getId(), true, responseCode, true);
+            
+            // Tạo thông báo thành công dựa trên loại yêu cầu
+            String requestType = registration.getRequestType();
+            String successMessage;
+            if ("RENEWAL".equals(requestType)) {
+                successMessage = "Gia hạn thẻ cư dân thành công";
+            } else {
+                successMessage = "Đăng ký thẻ cư dân thành công";
+            }
+            
+            return new ResidentCardPaymentResult(
+                registration.getId(), 
+                true, 
+                responseCode, 
+                true,
+                requestType,
+                successMessage
+            );
         }
 
         registration.setStatus(STATUS_READY_FOR_PAYMENT);
         registration.setPaymentStatus("UNPAID");
         repository.save(registration);
         orderIdToRegistrationId.remove(orderId);
-        return new ResidentCardPaymentResult(registration.getId(), false, responseCode, signatureValid);
+        
+        String errorMessage = "Thanh toán không thành công. Vui lòng thử lại.";
+        return new ResidentCardPaymentResult(
+            registration.getId(), 
+            false, 
+            responseCode, 
+            signatureValid,
+            registration.getRequestType(),
+            errorMessage
+        );
     }
 
     private void applyResolvedAddressForResident(ResidentCardRegistration registration,
@@ -1038,7 +1091,11 @@ public class ResidentCardRegistrationService {
 
     public record ResidentCardPaymentResponse(UUID registrationId, String paymentUrl) {}
 
-    public record ResidentCardPaymentResult(UUID registrationId, boolean success, String responseCode, boolean signatureValid) {}
+    public record ResidentCardPaymentResult(UUID registrationId, boolean success, String responseCode, boolean signatureValid, String requestType, String message) {
+        public ResidentCardPaymentResult(UUID registrationId, boolean success, String responseCode, boolean signatureValid) {
+            this(registrationId, success, responseCode, signatureValid, null, null);
+        }
+    }
 
     /**
      * Format BigDecimal price to VND string (e.g., 30000 -> "30.000 VND")

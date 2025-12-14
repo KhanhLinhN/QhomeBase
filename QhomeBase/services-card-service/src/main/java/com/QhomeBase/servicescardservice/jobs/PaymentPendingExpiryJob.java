@@ -21,6 +21,7 @@ import java.util.List;
 public class PaymentPendingExpiryJob {
 
     private static final String STATUS_READY_FOR_PAYMENT = "READY_FOR_PAYMENT";
+    private static final String STATUS_PAYMENT_FAILED = "PAYMENT_FAILED";
     private static final String STATUS_CANCELLED = "CANCELLED";
 
     private final ResidentCardRegistrationRepository residentRepo;
@@ -30,14 +31,17 @@ public class PaymentPendingExpiryJob {
     @Value("${payments.pending.ttl-minutes:10}")
     private int pendingTtlMinutes;
 
-    // Chạy mỗi phút để dọn dẹp các bản ghi PAYMENT_PENDING quá thời gian TTL
+    // Chạy mỗi phút để dọn dẹp các bản ghi PAYMENT_PENDING và PAYMENT_IN_PROGRESS quá thời gian TTL
     @Scheduled(fixedDelayString = "${payments.pending.sweep-interval-ms:60000}")
     public void sweepPendingPayments() {
         try {
             final OffsetDateTime threshold = OffsetDateTime.now().minusMinutes(pendingTtlMinutes);
             final String expiryNote = "Auto-cancelled pending payment after " + pendingTtlMinutes + " minutes";
 
-            // Resident
+            // Expire PAYMENT_IN_PROGRESS (VNPay payments that exceeded 10 minutes)
+            expireInProgressPayments(threshold);
+
+            // Resident - PAYMENT_PENDING
             List<ResidentCardRegistration> residentPendings =
                     residentRepo.findByPaymentStatusAndUpdatedAtBefore("PAYMENT_PENDING", threshold);
             for (ResidentCardRegistration r : residentPendings) {
@@ -53,7 +57,7 @@ public class PaymentPendingExpiryJob {
                         residentPendings.size());
             }
 
-            // Elevator
+            // Elevator - PAYMENT_PENDING
             List<ElevatorCardRegistration> elevatorPendings =
                     elevatorRepo.findByPaymentStatusAndUpdatedAtBefore("PAYMENT_PENDING", threshold);
             for (ElevatorCardRegistration e : elevatorPendings) {
@@ -125,6 +129,131 @@ public class PaymentPendingExpiryJob {
             }
         }
         log.info("🧹 [ExpireJob] Auto-cancelled {} {} registrations stuck at READY_FOR_PAYMENT", cancelled, tag);
+    }
+
+    /**
+     * Expire VNPay payments that have been in progress for more than 10 minutes
+     * Changes payment_status from PAYMENT_IN_PROGRESS to PAYMENT_FAILED
+     * This allows users to see "Thanh toán lại" button after 10 minutes
+     * 
+     * Also handles legacy PAYMENT_APPROVAL status for vehicle cards (migrate to PAYMENT_FAILED if old)
+     */
+    private void expireInProgressPayments(OffsetDateTime threshold) {
+        try {
+            // Handle legacy vehicle cards with PAYMENT_APPROVAL status (old status, no vnpayInitiatedAt)
+            // These should be expired if they're older than threshold based on updatedAt
+            List<RegisterServiceRequest> legacyVehiclePayments = 
+                    vehicleRepo.findByPaymentStatusAndUpdatedAtBefore("PAYMENT_APPROVAL", threshold);
+            int legacyVehicleCount = 0;
+            for (RegisterServiceRequest registration : legacyVehiclePayments) {
+                if (!"PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
+                    registration.setPaymentStatus("PAYMENT_FAILED");
+                    // Set status to PAYMENT_FAILED when payment expires
+                    registration.setStatus(STATUS_PAYMENT_FAILED);
+                    if (registration.getAdminNote() == null || registration.getAdminNote().isBlank()) {
+                        registration.setAdminNote("Thanh toán VNPay quá thời gian (" + pendingTtlMinutes + " phút) - migrated from PAYMENT_APPROVAL");
+                    }
+                    vehicleRepo.save(registration);
+                    legacyVehicleCount++;
+                    log.info("⏰ [ExpireJob] Migrated legacy PAYMENT_APPROVAL to PAYMENT_FAILED for vehicle card {} (updated at: {})", 
+                            registration.getId(), registration.getUpdatedAt());
+                }
+            }
+            if (legacyVehicleCount > 0) {
+                log.info("✅ [ExpireJob] Migrated {} legacy vehicle card payment(s) from PAYMENT_APPROVAL to PAYMENT_FAILED", 
+                        legacyVehicleCount);
+            }
+
+            // Resident cards
+            List<ResidentCardRegistration> expiredResidentPayments = 
+                    residentRepo.findExpiredVnpayPayments(threshold);
+            
+            int expiredResidentCount = 0;
+            for (ResidentCardRegistration registration : expiredResidentPayments) {
+                // Chỉ expire nếu chưa được thanh toán
+                if (!"PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
+                    registration.setPaymentStatus("PAYMENT_FAILED");
+                    // Set status to PAYMENT_FAILED when payment expires
+                    registration.setStatus(STATUS_PAYMENT_FAILED);
+                    if (registration.getAdminNote() == null || registration.getAdminNote().isBlank()) {
+                        registration.setAdminNote("Thanh toán VNPay quá thời gian (" + pendingTtlMinutes + " phút)");
+                    }
+                    residentRepo.save(registration);
+                    expiredResidentCount++;
+                    
+                    log.info("⏰ [ExpireJob] Expired VNPay payment for resident card {} (initiated at: {}, elapsed: {} minutes)", 
+                            registration.getId(), 
+                            registration.getVnpayInitiatedAt(),
+                            java.time.Duration.between(registration.getVnpayInitiatedAt(), OffsetDateTime.now()).toMinutes());
+                }
+            }
+            
+            if (expiredResidentCount > 0) {
+                log.info("✅ [ExpireJob] Expired {} resident card VNPay payment(s) after {} minutes timeout", 
+                        expiredResidentCount, pendingTtlMinutes);
+            }
+
+            // Elevator cards
+            List<ElevatorCardRegistration> expiredElevatorPayments = 
+                    elevatorRepo.findExpiredVnpayPayments(threshold);
+            
+            int expiredElevatorCount = 0;
+            for (ElevatorCardRegistration registration : expiredElevatorPayments) {
+                // Chỉ expire nếu chưa được thanh toán
+                if (!"PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
+                    registration.setPaymentStatus("PAYMENT_FAILED");
+                    // Set status to PAYMENT_FAILED when payment expires
+                    registration.setStatus(STATUS_PAYMENT_FAILED);
+                    if (registration.getAdminNote() == null || registration.getAdminNote().isBlank()) {
+                        registration.setAdminNote("Thanh toán VNPay quá thời gian (" + pendingTtlMinutes + " phút)");
+                    }
+                    elevatorRepo.save(registration);
+                    expiredElevatorCount++;
+                    
+                    log.info("⏰ [ExpireJob] Expired VNPay payment for elevator card {} (initiated at: {}, elapsed: {} minutes)", 
+                            registration.getId(), 
+                            registration.getVnpayInitiatedAt(),
+                            java.time.Duration.between(registration.getVnpayInitiatedAt(), OffsetDateTime.now()).toMinutes());
+                }
+            }
+            
+            if (expiredElevatorCount > 0) {
+                log.info("✅ [ExpireJob] Expired {} elevator card VNPay payment(s) after {} minutes timeout", 
+                        expiredElevatorCount, pendingTtlMinutes);
+            }
+
+            // Vehicle cards
+            List<RegisterServiceRequest> expiredVehiclePayments = 
+                    vehicleRepo.findExpiredVnpayPayments(threshold);
+            
+            int expiredVehicleCount = 0;
+            for (RegisterServiceRequest registration : expiredVehiclePayments) {
+                // Chỉ expire nếu chưa được thanh toán
+                if (!"PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
+                    registration.setPaymentStatus("PAYMENT_FAILED");
+                    // Set status to PAYMENT_FAILED when payment expires
+                    registration.setStatus(STATUS_PAYMENT_FAILED);
+                    if (registration.getAdminNote() == null || registration.getAdminNote().isBlank()) {
+                        registration.setAdminNote("Thanh toán VNPay quá thời gian (" + pendingTtlMinutes + " phút)");
+                    }
+                    vehicleRepo.save(registration);
+                    expiredVehicleCount++;
+                    
+                    log.info("⏰ [ExpireJob] Expired VNPay payment for vehicle card {} (initiated at: {}, elapsed: {} minutes)", 
+                            registration.getId(), 
+                            registration.getVnpayInitiatedAt(),
+                            java.time.Duration.between(registration.getVnpayInitiatedAt(), OffsetDateTime.now()).toMinutes());
+                }
+            }
+            
+            if (expiredVehicleCount > 0) {
+                log.info("✅ [ExpireJob] Expired {} vehicle card VNPay payment(s) after {} minutes timeout", 
+                        expiredVehicleCount, pendingTtlMinutes);
+            }
+
+        } catch (Exception e) {
+            log.error("❌ [ExpireJob] Error expiring in-progress VNPay payments", e);
+        }
     }
 }
 

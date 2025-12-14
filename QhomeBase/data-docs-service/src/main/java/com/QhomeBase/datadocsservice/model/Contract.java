@@ -90,6 +90,9 @@ public class Contract {
     @Builder.Default
     private String renewalStatus = "PENDING";
 
+    @Column(name = "renewed_contract_id")
+    private UUID renewedContractId;
+
     @OneToMany(mappedBy = "contract", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("displayOrder ASC, uploadedAt ASC")
     private List<ContractFile> files;

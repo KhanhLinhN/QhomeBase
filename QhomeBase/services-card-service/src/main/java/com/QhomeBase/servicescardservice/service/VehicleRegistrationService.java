@@ -233,17 +233,18 @@ public class VehicleRegistrationService {
             }
             // Cho phép thanh toán để gia hạn
         } else {
-            // Cho phép tiếp tục thanh toán nếu payment_status là UNPAID hoặc PAYMENT_PENDING/PAYMENT_APPROVAL
-            // (PAYMENT_PENDING/PAYMENT_APPROVAL có thể xảy ra khi user chưa hoàn tất thanh toán trong 10 phút)
+            // Cho phép tiếp tục thanh toán nếu payment_status là UNPAID, PAYMENT_PENDING, hoặc PAYMENT_IN_PROGRESS
+            // (PAYMENT_IN_PROGRESS xảy ra khi user đang thanh toán dở bằng VNPay trong vòng 10 phút)
             if (!Objects.equals(paymentStatus, "UNPAID") && 
                 !Objects.equals(paymentStatus, "PAYMENT_PENDING") && 
-                !Objects.equals(paymentStatus, "PAYMENT_APPROVAL")) {
+                !Objects.equals(paymentStatus, "PAYMENT_IN_PROGRESS")) {
                 throw new IllegalStateException("Đăng ký đã thanh toán hoặc không thể tiếp tục thanh toán");
             }
         }
         registration.setStatus(STATUS_PAYMENT_PENDING);
-        registration.setPaymentStatus("PAYMENT_APPROVAL");
+        registration.setPaymentStatus("PAYMENT_IN_PROGRESS");
         registration.setPaymentGateway(PAYMENT_VNPAY);
+        registration.setVnpayInitiatedAt(OffsetDateTime.now());
         RegisterServiceRequest saved = requestRepository.save(registration);
 
         long orderId = Math.abs(saved.getId().hashCode());

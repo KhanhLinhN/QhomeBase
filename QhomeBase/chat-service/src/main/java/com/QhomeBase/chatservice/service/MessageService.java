@@ -19,8 +19,12 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -37,6 +41,11 @@ public class MessageService {
     private final FcmPushService fcmPushService;
     private final com.QhomeBase.chatservice.service.GroupFileService groupFileService;
 
+    @Value("${marketplace.service.url:http://localhost:8082}")
+    private String marketplaceServiceUrl;
+
+    private final WebClient webClient = WebClient.builder().build();
+
     @Transactional
     public MessageResponse createMessage(UUID groupId, CreateMessageRequest request, UUID userId) {
         String accessToken = getCurrentAccessToken();
@@ -51,6 +60,13 @@ public class MessageService {
         // Check if user is a member
         GroupMember member = groupMemberRepository.findByGroupIdAndResidentId(groupId, residentId)
                 .orElseThrow(() -> new RuntimeException("You are not a member of this group"));
+
+        // If group was hidden for this user, unhide it when they send a new message
+        if (member.getHiddenAt() != null) {
+            member.setHiddenAt(null);
+            groupMemberRepository.save(member);
+            log.info("Unhid group {} for user {} because they sent a new message", groupId, residentId);
+        }
 
         // Validate message type and content
         String messageType = request.getMessageType() != null ? request.getMessageType() : "TEXT";
@@ -142,6 +158,16 @@ public class MessageService {
                 log.warn("Failed to save file metadata for message {}: {}", message.getId(), e.getMessage());
                 // Don't fail the message creation if file metadata save fails
             }
+        }
+        
+        // Unhide group for all members who had hidden it (when someone sends a new message)
+        List<GroupMember> hiddenMembers = groupMemberRepository.findByGroupIdAndHiddenAtIsNotNull(groupId);
+        for (GroupMember hiddenMember : hiddenMembers) {
+            hiddenMember.setHiddenAt(null);
+            groupMemberRepository.save(hiddenMember);
+        }
+        if (!hiddenMembers.isEmpty()) {
+            log.info("Unhid group {} for {} members because a new message was sent", groupId, hiddenMembers.size());
         }
         
         // Notify via WebSocket
@@ -413,7 +439,8 @@ public class MessageService {
             try {
                 com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
                 java.util.Map<String, Object> marketplaceData = objectMapper.readValue(message.getContent(), java.util.Map.class);
-                builder.postId((String) marketplaceData.get("postId"));
+                String postId = (String) marketplaceData.get("postId");
+                builder.postId(postId);
                 builder.postTitle((String) marketplaceData.get("postTitle"));
                 builder.postThumbnailUrl((String) marketplaceData.get("postThumbnailUrl"));
                 Object priceObj = marketplaceData.get("postPrice");
@@ -425,6 +452,12 @@ public class MessageService {
                     }
                 }
                 builder.deepLink((String) marketplaceData.get("deepLink"));
+                
+                // Check post status from marketplace service
+                if (postId != null && !postId.isEmpty()) {
+                    String postStatus = checkPostStatus(postId);
+                    builder.postStatus(postStatus);
+                }
             } catch (Exception e) {
                 log.warn("Failed to parse marketplace_post data: {}", e.getMessage());
             }
@@ -438,17 +471,97 @@ public class MessageService {
         return builder.build();
     }
 
+    /**
+     * Check post status from marketplace service
+     * Returns "ACTIVE", "SOLD", "DELETED", or null if check fails
+     */
+    private String checkPostStatus(String postId) {
+        try {
+            String accessToken = getCurrentAccessToken();
+            String url = UriComponentsBuilder
+                    .fromUriString(marketplaceServiceUrl)
+                    .path("/api/marketplace/posts/{postId}")
+                    .buildAndExpand(postId)
+                    .toUriString();
+            
+            org.springframework.web.reactive.function.client.WebClient.RequestHeadersSpec<?> requestSpec = webClient
+                    .get()
+                    .uri(url);
+            
+            // Add authorization header if access token is available
+            if (accessToken != null && !accessToken.isEmpty()) {
+                requestSpec = requestSpec.header("Authorization", "Bearer " + accessToken);
+            }
+            
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = (Map<String, Object>) requestSpec
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+            
+            if (response != null && response.get("status") != null) {
+                return response.get("status").toString();
+            }
+        } catch (Exception e) {
+            log.debug("Failed to check post status for postId {}: {}", postId, e.getMessage());
+            // If post not found or error, assume DELETED
+            return "DELETED";
+        }
+        return null;
+    }
+    
     private String getCurrentAccessToken() {
         try {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal) {
                 UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
-                return principal.token();
+                String token = principal.token();
+                if (token != null && !token.isEmpty()) {
+                    return token;
+                }
             }
         } catch (Exception e) {
             log.debug("Could not get token from SecurityContext: {}", e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * Delete all messages sent by a user in a group from a specific time onwards
+     */
+    @Transactional
+    public void deleteUserMessagesFromGroup(UUID groupId, UUID senderId, OffsetDateTime fromTime) {
+        List<Message> messages = messageRepository.findMessagesByGroupIdAndSenderIdFromTime(
+            groupId, senderId, fromTime
+        );
+        
+        for (Message message : messages) {
+            message.setIsDeleted(true);
+            message.setContent(null); // Clear content for deleted messages
+            // Keep file/image URLs for now, but mark as deleted
+        }
+        
+        messageRepository.saveAll(messages);
+        log.info("Deleted {} messages from user {} in group {} from {}", 
+                messages.size(), senderId, groupId, fromTime);
+    }
+
+    /**
+     * Delete all files/images uploaded by a user in a group from a specific time onwards
+     */
+    @Transactional
+    public void deleteUserFilesFromGroup(UUID groupId, UUID senderId, OffsetDateTime fromTime) {
+        // Use GroupFileService to get files and delete them
+        List<com.QhomeBase.chatservice.model.GroupFile> files = 
+            groupFileService.findFilesByGroupIdAndSenderIdFromTime(groupId, senderId, fromTime);
+        
+        // Delete the GroupFile records (soft delete - actual files can be cleaned up separately)
+        for (com.QhomeBase.chatservice.model.GroupFile file : files) {
+            groupFileService.deleteFileMetadata(file.getId());
+        }
+        
+        log.info("Deleted {} files from user {} in group {} from {}", 
+                files.size(), senderId, groupId, fromTime);
     }
 }
 

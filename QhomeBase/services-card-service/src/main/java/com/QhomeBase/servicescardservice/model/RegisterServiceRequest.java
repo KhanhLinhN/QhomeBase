@@ -89,6 +89,9 @@ public class RegisterServiceRequest {
     @Column(name = "vnpay_transaction_ref")
     private String vnpayTransactionRef;
 
+    @Column(name = "vnpay_initiated_at")
+    private OffsetDateTime vnpayInitiatedAt;
+
     @OneToMany(mappedBy = "registerServiceRequest", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<RegisterServiceImage> images = new ArrayList<>();

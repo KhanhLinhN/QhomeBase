@@ -45,7 +45,9 @@ public class DirectChatController {
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
         
+        log.info("📋 [DirectChatController] getConversations called - userId: {}", userId);
         List<ConversationResponse> conversations = directChatService.getConversations(userId);
+        log.info("📋 [DirectChatController] getConversations returning {} conversations for userId: {}", conversations.size(), userId);
         return ResponseEntity.ok(conversations);
     }
 
@@ -319,6 +321,21 @@ public class DirectChatController {
         
         boolean success = conversationHideService.hideDirectConversation(conversationId, userId);
         return ResponseEntity.ok(Map.of("success", success));
+    }
+
+    @PutMapping("/conversations/{conversationId}/messages/{messageId}")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Edit direct message", description = "Edit a text message. Only the sender can edit their own messages.")
+    public ResponseEntity<DirectMessageResponse> editMessage(
+            @PathVariable UUID conversationId,
+            @PathVariable UUID messageId,
+            @RequestBody String content,
+            Authentication authentication) {
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        DirectMessageResponse response = directChatService.updateMessage(conversationId, messageId, content, userId);
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/conversations/{conversationId}/messages/{messageId}")

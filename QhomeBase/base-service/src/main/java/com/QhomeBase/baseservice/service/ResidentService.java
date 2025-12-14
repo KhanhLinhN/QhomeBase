@@ -84,6 +84,31 @@ public class ResidentService {
         return toDto(resident);
     }
 
+    public ResidentDto getByPhone(String phone) {
+        if (!StringUtils.hasText(phone)) {
+            throw new IllegalArgumentException("Phone number is required");
+        }
+        // Normalize phone: remove all non-digit characters
+        String normalizedPhone = phone.replaceAll("[^0-9]", "");
+        
+        // Try exact match first
+        Optional<Resident> residentOpt = residentRepository.findByPhone(normalizedPhone);
+        
+        // If not found and phone doesn't start with 0, try with leading zero
+        if (residentOpt.isEmpty() && !normalizedPhone.startsWith("0") && normalizedPhone.length() > 0) {
+            residentOpt = residentRepository.findByPhone("0" + normalizedPhone);
+        }
+        
+        // If not found and phone starts with 0, try without leading zero
+        if (residentOpt.isEmpty() && normalizedPhone.startsWith("0") && normalizedPhone.length() > 1) {
+            residentOpt = residentRepository.findByPhone(normalizedPhone.substring(1));
+        }
+        
+        Resident resident = residentOpt
+                .orElseThrow(() -> new IllegalArgumentException("Resident not found for phone: " + phone));
+        return toDto(resident);
+    }
+
     public boolean existsEmail(String email, UUID excludeId) {
         if (!StringUtils.hasText(email)) {
             return false;

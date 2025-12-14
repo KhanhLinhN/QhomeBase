@@ -67,6 +67,11 @@ public class InvoiceReminderService {
         
         return allPublished.stream()
                 .filter(invoice -> {
+                    // Skip invoices without payerResidentId (cannot send reminder)
+                    if (invoice.getPayerResidentId() == null) {
+                        return false;
+                    }
+                    
                     // Check if issued at least 24 hours ago
                     if (invoice.getIssuedAt() == null) {
                         return false;
@@ -133,8 +138,10 @@ public class InvoiceReminderService {
      */
     @Transactional
     public void sendReminder(Invoice invoice) {
+        // This should not happen as we filter invoices without payerResidentId in findInvoicesNeedingReminder
+        // But keep this check as a safety measure
         if (invoice.getPayerResidentId() == null) {
-            log.warn("⚠️ [InvoiceReminderService] Cannot send reminder: payerResidentId is null for invoice {}", invoice.getId());
+            log.debug("ℹ️ [InvoiceReminderService] Skipping reminder: payerResidentId is null for invoice {} (invoice may be old or system-generated)", invoice.getId());
             return;
         }
 

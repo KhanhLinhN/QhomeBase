@@ -34,16 +34,41 @@ public class ImageKitUploadController {
             @RequestParam(value = "folder", required = false) String folder) {
         
         try {
-            log.info("📤 [ImageKitUpload] Uploading file: {} to folder: {}", file.getOriginalFilename(), folder);
+            log.info("📤 [ImageKitUpload] Uploading file: {} (size: {} bytes) to folder: {}", 
+                    file.getOriginalFilename(), file.getSize(), folder);
+            
+            // Validate file size (max 50MB)
+            if (file.getSize() > 50 * 1024 * 1024) {
+                log.error("❌ [ImageKitUpload] File too large: {} bytes", file.getSize());
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "File size exceeds maximum limit of 50MB");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+            }
+            
             String imageUrl = imageKitService.uploadImage(file, folder);
             
             Map<String, String> response = new HashMap<>();
             response.put("url", imageUrl);
             response.put("fileName", file.getOriginalFilename());
             
+            log.info("✅ [ImageKitUpload] File uploaded successfully: {}", imageUrl);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (IllegalArgumentException e) {
+            log.error("❌ [ImageKitUpload] Invalid argument: {}", e.getMessage(), e);
+            Map<String, String> error = new HashMap<>();
+            error.put("error", "Invalid file: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
         } catch (IOException e) {
-            log.error("❌ [ImageKitUpload] Error uploading file: {}", e.getMessage(), e);
+            log.error("❌ [ImageKitUpload] IO error uploading file: {}", e.getMessage(), e);
+            Map<String, String> error = new HashMap<>();
+            error.put("error", "Failed to upload file: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        } catch (Exception e) {
+            log.error("❌ [ImageKitUpload] Unexpected error uploading file: {}", e.getMessage(), e);
+            log.error("❌ [ImageKitUpload] Exception type: {}", e.getClass().getName());
+            if (e.getCause() != null) {
+                log.error("❌ [ImageKitUpload] Caused by: {}", e.getCause().getMessage());
+            }
             Map<String, String> error = new HashMap<>();
             error.put("error", "Failed to upload file: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
@@ -59,15 +84,49 @@ public class ImageKitUploadController {
         
         try {
             log.info("📤 [ImageKitUpload] Uploading {} files to folder: {}", files.length, folder);
+            
+            // Validate files
+            if (files == null || files.length == 0) {
+                log.error("❌ [ImageKitUpload] No files provided");
+                Map<String, Object> error = new HashMap<>();
+                error.put("error", "No files provided");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+            }
+            
+            // Validate file sizes
+            for (MultipartFile file : files) {
+                if (file.getSize() > 50 * 1024 * 1024) {
+                    log.error("❌ [ImageKitUpload] File too large: {} bytes", file.getSize());
+                    Map<String, Object> error = new HashMap<>();
+                    error.put("error", "File " + file.getOriginalFilename() + " exceeds maximum limit of 50MB");
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+                }
+            }
+            
             List<String> imageUrls = imageKitService.uploadImages(List.of(files), folder);
             
             Map<String, Object> response = new HashMap<>();
             response.put("urls", imageUrls);
             response.put("count", imageUrls.size());
             
+            log.info("✅ [ImageKitUpload] Uploaded {} files successfully", imageUrls.size());
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (IllegalArgumentException e) {
+            log.error("❌ [ImageKitUpload] Invalid argument: {}", e.getMessage(), e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Invalid files: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
         } catch (IOException e) {
-            log.error("❌ [ImageKitUpload] Error uploading files: {}", e.getMessage(), e);
+            log.error("❌ [ImageKitUpload] IO error uploading files: {}", e.getMessage(), e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Failed to upload files: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        } catch (Exception e) {
+            log.error("❌ [ImageKitUpload] Unexpected error uploading files: {}", e.getMessage(), e);
+            log.error("❌ [ImageKitUpload] Exception type: {}", e.getClass().getName());
+            if (e.getCause() != null) {
+                log.error("❌ [ImageKitUpload] Caused by: {}", e.getCause().getMessage());
+            }
             Map<String, Object> error = new HashMap<>();
             error.put("error", "Failed to upload files: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);

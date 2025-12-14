@@ -451,6 +451,17 @@ public class HouseholdMemberRequestService {
             return;
         }
 
+        // Validate: không có khoảng trắng
+        if (normalizedId.contains(" ")) {
+            throw new IllegalArgumentException("CCCD không được chứa khoảng trắng");
+        }
+
+        // Validate: không có ký tự đặc biệt (chỉ cho phép chữ và số)
+        if (!normalizedId.matches("^[a-zA-Z0-9]+$")) {
+            throw new IllegalArgumentException("CCCD không được chứa ký tự đặc biệt");
+        }
+
+        // Validate: không trùng với CCCD khác trong database
         if (residentRepository.existsByNationalId(normalizedId)) {
             throw new IllegalArgumentException("CCCD/CMND này đã tồn tại trong hệ thống. Vui lòng nhập số khác hoặc để trống.");
         }

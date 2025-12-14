@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.UUID;
 
 @Repository
@@ -28,5 +29,17 @@ public interface GroupFileRepository extends JpaRepository<GroupFile, UUID> {
      * Find file by message ID
      */
     GroupFile findByMessageId(UUID messageId);
+
+    /**
+     * Find files uploaded by a user in a group from a specific time onwards
+     */
+    @Query("SELECT gf FROM GroupFile gf WHERE gf.groupId = :groupId " +
+           "AND gf.senderId = :senderId " +
+           "AND gf.createdAt >= :fromTime")
+    List<GroupFile> findFilesByGroupIdAndSenderIdFromTime(
+        @Param("groupId") UUID groupId,
+        @Param("senderId") UUID senderId,
+        @Param("fromTime") java.time.OffsetDateTime fromTime
+    );
 }
 

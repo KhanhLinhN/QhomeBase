@@ -87,7 +87,8 @@ public class ApprovedCardQueryService {
                 entity.getApartmentNumber(),
                 entity.getBuildingName(),
                 entity.getNote(),
-                entity.getApprovedAt()
+                entity.getApprovedAt(),
+                entity.getVnpayInitiatedAt()
         );
     }
 
@@ -110,7 +111,8 @@ public class ApprovedCardQueryService {
                 entity.getApartmentNumber(),
                 entity.getBuildingName(),
                 entity.getNote(),
-                entity.getApprovedAt()
+                entity.getApprovedAt(),
+                entity.getVnpayInitiatedAt()
         );
     }
 
@@ -134,7 +136,8 @@ public class ApprovedCardQueryService {
                 entity.getApartmentNumber(),
                 entity.getBuildingName(),
                 entity.getNote(),
-                entity.getApprovedAt()
+                entity.getApprovedAt(),
+                entity.getVnpayInitiatedAt()
         );
     }
 

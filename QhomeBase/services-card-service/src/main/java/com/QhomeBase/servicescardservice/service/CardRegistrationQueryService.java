@@ -121,7 +121,8 @@ public class CardRegistrationQueryService {
                 entity.getApartmentNumber(),
                 entity.getBuildingName(),
                 entity.getNote(),
-                entity.getApprovedAt()
+                entity.getApprovedAt(),
+                entity.getVnpayInitiatedAt()
         );
     }
 
@@ -144,7 +145,8 @@ public class CardRegistrationQueryService {
                 entity.getApartmentNumber(),
                 entity.getBuildingName(),
                 entity.getNote(),
-                entity.getApprovedAt()
+                entity.getApprovedAt(),
+                entity.getVnpayInitiatedAt()
         );
     }
 
@@ -168,7 +170,8 @@ public class CardRegistrationQueryService {
                 entity.getApartmentNumber(),
                 entity.getBuildingName(),
                 entity.getNote(),
-                entity.getApprovedAt()
+                entity.getApprovedAt(),
+                null // Vehicle cards don't have vnpayInitiatedAt field
         );
     }
 

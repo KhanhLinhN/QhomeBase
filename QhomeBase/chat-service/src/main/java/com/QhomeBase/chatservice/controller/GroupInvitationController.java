@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -21,6 +22,7 @@ import java.util.UUID;
 @RequestMapping("/groups")
 @RequiredArgsConstructor
 @Tag(name = "Group Invitations", description = "Group invitation management APIs")
+@Slf4j
 public class GroupInvitationController {
 
     private final GroupInvitationService invitationService;
@@ -36,7 +38,16 @@ public class GroupInvitationController {
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
         
+        log.info("📨 [GroupInvitationController] inviteMembersByPhone called - groupId: {}, userId: {}, phoneNumbers: {}", 
+            groupId, userId, request.getPhoneNumbers());
+        
         InviteMembersResponse response = invitationService.inviteMembersByPhone(groupId, request, userId);
+        
+        log.info("📨 [GroupInvitationController] inviteMembersByPhone completed - successful: {}, invalid: {}, skipped: {}", 
+            response.getSuccessfulInvitations() != null ? response.getSuccessfulInvitations().size() : 0,
+            response.getInvalidPhones() != null ? response.getInvalidPhones().size() : 0,
+            response.getSkippedPhones() != null ? response.getSkippedPhones().size() : 0);
+        
         return ResponseEntity.ok(response);
     }
 
@@ -46,10 +57,30 @@ public class GroupInvitationController {
     public ResponseEntity<List<GroupInvitationResponse>> getMyPendingInvitations(
             Authentication authentication) {
         
+        if (authentication == null) {
+            log.error("❌ [GroupInvitationController] Authentication is null!");
+            return ResponseEntity.status(403).build();
+        }
+        
+        if (authentication.getPrincipal() == null) {
+            log.error("❌ [GroupInvitationController] Principal is null!");
+            return ResponseEntity.status(403).build();
+        }
+        
+        log.info("📋 [GroupInvitationController] Authentication: {}", authentication.getClass().getSimpleName());
+        log.info("📋 [GroupInvitationController] Principal: {}", authentication.getPrincipal().getClass().getSimpleName());
+        log.info("📋 [GroupInvitationController] Authorities: {}", authentication.getAuthorities());
+        
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         UUID userId = principal.uid();
         
+        log.info("📋 [GroupInvitationController] getMyPendingInvitations called - userId: {}, roles: {}", userId, principal.roles());
+        
         List<GroupInvitationResponse> response = invitationService.getMyPendingInvitations(userId);
+        
+        log.info("📋 [GroupInvitationController] getMyPendingInvitations returning {} invitations for userId: {}", 
+            response.size(), userId);
+        
         return ResponseEntity.ok(response);
     }
 

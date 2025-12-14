@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -36,4 +37,16 @@ public interface BillingCycleRepository extends JpaRepository<BillingCycle, UUID
         where b.externalCycleId = :externalCycleId
         """)
     List<BillingCycle> findByExternalCycleId(@Param("externalCycleId") UUID externalCycleId);
+
+    @Query("""
+        select b
+        from BillingCycle b
+        where b.name = :name
+          and b.periodFrom = :periodFrom
+          and b.periodTo = :periodTo
+        """)
+    Optional<BillingCycle> findByNameAndPeriod(
+            @Param("name") String name,
+            @Param("periodFrom") LocalDate periodFrom,
+            @Param("periodTo") LocalDate periodTo);
 }

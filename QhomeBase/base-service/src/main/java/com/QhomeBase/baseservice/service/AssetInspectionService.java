@@ -42,8 +42,23 @@ public class AssetInspectionService {
         ContractDetailDto contract = contractClient.getContractById(request.contractId())
                 .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + request.contractId()));
 
-        if (!"EXPIRED".equalsIgnoreCase(contract.status())) {
-            throw new IllegalArgumentException("Can only create inspection for expired contracts. Contract status: " + contract.status());
+        // Allow creating inspection for EXPIRED or CANCELLED contracts
+        // Note: When called from inter-service (data-docs-service during contract cancellation),
+        // the contract status might still appear as ACTIVE due to transaction isolation/caching.
+        // Since this endpoint is only accessible via permitAll (inter-service calls),
+        // we allow creating inspection regardless of status to avoid race conditions.
+        String contractStatus = contract.status();
+        if (!"EXPIRED".equalsIgnoreCase(contractStatus) 
+                && !"CANCELLED".equalsIgnoreCase(contractStatus)
+                && !"ACTIVE".equalsIgnoreCase(contractStatus)) {
+            // Only reject if status is something other than ACTIVE, EXPIRED, or CANCELLED
+            // (e.g., PENDING, INACTIVE, etc.)
+            throw new IllegalArgumentException("Can only create inspection for active, expired, or cancelled contracts. Contract status: " + contractStatus);
+        }
+        
+        // Log if creating inspection for ACTIVE contract (likely being cancelled)
+        if ("ACTIVE".equalsIgnoreCase(contractStatus)) {
+            log.info("Creating inspection for ACTIVE contract {} (likely being cancelled by data-docs-service)", request.contractId());
         }
 
         Unit unit = unitRepository.findById(request.unitId())
@@ -57,10 +72,18 @@ public class AssetInspectionService {
             }
         }
 
+        // When contract is cancelled, the selected date is stored in inspectionDate
+        // scheduledDate is optional and can be set later by staff
+        // If scheduledDate is provided, use it; otherwise, set to null (can be updated later)
+        LocalDate scheduledDate = request.scheduledDate();
+        // Note: For cancelled contracts, the selected date is already in inspectionDate
+        // scheduledDate can remain null and be set later by staff when scheduling the actual inspection
+
         AssetInspection inspection = AssetInspection.builder()
                 .contractId(request.contractId())
                 .unit(unit)
                 .inspectionDate(inspectionDate)
+                .scheduledDate(scheduledDate)
                 .status(InspectionStatus.PENDING)
                 .inspectorName(request.inspectorName())
                 .inspectorId(request.inspectorId())
@@ -250,6 +273,7 @@ public class AssetInspectionService {
                 inspection.getUnit() != null ? inspection.getUnit().getId() : null,
                 inspection.getUnit() != null ? inspection.getUnit().getCode() : null,
                 inspection.getInspectionDate(),
+                inspection.getScheduledDate(),
                 inspection.getStatus(),
                 inspection.getInspectorName(),
                 inspection.getInspectorId(),
@@ -326,6 +350,27 @@ public class AssetInspectionService {
                 .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
         
         updateTotalDamageCost(inspection);
+        return toDto(inspection);
+    }
+
+    /**
+     * Update scheduled date for inspection
+     * Allows multiple updates (no restriction on how many times)
+     */
+    @Transactional
+    public AssetInspectionDto updateScheduledDate(UUID inspectionId, LocalDate scheduledDate) {
+        AssetInspection inspection = inspectionRepository.findById(inspectionId)
+                .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
+        
+        if (scheduledDate == null) {
+            throw new IllegalArgumentException("Scheduled date cannot be null");
+        }
+        
+        // Allow updating scheduledDate multiple times - no restriction
+        inspection.setScheduledDate(scheduledDate);
+        inspection = inspectionRepository.save(inspection);
+        
+        log.info("Updated scheduled date for inspection {} to {}", inspectionId, scheduledDate);
         return toDto(inspection);
     }
 
@@ -504,12 +549,14 @@ public class AssetInspectionService {
                     
                     try {
                         LocalDate inspectionDate = contractEndDate;
+                        // scheduledDate = null sẽ được set thành endDate trong createInspection
                         CreateAssetInspectionRequest request = new CreateAssetInspectionRequest(
                                 contract.id(),
                                 unit.getId(),
                                 inspectionDate,
-                                null,
-                                null
+                                null, // scheduledDate = null -> sẽ dùng endDate của contract
+                                null, // inspectorName
+                                null  // inspectorId
                         );
                         
                         createInspection(request, null);

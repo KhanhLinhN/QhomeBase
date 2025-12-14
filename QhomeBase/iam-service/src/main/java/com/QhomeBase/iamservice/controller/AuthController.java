@@ -48,7 +48,10 @@ public class AuthController {
     public ResponseEntity<?> requestPasswordReset(@Valid @RequestBody PasswordResetRequestDto request) {
         try {
             passwordResetService.requestPasswordReset(request.email());
-            return ResponseEntity.ok(Map.of("message", "If the email exists, OTP has been sent"));
+            return ResponseEntity.ok(Map.of("message", "Mã OTP đã được gửi đến email của bạn"));
+        } catch (IllegalArgumentException e) {
+            log.warn("Password reset request failed for email={} reason={}", request.email(), e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         } catch (IllegalStateException ex) {
             log.warn("OTP request throttled for email={} reason={}", request.email(), ex.getMessage());
             return ResponseEntity.status(429).body(Map.of("message", ex.getMessage()));

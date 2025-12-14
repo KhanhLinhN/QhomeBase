@@ -61,7 +61,7 @@ public class PasswordResetService {
         if (userOpt.isEmpty()) {
             log.info("Password reset requested for non-existing email {}", email);
             trackOtpRequest(email);
-            return;
+            throw new IllegalArgumentException("Email không tồn tại trong hệ thống. Vui lòng kiểm tra lại email của bạn.");
         }
 
         if (!canRequestOtp(email)) {

@@ -178,7 +178,8 @@ public class ResidentCardRegistrationController {
                     .body(Map.of("message", "Unauthorized"));
         }
         try {
-            ResidentCardRegistrationDto created = registrationService.createRegistration(userId, dto);
+            String accessToken = extractAccessToken(headers);
+            ResidentCardRegistrationDto created = registrationService.createRegistration(userId, dto, accessToken);
             Map<String, Object> body = new HashMap<>();
             body.put("id", created.id() != null ? created.id().toString() : null);
             body.put("status", created.status());
@@ -207,7 +208,8 @@ public class ResidentCardRegistrationController {
         }
         log.info("✅ [ResidentCard] UserId: {}", userId);
         try {
-            ResidentCardPaymentResponse response = registrationService.createAndInitiatePayment(userId, dto, request);
+            String accessToken = extractAccessToken(headers);
+            ResidentCardPaymentResponse response = registrationService.createAndInitiatePayment(userId, dto, request, accessToken);
             Map<String, Object> body = new HashMap<>();
             body.put("registrationId", response.registrationId() != null ? response.registrationId().toString() : null);
             body.put("paymentUrl", response.paymentUrl());
@@ -321,10 +323,19 @@ public class ResidentCardRegistrationController {
         String responseCode = result.responseCode() != null 
                 ? java.net.URLEncoder.encode(result.responseCode(), java.nio.charset.StandardCharsets.UTF_8)
                 : "";
+        String message = result.message() != null 
+                ? java.net.URLEncoder.encode(result.message(), java.nio.charset.StandardCharsets.UTF_8)
+                : "";
+        String requestType = result.requestType() != null 
+                ? java.net.URLEncoder.encode(result.requestType(), java.nio.charset.StandardCharsets.UTF_8)
+                : "";
+        
         String redirectUrl = new StringBuilder("qhomeapp://vnpay-resident-card-result")
                 .append("?registrationId=").append(registrationId)
                 .append("&responseCode=").append(responseCode)
                 .append("&success=").append(result.success())
+                .append("&requestType=").append(requestType)
+                .append("&message=").append(message)
                 .toString();
         response.sendRedirect(redirectUrl);
         HttpStatus status = result.success() ? HttpStatus.OK : HttpStatus.BAD_REQUEST;
@@ -365,8 +376,18 @@ public class ResidentCardRegistrationController {
         body.put("registrationId", result.registrationId() != null ? result.registrationId().toString() : null);
         body.put("responseCode", result.responseCode());
         body.put("signatureValid", result.signatureValid());
+        body.put("requestType", result.requestType());
+        body.put("message", result.message());
         body.put("params", params);
         return body;
+    }
+
+    private String extractAccessToken(HttpHeaders headers) {
+        String authHeader = headers.getFirst(HttpHeaders.AUTHORIZATION);
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+        return null;
     }
 }
 

@@ -19,6 +19,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -50,31 +51,56 @@ public class GroupInvitationService {
      * Find resident by phone number from base-service
      */
     private UUID findResidentIdByPhone(String phone, String accessToken) {
-        try {
-            String url = baseServiceUrl + "/api/residents/by-phone/" + phone;
-            
-            Map<String, Object> response = webClient
-                    .get()
-                    .uri(url)
-                    .header("Authorization", "Bearer " + accessToken)
-                    .retrieve()
-                    .bodyToMono(Map.class)
-                    .block();
-            
-            if (response == null) {
-                return null;
-            }
-            
-            Object idObj = response.get("id");
-            if (idObj == null) {
-                return null;
-            }
-            
-            return UUID.fromString(idObj.toString());
-        } catch (Exception e) {
-            log.debug("Resident not found for phone: {}", phone);
-            return null;
+        // Normalize phone: remove all non-digit characters
+        String normalizedPhone = phone.replaceAll("[^0-9]", "");
+        
+        // Try multiple formats
+        List<String> phoneFormats = new java.util.ArrayList<>();
+        phoneFormats.add(normalizedPhone); // Original format
+        if (!normalizedPhone.startsWith("0") && normalizedPhone.length() > 0) {
+            phoneFormats.add("0" + normalizedPhone); // With leading zero
         }
+        if (normalizedPhone.startsWith("0") && normalizedPhone.length() > 1) {
+            phoneFormats.add(normalizedPhone.substring(1)); // Without leading zero
+        }
+        
+        for (String phoneFormat : phoneFormats) {
+            try {
+                // Use UriComponentsBuilder to properly construct the URL
+                String url = UriComponentsBuilder
+                        .fromUriString(baseServiceUrl)
+                        .path("/api/residents/by-phone/{phone}")
+                        .buildAndExpand(phoneFormat)
+                        .toUriString();
+                
+                log.debug("Trying to find resident by phone format: {}", phoneFormat);
+                log.debug("Full URL: {}", url);
+                
+                @SuppressWarnings("unchecked")
+                Map<String, Object> response = (Map<String, Object>) webClient
+                        .get()
+                        .uri(url)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .retrieve()
+                        .bodyToMono(Map.class)
+                        .block();
+                
+                if (response != null) {
+                    Object idObj = response.get("id");
+                    if (idObj != null) {
+                        UUID residentId = UUID.fromString(idObj.toString());
+                        log.info("Found resident by phone format '{}': residentId={}", phoneFormat, residentId);
+                        return residentId;
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("Resident not found for phone format: {} - {}", phoneFormat, e.getMessage());
+                // Continue to try next format
+            }
+        }
+        
+        log.warn("Resident not found for phone '{}' (tried formats: {})", phone, phoneFormats);
+        return null;
     }
 
     /**
@@ -192,6 +218,9 @@ public class GroupInvitationService {
 
             invitation = invitationRepository.save(invitation);
 
+            log.info("✅ [GroupInvitationService] Created invitation - ID: {}, GroupId: {}, InviteeResidentId: {}, InviteePhone: {}, Status: {}", 
+                invitation.getId(), groupId, residentId, phoneForStorage, invitation.getStatus());
+
             // Send notification
             String title = "Lời mời tham gia nhóm";
             String body = inviterName != null 
@@ -207,7 +236,12 @@ public class GroupInvitationService {
             data.put("inviterName", inviterName != null ? inviterName : "");
 
             // Send FCM push notification
-            fcmPushService.sendPushToResident(residentId, title, body, data);
+            try {
+                fcmPushService.sendPushToResident(residentId, title, body, data);
+                log.info("📱 [GroupInvitationService] FCM push notification sent to residentId: {}", residentId);
+            } catch (Exception e) {
+                log.error("❌ [GroupInvitationService] Failed to send FCM push notification to residentId: {}", residentId, e);
+            }
 
             // Send WebSocket notification
             // TODO: Add WebSocket notification for invitation
@@ -226,7 +260,8 @@ public class GroupInvitationService {
                     .build();
 
             successfulInvitations.add(response);
-            log.info("Successfully created invitation for phone {} (residentId: {})", phone, residentId);
+            log.info("✅ [GroupInvitationService] Successfully created invitation for phone {} (normalized: {}, residentId: {}, invitationId: {})", 
+                phone, phoneForStorage, residentId, invitation.getId());
         }
 
         return InviteMembersResponse.builder()

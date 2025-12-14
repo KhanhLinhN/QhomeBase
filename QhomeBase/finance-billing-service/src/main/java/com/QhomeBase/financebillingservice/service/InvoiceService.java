@@ -61,6 +61,7 @@ public class InvoiceService {
             "INTERNET", "Internet",
             "ELEVATOR", "Vé thang máy",
             "PARKING", "Vé gửi xe",
+            "CONTRACT_RENEWAL", "Gia hạn hợp đồng",
             "OTHER", "Khác"
     );
 
@@ -70,6 +71,7 @@ public class InvoiceService {
             "INTERNET",
             "ELEVATOR",
             "PARKING",
+            "CONTRACT_RENEWAL",
             "OTHER"
     );
     
@@ -115,6 +117,17 @@ public class InvoiceService {
     public InvoiceDto getInvoiceById(UUID invoiceId) {
         Invoice invoice = invoiceRepository.findById(invoiceId)
                 .orElseThrow(() -> new IllegalArgumentException("Invoice not found"));
+        
+        // Auto-fix: If invoice is PAID but paidAt is null, set it to issuedAt (or current time if issuedAt is also null)
+        // This handles invoices created before the paidAt logic was added
+        if (invoice.getStatus() == InvoiceStatus.PAID && invoice.getPaidAt() == null) {
+            log.warn("⚠️ Invoice {} is PAID but paidAt is null, setting it to issuedAt", invoiceId);
+            OffsetDateTime paidAt = invoice.getIssuedAt() != null ? invoice.getIssuedAt() : OffsetDateTime.now();
+            invoice.setPaidAt(paidAt);
+            invoice = invoiceRepository.save(invoice);
+            log.info("✅ Fixed paidAt for invoice {}: {}", invoiceId, invoice.getPaidAt());
+        }
+        
         return toDto(invoice);
     }
     
@@ -311,11 +324,14 @@ public class InvoiceService {
 
         String invoiceCode = generateInvoiceCode();
 
+        InvoiceStatus invoiceStatus = request.getStatus() != null ? request.getStatus() : InvoiceStatus.PUBLISHED;
+        OffsetDateTime now = OffsetDateTime.now();
+
         Invoice invoice = Invoice.builder()
                 .code(invoiceCode)
-                .issuedAt(OffsetDateTime.now())
+                .issuedAt(now)
                 .dueDate(request.getDueDate())
-                .status(InvoiceStatus.PUBLISHED)
+                .status(invoiceStatus)
                 .currency(request.getCurrency() != null ? request.getCurrency() : "VND")
                 .billToName(request.getBillToName())
                 .billToAddress(request.getBillToAddress())
@@ -325,8 +341,28 @@ public class InvoiceService {
                 .cycleId(request.getCycleId())
                 .build();
         
+        // Set paidAt after building if status is PAID
+        if (invoiceStatus == InvoiceStatus.PAID) {
+            invoice.setPaidAt(now);
+            log.info("Setting paidAt to current time for PAID invoice: {}", now);
+        }
+        
         Invoice savedInvoice = invoiceRepository.save(invoice);
-        log.info("Invoice created with ID: {}, code: {}", savedInvoice.getId(), savedInvoice.getCode());
+        log.info("Invoice created with ID: {}, code: {}, status: {}, paidAt: {}", 
+                savedInvoice.getId(), savedInvoice.getCode(), savedInvoice.getStatus(), savedInvoice.getPaidAt());
+        
+        // Reload invoice to ensure paidAt is persisted correctly
+        savedInvoice = invoiceRepository.findById(savedInvoice.getId())
+                .orElseThrow(() -> new IllegalStateException("Invoice not found after creation"));
+        log.info("Invoice reloaded - paidAt: {}", savedInvoice.getPaidAt());
+        
+        // If paidAt is still null after reload and status is PAID, set it explicitly
+        if (savedInvoice.getStatus() == InvoiceStatus.PAID && savedInvoice.getPaidAt() == null) {
+            log.warn("⚠️ paidAt is null for PAID invoice {}, setting it now", savedInvoice.getId());
+            savedInvoice.setPaidAt(now);
+            savedInvoice = invoiceRepository.save(savedInvoice);
+            log.info("✅ Updated paidAt for invoice {}: {}", savedInvoice.getId(), savedInvoice.getPaidAt());
+        }
         
         if (request.getLines() != null && !request.getLines().isEmpty()) {
             for (CreateInvoiceLineRequest lineRequest : request.getLines()) {
@@ -508,8 +544,15 @@ public class InvoiceService {
         InvoiceStatus oldStatus = invoice.getStatus();
         invoice.setStatus(request.getStatus());
         
+        // If updating to PAID and paidAt is null, set it to current time
+        if (request.getStatus() == InvoiceStatus.PAID && invoice.getPaidAt() == null) {
+            invoice.setPaidAt(OffsetDateTime.now());
+            log.info("Setting paidAt to current time for invoice {} (status updated to PAID)", invoiceId);
+        }
+        
         Invoice updatedInvoice = invoiceRepository.save(invoice);
-        log.info("Invoice {} status updated from {} to {}", invoiceId, oldStatus, request.getStatus());
+        log.info("Invoice {} status updated from {} to {}, paidAt: {}", 
+                invoiceId, oldStatus, request.getStatus(), updatedInvoice.getPaidAt());
         
         return toDto(updatedInvoice);
     }
@@ -705,8 +748,14 @@ public class InvoiceService {
         String orderInfo = "Thanh toán hóa đơn " + (invoice.getCode() != null ? invoice.getCode() : invoiceId);
         String returnUrl = vnpayProperties.getReturnUrl();
 
-        log.info(" [InvoiceService] Creating VNPAY URL for invoice={}, user={}, amount={}, ip={}, orderId={}",
-                invoiceId, userId, totalAmount, clientIp, orderId);
+        // Set vnpayInitiatedAt to track when payment was initiated
+        // Note: For invoices, we don't auto-expire payments. Status only changes to PAID when payment succeeds.
+        invoice.setVnpayInitiatedAt(OffsetDateTime.now());
+        invoice.setPaymentGateway("VNPAY");
+        invoiceRepository.save(invoice);
+
+        log.info("💳 [InvoiceService] Creating VNPAY URL for invoice={}, user={}, amount={}, ip={}, orderId={}, initiatedAt={}",
+                invoiceId, userId, totalAmount, clientIp, orderId, invoice.getVnpayInitiatedAt());
 
         return vnpayService.createPaymentUrl(orderId, orderInfo, totalAmount, clientIp, returnUrl);
     }
@@ -746,6 +795,8 @@ public class InvoiceService {
                 invoice.setPaymentGateway("VNPAY");
                 // Use current time for payment date to ensure accurate timestamp
                 invoice.setPaidAt(OffsetDateTime.now());
+                // Clear vnpayInitiatedAt since payment is now complete
+                invoice.setVnpayInitiatedAt(null);
                 invoiceRepository.save(invoice);
                 notifyPaymentSuccess(invoice, params);
                 log.info(" [InvoiceService] Invoice {} marked as PAID via VNPAY (txnRef: {})", invoiceId, txnRef);
@@ -870,6 +921,17 @@ public class InvoiceService {
                     continue;
                 }
 
+                // Only show electricity and water invoices - skip all others (contract renewal, etc.)
+                String serviceCode = line.getServiceCode();
+                if (serviceCode == null || serviceCode.isBlank()) {
+                    continue;
+                }
+                String normalized = serviceCode.trim().toUpperCase();
+                // Only allow ELECTRICITY and WATER service codes
+                if (!normalized.contains("ELECTRIC") && !normalized.contains("WATER")) {
+                    continue;
+                }
+
                 String category = determineCategory(line.getServiceCode());
                 grouped.computeIfAbsent(category, key -> new ArrayList<>()).add(dto);
             }
@@ -972,6 +1034,26 @@ public class InvoiceService {
             List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceId(invoice.getId());
             log.debug(" [InvoiceService] Invoice {} has {} lines", invoice.getId(), lines.size());
             for (InvoiceLine line : lines) {
+                String serviceCode = line.getServiceCode();
+                if (serviceCode == null || serviceCode.isBlank()) {
+                    log.debug("🔍 [InvoiceService] Skipping invoice line {} with null/empty serviceCode", line.getId());
+                    continue;
+                }
+                String normalized = serviceCode.trim().toUpperCase();
+                
+                // For paid invoices: show electricity, water, contract renewal, AND card payments
+                boolean isElectricity = normalized.contains("ELECTRIC");
+                boolean isWater = normalized.contains("WATER");
+                boolean isContractRenewal = normalized.contains("CONTRACT");
+                boolean isVehicleCard = normalized.contains("VEHICLE_CARD") || normalized.contains("VEHICLE");
+                boolean isElevatorCard = normalized.contains("ELEVATOR_CARD") || normalized.contains("ELEVATOR");
+                boolean isResidentCard = normalized.contains("RESIDENT_CARD") || normalized.contains("RESIDENT");
+                
+                if (!isElectricity && !isWater && !isContractRenewal && !isVehicleCard && !isElevatorCard && !isResidentCard) {
+                    log.debug("🔍 [InvoiceService] Skipping invoice line {} with serviceCode: {} (not electricity/water/contract/card)", line.getId(), serviceCode);
+                    continue;
+                }
+
                 String category = determineCategory(line.getServiceCode());
                 InvoiceLineResponseDto dto = toInvoiceLineResponseDto(invoice, line);
                 grouped.computeIfAbsent(category, key -> new ArrayList<>()).add(dto);
@@ -1248,6 +1330,9 @@ public class InvoiceService {
         }
         if (normalized.contains("PARK") || normalized.contains("VEHICLE") || normalized.contains("CAR") || normalized.contains("MOTOR")) {
             return "PARKING";
+        }
+        if (normalized.contains("CONTRACT")) {
+            return "CONTRACT_RENEWAL";
         }
 
         return "OTHER";
