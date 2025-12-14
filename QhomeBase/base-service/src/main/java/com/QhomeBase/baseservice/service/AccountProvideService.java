@@ -71,8 +71,6 @@ public class AccountProvideService {
                     }
                     resident.setEmail(email);
                 }
-                
-                // Update other fields if provided
                 if (request.resident().fullName() != null && !request.resident().fullName().isBlank()) {
                     resident.setFullName(request.resident().fullName());
                 }
@@ -84,7 +82,6 @@ public class AccountProvideService {
                 }
                 resident = residentRepository.save(resident);
             } else {
-                // Create new resident - validate unique phone/email
                 validateUniqueContact(request);
                 Resident.ResidentBuilder builder = Resident.builder()
                         .fullName(request.resident().fullName())

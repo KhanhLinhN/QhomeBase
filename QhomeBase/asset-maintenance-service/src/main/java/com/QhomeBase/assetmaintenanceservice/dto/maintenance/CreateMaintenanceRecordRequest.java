@@ -25,6 +25,8 @@ public class CreateMaintenanceRecordRequest {
     @NotNull(message = "Maintenance date is required")
     private LocalDate maintenanceDate;
 
+    private LocalDate dueDate;
+
     private UUID maintenanceScheduleId; // Optional - if created from schedule
 
     private String description;

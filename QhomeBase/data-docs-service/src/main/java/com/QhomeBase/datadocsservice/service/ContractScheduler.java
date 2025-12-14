@@ -24,6 +24,7 @@ public class ContractScheduler {
     public void onApplicationReady() {
         log.info("Application ready - Running initial contract status checks...");
         contractService.markExpiredContracts();
+        contractService.triggerRenewalReminders();
         sendRenewalReminders();
         markRenewalDeclined();
         log.info("Initial contract status checks completed");

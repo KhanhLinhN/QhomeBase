@@ -29,6 +29,8 @@ public class MaintenanceRecordResponse {
 
     private LocalDate maintenanceDate;
 
+    private LocalDate dueDate;
+
     private UUID maintenanceScheduleId;
 
     private String maintenanceScheduleName;
