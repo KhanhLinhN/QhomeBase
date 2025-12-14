@@ -37,21 +37,21 @@ try {
 if ($ngrokUrl) {
     # Ngrok is running
     if ($currentVnpayUrl -ne $ngrokUrl) {
-        Write-Host "  ✅ Ngrok is running: $ngrokUrl" -ForegroundColor Green
-        Write-Host "  ⚠️  Current VNPAY_BASE_URL: $currentVnpayUrl" -ForegroundColor Yellow
-        Write-Host "  🔄 Updating VNPAY_BASE_URL to ngrok URL..." -ForegroundColor Cyan
+        Write-Host "  [NGROK RUNNING] $ngrokUrl" -ForegroundColor Green
+        Write-Host "  [CURRENT VNPAY] $currentVnpayUrl" -ForegroundColor Yellow
+        Write-Host "  [UPDATING] VNPAY_BASE_URL to ngrok URL..." -ForegroundColor Cyan
         $env:VNPAY_BASE_URL = $ngrokUrl
         $shouldUpdateVnpayUrl = $true
-        Write-Host "  ✅ VNPAY_BASE_URL updated to: $ngrokUrl" -ForegroundColor Green
+        Write-Host "  [UPDATED] VNPAY_BASE_URL: $ngrokUrl" -ForegroundColor Green
     } else {
-        Write-Host "  ✅ Ngrok is running: $ngrokUrl" -ForegroundColor Green
-        Write-Host "  ✅ VNPAY_BASE_URL already matches ngrok URL" -ForegroundColor Green
+        Write-Host "  [NGROK RUNNING] $ngrokUrl" -ForegroundColor Green
+        Write-Host "  [VNPAY OK] Already matches ngrok URL" -ForegroundColor Green
     }
 } else {
     # Ngrok not running - use IP address or localhost
     if (-not $currentVnpayUrl -or $currentVnpayUrl -like "*ngrok*") {
-        Write-Host "  ℹ️  Ngrok is not running" -ForegroundColor Gray
-        Write-Host "  🔄 Setting VNPAY_BASE_URL to IP address..." -ForegroundColor Cyan
+        Write-Host "  [NGROK OFF] Not running" -ForegroundColor Gray
+        Write-Host "  [SETTING] VNPAY_BASE_URL to IP address..." -ForegroundColor Cyan
         
         try {
             $ipAddress = Get-NetIPAddress -AddressFamily IPv4 | 
@@ -60,24 +60,24 @@ if ($ngrokUrl) {
             
             if ($ipAddress) {
                 $env:VNPAY_BASE_URL = "http://$ipAddress:8989"
-                Write-Host "  ✅ VNPAY_BASE_URL set to: $env:VNPAY_BASE_URL" -ForegroundColor Green
+                Write-Host "  [SET] VNPAY_BASE_URL: $env:VNPAY_BASE_URL" -ForegroundColor Green
             } else {
                 $env:VNPAY_BASE_URL = "http://localhost:8989"
-                Write-Host "  ⚠️  Could not find IP address, using localhost: $env:VNPAY_BASE_URL" -ForegroundColor Yellow
+                Write-Host "  [LOCALHOST] No IP found, using: $env:VNPAY_BASE_URL" -ForegroundColor Yellow
             }
         } catch {
             $env:VNPAY_BASE_URL = "http://localhost:8989"
-            Write-Host "  ⚠️  Error getting IP address, using localhost: $env:VNPAY_BASE_URL" -ForegroundColor Yellow
+            Write-Host "  [LOCALHOST] Error getting IP, using: $env:VNPAY_BASE_URL" -ForegroundColor Yellow
         }
         $shouldUpdateVnpayUrl = $true
     } else {
-        Write-Host "  ℹ️  Ngrok is not running" -ForegroundColor Gray
-        Write-Host "  ✅ VNPAY_BASE_URL already set: $currentVnpayUrl" -ForegroundColor Green
+        Write-Host "  [NGROK OFF] Not running" -ForegroundColor Gray
+        Write-Host "  [VNPAY OK] Already set: $currentVnpayUrl" -ForegroundColor Green
     }
 }
 
 Write-Host ""
-Write-Host "  📋 Services will use VNPAY_BASE_URL = $env:VNPAY_BASE_URL" -ForegroundColor Cyan
+Write-Host "  [INFO] Services will use VNPAY_BASE_URL = $($env:VNPAY_BASE_URL)" -ForegroundColor Cyan
 Write-Host ""
 
 # Service configuration
@@ -510,4 +510,7 @@ if ($isNgrok) {
         Write-Host $vnpayMsg -ForegroundColor Cyan
     }
 }
+Write-Host ""
+
+Write-Host "Tip: Vui long restart services thu cong neu can: .\restart-all-services.ps1" -ForegroundColor Yellow
 Write-Host ""

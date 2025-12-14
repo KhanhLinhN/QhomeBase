@@ -663,7 +663,7 @@ public class InvoiceService {
         for (Invoice invoice : invoices) {
             List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceId(invoice.getId());
             for (InvoiceLine line : lines) {
-                result.add(toInvoiceLineResponseDto(invoice, line));
+                result.add(toInvoiceLineResponseDto(invoice, line, userId));
             }
         }
         
@@ -681,13 +681,13 @@ public class InvoiceService {
         UUID residentId = residentRepository.findResidentIdByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy cư dân cho user: " + userId));
 
-        // Kiểm tra quyền OWNER: chỉ OWNER mới được thanh toán hóa đơn điện/nước cho căn hộ
+        // Kiểm tra quyền OWNER: chỉ OWNER hoặc TENANT mới được thanh toán hóa đơn điện/nước cho căn hộ
         UUID unitIdToCheck = unitFilter != null ? unitFilter : invoice.getPayerUnitId();
         if (unitIdToCheck != null) {
             boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, unitIdToCheck);
             if (!isOwner) {
                 throw new IllegalStateException(
-                    "Chỉ chủ căn hộ (OWNER) mới được thanh toán hóa đơn điện, nước cho căn hộ. " +
+                    "Chỉ chủ căn hộ (OWNER hoặc người thuê TENANT) mới được thanh toán hóa đơn điện, nước cho căn hộ. " +
                     "Thành viên hộ gia đình không được phép thanh toán."
                 );
             }
@@ -914,7 +914,7 @@ public class InvoiceService {
 
             List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceId(invoice.getId());
             for (InvoiceLine line : lines) {
-                InvoiceLineResponseDto dto = toInvoiceLineResponseDto(invoice, line);
+                InvoiceLineResponseDto dto = toInvoiceLineResponseDto(invoice, line, userId);
                 if ("PAID".equalsIgnoreCase(dto.getStatus())) {
                     continue;
                 }
@@ -1053,7 +1053,7 @@ public class InvoiceService {
                 }
 
                 String category = determineCategory(line.getServiceCode());
-                InvoiceLineResponseDto dto = toInvoiceLineResponseDto(invoice, line);
+                InvoiceLineResponseDto dto = toInvoiceLineResponseDto(invoice, line, userId);
                 grouped.computeIfAbsent(category, key -> new ArrayList<>()).add(dto);
                 log.debug("🔍 [InvoiceService] Added line {} to category {}", line.getId(), category);
             }
@@ -1283,6 +1283,35 @@ public class InvoiceService {
     }
     
     private InvoiceLineResponseDto toInvoiceLineResponseDto(Invoice invoice, InvoiceLine line) {
+        return toInvoiceLineResponseDto(invoice, line, null);
+    }
+    
+    private InvoiceLineResponseDto toInvoiceLineResponseDto(Invoice invoice, InvoiceLine line, UUID userId) {
+        // Check permission: isOwner, canPay
+        boolean isOwner = false;
+        boolean canPay = false;
+        String permissionMessage = null;
+        
+        if (userId != null && invoice.getPayerUnitId() != null) {
+            try {
+                isOwner = baseServiceClient.isOwnerOfUnit(userId, invoice.getPayerUnitId());
+                
+                if (isOwner) {
+                    // OWNER/TENANT can pay if invoice is not already paid
+                    canPay = invoice.getStatus() != InvoiceStatus.PAID && invoice.getStatus() != InvoiceStatus.VOID;
+                } else {
+                    // Not OWNER/TENANT - household member
+                    canPay = false;
+                    permissionMessage = "Bạn không được phép thanh toán hóa đơn này";
+                }
+            } catch (Exception e) {
+                log.warn("⚠️ [InvoiceService] Error checking permission for invoice {}: {}", 
+                        invoice.getId(), e.getMessage());
+                // If check fails, default to no permission
+                permissionMessage = "Bạn không được phép thanh toán hóa đơn này";
+            }
+        }
+        
         return InvoiceLineResponseDto.builder()
                 .payerUnitId(invoice.getPayerUnitId() != null ? invoice.getPayerUnitId().toString() : "")
                 .invoiceId(invoice.getId().toString())
@@ -1295,6 +1324,9 @@ public class InvoiceService {
                 .lineTotal(line.getLineTotal() != null ? line.getLineTotal().doubleValue() : 0.0)
                 .serviceCode(line.getServiceCode())
                 .status(invoice.getStatus() != null ? invoice.getStatus().name() : "PUBLISHED")
+                .isOwner(isOwner)
+                .canPay(canPay)
+                .permissionMessage(permissionMessage)
                 .build();
     }
 
