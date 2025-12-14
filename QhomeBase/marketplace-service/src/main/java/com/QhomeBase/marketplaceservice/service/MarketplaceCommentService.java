@@ -246,8 +246,17 @@ public class MarketplaceCommentService {
         post.incrementCommentCount();
         postRepository.save(post);
 
-        // Notify post owner and viewers
-        notificationService.notifyNewComment(postId, saved.getId(), residentId, "User");
+        // Get post owner residentId for notification
+        UUID postOwnerResidentId = post.getResidentId();
+        
+        // Get comment author name for notification (optional, can be "User" if not available)
+        String authorName = "User"; // Default name, can be enhanced later to fetch from resident info
+        
+        // Get parentCommentId if this is a reply
+        UUID parentCommentId = saved.getParentComment() != null ? saved.getParentComment().getId() : null;
+        
+        // Notify post owner and viewers (both WebSocket and FCM push)
+        notificationService.notifyNewComment(postId, saved.getId(), residentId, authorName, postOwnerResidentId, parentCommentId);
 
         return saved;
     }
