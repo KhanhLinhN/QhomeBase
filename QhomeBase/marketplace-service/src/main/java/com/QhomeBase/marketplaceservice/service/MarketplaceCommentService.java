@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
+import org.springframework.lang.NonNull;
 
 @Service
 @RequiredArgsConstructor
@@ -253,8 +254,6 @@ public class MarketplaceCommentService {
         String authorName = "User"; // Default name, can be enhanced later to fetch from resident info
         
         // Get parentCommentId if this is a reply
-        UUID parentCommentId = saved.getParentComment() != null ? saved.getParentComment().getId() : null;
-        
         // Notify post owner and viewers (both WebSocket and FCM push)
         notificationService.notifyNewComment(postId, saved.getId(), residentId, authorName, postOwnerResidentId, parentCommentId);
 
@@ -265,7 +264,7 @@ public class MarketplaceCommentService {
      * Update comment
      */
     @Transactional
-    public MarketplaceComment updateComment(UUID commentId, UUID residentId, String content) {
+    public MarketplaceComment updateComment(@NonNull UUID commentId, @NonNull UUID residentId, String content) {
         log.info("Updating comment: {} by user: {}", commentId, residentId);
 
         MarketplaceComment comment = commentRepository.findById(commentId)
@@ -289,7 +288,7 @@ public class MarketplaceCommentService {
      */
     @CacheEvict(value = {"postDetails"}, allEntries = true)
     @Transactional
-    public void deleteComment(UUID commentId, UUID residentId) {
+    public void deleteComment(@NonNull UUID commentId, @NonNull UUID residentId) {
         log.info("Deleting comment: {} by user: {}", commentId, residentId);
 
         MarketplaceComment comment = commentRepository.findById(commentId)

@@ -39,6 +39,7 @@ public class DirectChatService {
     private final FcmPushService fcmPushService;
     private final FriendshipService friendshipService;
     private final DirectMessageDeletionRepository messageDeletionRepository;
+    private final WebSocketPresenceService presenceService;
 
     @Value("${marketplace.service.url:http://localhost:8082}")
     private String marketplaceServiceUrl;
@@ -350,9 +351,6 @@ public class DirectChatService {
             }
         }
         
-        // Notify via WebSocket
-        notificationService.notifyDirectMessage(conversationId, response);
-        
         // If conversation was DELETED (both participants had hidden it), reset to ACTIVE
         if ("DELETED".equals(conversation.getStatus())) {
             conversation.setStatus("ACTIVE");
@@ -360,8 +358,26 @@ public class DirectChatService {
             log.info("Conversation {} reset from DELETED to ACTIVE (new message received)", conversationId);
         }
 
-        // Send FCM push notification to other participant
-        fcmPushService.sendDirectMessageNotification(otherParticipantId, conversationId, response, residentId);
+        // Check if recipient is online (has active WebSocket connection)
+        boolean isRecipientOnline = presenceService.isUserOnline(otherParticipantId);
+        
+        if (isRecipientOnline) {
+            // User is in app (has WebSocket connection) - send realtime notification via WebSocket
+            // This covers both cases:
+            // 1. User is in chat screen - will receive WebSocket notification
+            // 2. User is in app but on home screen - will receive WebSocket notification (realtime notification)
+            // Note: If user is online but not subscribed to conversation topic, they won't receive WebSocket notification
+            // but that's handled by client-side subscription logic
+            notificationService.notifyDirectMessage(conversationId, response);
+            log.info("📱 [DirectChatService] Recipient {} is ONLINE - sent WebSocket realtime notification (conversationId: {})", 
+                    otherParticipantId, conversationId);
+        } else {
+            // User is offline (out of app) - send FCM push notification
+            // This ensures user receives notification even when app is closed or in background
+            fcmPushService.sendDirectMessageNotification(otherParticipantId, conversationId, response, residentId);
+            log.info("📱 [DirectChatService] Recipient {} is OFFLINE - sent FCM push notification (conversationId: {})", 
+                    otherParticipantId, conversationId);
+        }
 
         return response;
     }
