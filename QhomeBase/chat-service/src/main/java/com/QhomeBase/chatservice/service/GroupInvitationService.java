@@ -418,6 +418,27 @@ public class GroupInvitationService {
     }
 
     /**
+     * Get all invitations for a specific group (PENDING and ACCEPTED)
+     * Includes invitations sent by current user (as inviter) and received by current user (as invitee)
+     */
+    public List<GroupInvitationResponse> getGroupInvitations(UUID groupId, UUID userId) {
+        String accessToken = getCurrentAccessToken();
+        UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+        if (residentId == null) {
+            throw new RuntimeException("Resident not found for user: " + userId);
+        }
+
+        // Get all invitations for this group with PENDING or ACCEPTED status
+        List<GroupInvitation> allGroupInvitations = invitationRepository.findInvitationsByGroupId(groupId);
+        
+        log.info("Found {} invitations (PENDING/ACCEPTED) for groupId: {}", allGroupInvitations.size(), groupId);
+        
+        return allGroupInvitations.stream()
+                .map(this::toInvitationResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Accept invitation
      */
     @Transactional

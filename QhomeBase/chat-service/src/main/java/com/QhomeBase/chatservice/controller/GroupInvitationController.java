@@ -96,6 +96,26 @@ public class GroupInvitationController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/{groupId}/invitations")
+    @PreAuthorize("hasRole('RESIDENT')")
+    @Operation(summary = "Get all invitations for a group", description = "Get list of all invitations (PENDING and ACCEPTED) for a specific group, including invitations sent by current user")
+    public ResponseEntity<List<GroupInvitationResponse>> getGroupInvitations(
+            @PathVariable UUID groupId,
+            Authentication authentication) {
+        
+        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+        UUID userId = principal.uid();
+        
+        log.info("📋 [GroupInvitationController] getGroupInvitations called - groupId: {}, userId: {}", groupId, userId);
+        
+        List<GroupInvitationResponse> response = invitationService.getGroupInvitations(groupId, userId);
+        
+        log.info("📋 [GroupInvitationController] getGroupInvitations returning {} invitations for groupId: {}", 
+            response.size(), groupId);
+        
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping("/invitations/{invitationId}/accept")
     @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Accept invitation", description = "Accept a group invitation")

@@ -908,31 +908,78 @@ public class InvoiceService {
         Map<String, List<InvoiceLineResponseDto>> grouped = new HashMap<>();
 
         for (Invoice invoice : invoices) {
-            if (invoice.getStatus() == InvoiceStatus.PAID || invoice.getStatus() == InvoiceStatus.VOID || invoice.getStatus() == InvoiceStatus.UNPAID) {
+            // Include UNPAID invoices - they need to be shown with warning
+            // Only exclude PAID and VOID invoices
+            if (invoice.getStatus() == InvoiceStatus.PAID || invoice.getStatus() == InvoiceStatus.VOID) {
                 continue;
             }
 
             List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceId(invoice.getId());
+            
+            // Log for debugging UNPAID invoices
+            if (invoice.getStatus() == InvoiceStatus.UNPAID) {
+                log.info("🔍 [InvoiceService] Found UNPAID invoice {} (code: {}) with {} lines for unit {}", 
+                        invoice.getId(), invoice.getCode(), lines.size(), unitFilter);
+                if (lines.isEmpty()) {
+                    log.warn("⚠️ [InvoiceService] UNPAID invoice {} has no invoice lines!", invoice.getId());
+                }
+                for (InvoiceLine line : lines) {
+                    log.info("   Line {}: serviceCode={}, description={}", 
+                            line.getId(), line.getServiceCode(), line.getDescription());
+                }
+            }
+            
+            if (lines.isEmpty()) {
+                // Skip invoices without lines
+                log.debug("⚠️ [InvoiceService] Invoice {} has no lines, skipping", invoice.getId());
+                continue;
+            }
+            
             for (InvoiceLine line : lines) {
                 InvoiceLineResponseDto dto = toInvoiceLineResponseDto(invoice, line, userId);
+                // Include UNPAID invoices - they need to be shown with warning
+                // Only exclude PAID invoices
                 if ("PAID".equalsIgnoreCase(dto.getStatus())) {
                     continue;
                 }
 
                 // Only show electricity and water invoices - skip all others (contract renewal, etc.)
+                // This applies to ALL statuses including UNPAID - only ELECTRIC and WATER are shown
                 String serviceCode = line.getServiceCode();
                 if (serviceCode == null || serviceCode.isBlank()) {
+                    log.debug("⚠️ [InvoiceService] Invoice {} line {} has no serviceCode, skipping", invoice.getId(), line.getId());
                     continue;
                 }
                 String normalized = serviceCode.trim().toUpperCase();
-                // Only allow ELECTRICITY and WATER service codes
+                // Only allow ELECTRICITY and WATER service codes (for all statuses including UNPAID)
                 if (!normalized.contains("ELECTRIC") && !normalized.contains("WATER")) {
+                    if (invoice.getStatus() == InvoiceStatus.UNPAID) {
+                        log.info("ℹ️ [InvoiceService] UNPAID invoice {} line {} serviceCode {} is not ELECTRIC or WATER, skipping (only electricity/water invoices are shown in 'Hóa đơn mới')", 
+                                invoice.getId(), line.getId(), serviceCode);
+                    } else {
+                        log.debug("⚠️ [InvoiceService] Invoice {} line {} serviceCode {} is not ELECTRIC or WATER, skipping", 
+                                invoice.getId(), line.getId(), serviceCode);
+                    }
                     continue;
                 }
 
                 String category = determineCategory(line.getServiceCode());
                 grouped.computeIfAbsent(category, key -> new ArrayList<>()).add(dto);
+                
+                // Log for debugging
+                if (invoice.getStatus() == InvoiceStatus.UNPAID) {
+                    log.info("✅ [InvoiceService] Added UNPAID invoice {} line {} (serviceCode: {}, status: {}) to category {}", 
+                            invoice.getId(), line.getId(), serviceCode, dto.getStatus(), category);
+                }
             }
+        }
+        
+        // Log summary
+        int totalUnpaidInvoices = grouped.values().stream()
+                .mapToInt(list -> (int) list.stream().filter(dto -> "UNPAID".equalsIgnoreCase(dto.getStatus())).count())
+                .sum();
+        if (totalUnpaidInvoices > 0) {
+            log.info("✅ [InvoiceService] Found {} UNPAID invoice lines across {} categories", totalUnpaidInvoices, grouped.size());
         }
 
         List<InvoiceCategoryResponseDto> response = new ArrayList<>();

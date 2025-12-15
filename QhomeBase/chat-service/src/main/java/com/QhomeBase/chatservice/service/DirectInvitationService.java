@@ -298,6 +298,7 @@ public class DirectInvitationService {
                             .inviteeId(inviteeResidentId)
                             .status("PENDING")
                             .initialMessage(request.getInitialMessage())
+                            .expiresAt(OffsetDateTime.now().plusDays(7)) // Set expiration to 7 days from now
                             .build();
                     newInvitation = invitationRepository.save(newInvitation);
                     log.info("Created new PENDING invitation ID: {}", newInvitation.getId());
@@ -364,6 +365,7 @@ public class DirectInvitationService {
                             .inviteeId(inviteeResidentId)
                             .status("PENDING")
                             .initialMessage(request.getInitialMessage())
+                            .expiresAt(OffsetDateTime.now().plusDays(7)) // Set expiration to 7 days from now
                             .build();
                     newInvitation = invitationRepository.save(newInvitation);
                     log.info("Created new PENDING invitation ID: {} for conversation with status {}", 
@@ -575,6 +577,7 @@ public class DirectInvitationService {
                         .inviteeId(inviteeResidentId)
                         .status("PENDING")
                         .initialMessage(request.getInitialMessage())
+                        .expiresAt(OffsetDateTime.now().plusDays(7)) // Set expiration to 7 days from now
                         .build();
                 invitation = invitationRepository.save(invitation);
                 
