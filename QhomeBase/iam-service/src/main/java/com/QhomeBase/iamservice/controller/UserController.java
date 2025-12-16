@@ -11,10 +11,11 @@ import com.QhomeBase.iamservice.repository.RolePermissionRepository;
 import com.QhomeBase.iamservice.repository.UserRepository;
 import com.QhomeBase.iamservice.service.UserService;
 import com.QhomeBase.iamservice.service.imports.StaffImportService;
+import com.QhomeBase.iamservice.service.exports.AccountExportService;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +46,7 @@ public class UserController {
     private final RolePermissionRepository rolePermissionRepository;
     private final UserService userService;
     private final StaffImportService staffImportService;
+    private final AccountExportService accountExportService;
     private final BaseServiceClient baseServiceClient;
 
     @GetMapping("/{userId}")
@@ -360,6 +362,21 @@ public class UserController {
                 .body(data);
     }
 
+    @GetMapping("/export")
+    @PreAuthorize("@authz.canViewAllUsers()")
+    public ResponseEntity<byte[]> exportAccounts() {
+        try {
+            byte[] data = accountExportService.exportAccountsToExcel();
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"accounts_export.xlsx\"")
+                    .body(data);
+        } catch (Exception e) {
+            log.error("Failed to export accounts", e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @GetMapping("/residents")
     @PreAuthorize("@authz.canViewAllUsers()")
     public ResponseEntity<List<UserAccountDto>> listResidentAccounts() {
@@ -429,7 +446,11 @@ public class UserController {
 
     public record UpdatePasswordRequest(
             @NotBlank(message = "New password is required")
-            @Size(min = 8, message = "New password must be at least 8 characters")
+            @Size(min = 8, max = 100, message = "Password must be between 8 and 100 characters")
+            @Pattern(
+                    regexp = "^(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$",
+                    message = "Password must be at least 8 characters and contain at least one special character"
+            )
             String newPassword
     ) {}
 
@@ -438,7 +459,7 @@ public class UserController {
             @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
             String username,
             @NotBlank(message = "Email is required")
-            @Email(message = "Email must be valid")
+            @Pattern(regexp = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.com$", message = "Email phải có đuôi .com. Ví dụ: user@example.com")
             String email,
             @NotEmpty(message = "Staff roles are required")
             List<@NotBlank(message = "Role value cannot be blank") String> roles,
@@ -450,7 +471,7 @@ public class UserController {
             @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
             String username,
             @NotBlank(message = "Email is required")
-            @Email(message = "Email must be valid")
+            @Pattern(regexp = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.com$", message = "Email phải có đuôi .com. Ví dụ: user@example.com")
             String email,
             Boolean active,
             List<@NotBlank(message = "Role value cannot be blank") String> roles,

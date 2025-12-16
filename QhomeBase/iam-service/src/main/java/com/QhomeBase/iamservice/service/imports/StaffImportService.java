@@ -19,8 +19,10 @@ import java.io.IOException;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -49,15 +51,15 @@ public class StaffImportService {
             }
 
             Row sample1 = sheet.createRow(1);
-            sample1.createCell(COL_USERNAME).setCellValue("staff.admin");
-            sample1.createCell(COL_EMAIL).setCellValue("staff.admin@example.com");
-            sample1.createCell(COL_ROLE).setCellValue("ADMIN");
+            sample1.createCell(COL_USERNAME).setCellValue("staff.accountant");
+            sample1.createCell(COL_EMAIL).setCellValue("staff.accountant@example.com");
+            sample1.createCell(COL_ROLE).setCellValue("ACCOUNTANT");
             sample1.createCell(COL_ACTIVE).setCellValue(true);
 
             Row sample2 = sheet.createRow(2);
             sample2.createCell(COL_USERNAME).setCellValue("tech.support");
             sample2.createCell(COL_EMAIL).setCellValue("tech.support@example.com");
-            sample2.createCell(COL_ROLE).setCellValue("TECHNICIAN,SUPPORTER");
+            sample2.createCell(COL_ROLE).setCellValue("TECHNICIAN");
             sample2.createCell(COL_ACTIVE).setCellValue(false);
 
             for (int i = 0; i < headers.length; i++) {
@@ -82,6 +84,8 @@ public class StaffImportService {
         List<StaffImportRowResult> rowResults = new ArrayList<>();
         int processedRows = 0;
         int successRows = 0;
+        Set<String> seenUsernames = new HashSet<>();
+        Set<String> seenEmails = new HashSet<>();
 
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
             Sheet sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
@@ -99,9 +103,84 @@ public class StaffImportService {
 
                 String username = getCellString(row, COL_USERNAME);
                 String email = getCellString(row, COL_EMAIL);
-                List<String> roleNames = extractRoleNames(getCellString(row, COL_ROLE));
+                String rawRole = getCellString(row, COL_ROLE);
                 String activeRaw = getCellString(row, COL_ACTIVE);
                 Boolean active = getCellBoolean(row, COL_ACTIVE);
+                
+                String trimmedUsername = username != null ? username.trim().toLowerCase() : "";
+                String trimmedEmail = email != null ? email.trim().toLowerCase() : "";
+                
+                if (StringUtils.hasText(trimmedUsername) && seenUsernames.contains(trimmedUsername)) {
+                    rowResults.add(new StaffImportRowResult(
+                            excelRowNumber,
+                            username,
+                            email,
+                            List.of(),
+                            active,
+                            false,
+                            null,
+                            "Username (row " + excelRowNumber + ") đã được sử dụng ở dòng khác trong file này"
+                    ));
+                    continue;
+                }
+                
+                if (StringUtils.hasText(trimmedEmail) && seenEmails.contains(trimmedEmail)) {
+                    rowResults.add(new StaffImportRowResult(
+                            excelRowNumber,
+                            username,
+                            email,
+                            List.of(),
+                            active,
+                            false,
+                            null,
+                            "Email (row " + excelRowNumber + ") đã được sử dụng ở dòng khác trong file này"
+                    ));
+                    continue;
+                }
+                
+                if (!StringUtils.hasText(rawRole)) {
+                    rowResults.add(new StaffImportRowResult(
+                            excelRowNumber,
+                            username,
+                            email,
+                            List.of(),
+                            active,
+                            false,
+                            null,
+                            "Role (row " + excelRowNumber + ") không được để trống"
+                    ));
+                    continue;
+                }
+                
+                List<String> roleNames = extractRoleNames(rawRole);
+                
+                if (roleNames.isEmpty()) {
+                    rowResults.add(new StaffImportRowResult(
+                            excelRowNumber,
+                            username,
+                            email,
+                            List.of(),
+                            active,
+                            false,
+                            null,
+                            "Role (row " + excelRowNumber + ") không được để trống"
+                    ));
+                    continue;
+                }
+                
+                if (roleNames.size() > 1) {
+                    rowResults.add(new StaffImportRowResult(
+                            excelRowNumber,
+                            username,
+                            email,
+                            roleNames,
+                            active,
+                            false,
+                            null,
+                            "Role (row " + excelRowNumber + ") chỉ được phép có 1 role, không được có nhiều roles"
+                    ));
+                    continue;
+                }
 
                 try {
                     StaffImportRow parsedRow = buildImportRow(excelRowNumber, username, email, roleNames, active, activeRaw);
@@ -113,6 +192,8 @@ public class StaffImportService {
                     );
                     baseServiceClient.syncStaffResident(created.getId(), created.getUsername(), created.getEmail(), null);
                     successRows++;
+                    seenUsernames.add(parsedRow.getUsername().toLowerCase());
+                    seenEmails.add(parsedRow.getEmail().toLowerCase());
                     rowResults.add(new StaffImportRowResult(
                             excelRowNumber,
                             parsedRow.getUsername(),
@@ -166,13 +247,28 @@ public class StaffImportService {
         if (roleNames.isEmpty()) {
             throw new IllegalArgumentException("Role (row " + rowNumber + ") không được để trống");
         }
+        if (roleNames.size() > 1) {
+            throw new IllegalArgumentException("Role (row " + rowNumber + ") chỉ được phép có 1 role, không được có nhiều roles");
+        }
         validateActive(active, activeRaw, rowNumber);
         List<UserRole> roles = roleNames.stream()
                 .map(roleName -> {
+                    String trimmedRoleName = roleName.trim().toUpperCase(Locale.ROOT);
+                    validateRole(trimmedRoleName, rowNumber);
                     try {
-                        return UserRole.valueOf(roleName.trim().toUpperCase(Locale.ROOT));
+                        UserRole role = UserRole.valueOf(trimmedRoleName);
+                        if (role == UserRole.ADMIN) {
+                            throw new IllegalArgumentException("Không thể tạo tài khoản với role ADMIN tại dòng " + rowNumber);
+                        }
+                        if (role == UserRole.RESIDENT || role == UserRole.UNIT_OWNER) {
+                            throw new IllegalArgumentException("Không thể tạo tài khoản staff với role " + role + " tại dòng " + rowNumber);
+                        }
+                        return role;
                     } catch (IllegalArgumentException ex) {
-                        throw new IllegalArgumentException("Role không hợp lệ tại dòng " + rowNumber + ": " + roleName);
+                        if (ex.getMessage().contains("ADMIN") || ex.getMessage().contains("RESIDENT") || ex.getMessage().contains("UNIT_OWNER") || ex.getMessage().contains("không hợp lệ")) {
+                            throw ex;
+                        }
+                        throw new IllegalArgumentException("Role không hợp lệ tại dòng " + rowNumber + ": " + roleName + ". Các role hợp lệ: ACCOUNTANT, TECHNICIAN, SUPPORTER");
                     }
                 })
                 .collect(Collectors.toList());
@@ -241,16 +337,69 @@ public class StaffImportService {
             throw new IllegalArgumentException("Email (row " + rowNumber + ") không được để trống");
         }
         
-        String emailPattern = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$";
+        long atCount = email.chars().filter(ch -> ch == '@').count();
+        if (atCount == 0) {
+            throw new IllegalArgumentException(
+                    String.format("Email (row %d) phải có ký tự @", rowNumber)
+            );
+        }
+        if (atCount > 1) {
+            throw new IllegalArgumentException(
+                    String.format("Email (row %d) chỉ được có 1 ký tự @", rowNumber)
+            );
+        }
+        
+        String[] parts = email.split("@");
+        if (parts.length != 2) {
+            throw new IllegalArgumentException(
+                    String.format("Email (row %d) không đúng định dạng", rowNumber)
+            );
+        }
+        
+        String localPart = parts[0];
+        String domain = parts[1];
+        
+        if (!domain.toLowerCase().endsWith(".com")) {
+            throw new IllegalArgumentException(
+                    String.format("Email (row %d) phải có đuôi .com. Ví dụ: user@example.com", rowNumber)
+            );
+        }
+        
+        String localPartPattern = "^[a-zA-Z0-9._%+-]+$";
+        if (!localPart.matches(localPartPattern)) {
+            throw new IllegalArgumentException(
+                    String.format("Email (row %d) - phần trước @ chỉ được chứa chữ cái (a-z, A-Z), số (0-9) và các ký tự: . _ %% + -", rowNumber)
+            );
+        }
+        
+        String domainWithoutCom = domain.substring(0, domain.length() - 4);
+        String domainPattern = "^[a-zA-Z0-9.-]+$";
+        if (!domainWithoutCom.matches(domainPattern)) {
+            throw new IllegalArgumentException(
+                    String.format("Email (row %d) - phần domain chỉ được chứa chữ cái (a-z, A-Z), số (0-9) và các ký tự: . -", rowNumber)
+            );
+        }
+        
+        String emailPattern = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.com$";
         if (!email.matches(emailPattern)) {
             throw new IllegalArgumentException(
-                    String.format("Email (row %d) không đúng định dạng. Ví dụ: user@example.com", rowNumber)
+                    String.format("Email (row %d) không đúng định dạng. Email phải có đuôi .com. Ví dụ: user@example.com", rowNumber)
             );
         }
         
         if (email.length() > 255) {
             throw new IllegalArgumentException(
                     String.format("Email (row %d) không được vượt quá 255 ký tự", rowNumber)
+            );
+        }
+    }
+
+    private void validateRole(String roleName, int rowNumber) {
+        try {
+            UserRole.valueOf(roleName);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                    String.format("Role không hợp lệ tại dòng %d: '%s'. Các role hợp lệ cho staff: ACCOUNTANT, TECHNICIAN, SUPPORTER", rowNumber, roleName)
             );
         }
     }

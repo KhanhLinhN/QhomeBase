@@ -422,9 +422,6 @@ public class MeterReadingImportService {
         return saved.getId();
     }
 
-    /**
-     * Send notification to resident about new invoice created from meter reading import
-     */
     private void sendInvoiceNotification(UUID residentId, UUID unitId, InvoiceDto invoice, 
                                          String serviceCode, BigDecimal totalUsage) {
         if (residentId == null) {

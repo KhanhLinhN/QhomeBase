@@ -2,6 +2,8 @@ package com.QhomeBase.baseservice.repository;
 
 import com.QhomeBase.baseservice.model.Building;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -14,5 +16,10 @@ public interface BuildingRepository extends JpaRepository<Building,UUID> {
     Building getBuildingById(UUID id);
 
     Optional<Building> findByCode(String code);
+    
+    Optional<Building> findByName(String name);
+    
+    @Query("SELECT b FROM Building b WHERE LOWER(b.name) = LOWER(:name)")
+    List<Building> findByNameIgnoreCase(@Param("name") String name);
 }
 

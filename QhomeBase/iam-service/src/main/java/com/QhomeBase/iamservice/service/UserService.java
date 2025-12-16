@@ -14,11 +14,16 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class UserService {
+    
+    private static final Pattern STRONG_PASSWORD_PATTERN = Pattern.compile(
+            "^(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$"
+    );
     
     public final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -109,10 +114,23 @@ public class UserService {
     public void updatePassword(UUID userId, String newPassword) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        
+        if (!isStrongPassword(newPassword)) {
+            throw new IllegalArgumentException("Password must be at least 8 characters and contain at least one special character");
+        }
+        
+        if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+            throw new IllegalArgumentException("New password must be different from old password");
+        }
+        
         String encodedPassword = passwordEncoder.encode(newPassword);
         user.setPasswordHash(encodedPassword);
         userRepository.save(user);
         log.info("Updated password for user {}", userId);
+    }
+    
+    private boolean isStrongPassword(String password) {
+        return STRONG_PASSWORD_PATTERN.matcher(password).matches();
     }
 
     @Transactional(readOnly = true)
@@ -174,6 +192,9 @@ public class UserService {
         
         if (roles == null || roles.isEmpty()) {
             throw new IllegalArgumentException("Staff account requires at least one role");
+        }
+        if (roles.stream().anyMatch(role -> role == UserRole.ADMIN)) {
+            throw new IllegalArgumentException("Cannot create admin accounts through this endpoint");
         }
         if (roles.stream().anyMatch(role -> role == UserRole.RESIDENT || role == UserRole.UNIT_OWNER)) {
             throw new IllegalArgumentException("Staff account cannot include resident or unit owner roles");
@@ -251,6 +272,9 @@ public class UserService {
         if (roles != null) {
             if (roles.isEmpty()) {
                 throw new IllegalArgumentException("Staff account requires at least one role");
+            }
+            if (roles.stream().anyMatch(role -> role == UserRole.ADMIN)) {
+                throw new IllegalArgumentException("Cannot assign admin role through this endpoint");
             }
             if (roles.stream().anyMatch(role -> role == UserRole.RESIDENT || role == UserRole.UNIT_OWNER)) {
                 throw new IllegalArgumentException("Staff account cannot include resident or unit owner roles");
@@ -330,9 +354,14 @@ public class UserService {
             throw new IllegalArgumentException("Email cannot be empty");
         }
         
-        String emailPattern = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$";
+        long atCount = email.chars().filter(ch -> ch == '@').count();
+        if (atCount != 1) {
+            throw new IllegalArgumentException("Email phải có đuôi .com. Ví dụ: user@example.com");
+        }
+        
+        String emailPattern = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.com$";
         if (!email.matches(emailPattern)) {
-            throw new IllegalArgumentException("Email không đúng định dạng. Ví dụ: user@example.com");
+            throw new IllegalArgumentException("Email phải có đuôi .com. Ví dụ: user@example.com");
         }
         
         if (email.length() > 255) {

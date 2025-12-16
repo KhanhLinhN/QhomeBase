@@ -15,8 +15,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -50,16 +53,21 @@ public class BuildingImportService {
             int idxAddress = findColumnIndex(header, "address");
             int idxNumberOfFloors = findColumnIndex(header, "numberOfFloors");
             if (idxName < 0) {
-                throw new IllegalArgumentException("Thiếu cột name");
+                throw new IllegalArgumentException("Thiếu cột name (bắt buộc)");
+            }
+            if (idxAddress < 0) {
+                throw new IllegalArgumentException("Thiếu cột address (bắt buộc)");
             }
             if (idxNumberOfFloors < 0) {
                 throw new IllegalArgumentException("Thiếu cột numberOfFloors (bắt buộc)");
             }
 
+            Set<String> seenNames = new HashSet<>();
+            
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row r = sheet.getRow(i);
                 if (r == null) continue;
-                int excelRow = i;
+                int excelRow = i + 1;
                 String name = readString(r, idxName);
                 String address = readString(r, idxAddress);
                 Integer numberOfFloors = readInteger(r, idxNumberOfFloors);
@@ -67,6 +75,33 @@ public class BuildingImportService {
                 try {
                     String trimmedName = name != null ? name.trim() : null;
                     String trimmedAddress = address != null ? address.trim() : null;
+                    
+                    if (trimmedName == null || trimmedName.isEmpty()) {
+                        throw new IllegalArgumentException("Tên building (row " + excelRow + ") không được để trống");
+                    }
+                    
+                    if (trimmedAddress == null || trimmedAddress.isEmpty()) {
+                        throw new IllegalArgumentException("Địa chỉ (row " + excelRow + ") không được để trống");
+                    }
+                    
+                    if (numberOfFloors == null) {
+                        throw new IllegalArgumentException("Số tầng (row " + excelRow + ") không được để trống");
+                    }
+                    
+                    String normalizedName = trimmedName.trim().toLowerCase(Locale.ROOT);
+                    if (seenNames.contains(normalizedName)) {
+                        throw new IllegalArgumentException("Tên building (row " + excelRow + ") đã tồn tại trong file import: " + trimmedName);
+                    }
+                    seenNames.add(normalizedName);
+                    
+                    List<Building> existingBuildings = buildingRepository.findByNameIgnoreCase(trimmedName);
+                    if (!existingBuildings.isEmpty()) {
+                        int count = existingBuildings.size();
+                        String message = count == 1 
+                            ? "Tên building (row " + excelRow + ") đã tồn tại trong hệ thống: " + trimmedName
+                            : "Tên building (row " + excelRow + ") đã tồn tại trong hệ thống (" + count + " building có cùng tên): " + trimmedName;
+                        throw new IllegalArgumentException(message);
+                    }
                     
                     validateBuildingName(trimmedName, excelRow);
                     validateBuildingAddress(trimmedAddress, excelRow);
@@ -150,11 +185,15 @@ public class BuildingImportService {
             v = c.getStringCellValue();
         } else if (c.getCellType() == CellType.NUMERIC) {
             v = String.valueOf((long) c.getNumericCellValue());
+        } else if (c.getCellType() == CellType.BLANK) {
+            return null;
         } else {
             DataFormatter formatter = new DataFormatter();
             v = formatter.formatCellValue(c);
         }
-        return v != null ? v.trim() : null;
+        if (v == null) return null;
+        String trimmed = v.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private void validateBuildingName(String name, int rowNumber) {
@@ -172,14 +211,16 @@ public class BuildingImportService {
     }
 
     private void validateBuildingAddress(String address, int rowNumber) {
-        if (address != null && !address.isBlank()) {
-            if (address.length() > 500) {
-                throw new IllegalArgumentException("Địa chỉ (row " + rowNumber + ") không được vượt quá 500 ký tự");
-            }
-            
-            if (address.length() < 5) {
-                throw new IllegalArgumentException("Địa chỉ (row " + rowNumber + ") phải có ít nhất 5 ký tự");
-            }
+        if (address == null || address.isBlank()) {
+            throw new IllegalArgumentException("Địa chỉ (row " + rowNumber + ") không được để trống");
+        }
+        
+        if (address.length() > 500) {
+            throw new IllegalArgumentException("Địa chỉ (row " + rowNumber + ") không được vượt quá 500 ký tự");
+        }
+        
+        if (address.length() < 5) {
+            throw new IllegalArgumentException("Địa chỉ (row " + rowNumber + ") phải có ít nhất 5 ký tự");
         }
     }
 
@@ -187,6 +228,9 @@ public class BuildingImportService {
         if (idx < 0) return null;
         Cell c = r.getCell(idx);
         if (c == null) return null;
+        if (c.getCellType() == CellType.BLANK) {
+            return null;
+        }
         try {
             if (c.getCellType() == CellType.NUMERIC) {
                 double numValue = c.getNumericCellValue();
@@ -196,7 +240,11 @@ public class BuildingImportService {
                 if (strValue == null || strValue.trim().isEmpty()) {
                     return null;
                 }
-                return Integer.parseInt(strValue.trim());
+                String trimmed = strValue.trim();
+                if (trimmed.isEmpty()) {
+                    return null;
+                }
+                return Integer.parseInt(trimmed);
             }
         } catch (Exception e) {
             return null;

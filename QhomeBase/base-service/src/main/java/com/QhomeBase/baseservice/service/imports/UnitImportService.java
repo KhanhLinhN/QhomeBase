@@ -63,12 +63,28 @@ public class UnitImportService {
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row r = sheet.getRow(i);
                 if (r == null) continue;
-                int excelRow = i;
+                int excelRow = i + 1;
                 String buildingCode = readString(r, idxBuildingCode);
-                Integer floor = readInt(r, idxFloor);
+                Integer floor = readInt(r, idxFloor, "Floor", excelRow);
                 BigDecimal areaM2 = readDecimal(r, idxArea);
-                Integer bedrooms = readInt(r, idxBedrooms);
+                Integer bedrooms = readInt(r, idxBedrooms, "Bedrooms", excelRow);
                 try {
+                    if (buildingCode == null || buildingCode.trim().isEmpty()) {
+                        throw new IllegalArgumentException("BuildingCode (row " + excelRow + ") không được để trống");
+                    }
+                    
+                    if (floor == null) {
+                        throw new IllegalArgumentException("Floor (row " + excelRow + ") không được để trống");
+                    }
+                    
+                    if (areaM2 == null) {
+                        throw new IllegalArgumentException("AreaM2 (row " + excelRow + ") không được để trống");
+                    }
+                    
+                    if (bedrooms == null) {
+                        throw new IllegalArgumentException("Bedrooms (row " + excelRow + ") không được để trống");
+                    }
+                    
                     Building building = resolveBuilding(buildingCode, excelRow);
                     UUID buildingId = building.getId();
                     validateUnitData(floor, areaM2, bedrooms, building, excelRow);
@@ -164,25 +180,58 @@ public class UnitImportService {
         if (idx < 0) return null;
         Cell c = r.getCell(idx);
         if (c == null) return null;
-        c.setCellType(CellType.STRING);
-        String v = c.getStringCellValue();
-        return v != null ? v.trim() : null;
+        if (c.getCellType() == CellType.BLANK) {
+            return null;
+        }
+        String v;
+        if (c.getCellType() == CellType.STRING) {
+            v = c.getStringCellValue();
+        } else if (c.getCellType() == CellType.NUMERIC) {
+            v = String.valueOf((long) c.getNumericCellValue());
+        } else {
+            DataFormatter formatter = new DataFormatter();
+            v = formatter.formatCellValue(c);
+        }
+        if (v == null) return null;
+        String trimmed = v.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private Integer readInt(Row r, int idx) {
+    private Integer readInt(Row r, int idx, String fieldName, int rowNumber) {
         if (idx < 0) return null;
         Cell c = r.getCell(idx);
         if (c == null) return null;
-        if (c.getCellType() == CellType.NUMERIC) {
-            return (int) Math.round(c.getNumericCellValue());
+        if (c.getCellType() == CellType.BLANK) {
+            return null;
         }
-        c.setCellType(CellType.STRING);
-        String v = c.getStringCellValue();
+        if (c.getCellType() == CellType.NUMERIC) {
+            double numericValue = c.getNumericCellValue();
+            // Kiểm tra xem có phải số nguyên không
+            if (numericValue != Math.floor(numericValue)) {
+                throw new IllegalArgumentException(fieldName + " (row " + rowNumber + ") phải là số nguyên, không được là số thập phân: " + numericValue);
+            }
+            return (int) numericValue;
+        }
+        String v;
+        if (c.getCellType() == CellType.STRING) {
+            v = c.getStringCellValue();
+        } else {
+            DataFormatter formatter = new DataFormatter();
+            v = formatter.formatCellValue(c);
+        }
         if (v == null || v.isBlank()) return null;
+        String trimmed = v.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        // Kiểm tra xem có chứa dấu chấm thập phân không
+        if (trimmed.contains(".") || trimmed.contains(",")) {
+            throw new IllegalArgumentException(fieldName + " (row " + rowNumber + ") phải là số nguyên, không được là số thập phân: " + trimmed);
+        }
         try {
-            return Integer.parseInt(v.trim());
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Giá trị không hợp lệ (số nguyên): " + v);
+            return Integer.parseInt(trimmed);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(fieldName + " (row " + rowNumber + ") không phải là số nguyên hợp lệ: " + trimmed);
         }
     }
 
@@ -190,14 +239,26 @@ public class UnitImportService {
         if (idx < 0) return null;
         Cell c = r.getCell(idx);
         if (c == null) return null;
+        if (c.getCellType() == CellType.BLANK) {
+            return null;
+        }
         if (c.getCellType() == CellType.NUMERIC) {
             return java.math.BigDecimal.valueOf(c.getNumericCellValue());
         }
-        c.setCellType(CellType.STRING);
-        String v = c.getStringCellValue();
+        String v;
+        if (c.getCellType() == CellType.STRING) {
+            v = c.getStringCellValue();
+        } else {
+            DataFormatter formatter = new DataFormatter();
+            v = formatter.formatCellValue(c);
+        }
         if (v == null || v.isBlank()) return null;
+        String trimmed = v.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
         try {
-            return new java.math.BigDecimal(v.trim());
+            return new java.math.BigDecimal(trimmed);
         } catch (Exception e) {
             throw new IllegalArgumentException("Giá trị không hợp lệ (số thập phân): " + v);
         }
@@ -213,8 +274,8 @@ public class UnitImportService {
         if (floor == null) {
             throw new IllegalArgumentException("Floor (row " + rowNumber + ") không được để trống");
         }
-        if (floor < 0) {
-            throw new IllegalArgumentException("Floor (row " + rowNumber + ") phải lớn hơn hoặc bằng 0");
+        if (floor <= 0) {
+            throw new IllegalArgumentException("Floor (row " + rowNumber + ") phải lớn hơn 0");
         }
         if (building.getNumberOfFloors() != null && floor > building.getNumberOfFloors()) {
             throw new IllegalArgumentException(
@@ -242,8 +303,8 @@ public class UnitImportService {
         if (bedrooms == null) {
             throw new IllegalArgumentException("Bedrooms (row " + rowNumber + ") không được để trống");
         }
-        if (bedrooms < 0) {
-            throw new IllegalArgumentException("Bedrooms (row " + rowNumber + ") phải lớn hơn hoặc bằng 0");
+        if (bedrooms <= 0) {
+            throw new IllegalArgumentException("Bedrooms (row " + rowNumber + ") phải lớn hơn 0");
         }
         if (bedrooms > 20) {
             throw new IllegalArgumentException("Bedrooms (row " + rowNumber + ") không được vượt quá 20");
