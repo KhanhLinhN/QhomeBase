@@ -233,7 +233,7 @@ public class AccountProvideService {
                 throw new IllegalArgumentException("Email phải có đuôi .com. Ví dụ: user@example.com");
             }
             if (residentRepository.existsByEmail(email)) {
-                throw new IllegalArgumentException("There is already a resident with that email");
+            throw new IllegalArgumentException("There is already a resident with that email");
             }
         }
 
