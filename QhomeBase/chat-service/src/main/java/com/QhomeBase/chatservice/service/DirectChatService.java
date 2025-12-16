@@ -374,7 +374,7 @@ public class DirectChatService {
         } else {
             // User is offline (out of app) - send FCM push notification
             // This ensures user receives notification even when app is closed or in background
-            fcmPushService.sendDirectMessageNotification(otherParticipantId, conversationId, response, residentId);
+        fcmPushService.sendDirectMessageNotification(otherParticipantId, conversationId, response, residentId);
             log.info("📱 [DirectChatService] Recipient {} is OFFLINE - sent FCM push notification (conversationId: {})", 
                     otherParticipantId, conversationId);
         }

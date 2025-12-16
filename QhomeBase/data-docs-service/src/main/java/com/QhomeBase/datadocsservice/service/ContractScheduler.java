@@ -163,8 +163,8 @@ public class ContractScheduler {
                         } else {
                             log.debug("⏭️ Skipping reminder 2 for contract {}: firstReminderDate={}, today={}", 
                                     contract.getContractNumber(), firstReminderDate, today);
-                        }
-                    }
+                }
+            }
                     // Lần 3: 10 ngày trước khi hết hạn hợp đồng - BẮT BUỘC
                     // Chỉ gửi nếu:
                     // - Đã gửi lần 1 (renewalReminderSentAt != null)
@@ -245,8 +245,8 @@ public class ContractScheduler {
     private void sendReminderNotificationToAllResidents(Contract contract, int reminderNumber, boolean isFinalReminder) {
         try {
             Optional<UUID> buildingIdOpt = baseServiceClient.getBuildingIdByUnitId(contract.getUnitId());
-            UUID buildingId = buildingIdOpt.orElse(null);
-            
+                UUID buildingId = buildingIdOpt.orElse(null);
+                
             // Get all residents in the unit (including household members)
             List<UUID> residentIds = baseServiceClient.getAllResidentIdsByUnitId(contract.getUnitId());
             
@@ -261,16 +261,16 @@ public class ContractScheduler {
             // Send notification to each resident
             for (UUID residentId : residentIds) {
                 try {
-                    notificationClient.sendContractRenewalReminderNotification(
-                            residentId,
-                            buildingId,
-                            contract.getId(),
-                            contract.getContractNumber(),
-                            reminderNumber,
-                            isFinalReminder
-                    );
+                notificationClient.sendContractRenewalReminderNotification(
+                        residentId,
+                        buildingId,
+                        contract.getId(),
+                        contract.getContractNumber(),
+                        reminderNumber,
+                        isFinalReminder
+                );
                     log.debug("✅ Sent notification for contract {} reminder #{} to resident {}", 
-                            contract.getContractNumber(), reminderNumber, residentId);
+                        contract.getContractNumber(), reminderNumber, residentId);
                 } catch (Exception e) {
                     log.error("❌ Error sending notification to resident {} for contract {} reminder #{}", 
                             residentId, contract.getContractNumber(), reminderNumber, e);

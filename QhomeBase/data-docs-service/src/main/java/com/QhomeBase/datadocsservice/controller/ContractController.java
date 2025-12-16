@@ -747,24 +747,24 @@ public class ContractController {
                                 int fieldIndex = payload.indexOf(fieldPattern);
                                 int start = fieldIndex + fieldPattern.length();
                                 
-                                // Skip whitespace and colon
-                                while (start < payload.length() && (payload.charAt(start) == ' ' || payload.charAt(start) == ':')) {
-                                    start++;
-                                }
+                            // Skip whitespace and colon
+                            while (start < payload.length() && (payload.charAt(start) == ' ' || payload.charAt(start) == ':')) {
+                                start++;
+                            }
                                 
-                                // Skip opening quote if present
-                                if (start < payload.length() && payload.charAt(start) == '"') {
-                                    start++;
-                                }
+                            // Skip opening quote if present
+                            if (start < payload.length() && payload.charAt(start) == '"') {
+                                start++;
+                            }
                                 
                                 // Find end of value (quote, comma, or closing brace)
-                                int end = start;
-                                while (end < payload.length() && payload.charAt(end) != '"' && payload.charAt(end) != ',' && payload.charAt(end) != '}') {
-                                    end++;
-                                }
+                            int end = start;
+                            while (end < payload.length() && payload.charAt(end) != '"' && payload.charAt(end) != ',' && payload.charAt(end) != '}') {
+                                end++;
+                            }
                                 
-                                if (end > start) {
-                                    String userIdStr = payload.substring(start, end);
+                            if (end > start) {
+                                String userIdStr = payload.substring(start, end);
                                     log.info("🔍 [ContractController] Extracted userId from field '{}': {}", field, userIdStr);
                                     
                                     // Try to parse as UUID

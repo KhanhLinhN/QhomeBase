@@ -21,7 +21,7 @@ public interface GroupInvitationRepository extends JpaRepository<GroupInvitation
 
     @Query("SELECT gi FROM GroupInvitation gi WHERE gi.groupId = :groupId AND gi.status = 'PENDING'")
     List<GroupInvitation> findPendingInvitationsByGroupId(@Param("groupId") UUID groupId);
-    
+
     @Query("SELECT gi FROM GroupInvitation gi WHERE gi.groupId = :groupId AND (gi.status = 'PENDING' OR gi.status = 'ACCEPTED')")
     List<GroupInvitation> findInvitationsByGroupId(@Param("groupId") UUID groupId);
 

@@ -582,22 +582,22 @@ public class ContractService {
                     // Gọi API nếu chưa có cache
                     log.info("🔍 [ContractService] Calling baseServiceClient.isOwnerOfUnit(userId={}, unitId={})", 
                             userId, contract.getUnitId());
-                    isOwner = baseServiceClient.isOwnerOfUnit(userId, contract.getUnitId(), accessToken);
+                isOwner = baseServiceClient.isOwnerOfUnit(userId, contract.getUnitId(), accessToken);
                     log.info("✅ [ContractService] isOwnerOfUnit result: isOwner={}", isOwner);
                 }
                 
                 if (isOwner) {
                     log.info("✅ [ContractService] User is OWNER. Setting permissions...");
                     // OWNER/TENANT can renew, cancel, extend if contract is in valid state
-                    // Can renew if contract is renewable (not already renewed, in REMINDED status)
-                    canRenew = contract.getRenewedContractId() == null 
-                            && ("REMINDED".equals(contract.getRenewalStatus()) || "PENDING".equals(contract.getRenewalStatus()));
-                    
-                    // Can cancel if contract is active
-                    canCancel = true;
-                    
-                    // Can extend if contract has endDate
-                    canExtend = contract.getEndDate() != null;
+                        // Can renew if contract is renewable (not already renewed, in REMINDED status)
+                        canRenew = contract.getRenewedContractId() == null 
+                                && ("REMINDED".equals(contract.getRenewalStatus()) || "PENDING".equals(contract.getRenewalStatus()));
+                        
+                        // Can cancel if contract is active
+                        canCancel = true;
+                        
+                        // Can extend if contract has endDate
+                        canExtend = contract.getEndDate() != null;
                     
                     log.info("✅ [ContractService] Permissions set: canRenew={}, canCancel={}, canExtend={}", 
                             canRenew, canCancel, canExtend);
@@ -1056,15 +1056,15 @@ public class ContractService {
         if (daysUntilEndDate >= 9 && daysUntilEndDate <= 11) {
             log.debug("Contract {}: reminderCount = 3 ({} days until endDate - FINAL REMINDER)", 
                     contract.getContractNumber(), daysUntilEndDate);
-            return 3;
-        }
+                return 3;
+            }
         
         // Lần 2: 20 ngày trước khi hết hạn (19-21 ngày)
         if (daysUntilEndDate >= 19 && daysUntilEndDate <= 21) {
             log.debug("Contract {}: reminderCount = 2 ({} days until endDate)", 
                     contract.getContractNumber(), daysUntilEndDate);
-            return 2;
-        }
+                return 2;
+            }
         
         // Lần 1: 30 ngày trước khi hết hạn (29-31 ngày)
         if (daysUntilEndDate >= 29 && daysUntilEndDate <= 31) {
