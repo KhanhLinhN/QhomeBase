@@ -98,6 +98,55 @@ public class UserController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @PutMapping("/{userId}")
+    @PreAuthorize("@authz.canUpdateUser(#userId)")
+    public ResponseEntity<UserAccountDto> updateUserProfile(
+            @PathVariable UUID userId,
+            @Valid @RequestBody UpdateUserProfileRequest request) {
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+            
+            if (request.username() != null && !request.username().isBlank() && !request.username().equalsIgnoreCase(user.getUsername())) {
+                String trimmedUsername = request.username().trim();
+                userRepository.findByUsername(trimmedUsername).ifPresent(existing -> {
+                    if (!existing.getId().equals(userId)) {
+                        throw new IllegalArgumentException("Username already exists: " + trimmedUsername);
+                    }
+                });
+                user.setUsername(trimmedUsername);
+            }
+
+            if (request.email() != null && !request.email().isBlank() && !request.email().equalsIgnoreCase(user.getEmail())) {
+                String trimmedEmail = request.email().trim();
+                userRepository.findByEmail(trimmedEmail).ifPresent(existing -> {
+                    if (!existing.getId().equals(userId)) {
+                        throw new IllegalArgumentException("Email already exists: " + trimmedEmail);
+                    }
+                });
+                user.setEmail(trimmedEmail);
+            }
+
+            if (request.active() != null) {
+                user.setActive(request.active());
+            }
+
+            userRepository.save(user);
+            
+            // Reload user with roles initialized to avoid lazy loading issues
+            User saved = userService.findUserWithRolesById(userId)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+            
+            return ResponseEntity.ok(toAccountDto(saved));
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to update user profile {}: {}", userId, e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Error updating user profile {}", userId, e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @RequestMapping(value = "/{userId}/password", method = {RequestMethod.PATCH, RequestMethod.PUT})
     @PreAuthorize("@authz.canUpdateUser(#userId)")
     public ResponseEntity<Void> updatePassword(
@@ -422,6 +471,42 @@ public class UserController {
         }
     }
 
+    @DeleteMapping("/{userId}")
+    @PreAuthorize("@authz.canDeleteUser(#userId)")
+    public ResponseEntity<Void> deleteUserAccount(@PathVariable UUID userId) {
+        try {
+            User user = userService.findUserWithRolesById(userId)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+            
+            // Check if user is staff or resident
+            boolean isStaff = user.getRoles().stream().anyMatch(role -> 
+                role == UserRole.ADMIN || 
+                role == UserRole.ACCOUNTANT || 
+                role == UserRole.TECHNICIAN || 
+                role == UserRole.SUPPORTER
+            );
+            
+            if (isStaff) {
+                userService.deleteStaffAccount(userId);
+            } else {
+                // For resident accounts, check if inactive
+                if (user.isActive()) {
+                    throw new IllegalArgumentException("Cannot delete active resident account. Please deactivate it first.");
+                }
+                userRepository.delete(user);
+                log.info("Deleted resident user account {}", userId);
+            }
+            
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to delete account {}: {}", userId, e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Error deleting account {}", userId, e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @DeleteMapping("/staff/{userId}")
     @PreAuthorize("@authz.canDeleteUser(#userId)")
     public ResponseEntity<Void> deleteStaffAccount(@PathVariable UUID userId) {
@@ -442,6 +527,12 @@ public class UserController {
             int failedLoginAttempts,
             boolean accountLocked,
             java.time.LocalDateTime lastLogin
+    ) {}
+
+    public record UpdateUserProfileRequest(
+            String username,
+            String email,
+            Boolean active
     ) {}
 
     public record UpdatePasswordRequest(
