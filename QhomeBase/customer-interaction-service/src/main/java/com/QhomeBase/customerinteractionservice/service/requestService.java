@@ -3,7 +3,6 @@ package com.QhomeBase.customerinteractionservice.service;
 import com.QhomeBase.customerinteractionservice.client.BaseServiceClient;
 import com.QhomeBase.customerinteractionservice.client.dto.ResidentResponse;
 import com.QhomeBase.customerinteractionservice.dto.RequestDTO;
-import com.QhomeBase.customerinteractionservice.dto.StatusCountDTO;
 import com.QhomeBase.customerinteractionservice.model.ProcessingLog;
 import com.QhomeBase.customerinteractionservice.model.Request;
 import com.QhomeBase.customerinteractionservice.repository.processingLogRepository;
@@ -73,6 +72,7 @@ public class requestService {
             entity.getType(),
             entity.getFee(),
             entity.getRepairedDate() != null ? entity.getRepairedDate().toString() : null,
+            entity.getServiceBookingId(),
             entity.getCreatedAt().toString().replace("T", " "),
             entity.getUpdatedAt() != null ? entity.getUpdatedAt().toString().replace("T", " ") : null
         );
@@ -91,6 +91,7 @@ public class requestService {
     }
 
     // Method to get filtered requests with pagination
+    // Only returns requests related to service bookings (amenities feedback)
     public Page<RequestDTO> getFilteredRequests(
             String status,
             int pageNo,
@@ -99,6 +100,9 @@ public class requestService {
 
         Specification<Request> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+
+            // Only show feedback for amenities services (has serviceBookingId)
+            predicates.add(cb.isNotNull(root.get("serviceBookingId")));
 
             if (StringUtils.hasText(status)) {
                 predicates.add(cb.equal(root.get("status"), status));
@@ -123,13 +127,31 @@ public class requestService {
     }
 
     public Map<String, Long> getRequestCounts(String dateFrom, String dateTo) {
+        // Only count requests related to service bookings (amenities feedback)
+        Specification<Request> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.isNotNull(root.get("serviceBookingId")));
+            
+            if (StringUtils.hasText(dateFrom)) {
+                LocalDate fromDate = LocalDate.parse(dateFrom);
+                predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), fromDate.atStartOfDay()));
+            }
 
-        List<StatusCountDTO> countsByStatus = requestRepository.countRequestsByStatus(
-                dateFrom, dateTo
-        );
+            if (StringUtils.hasText(dateTo)) {
+                LocalDate toDate = LocalDate.parse(dateTo);
+                predicates.add(cb.lessThan(root.get("createdAt"), toDate.plusDays(1).atStartOfDay()));
+            }
 
-        Map<String, Long> result = countsByStatus.stream()
-                .collect(Collectors.toMap(StatusCountDTO::getStatus, StatusCountDTO::getCount));
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        // Count by status manually since we need to filter by serviceBookingId
+        List<Request> allRequests = requestRepository.findAll(spec);
+        Map<String, Long> result = allRequests.stream()
+                .collect(Collectors.groupingBy(
+                    Request::getStatus,
+                    Collectors.counting()
+                ));
 
         long total = result.values().stream().mapToLong(Long::longValue).sum();
         result.put("total", total);
@@ -202,6 +224,7 @@ public class requestService {
                 : "Pending");
         entity.setType(dto.getType());
         entity.setFee(dto.getFee());
+        entity.setServiceBookingId(dto.getServiceBookingId());
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         entity.setCreatedAt(now);
         entity.setUpdatedAt(now);

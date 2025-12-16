@@ -23,6 +23,7 @@ public class RequestDTO {
     String type;
     BigDecimal fee;
     String repairedDate;
+    UUID serviceBookingId;
     String createdAt;
     String updatedAt;
 }

@@ -67,6 +67,7 @@ public class feedbackService {
             entity.getType(),
             entity.getFee(),
             entity.getRepairedDate() != null ? entity.getRepairedDate().toString() : null,
+            entity.getServiceBookingId(),
             entity.getCreatedAt().toString().replace("T", " "),
             entity.getUpdatedAt() != null ? entity.getUpdatedAt().toString().replace("T", " ") : null
         );

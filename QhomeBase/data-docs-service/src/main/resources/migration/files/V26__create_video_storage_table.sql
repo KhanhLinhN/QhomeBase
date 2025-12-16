@@ -24,14 +24,3 @@ CREATE TABLE IF NOT EXISTS files.video_storage (
     CONSTRAINT ck_video_storage_duration CHECK (duration_seconds IS NULL OR duration_seconds >= 0)
 );
 
--- Tạo indexes
-CREATE INDEX idx_video_storage_category ON files.video_storage(category);
-CREATE INDEX idx_video_storage_owner_id ON files.video_storage(owner_id);
-CREATE INDEX idx_video_storage_uploaded_by ON files.video_storage(uploaded_by);
-CREATE INDEX idx_video_storage_uploaded_at ON files.video_storage(uploaded_at);
-CREATE INDEX idx_video_storage_deleted ON files.video_storage(is_deleted) WHERE is_deleted = false;
-CREATE INDEX idx_video_storage_category_owner ON files.video_storage(category, owner_id) WHERE is_deleted = false;
-
-COMMENT ON TABLE files.video_storage IS 'Lưu trữ metadata của video được upload thay vì ImageKit';
-COMMENT ON COLUMN files.video_storage.category IS 'Loại video: repair_request, marketplace_post, direct_chat, group_chat, marketplace_comment';
-COMMENT ON COLUMN files.video_storage.owner_id IS 'ID của entity sở hữu video (post_id, conversation_id, group_id, request_id)';

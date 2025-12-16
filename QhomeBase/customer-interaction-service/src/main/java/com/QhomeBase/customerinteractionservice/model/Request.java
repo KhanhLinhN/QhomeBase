@@ -39,6 +39,8 @@ public class Request {
     @Column(name = "repaired_date", nullable = true)
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate repairedDate;
+    @Column(name = "service_booking_id", nullable = true)
+    private UUID serviceBookingId;
     @Column(name = "created_at", nullable = false)
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;

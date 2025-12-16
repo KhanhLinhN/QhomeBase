@@ -299,6 +299,7 @@ public class processingLogService {
             request.getType(),
             request.getFee(),
             request.getRepairedDate() != null ? request.getRepairedDate().toString() : null,
+            request.getServiceBookingId(),
             request.getCreatedAt().toString().replace("T", " "),
             request.getUpdatedAt() != null ? request.getUpdatedAt().toString().replace("T", " ") : null
         );
