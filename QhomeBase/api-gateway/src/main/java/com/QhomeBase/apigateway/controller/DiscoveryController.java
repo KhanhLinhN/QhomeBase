@@ -34,6 +34,15 @@ public class DiscoveryController {
         return ResponseEntity.ok(info);
     }
 
+    /**
+     * Handle favicon.ico requests to avoid 404 logs
+     * Returns 204 No Content (no favicon file, but no error)
+     */
+    @GetMapping("/favicon.ico")
+    public ResponseEntity<Void> favicon() {
+        return ResponseEntity.noContent().build();
+    }
+
     @Value("${vnpay.base-url:}")
     private String vnpayBaseUrl;
 

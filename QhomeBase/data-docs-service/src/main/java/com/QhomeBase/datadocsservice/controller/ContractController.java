@@ -736,28 +736,71 @@ public class ContractController {
                     try {
                         // Decode payload (base64 URL-safe)
                         String payload = new String(java.util.Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
-                        // Extract "sub" field (user ID)
-                        if (payload.contains("\"sub\"")) {
-                            int start = payload.indexOf("\"sub\"") + 6;
-                            // Skip whitespace and colon
-                            while (start < payload.length() && (payload.charAt(start) == ' ' || payload.charAt(start) == ':')) {
-                                start++;
+                        log.info("🔍 [ContractController] JWT payload: {}", payload);
+                        
+                        // Try multiple fields: uid, userId, user_id, sub (in that order)
+                        String[] fieldsToCheck = {"uid", "userId", "user_id", "sub"};
+                        for (String field : fieldsToCheck) {
+                            String fieldPattern = "\"" + field + "\"";
+                            if (payload.contains(fieldPattern)) {
+                                log.info("🔍 [ContractController] Found field '{}' in JWT payload", field);
+                                int fieldIndex = payload.indexOf(fieldPattern);
+                                int start = fieldIndex + fieldPattern.length();
+                                
+                                // Skip whitespace and colon
+                                while (start < payload.length() && (payload.charAt(start) == ' ' || payload.charAt(start) == ':')) {
+                                    start++;
+                                }
+                                
+                                // Skip opening quote if present
+                                if (start < payload.length() && payload.charAt(start) == '"') {
+                                    start++;
+                                }
+                                
+                                // Find end of value (quote, comma, or closing brace)
+                                int end = start;
+                                while (end < payload.length() && payload.charAt(end) != '"' && payload.charAt(end) != ',' && payload.charAt(end) != '}') {
+                                    end++;
+                                }
+                                
+                                if (end > start) {
+                                    String userIdStr = payload.substring(start, end);
+                                    log.info("🔍 [ContractController] Extracted userId from field '{}': {}", field, userIdStr);
+                                    
+                                    // Try to parse as UUID
+                                    try {
+                                        UUID userId = UUID.fromString(userIdStr);
+                                        log.info("✅ [ContractController] Successfully extracted userId from JWT field '{}': {}", field, userId);
+                                        return userId;
+                                    } catch (IllegalArgumentException e) {
+                                        log.warn("⚠️ [ContractController] Failed to parse userId string '{}' as UUID: {}", userIdStr, e.getMessage());
+                                    }
+                                } else {
+                                    log.warn("⚠️ [ContractController] Found field '{}' but could not extract value", field);
+                                }
                             }
-                            // Skip opening quote if present
-                            if (start < payload.length() && payload.charAt(start) == '"') {
-                                start++;
-                            }
-                            int end = start;
-                            while (end < payload.length() && payload.charAt(end) != '"' && payload.charAt(end) != ',' && payload.charAt(end) != '}') {
-                                end++;
-                            }
-                            if (end > start) {
-                                String userIdStr = payload.substring(start, end);
-                                return UUID.fromString(userIdStr);
+                        }
+                        
+                        // If no field found, try to find any UUID-like string in payload
+                        log.warn("⚠️ [ContractController] Could not find uid, userId, user_id, or sub field in JWT payload");
+                        log.warn("⚠️ [ContractController] Attempting to find UUID pattern in payload...");
+                        
+                        // Try to find UUID pattern (8-4-4-4-12 format)
+                        java.util.regex.Pattern uuidPattern = java.util.regex.Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", java.util.regex.Pattern.CASE_INSENSITIVE);
+                        java.util.regex.Matcher matcher = uuidPattern.matcher(payload);
+                        if (matcher.find()) {
+                            String uuidStr = matcher.group();
+                            log.warn("⚠️ [ContractController] Found UUID pattern in payload: {} (may not be userId)", uuidStr);
+                            try {
+                                UUID userId = UUID.fromString(uuidStr);
+                                log.warn("⚠️ [ContractController] Using UUID pattern as userId: {} (verify this is correct)", userId);
+                                return userId;
+                            } catch (IllegalArgumentException e) {
+                                log.error("❌ [ContractController] Failed to parse UUID pattern: {}", uuidStr);
                             }
                         }
                     } catch (Exception e) {
-                        log.debug("Failed to parse JWT token: {}", e.getMessage());
+                        log.error("❌ [ContractController] Failed to parse JWT token: {}", e.getMessage(), e);
                     }
                 }
             }

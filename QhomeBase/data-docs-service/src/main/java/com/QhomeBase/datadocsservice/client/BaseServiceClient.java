@@ -23,10 +23,21 @@ import java.util.UUID;
 @Slf4j
 public class BaseServiceClient {
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
 
     @Value("${services.base.base-url:http://localhost:8081}")
     private String baseServiceBaseUrl;
+
+    public BaseServiceClient() {
+        this.restTemplate = new RestTemplate();
+        // Configure timeout for inter-service calls only (does NOT affect Flutter client)
+        // Flutter uses Dio/HTTP client directly, not this RestTemplate
+        org.springframework.http.client.SimpleClientHttpRequestFactory factory = 
+                new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000); // 5 seconds connect timeout
+        factory.setReadTimeout(10000); // 10 seconds read timeout (enough for most calls, but fails fast on deadlock)
+        this.restTemplate.setRequestFactory(factory);
+    }
 
     /**
      * Get primary residentId from unitId
@@ -304,6 +315,14 @@ public class BaseServiceClient {
             
             return false;
         } catch (ResourceAccessException e) {
+            // Timeout or connection error - throw exception so caller can handle fallback
+            String errorMsg = e.getMessage();
+            if (errorMsg != null && (errorMsg.contains("timeout") || errorMsg.contains("Read timed out") 
+                    || errorMsg.contains("Connection timed out") || errorMsg.contains("Connection refused"))) {
+                log.warn("⚠️ [BaseServiceClient] Timeout/connection error checking if user {} is OWNER of unit {}: {}", 
+                        userId, unitId, errorMsg);
+                throw new RuntimeException("Base-service timeout or unavailable: " + errorMsg, e);
+            }
             log.error("❌ [BaseServiceClient] Error checking if user {} is OWNER of unit {}: {}", 
                     userId, unitId, e.getMessage());
             return false;

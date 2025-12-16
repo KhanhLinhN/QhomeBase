@@ -194,7 +194,55 @@ public class HouseholdService {
     public HouseholdDto getCurrentHouseholdByUnitId(UUID unitId) {
         Household household = householdRepository.findCurrentHouseholdByUnitId(unitId)
                 .orElseThrow(() -> new IllegalArgumentException("Unit has no active household"));
-        return toDto(household);
+        
+        // Extract data within transaction
+        String unitCode = null;
+        Unit unit = unitRepository.findById(household.getUnitId()).orElse(null);
+        if (unit != null) {
+            unitCode = unit.getCode();
+        }
+
+        String primaryResidentName = null;
+        if (household.getPrimaryResidentId() != null) {
+            Resident primaryResident = residentRepository.findById(household.getPrimaryResidentId()).orElse(null);
+            if (primaryResident != null) {
+                primaryResidentName = primaryResident.getFullName();
+            }
+        }
+        
+        UUID contractId = household.getContractId();
+        
+        // Transaction ends here - connection is released
+        
+        // Fetch contract summary AFTER transaction (external HTTP call)
+        ContractSummary contract = null;
+        if (contractId != null) {
+            try {
+                contract = fetchContractSummary(contractId);
+            } catch (Exception e) {
+                log.warn("⚠️ [HouseholdService] Failed to fetch contract summary for contract {}: {}", 
+                        contractId, e.getMessage());
+                // Continue without contract summary
+            }
+        }
+        
+        return new HouseholdDto(
+                household.getId(),
+                household.getUnitId(),
+                unitCode,
+                household.getKind(),
+                household.getPrimaryResidentId(),
+                primaryResidentName,
+                household.getStartDate(),
+                household.getEndDate(),
+                contract != null ? contract.id() : null,
+                contract != null ? contract.contractNumber() : null,
+                contract != null ? contract.startDate() : null,
+                contract != null ? contract.endDate() : null,
+                contract != null ? contract.status() : null,
+                household.getCreatedAt(),
+                household.getUpdatedAt()
+        );
     }
 
     @Transactional(readOnly = true)
@@ -232,7 +280,18 @@ public class HouseholdService {
             }
         }
 
-        ContractSummary contract = fetchContractSummary(household.getContractId());
+        // Fetch contract summary AFTER transaction (external HTTP call)
+        // Note: This method is called from @Transactional methods, so we fetch contract outside transaction
+        ContractSummary contract = null;
+        if (household.getContractId() != null) {
+            try {
+                contract = fetchContractSummary(household.getContractId());
+            } catch (Exception e) {
+                log.warn("⚠️ [HouseholdService] Failed to fetch contract summary for contract {}: {}", 
+                        household.getContractId(), e.getMessage());
+                // Continue without contract summary
+            }
+        }
 
         return new HouseholdDto(
                 household.getId(),

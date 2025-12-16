@@ -38,13 +38,39 @@ public class ContractClient {
                     .retrieve()
                     .bodyToMono(DataDocsContractDto.class)
                     .map(this::toDetailDto)
-                    .onErrorResume(WebClientResponseException.NotFound.class, ex -> Mono.empty())
+                    .onErrorResume(WebClientResponseException.NotFound.class, ex -> {
+                        log.debug("Contract {} not found", contractId);
+                        return Mono.empty();
+                    })
+                    .onErrorResume(WebClientResponseException.class, ex -> {
+                        // Handle 5xx errors gracefully
+                        if (ex.getStatusCode().is5xxServerError()) {
+                            log.warn("⚠️ [ContractClient] data-docs-service returned 5xx error for contract {}: {}", 
+                                    contractId, ex.getStatusCode());
+                            return Mono.empty();
+                        }
+                        log.error("Failed to fetch contract {}: {}", contractId, ex.getResponseBodyAsString());
+                        return Mono.empty(); // Return empty instead of throwing
+                    })
+                    .onErrorResume(Exception.class, ex -> {
+                        // Handle connection errors, timeouts, etc.
+                        String errorMsg = ex.getMessage();
+                        if (errorMsg != null && (errorMsg.contains("Connection reset") 
+                                || errorMsg.contains("timeout") 
+                                || errorMsg.contains("Connection refused")
+                                || errorMsg.contains("Read timed out"))) {
+                            log.warn("⚠️ [ContractClient] Connection error fetching contract {}: {} (data-docs-service may be unavailable)", 
+                                    contractId, errorMsg);
+                        } else {
+                            log.error("❌ [ContractClient] Unexpected error fetching contract {}: {}", contractId, ex.getMessage(), ex);
+                        }
+                        return Mono.empty(); // Return empty instead of throwing
+                    })
                     .blockOptional();
-        } catch (WebClientResponseException.NotFound e) {
+        } catch (Exception e) {
+            // Catch any remaining exceptions
+            log.warn("⚠️ [ContractClient] Exception fetching contract {}: {}", contractId, e.getMessage());
             return Optional.empty();
-        } catch (WebClientResponseException e) {
-            log.error("Failed to fetch contract {}: {}", contractId, e.getResponseBodyAsString());
-            throw e;
         }
     }
 

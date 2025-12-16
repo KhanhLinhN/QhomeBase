@@ -217,10 +217,36 @@ public class ContractService {
     public List<ContractDto> getContractsByUnitId(UUID unitId, UUID userId, String accessToken) {
         try {
             List<Contract> contracts = contractRepository.findByUnitId(unitId);
+            
+            // Cache isOwner check: chỉ gọi 1 lần cho mỗi unitId trong cùng request
+            Boolean cachedIsOwner = null;
+            if (userId != null && accessToken != null) {
+                // Chỉ check nếu có ACTIVE RENTAL contracts cần permissions
+                boolean hasActiveRental = contracts.stream()
+                        .anyMatch(c -> "RENTAL".equals(c.getContractType()) && "ACTIVE".equals(c.getStatus()));
+                
+                if (hasActiveRental) {
+                    try {
+                        cachedIsOwner = baseServiceClient.isOwnerOfUnit(userId, unitId, accessToken);
+                        log.info("🔍 [ContractService] Cached isOwner for unit {}: {}", unitId, cachedIsOwner);
+                    } catch (RuntimeException e) {
+                        // Timeout or base-service unavailable - will use fallback in toDto
+                        String errorMsg = e.getMessage();
+                        if (errorMsg != null && errorMsg.contains("timeout")) {
+                            log.warn("⚠️ [ContractService] Base-service timeout when checking isOwner for unit {}. Will use fallback.", unitId);
+                            cachedIsOwner = null; // null = will trigger fallback
+                        } else {
+                            throw e;
+                        }
+                    }
+                }
+            }
+            
+            final Boolean finalCachedIsOwner = cachedIsOwner;
             return contracts.stream()
                     .map(contract -> {
                         try {
-                            return toDto(contract, userId, accessToken);
+                            return toDto(contract, userId, accessToken, finalCachedIsOwner);
                         } catch (Exception e) {
                             log.error("[ContractService] Lỗi khi convert contract {} sang DTO: {}", 
                                     contract.getId(), e.getMessage(), e);
@@ -312,8 +338,28 @@ public class ContractService {
     @Transactional(readOnly = true)
     public List<ContractDto> getActiveContractsByUnit(UUID unitId, UUID userId, String accessToken) {
         List<Contract> contracts = contractRepository.findActiveContractsByUnit(unitId, LocalDate.now());
+        
+        // Cache isOwner check: chỉ gọi 1 lần cho mỗi unitId trong cùng request
+        Boolean cachedIsOwner = null;
+        if (userId != null && accessToken != null && !contracts.isEmpty()) {
+            try {
+                cachedIsOwner = baseServiceClient.isOwnerOfUnit(userId, unitId, accessToken);
+                log.debug("🔍 [ContractService] Cached isOwner for unit {}: {}", unitId, cachedIsOwner);
+            } catch (RuntimeException e) {
+                // Timeout or base-service unavailable - will use fallback in toDto
+                String errorMsg = e.getMessage();
+                if (errorMsg != null && errorMsg.contains("timeout")) {
+                    log.warn("⚠️ [ContractService] Base-service timeout when checking isOwner for unit {}. Will use fallback.", unitId);
+                    cachedIsOwner = null; // null = will trigger fallback
+                } else {
+                    throw e;
+                }
+            }
+        }
+        
+        final Boolean finalCachedIsOwner = cachedIsOwner;
         return contracts.stream()
-                .map(c -> toDto(c, userId, accessToken))
+                .map(c -> toDto(c, userId, accessToken, finalCachedIsOwner))
                 .collect(Collectors.toList());
     }
 
@@ -479,6 +525,10 @@ public class ContractService {
     }
     
     private ContractDto toDto(Contract contract, UUID userId, String accessToken) {
+        return toDto(contract, userId, accessToken, null);
+    }
+
+    private ContractDto toDto(Contract contract, UUID userId, String accessToken, Boolean cachedIsOwner) {
         List<ContractFileDto> files = List.of();
         try {
             if (contract.getFiles() != null) {
@@ -512,34 +562,87 @@ public class ContractService {
         boolean canExtend = false;
         String permissionMessage = null;
         
-        if (userId != null && contract.getUnitId() != null && accessToken != null) {
+        // Chỉ check permissions cho RENTAL contracts
+        boolean needsPermissionCheck = "RENTAL".equals(contract.getContractType()) && "ACTIVE".equals(contract.getStatus());
+        
+        log.info("🔍 [ContractService] ========== CHECKING PERMISSIONS ==========");
+        log.info("🔍 [ContractService] Contract: {} ({})", contract.getContractNumber(), contract.getId());
+        log.info("🔍 [ContractService] userId: {}, unitId: {}", userId, contract.getUnitId());
+        log.info("🔍 [ContractService] contractType: {}, status: {}, renewalStatus: {}", 
+                contract.getContractType(), contract.getStatus(), contract.getRenewalStatus());
+        log.info("🔍 [ContractService] needsPermissionCheck: {}, cachedIsOwner: {}", needsPermissionCheck, cachedIsOwner);
+        
+        if (needsPermissionCheck && userId != null && contract.getUnitId() != null && accessToken != null) {
             try {
-                isOwner = baseServiceClient.isOwnerOfUnit(userId, contract.getUnitId(), accessToken);
+                // Sử dụng cached result nếu có
+                if (cachedIsOwner != null) {
+                    isOwner = cachedIsOwner;
+                    log.info("✅ [ContractService] Using cached isOwner={} for contract {}", isOwner, contract.getId());
+                } else {
+                    // Gọi API nếu chưa có cache
+                    log.info("🔍 [ContractService] Calling baseServiceClient.isOwnerOfUnit(userId={}, unitId={})", 
+                            userId, contract.getUnitId());
+                    isOwner = baseServiceClient.isOwnerOfUnit(userId, contract.getUnitId(), accessToken);
+                    log.info("✅ [ContractService] isOwnerOfUnit result: isOwner={}", isOwner);
+                }
                 
                 if (isOwner) {
+                    log.info("✅ [ContractService] User is OWNER. Setting permissions...");
                     // OWNER/TENANT can renew, cancel, extend if contract is in valid state
-                    if ("RENTAL".equals(contract.getContractType()) && "ACTIVE".equals(contract.getStatus())) {
-                        // Can renew if contract is renewable (not already renewed, in REMINDED status)
-                        canRenew = contract.getRenewedContractId() == null 
-                                && ("REMINDED".equals(contract.getRenewalStatus()) || "PENDING".equals(contract.getRenewalStatus()));
-                        
-                        // Can cancel if contract is active
-                        canCancel = true;
-                        
-                        // Can extend if contract has endDate
-                        canExtend = contract.getEndDate() != null;
-                    }
+                    // Can renew if contract is renewable (not already renewed, in REMINDED status)
+                    canRenew = contract.getRenewedContractId() == null 
+                            && ("REMINDED".equals(contract.getRenewalStatus()) || "PENDING".equals(contract.getRenewalStatus()));
+                    
+                    // Can cancel if contract is active
+                    canCancel = true;
+                    
+                    // Can extend if contract has endDate
+                    canExtend = contract.getEndDate() != null;
+                    
+                    log.info("✅ [ContractService] Permissions set: canRenew={}, canCancel={}, canExtend={}", 
+                            canRenew, canCancel, canExtend);
                 } else {
                     // Not OWNER/TENANT - household member
+                    permissionMessage = "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng";
+                    log.warn("⚠️ [ContractService] User is NOT owner. permissionMessage: {}", permissionMessage);
+                }
+            } catch (RuntimeException e) {
+                // Timeout or base-service unavailable - use fallback for ACTIVE RENTAL contracts
+                String errorMsg = e.getMessage();
+                if (errorMsg != null && errorMsg.contains("timeout")) {
+                    log.warn("⚠️ [ContractService] Base-service timeout for contract {}. Using fallback: assuming owner for ACTIVE RENTAL contract.", 
+                            contract.getId());
+                    // Fallback: assume owner for ACTIVE RENTAL contracts when base-service is unavailable
+                    isOwner = true;
+                    canRenew = contract.getRenewedContractId() == null 
+                            && ("REMINDED".equals(contract.getRenewalStatus()) || "PENDING".equals(contract.getRenewalStatus()));
+                    canCancel = true;
+                    canExtend = contract.getEndDate() != null;
+                    log.info("✅ [ContractService] Fallback permissions: canRenew={}, canCancel={}, canExtend={}", 
+                            canRenew, canCancel, canExtend);
+                } else {
+                    log.warn("⚠️ [ContractService] Error checking permission for contract {}: {}", 
+                            contract.getId(), e.getMessage());
                     permissionMessage = "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng";
                 }
             } catch (Exception e) {
                 log.warn("⚠️ [ContractService] Error checking permission for contract {}: {}", 
                         contract.getId(), e.getMessage());
-                // If check fails, default to no permission
                 permissionMessage = "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng";
             }
+        } else {
+            if (!needsPermissionCheck) {
+                log.info("🔍 [ContractService] Skipping permission check: contractType={}, status={}", 
+                        contract.getContractType(), contract.getStatus());
+            } else {
+                log.warn("⚠️ [ContractService] Cannot check permissions: userId={}, unitId={}, accessToken={}", 
+                        userId, contract.getUnitId(), accessToken != null ? "present" : "null");
+            }
         }
+        
+        log.info("🔍 [ContractService] Final result: isOwner={}, canRenew={}, canCancel={}, canExtend={}, permissionMessage={}", 
+                isOwner, canRenew, canCancel, canExtend, permissionMessage);
+        log.info("🔍 [ContractService] =================================================================");
 
         return ContractDto.builder()
                 .id(contract.getId())
