@@ -15,11 +15,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -62,8 +60,6 @@ public class BuildingImportService {
                 throw new IllegalArgumentException("Thiếu cột numberOfFloors (bắt buộc)");
             }
 
-            Set<String> seenNames = new HashSet<>();
-
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row r = sheet.getRow(i);
                 if (r == null) continue;
@@ -87,12 +83,6 @@ public class BuildingImportService {
                     if (numberOfFloors == null) {
                         throw new IllegalArgumentException("Số tầng (row " + excelRow + ") không được để trống");
                     }
-                    
-                    String normalizedName = trimmedName.trim().toLowerCase(Locale.ROOT);
-                    if (seenNames.contains(normalizedName)) {
-                        throw new IllegalArgumentException("Tên building (row " + excelRow + ") đã tồn tại trong file import: " + trimmedName);
-                    }
-                    seenNames.add(normalizedName);
                     
                     List<Building> existingBuildings = buildingRepository.findByNameIgnoreCase(trimmedName);
                     if (!existingBuildings.isEmpty()) {
@@ -259,8 +249,8 @@ public class BuildingImportService {
         if (numberOfFloors <= 0) {
             throw new IllegalArgumentException("Số tầng (row " + rowNumber + ") phải lớn hơn 0");
         }
-        if (numberOfFloors > 200) {
-            throw new IllegalArgumentException("Số tầng (row " + rowNumber + ") không được vượt quá 200");
+        if (numberOfFloors >= 100) {
+            throw new IllegalArgumentException("Số tầng (row " + rowNumber + ") phải nhỏ hơn 100");
         }
     }
 }

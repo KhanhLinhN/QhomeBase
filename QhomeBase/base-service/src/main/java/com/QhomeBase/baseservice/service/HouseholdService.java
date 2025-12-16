@@ -351,9 +351,14 @@ public class HouseholdService {
         if (contractId == null) {
             return null;
         }
-        return contractClient.getContractById(contractId)
-                .map(this::summarizeContract)
-                .orElse(null);
+        try {
+            return contractClient.getContractById(contractId)
+                    .map(this::summarizeContract)
+                    .orElse(null);
+        } catch (Exception e) {
+            log.warn("Failed to fetch contract {}: {}", contractId, e.getMessage());
+            return null; // Return null if contract service is unavailable or contract not found
+        }
     }
 
     private ContractSummary summarizeContract(ContractDetailDto contract) {
