@@ -224,6 +224,40 @@ public class ServiceConfigService {
         }
         return true;
     }
+    
+    @Transactional
+    public ServiceAvailabilityDto updateAvailability(UUID serivceId, UUID availabilityId, ServiceAvailabilityRequest request) {
+        ServiceAvailability availability = serviceAvailabilityRepository.findById(availabilityId)
+                .orElseThrow(() -> new IllegalArgumentException("Availability not found: " + availabilityId));
+
+        if (availability.getService() == null || !availability.getService().getId().equals(serivceId)) {
+            throw new IllegalArgumentException("Availability does not belong to service: " + serivceId);
+        }
+
+        com.QhomeBase.assetmaintenanceservice.model.service.Service service = serviceRepository.findById(serivceId)
+                .orElseThrow(() -> new IllegalArgumentException("Service not found: " + serivceId));
+
+        // Update the availability
+        availability.setDayOfWeek(request.getDayOfWeek());
+        availability.setStartTime(request.getStartTime());
+        availability.setEndTime(request.getEndTime());
+        if (request.getIsAvailable() != null) {
+            availability.setIsAvailable(request.getIsAvailable());
+        }
+
+        ServiceAvailability saved = serviceAvailabilityRepository.save(availability);
+        
+        return ServiceAvailabilityDto.builder()
+                .id(saved.getId())
+                .serviceId(saved.getService() != null ? saved.getService().getId() : null)
+                .dayOfWeek(saved.getDayOfWeek())
+                .startTime(saved.getStartTime())
+                .endTime(saved.getEndTime())
+                .isAvailable(saved.getIsAvailable())
+                .createdAt(saved.getCreatedAt())
+                .build();
+    }
+
     @Transactional
     public List<ServiceAvailabilityDto> deleteAvailability(UUID serivceId, UUID availabilityId) {
         ServiceAvailability availability = serviceAvailabilityRepository.findById(availabilityId)
