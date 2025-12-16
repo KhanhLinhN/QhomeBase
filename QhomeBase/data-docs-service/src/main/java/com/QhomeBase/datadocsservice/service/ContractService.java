@@ -650,17 +650,15 @@ public class ContractService {
         
         BigDecimal totalRent = BigDecimal.ZERO;
         
-        // Check if start and end are in the same month
+      
         if (startDate.getYear() == endDate.getYear() && startDate.getMonth() == endDate.getMonth()) {
-            // Same month: calculate pro-rated for the period
+         
             int daysInMonth = startDate.lengthOfMonth();
             long actualDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
             BigDecimal dailyRate = monthlyRent.divide(BigDecimal.valueOf(daysInMonth), 10, RoundingMode.HALF_UP);
             totalRent = dailyRate.multiply(BigDecimal.valueOf(actualDays));
         } else {
-            // Different months: calculate first month, middle months, and last month
-            
-            // 1. Calculate first month (from startDate to end of first month)
+          
             int daysInFirstMonth = startDate.lengthOfMonth();
             LocalDate endOfFirstMonth = startDate.withDayOfMonth(daysInFirstMonth);
             long daysInFirstPeriod = ChronoUnit.DAYS.between(startDate, endOfFirstMonth) + 1;
@@ -668,7 +666,7 @@ public class ContractService {
             BigDecimal firstMonthRent = dailyRateFirstMonth.multiply(BigDecimal.valueOf(daysInFirstPeriod));
             totalRent = totalRent.add(firstMonthRent);
             
-            // 2. Calculate middle months (full months between first and last month)
+          
             LocalDate firstDayOfSecondMonth = startDate.plusMonths(1).withDayOfMonth(1);
             LocalDate firstDayOfLastMonth = endDate.withDayOfMonth(1);
             
@@ -678,7 +676,7 @@ public class ContractService {
                 totalRent = totalRent.add(middleMonthsRent);
             }
             
-            // 3. Calculate last month (from first day of last month to endDate)
+          
             int daysInLastMonth = endDate.lengthOfMonth();
             LocalDate firstDayOfLastMonthActual = endDate.withDayOfMonth(1);
             long daysInLastPeriod = ChronoUnit.DAYS.between(firstDayOfLastMonthActual, endDate) + 1;
