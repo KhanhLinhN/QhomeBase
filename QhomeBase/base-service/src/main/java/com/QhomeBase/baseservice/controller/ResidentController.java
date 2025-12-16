@@ -158,6 +158,18 @@ public class ResidentController {
         }
     }
 
+    @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORTER')")
+    public ResponseEntity<List<ResidentDto>> getAllResidents() {
+        try {
+            List<ResidentDto> residents = residentService.findAll();
+            return ResponseEntity.ok(residents);
+        } catch (Exception e) {
+            log.error("Failed to get all residents: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
     @GetMapping("/{residentId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORTER', 'RESIDENT')")
     public ResponseEntity<ResidentDto> getResidentById(@PathVariable UUID residentId) {
