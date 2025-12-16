@@ -21,12 +21,21 @@ Trạng thái chính của hợp đồng, được lưu trong trường `status`
 
 - **CANCELLED**
   - Hợp đồng đã bị hủy
-  - Được set khi gọi `cancelContract()`
+  - Được set khi:
+    - **Cách 1:** Gọi `checkoutContract()` - set `checkoutDate` và tự động set `status = CANCELLED`
+      - Khuyến nghị cho RENTAL contracts
+    - **Cách 2:** Update contract và set `status = "CANCELLED"` thủ công
+      - Qua endpoint `PUT /api/contracts/{contractId}` với body `{"status": "CANCELLED"}`
+      - Áp dụng cho cả RENTAL và PURCHASE contracts
+  - **⚠️ KHÔNG có endpoint riêng** để cancel contract (ví dụ: `PUT /api/contracts/{contractId}/cancel`)
   - Không thể sửa đổi hoặc activate lại
+  - Không còn gửi renewal reminders
 
 - **EXPIRED**
   - Hợp đồng đã hết hạn (endDate đã qua)
   - Tự động được đánh dấu khi `endDate < TODAY` (scheduled task chạy hàng ngày lúc 01:00)
+  - **Lưu ý:** EXPIRED được set ngay khi `endDate < TODAY` (ngay cả 1 ngày sau endDate)
+  - **KHÔNG phải** là quá 20 ngày. 20 ngày là thời gian để mark DECLINED (từ reminder đầu tiên)
   - Chỉ áp dụng cho hợp đồng có `endDate`
   - Không đánh dấu cho hợp đồng đã CANCELLED
 

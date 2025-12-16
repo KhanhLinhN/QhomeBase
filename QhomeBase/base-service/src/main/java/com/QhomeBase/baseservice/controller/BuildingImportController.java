@@ -25,7 +25,7 @@ public class BuildingImportController {
 
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("@authz.canCreateBuilding()")
-    public ResponseEntity<BuildingImportResponse> importBuildings(
+    public ResponseEntity<?> importBuildings(
             @RequestParam("file") MultipartFile file,
             Authentication auth
     ) {
@@ -38,10 +38,17 @@ public class BuildingImportController {
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             log.warn("[ImportBuilding] Bad request: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest()
+                    .body(java.util.Map.of("message", e.getMessage(), "error", e.getMessage()));
+        } catch (IllegalStateException e) {
+            log.warn("[ImportBuilding] Illegal state: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(java.util.Map.of("message", e.getMessage(), "error", e.getMessage()));
         } catch (Exception e) {
             log.error("[ImportBuilding] Unexpected error", e);
-            return ResponseEntity.internalServerError().build();
+            String errorMessage = e.getMessage() != null ? e.getMessage() : "Đã xảy ra lỗi không xác định khi import tòa nhà";
+            return ResponseEntity.internalServerError()
+                    .body(java.util.Map.of("message", errorMessage, "error", errorMessage));
         }
     }
 

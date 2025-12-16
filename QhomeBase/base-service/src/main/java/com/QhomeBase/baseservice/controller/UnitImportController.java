@@ -25,16 +25,23 @@ public class UnitImportController {
 
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("@authz.canCreateUnits() || @authz.canViewUnits()")
-    public ResponseEntity<UnitImportResponse> importUnits(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<?> importUnits(@RequestParam("file") MultipartFile file) {
         try {
             UnitImportResponse response = unitImportService.importUnits(file);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             log.warn("[ImportUnit] Bad request: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest()
+                    .body(java.util.Map.of("message", e.getMessage(), "error", e.getMessage()));
+        } catch (IllegalStateException e) {
+            log.warn("[ImportUnit] Illegal state: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(java.util.Map.of("message", e.getMessage(), "error", e.getMessage()));
         } catch (Exception e) {
             log.error("[ImportUnit] Unexpected error", e);
-            return ResponseEntity.internalServerError().build();
+            String errorMessage = e.getMessage() != null ? e.getMessage() : "Đã xảy ra lỗi không xác định khi import căn hộ";
+            return ResponseEntity.internalServerError()
+                    .body(java.util.Map.of("message", errorMessage, "error", errorMessage));
         }
     }
 

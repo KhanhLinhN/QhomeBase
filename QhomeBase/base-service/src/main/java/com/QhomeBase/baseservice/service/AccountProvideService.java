@@ -221,8 +221,20 @@ public class AccountProvideService {
         }
 
         String email = request.resident().email();
-        if (email != null && !email.isBlank() && residentRepository.existsByEmail(email)) {
-            throw new IllegalArgumentException("There is already a resident with that email");
+        if (email != null && !email.isBlank()) {
+            // Ensure email contains exactly one @
+            long atCount = email.chars().filter(ch -> ch == '@').count();
+            if (atCount != 1) {
+                throw new IllegalArgumentException("Email phải có đúng 1 ký tự @");
+            }
+            // Validate email ending with .com
+            String emailPattern = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.com$";
+            if (!email.matches(emailPattern)) {
+                throw new IllegalArgumentException("Email phải có đuôi .com. Ví dụ: user@example.com");
+            }
+            if (residentRepository.existsByEmail(email)) {
+                throw new IllegalArgumentException("There is already a resident with that email");
+            }
         }
 
         // National ID validation removed - allow reusing existing resident
