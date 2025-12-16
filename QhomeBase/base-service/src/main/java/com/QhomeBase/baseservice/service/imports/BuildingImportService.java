@@ -63,7 +63,7 @@ public class BuildingImportService {
             }
 
             Set<String> seenNames = new HashSet<>();
-            
+
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row r = sheet.getRow(i);
                 if (r == null) continue;
@@ -215,12 +215,12 @@ public class BuildingImportService {
             throw new IllegalArgumentException("Địa chỉ (row " + rowNumber + ") không được để trống");
         }
         
-        if (address.length() > 500) {
-            throw new IllegalArgumentException("Địa chỉ (row " + rowNumber + ") không được vượt quá 500 ký tự");
-        }
-        
-        if (address.length() < 5) {
-            throw new IllegalArgumentException("Địa chỉ (row " + rowNumber + ") phải có ít nhất 5 ký tự");
+            if (address.length() > 500) {
+                throw new IllegalArgumentException("Địa chỉ (row " + rowNumber + ") không được vượt quá 500 ký tự");
+            }
+            
+            if (address.length() < 5) {
+                throw new IllegalArgumentException("Địa chỉ (row " + rowNumber + ") phải có ít nhất 5 ký tự");
         }
     }
 
