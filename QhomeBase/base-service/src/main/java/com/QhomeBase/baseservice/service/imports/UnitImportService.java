@@ -294,8 +294,8 @@ public class UnitImportService {
         if (areaM2.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("AreaM2 (row " + rowNumber + ") phải lớn hơn 0");
         }
-        if (areaM2.compareTo(new BigDecimal("10000")) > 0) {
-            throw new IllegalArgumentException("AreaM2 (row " + rowNumber + ") không được vượt quá 10000 m²");
+        if (areaM2.compareTo(new BigDecimal("150")) >= 0) {
+            throw new IllegalArgumentException("AreaM2 (row " + rowNumber + ") phải nhỏ hơn 150 m²");
         }
     }
 
@@ -303,11 +303,11 @@ public class UnitImportService {
         if (bedrooms == null) {
             throw new IllegalArgumentException("Bedrooms (row " + rowNumber + ") không được để trống");
         }
-        if (bedrooms <= 0) {
-            throw new IllegalArgumentException("Bedrooms (row " + rowNumber + ") phải lớn hơn 0");
+        if (bedrooms < 1) {
+            throw new IllegalArgumentException("Bedrooms (row " + rowNumber + ") phải từ 1 phòng trở lên");
         }
-        if (bedrooms > 20) {
-            throw new IllegalArgumentException("Bedrooms (row " + rowNumber + ") không được vượt quá 20");
+        if (bedrooms > 9) {
+            throw new IllegalArgumentException("Bedrooms (row " + rowNumber + ") không được vượt quá 9 phòng");
         }
     }
 }
