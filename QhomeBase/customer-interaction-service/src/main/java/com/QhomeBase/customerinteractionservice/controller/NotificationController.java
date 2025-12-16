@@ -57,7 +57,8 @@ public class NotificationController {
     }
 
     @GetMapping
-    @PreAuthorize("@authz.canViewNotifications()")
+    // @PreAuthorize("@authz.canViewNotifications()")
+    // @PreAuthorize("hasRole('ADMIN') or hasRole('TECHNICIAN') or hasRole('RESIDENT') or há")
     public ResponseEntity<List<NotificationResponse>> getAllNotifications() {
         List<NotificationResponse> notifications = notificationService.getAllNotifications();
         return ResponseEntity.ok(notifications);
