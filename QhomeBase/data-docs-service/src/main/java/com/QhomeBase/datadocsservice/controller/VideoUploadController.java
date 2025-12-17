@@ -37,7 +37,7 @@ public class VideoUploadController {
     private final VideoStorageService videoStorageService;
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Upload video", description = "Upload a video file and store in database")
+    @Operation(summary = "Upload video", description = "Upload a video file to backend storage (NOT ImageKit - videos are self-hosted). Videos are stored in filesystem and metadata in database.")
     public ResponseEntity<VideoUploadResponse> uploadVideo(
             @RequestParam("file") MultipartFile file,
             @RequestParam("category") String category,
@@ -55,8 +55,10 @@ public class VideoUploadController {
             VideoStorage videoStorage = videoStorageService.uploadVideo(
                     file, category, ownerId, uploadedBy, resolution, durationSeconds, width, height);
             
-            log.info("✅ [VideoUploadController] Video uploaded successfully: videoId={}, fileUrl={}", 
-                    videoStorage.getId(), videoStorage.getFileUrl());
+            // Only log essential info - no spam logging
+            if (log.isDebugEnabled()) {
+                log.debug("✅ [VideoUploadController] Video uploaded: videoId={}", videoStorage.getId());
+            }
             
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(VideoUploadResponse.from(videoStorage));
@@ -142,11 +144,8 @@ public class VideoUploadController {
             }
         }
         try {
-            log.info("🔍 [VideoUploadController] Stream request received: videoId={}, Range={}, User-Agent={}, Origin={}", 
-                    videoId, 
-                    request.getHeader(HttpHeaders.RANGE),
-                    request.getHeader(HttpHeaders.USER_AGENT),
-                    request.getHeader(HttpHeaders.ORIGIN));
+            // Only log errors - no spam logging for every stream request
+            // Video streaming is high-frequency, don't log every request
             
             VideoStorage video = videoStorageService.getVideoById(videoId);
             
@@ -195,7 +194,7 @@ public class VideoUploadController {
                     
                     long contentLength = end - start + 1;
                     
-                    log.debug("📹 [VideoUploadController] Range request: {}-{} of {}", start, end, fileSize);
+                    // Range request handling - no logging needed (too frequent)
                     
                     // Return partial content response
                     return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)

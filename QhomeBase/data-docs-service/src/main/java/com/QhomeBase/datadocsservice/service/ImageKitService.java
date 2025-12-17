@@ -155,13 +155,14 @@ public class ImageKitService {
     }
 
     /**
-     * Upload a file (image, video, document) to ImageKit
-     * @param file The file to upload
+     * Upload a file to ImageKit
+     * NOTE: This method is for IMAGES ONLY. Video uploads should use VideoStorageService.
+     * @param file The image file to upload (NOT video)
      * @param folder Optional folder path in ImageKit
-     * @return The URL of the uploaded file
+     * @return The URL of the uploaded image
      * @throws IOException if file cannot be read
      */
     public String uploadFile(MultipartFile file, String folder) throws IOException {
-        return uploadImage(file, folder); // Same implementation for now
+        return uploadImage(file, folder); // Images only - videos should NOT use ImageKit
     }
 }

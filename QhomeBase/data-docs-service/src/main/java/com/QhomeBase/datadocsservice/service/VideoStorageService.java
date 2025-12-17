@@ -157,8 +157,11 @@ public class VideoStorageService {
             saved.setFileUrl(fileUrl);
             saved = videoStorageRepository.save(saved);
             
-            log.info("Video uploaded successfully: {} by user: {}, size: {} MB, category: {}, ownerId: {}, videoId: {}",
-                    fileName, uploadedBy, file.getSize() / (1024.0 * 1024.0), category, ownerId, saved.getId());
+            // Only log essential info - no spam logging
+            if (log.isDebugEnabled()) {
+                log.debug("Video uploaded: videoId={}, category={}, size={} MB", 
+                        saved.getId(), category, file.getSize() / (1024.0 * 1024.0));
+            }
             
             return saved;
             
