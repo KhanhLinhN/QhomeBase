@@ -997,6 +997,18 @@ public class ContractService {
     /**
      * Get contracts that need to show popup to resident
      * These are contracts with renewalStatus = REMINDED
+     * 
+     * IMPORTANT: Reminder chỉ hiển thị khi:
+     * - status = "ACTIVE" (chưa gia hạn hoặc hủy)
+     * - renewalStatus = "REMINDED" (đang trong giai đoạn nhắc gia hạn)
+     * - renewalReminderSentAt != null (đã gửi reminder)
+     * 
+     * Reminder sẽ tự động tắt khi:
+     * - status thay đổi sang "RENEWED" (đã gia hạn) hoặc "CANCELLED"/"TERMINATED" (đã hủy)
+     * - renewalStatus thay đổi khác "REMINDED"
+     * 
+     * Final reminder (isFinalReminder = true) sẽ tiếp tục hiển thị cho đến khi status thay đổi,
+     * ngay cả khi user đã từng vào screen gia hạn/hủy nhưng chưa hoàn tất.
      */
     @Transactional(readOnly = true)
     public List<ContractDto> getContractsNeedingPopup(UUID unitId) {
@@ -1004,11 +1016,15 @@ public class ContractService {
     }
     
     public List<ContractDto> getContractsNeedingPopup(UUID unitId, UUID userId, String accessToken) {
+        // Chỉ lấy contracts với status = "ACTIVE" (chưa gia hạn/hủy)
+        // Filter này đảm bảo contracts đã RENEWED hoặc CANCELLED sẽ không được trả về
         List<Contract> contracts = contractRepository.findByUnitIdAndStatus(unitId, "ACTIVE");
         return contracts.stream()
-                .filter(c -> "RENTAL".equals(c.getContractType()))
-                .filter(c -> "REMINDED".equals(c.getRenewalStatus()))
-                .filter(c -> c.getRenewalReminderSentAt() != null)
+                .filter(c -> "RENTAL".equals(c.getContractType())) // Chỉ RENTAL contracts cần gia hạn
+                .filter(c -> "REMINDED".equals(c.getRenewalStatus())) // Đang trong giai đoạn nhắc gia hạn
+                .filter(c -> c.getRenewalReminderSentAt() != null) // Đã gửi reminder
+                // Reminder chỉ hiển thị khi contract vẫn ACTIVE và renewalStatus = REMINDED
+                // Nếu status đã chuyển sang RENEWED hoặc CANCELLED, contract sẽ không có trong list này
                 .map(c -> toDto(c, userId, accessToken))
                 .collect(Collectors.toList());
     }

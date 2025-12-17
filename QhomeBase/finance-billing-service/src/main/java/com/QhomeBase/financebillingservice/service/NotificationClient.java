@@ -80,6 +80,11 @@ public class NotificationClient {
         if (referenceType != null) {
             payload.put("referenceType", referenceType);
         }
+        // Set actionUrl for invoice notifications to enable deep linking
+        if (referenceType != null && (referenceType.equals("INVOICE_REMINDER") || referenceType.equals("INVOICE_UNPAID")) 
+            && referenceId != null) {
+            payload.put("actionUrl", "/invoices?invoiceId=" + referenceId.toString());
+        }
         if (data != null && !data.isEmpty()) {
             payload.put("data", data);
         }
