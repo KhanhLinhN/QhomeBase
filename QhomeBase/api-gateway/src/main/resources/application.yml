@@ -1,4 +1,20 @@
+server:
+  # Server performance optimization
+  max-http-header-size: 32768  # 32KB max header size (for ngrok headers)
+  max-http-request-header-size: 32768
+  # Netty server configuration
+  netty:
+    connection-timeout: 5000  # 5 seconds connection timeout
+    idle-timeout: 30s  # 30 seconds idle timeout
+    keep-alive: true
+    # Thread pool configuration
+    event-loop-group:
+      worker-threads: 0  # 0 = auto (use available processors)
+
 spring:
+  # Codec configuration for better performance
+  codec:
+    max-in-memory-size: 10MB  # Max buffer size for request/response body
   cloud:
     gateway:
       routes:
@@ -201,6 +217,23 @@ spring:
             - Path=/api/**
           filters:
             - StripPrefix=0
+      # HTTP Client Configuration for better performance
+      httpclient:
+        # Connection timeout (time to establish connection to backend service)
+        connect-timeout: 5000  # 5 seconds
+        # Response timeout (time to wait for response from backend service)
+        response-timeout: 30s  # 30 seconds
+        # Connection pool configuration
+        pool:
+          type: ELASTIC  # Use elastic connection pool for better performance
+          max-connections: 500  # Maximum number of connections in pool
+          max-idle-time: 20s  # Max idle time before closing connection
+          max-life-time: 60s  # Max lifetime of connection
+          evict-in-background: 10s  # Evict idle connections in background
+        # Compression
+        compression: true
+        # Keep-alive
+        keep-alive: true
       globalcors:
         corsConfigurations:
           '[/**]':

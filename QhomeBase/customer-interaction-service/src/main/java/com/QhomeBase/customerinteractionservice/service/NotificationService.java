@@ -13,6 +13,10 @@ import com.QhomeBase.customerinteractionservice.repository.NotificationRepositor
 import com.QhomeBase.customerinteractionservice.client.BaseServiceClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -181,72 +185,50 @@ public class NotificationService {
     }
 
     public NotificationPagedResponse getNotificationsForResidentPaged(UUID residentId, UUID buildingId, int page, int size) {
-        List<Notification> allNotifications = notificationRepository.findByScopeOrderByCreatedAtDesc(
-                NotificationScope.EXTERNAL
-        );
-
-        // Filter and sort by createdAt DESC (newest first)
-        List<NotificationResponse> filteredAndSorted = allNotifications.stream()
-                .filter(n -> shouldShowNotificationToResident(n, residentId, buildingId))
-                .sorted((n1, n2) -> {
-                    // Sort by createdAt DESC (newest first, from largest to smallest date)
-                    Instant createdAt1 = n1.getCreatedAt();
-                    Instant createdAt2 = n2.getCreatedAt();
-                    
-                    if (createdAt1 != null && createdAt2 != null) {
-                        return createdAt2.compareTo(createdAt1); // Sort DESC (newest first)
-                    }
-                    if (createdAt1 != null) return -1;
-                    if (createdAt2 != null) return 1;
-                    return 0;
-                })
-                .map(this::toResponse)
-                .collect(Collectors.toList());
-
-        // Calculate pagination
-        long totalElements = filteredAndSorted.size();
-        int totalPages = (int) Math.ceil((double) totalElements / size);
-
-        // Ensure page is within valid range
+        // OPTIMIZED: Filter and paginate at database level using Spring Data JPA Pageable
+        // This dramatically improves performance - only loads the requested page from database
+        // Instead of loading ALL notifications into memory and filtering/sorting/paginating there
+        
+        // Ensure valid page number
         if (page < 0) {
             page = 0;
         }
-        if (page >= totalPages && totalPages > 0) {
-            page = totalPages - 1;
-        }
-
-        // Apply pagination
-        int start = page * size;
-        int end = Math.min(start + size, filteredAndSorted.size());
-        List<NotificationResponse> pagedContent = start < filteredAndSorted.size()
-                ? filteredAndSorted.subList(start, end)
-                : new java.util.ArrayList<>();
+        
+        // Create Pageable with sorting by createdAt DESC (newest first)
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        
+        // Query with pagination at database level (uses LIMIT/OFFSET)
+        Page<Notification> notificationPage = notificationRepository.findNotificationsForResidentOptimized(
+                NotificationScope.EXTERNAL, residentId, buildingId, pageable
+        );
+        
+        // Convert to response DTOs
+        List<NotificationResponse> pagedContent = notificationPage.getContent().stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
 
         return NotificationPagedResponse.builder()
                 .content(pagedContent)
-                .currentPage(page)
-                .pageSize(size)
-                .totalElements(totalElements)
-                .totalPages(totalPages)
-                .hasNext(page < totalPages - 1)
-                .hasPrevious(page > 0)
-                .isFirst(page == 0)
-                .isLast(page >= totalPages - 1 || totalPages == 0)
+                .currentPage(notificationPage.getNumber())
+                .pageSize(notificationPage.getSize())
+                .totalElements(notificationPage.getTotalElements())
+                .totalPages(notificationPage.getTotalPages())
+                .hasNext(notificationPage.hasNext())
+                .hasPrevious(notificationPage.hasPrevious())
+                .isFirst(notificationPage.isFirst())
+                .isLast(notificationPage.isLast())
                 .build();
     }
 
     /**
      * Get total count of notifications for resident (all pages, not just current page)
      * This is used for displaying unread count on home screen
+     * OPTIMIZED: Count at database level instead of loading all into memory
      */
     public long getNotificationsCountForResident(UUID residentId, UUID buildingId) {
-        List<Notification> allNotifications = notificationRepository.findByScopeOrderByCreatedAtDesc(
-                NotificationScope.EXTERNAL
+        return notificationRepository.countNotificationsForResidentOptimized(
+                NotificationScope.EXTERNAL, residentId, buildingId
         );
-
-        return allNotifications.stream()
-                .filter(n -> shouldShowNotificationToResident(n, residentId, buildingId))
-                .count();
     }
 
     public List<NotificationResponse> getNotificationsForRole(String role, UUID userId) {

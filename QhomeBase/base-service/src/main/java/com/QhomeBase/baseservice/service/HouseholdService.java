@@ -192,17 +192,21 @@ public class HouseholdService {
 
     @Transactional(readOnly = true)
     public HouseholdDto getCurrentHouseholdByUnitId(UUID unitId) {
+        // OPTIMIZED: Uses composite index idx_households_unit_end_date for fast lookup
         Household household = householdRepository.findCurrentHouseholdByUnitId(unitId)
                 .orElseThrow(() -> new IllegalArgumentException("Unit has no active household"));
         
-        // Extract data within transaction
+        // OPTIMIZED: Use findByIdWithBuilding to avoid additional query for building
         String unitCode = null;
-        Unit unit = unitRepository.findById(household.getUnitId()).orElse(null);
+        String primaryResidentName = null;
+        
+        // Use optimized query that already JOIN FETCHes building
+        Unit unit = unitRepository.findByIdWithBuilding(household.getUnitId());
         if (unit != null) {
             unitCode = unit.getCode();
         }
 
-        String primaryResidentName = null;
+        // Load resident only if needed
         if (household.getPrimaryResidentId() != null) {
             Resident primaryResident = residentRepository.findById(household.getPrimaryResidentId()).orElse(null);
             if (primaryResident != null) {

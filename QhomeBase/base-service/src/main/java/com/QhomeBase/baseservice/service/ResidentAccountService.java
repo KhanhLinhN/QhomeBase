@@ -732,11 +732,23 @@ public class ResidentAccountService {
     public List<UnitDto> getMyUnits(UUID userId) {
         List<Unit> units = unitRepository.findAllUnitsByUserId(userId);
         
+        // OPTIMIZED: Batch load all households in one query instead of N+1 queries
+        List<UUID> unitIds = units.stream().map(Unit::getId).collect(Collectors.toList());
+        List<Household> households = unitIds.isEmpty() 
+            ? List.of() 
+            : householdRepository.findCurrentHouseholdsByUnitIds(unitIds);
+        
+        // Create a map for O(1) lookup: unitId -> primaryResidentId
+        Map<UUID, UUID> unitToPrimaryResidentMap = households.stream()
+            .collect(Collectors.toMap(
+                Household::getUnitId,
+                Household::getPrimaryResidentId,
+                (existing, replacement) -> existing // Keep first if duplicate (shouldn't happen)
+            ));
+        
         return units.stream()
                 .map(unit -> {
-                    UUID primaryResidentId = householdRepository.findCurrentHouseholdByUnitId(unit.getId())
-                            .map(Household::getPrimaryResidentId)
-                            .orElse(null);
+                    UUID primaryResidentId = unitToPrimaryResidentMap.get(unit.getId());
                     
                     return new UnitDto(
                             unit.getId(),

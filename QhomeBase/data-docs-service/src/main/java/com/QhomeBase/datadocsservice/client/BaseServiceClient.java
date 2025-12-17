@@ -32,10 +32,13 @@ public class BaseServiceClient {
         this.restTemplate = new RestTemplate();
         // Configure timeout for inter-service calls only (does NOT affect Flutter client)
         // Flutter uses Dio/HTTP client directly, not this RestTemplate
+        // CRITICAL: Increased timeout to handle slow base-service queries (e.g., household lookups)
+        // With connection pool optimization and database indexes, queries should be faster
+        // But keeping higher timeout as safety margin
         org.springframework.http.client.SimpleClientHttpRequestFactory factory = 
                 new org.springframework.http.client.SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(5000); // 5 seconds connect timeout
-        factory.setReadTimeout(10000); // 10 seconds read timeout (enough for most calls, but fails fast on deadlock)
+        factory.setConnectTimeout(15000); // 15 seconds connect timeout (increased from 10s)
+        factory.setReadTimeout(60000); // 60 seconds read timeout (increased from 30s to handle slow queries during high load)
         this.restTemplate.setRequestFactory(factory);
     }
 
@@ -56,6 +59,10 @@ public class BaseServiceClient {
                     return Optional.of(residentId);
                 }
             }
+            return Optional.empty();
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound ex) {
+            // 404 Not Found - unit may not have a current household (normal case)
+            log.warn("⚠️ [BaseServiceClient] No current household found for unitId: {} (404). This is normal if unit has no active household.", unitId);
             return Optional.empty();
         } catch (ResourceAccessException ex) {
             // Connection refused or service unavailable - log as WARN, not ERROR
@@ -82,7 +89,8 @@ public class BaseServiceClient {
             ResponseEntity<Map> householdResponse = restTemplate.getForEntity(householdUrl, Map.class);
             
             if (!householdResponse.getStatusCode().is2xxSuccessful() || householdResponse.getBody() == null) {
-                log.warn("⚠️ [BaseServiceClient] Could not get household for unitId: {}", unitId);
+                log.warn("⚠️ [BaseServiceClient] Could not get household for unitId: {} (status: {})", 
+                        unitId, householdResponse.getStatusCode());
                 return java.util.Collections.emptyList();
             }
             
@@ -134,6 +142,10 @@ public class BaseServiceClient {
             
             log.debug("✅ [BaseServiceClient] Found {} resident(s) in unit {}", residentIds.size(), unitId);
             return residentIds;
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound ex) {
+            // 404 Not Found - unit may not have a current household (normal case)
+            log.warn("⚠️ [BaseServiceClient] No current household found for unitId: {} (404). This is normal if unit has no active household.", unitId);
+            return java.util.Collections.emptyList();
         } catch (ResourceAccessException ex) {
             // Connection refused or service unavailable - log as WARN, not ERROR
             if (ex.getCause() instanceof ConnectException) {

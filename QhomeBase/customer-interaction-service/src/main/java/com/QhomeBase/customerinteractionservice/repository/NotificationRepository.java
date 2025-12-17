@@ -2,6 +2,9 @@ package com.QhomeBase.customerinteractionservice.repository;
 
 import com.QhomeBase.customerinteractionservice.model.Notification;
 import com.QhomeBase.customerinteractionservice.model.NotificationScope;
+import com.QhomeBase.customerinteractionservice.model.NotificationType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -78,8 +81,69 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     """)
     List<Notification> findByReferenceIdAndTypeAndTargetResidentId(
             @Param("referenceId") UUID referenceId,
-            @Param("type") com.QhomeBase.customerinteractionservice.model.NotificationType type,
+            @Param("type") NotificationType type,
             @Param("targetResidentId") UUID targetResidentId
+    );
+    
+    /**
+     * Optimized query: Filter and paginate at database level for resident notifications
+     * This replaces the inefficient in-memory filtering approach
+     * Uses Pageable to paginate at database level (LIMIT/OFFSET)
+     * 
+     * Logic:
+     * 1. Card notifications (CARD_FEE_REMINDER, CARD_APPROVED, CARD_REJECTED): 
+     *    - Must have targetResidentId = :residentId
+     * 2. Other notifications with targetResidentId: 
+     *    - Must have targetResidentId = :residentId
+     * 3. Notifications with targetBuildingId: 
+     *    - Must have targetBuildingId = :buildingId OR targetBuildingId IS NULL (all buildings)
+     * 4. Notifications without targetResidentId and without targetBuildingId: 
+     *    - Show to all residents
+     */
+    @Query("""
+        SELECT n FROM Notification n
+        WHERE n.scope = :scope
+        AND n.deletedAt IS NULL
+        AND (
+            (n.type IN ('CARD_FEE_REMINDER', 'CARD_APPROVED', 'CARD_REJECTED') 
+             AND n.targetResidentId = :residentId)
+            OR
+            (n.type NOT IN ('CARD_FEE_REMINDER', 'CARD_APPROVED', 'CARD_REJECTED') 
+             AND n.targetResidentId = :residentId)
+            OR
+            (n.targetResidentId IS NULL 
+             AND (n.targetBuildingId IS NULL OR n.targetBuildingId = :buildingId))
+        )
+    """)
+    Page<Notification> findNotificationsForResidentOptimized(
+            @Param("scope") NotificationScope scope,
+            @Param("residentId") UUID residentId,
+            @Param("buildingId") UUID buildingId,
+            Pageable pageable
+    );
+    
+    /**
+     * Optimized count query: Count at database level instead of loading all into memory
+     */
+    @Query("""
+        SELECT COUNT(n) FROM Notification n
+        WHERE n.scope = :scope
+        AND n.deletedAt IS NULL
+        AND (
+            (n.type IN ('CARD_FEE_REMINDER', 'CARD_APPROVED', 'CARD_REJECTED') 
+             AND n.targetResidentId = :residentId)
+            OR
+            (n.type NOT IN ('CARD_FEE_REMINDER', 'CARD_APPROVED', 'CARD_REJECTED') 
+             AND n.targetResidentId = :residentId)
+            OR
+            (n.targetResidentId IS NULL 
+             AND (n.targetBuildingId IS NULL OR n.targetBuildingId = :buildingId))
+        )
+    """)
+    long countNotificationsForResidentOptimized(
+            @Param("scope") NotificationScope scope,
+            @Param("residentId") UUID residentId,
+            @Param("buildingId") UUID buildingId
     );
 }
 
