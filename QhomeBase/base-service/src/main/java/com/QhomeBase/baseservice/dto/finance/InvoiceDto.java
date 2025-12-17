@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -28,5 +29,6 @@ public class InvoiceDto {
     private UUID payerResidentId;
     private UUID cycleId;
     private BigDecimal totalAmount;
+    private List<InvoiceLineDto> lines;
 }
 

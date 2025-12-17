@@ -89,7 +89,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
     join billing.invoice_lines bi on bi.invoice_id = i.id
     join billing.billing_cycles bc on bc.id = i.cycle_id
     where bi.service_code = :serviceCode
-    and i.cycle_id = :cycleId
+    and i.cycle_id = :cycleID
 """, nativeQuery = true)
     List<Invoice> findByServiceCodeAndAndCycle(@Param("cycleID") UUID cycleID, @Param("serviceCode") String serviceCode);
 

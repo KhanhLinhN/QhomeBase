@@ -139,4 +139,33 @@ public class FinanceBillingClient {
             throw new RuntimeException("Failed to create invoice in finance-billing: " + e.getMessage(), e);
         }
     }
+
+    public Mono<List<InvoiceDto>> getInvoicesByUnit(UUID unitId) {
+        log.debug("Getting invoices for unit: {}", unitId);
+        return financeWebClient
+                .get()
+                .uri("/api/invoices/unit/{unitId}", unitId)
+                .retrieve()
+                .bodyToFlux(InvoiceDto.class)
+                .collectList()
+                .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
+                        .filter(throwable -> throwable instanceof WebClientRequestException)
+                        .doBeforeRetry(retrySignal -> 
+                            log.warn("Retrying finance service invoice query (attempt {}/3): {}", 
+                                retrySignal.totalRetries() + 1, retrySignal.failure().getMessage())))
+                .doOnError(error -> log.error("Failed to get invoices for unit {} after retries", unitId, error));
+    }
+
+    public List<InvoiceDto> getInvoicesByUnitSync(UUID unitId) {
+        try {
+            List<InvoiceDto> invoices = getInvoicesByUnit(unitId).block();
+            log.debug("Retrieved {} invoices for unit: {}", 
+                    invoices != null ? invoices.size() : 0, unitId);
+            return invoices != null ? invoices : List.of();
+        } catch (Exception e) {
+            log.error("❌ FAILED to get invoices for unit: {}", unitId, e);
+            // Return empty list instead of throwing - we can still create invoice without water/electric costs
+            return List.of();
+        }
+    }
 }

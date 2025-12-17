@@ -185,6 +185,14 @@ public class ResidentCardRegistrationService {
                 throw new IllegalStateException("Đăng ký không ở trạng thái chờ duyệt. Trạng thái hiện tại: " + registration.getStatus());
             }
 
+            // Check payment status - must be PAID before approval
+            if (!"PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
+                throw new IllegalStateException(
+                    String.format("Không thể duyệt thẻ. Thẻ phải đã thanh toán trước khi được duyệt. Trạng thái thanh toán hiện tại: %s", 
+                        registration.getPaymentStatus())
+                );
+            }
+
             registration.setStatus("APPROVED");
             registration.setApprovedBy(adminId);
             registration.setApprovedAt(now);

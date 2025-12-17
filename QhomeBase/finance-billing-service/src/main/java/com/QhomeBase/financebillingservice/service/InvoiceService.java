@@ -20,7 +20,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -274,11 +273,24 @@ public class InvoiceService {
         LocalDate serviceDate = payDate.toLocalDate();
 
         String description = buildVehicleRegistrationDescription(request);
+        
+       
+        String billToName = "Căn hộ";
+        if (request.getUnitId() != null) {
+            try {
+                BaseServiceClient.UnitInfo unitInfo = baseServiceClient.getUnitById(request.getUnitId());
+                if (unitInfo != null && unitInfo.getCode() != null) {
+                    billToName = String.format("Căn hộ %s", unitInfo.getCode());
+                }
+            } catch (Exception e) {
+                log.warn("Failed to get unit code for billToName: {}", e.getMessage());
+            }
+        }
 
         CreateInvoiceRequest createRequest = CreateInvoiceRequest.builder()
                 .dueDate(serviceDate)
                 .currency("VND")
-                .billToName(description)
+                .billToName(billToName)
                 .payerUnitId(request.getUnitId())
                 .payerResidentId(residentId)
                 .lines(List.of(CreateInvoiceLineRequest.builder()
@@ -1375,11 +1387,24 @@ public class InvoiceService {
         LocalDate serviceDate = payDate.toLocalDate();
 
         String description = buildElevatorCardDescription(request);
+        
+        
+        String billToName = "Căn hộ";
+        if (request.getUnitId() != null) {
+            try {
+                BaseServiceClient.UnitInfo unitInfo = baseServiceClient.getUnitById(request.getUnitId());
+                if (unitInfo != null && unitInfo.getCode() != null) {
+                    billToName = String.format("Căn hộ %s", unitInfo.getCode());
+                }
+            } catch (Exception e) {
+                log.warn("Failed to get unit code for billToName: {}", e.getMessage());
+            }
+        }
 
         CreateInvoiceRequest createRequest = CreateInvoiceRequest.builder()
                 .dueDate(serviceDate)
                 .currency("VND")
-                .billToName(request.getFullName())
+                .billToName(billToName)
                 .payerUnitId(request.getUnitId())
                 .payerResidentId(residentId)
                 .lines(List.of(CreateInvoiceLineRequest.builder()
@@ -1452,11 +1477,24 @@ public class InvoiceService {
         LocalDate serviceDate = payDate.toLocalDate();
 
         String description = buildResidentCardDescription(request);
+        
+     
+        String billToName = "Căn hộ";
+        if (request.getUnitId() != null) {
+            try {
+                BaseServiceClient.UnitInfo unitInfo = baseServiceClient.getUnitById(request.getUnitId());
+                if (unitInfo != null && unitInfo.getCode() != null) {
+                    billToName = String.format("Căn hộ %s", unitInfo.getCode());
+                }
+            } catch (Exception e) {
+                log.warn("Failed to get unit code for billToName: {}", e.getMessage());
+            }
+        }
 
         CreateInvoiceRequest createRequest = CreateInvoiceRequest.builder()
                 .dueDate(serviceDate)
                 .currency("VND")
-                .billToName(request.getFullName())
+                .billToName(billToName)
                 .payerUnitId(request.getUnitId())
                 .payerResidentId(residentId)
                 .lines(List.of(CreateInvoiceLineRequest.builder()
