@@ -85,9 +85,10 @@ public class HouseholdController {
             HouseholdDto result = householdService.getCurrentHouseholdByUnitId(unitId);
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
-            log.warn("Failed to get current household for unit {}: {}", unitId, e.getMessage());
+            // Unit has no active household - return 404, no logging needed
             return ResponseEntity.notFound().build();
         } catch (Exception e) {
+            // Only log stacktrace for >=500 errors (production-ready)
             log.error("Error getting current household for unit {}: {}", unitId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }

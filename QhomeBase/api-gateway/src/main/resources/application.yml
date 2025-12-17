@@ -183,12 +183,19 @@ spring:
           filters:
             - StripPrefix=0
         # WebSocket Routes (must be before base-service catch-all)
+        # DEV LOCAL mode: WebSocket proxy configuration
+        # Gateway proxies WebSocket connections to backend services
+        # IMPORTANT: Backend must return 101 Switching Protocols for WebSocket handshake
         - id: websocket-customer-interaction
           uri: ${customer-interaction.service.url:http://localhost:8086}
           predicates:
             - Path=/ws/**
           filters:
             - StripPrefix=0
+          metadata:
+            # Disable retry for WebSocket connections
+            connect-timeout: 10000  # 10 seconds
+            response-timeout: 30000  # 30 seconds
         # Health endpoint (must be before catch-all routes)
         - id: health-service
           uri: http://localhost:${server.port:8989}
@@ -217,16 +224,21 @@ spring:
             - Path=/api/**
           filters:
             - StripPrefix=0
-      # HTTP Client Configuration for better performance
+      # HTTP Client Configuration for DEV LOCAL mode
+      # Clear timeouts, no retries, optimized for stability
       httpclient:
         # Connection timeout (time to establish connection to backend service)
-        connect-timeout: 5000  # 5 seconds
+        connect-timeout: 10000  # 10 seconds
         # Response timeout (time to wait for response from backend service)
-        response-timeout: 30s  # 30 seconds
+        # Reduced to prevent holding connections too long when downstream service is slow
+        response-timeout: 15s  # 15 seconds (reduced from 30s to fail fast)
+        # Disable retries to prevent overload
+        retry:
+          enabled: false  # No automatic retries
         # Connection pool configuration
         pool:
           type: ELASTIC  # Use elastic connection pool for better performance
-          max-connections: 500  # Maximum number of connections in pool
+          max-connections: 200  # Reduced from 500 to prevent overload
           max-idle-time: 20s  # Max idle time before closing connection
           max-life-time: 60s  # Max lifetime of connection
           evict-in-background: 10s  # Evict idle connections in background
@@ -248,4 +260,29 @@ spring:
             allowedHeaders: "*"
             allowCredentials: true
             maxAge: 3600
+
+######## Logging Configuration - PRODUCTION-READY FOR DEV LOCAL  #########
+# Only log WARN and ERROR to reduce I/O overhead and improve performance
+logging:
+  level:
+    root: WARN
+    # Disable verbose Spring Cloud Gateway logs
+    org.springframework.cloud.gateway: WARN
+    org.springframework.web.reactive: WARN
+    # Disable Netty logs (connection pool, HTTP client)
+    reactor.netty: WARN
+    io.netty: WARN
+    # Disable Reactor logs
+    reactor.core: WARN
+    # Disable WebSocket logs
+    org.springframework.web.socket: WARN
+    org.springframework.messaging: WARN
+    # Disable HTTP client logs
+    org.springframework.web.client: WARN
+    # Disable connection pool logs
+    com.zaxxer.hikari: WARN
+    # Disable Spring Security logs
+    org.springframework.security: WARN
+    # Only log errors from our application
+    com.QhomeBase.apigateway: WARN
 

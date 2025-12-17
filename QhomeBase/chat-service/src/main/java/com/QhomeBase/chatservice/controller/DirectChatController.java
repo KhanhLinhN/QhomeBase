@@ -207,6 +207,7 @@ public class DirectChatController {
     @PreAuthorize("hasRole('RESIDENT')")
     @Operation(summary = "Get blocked users", description = "Get list of users blocked by current user")
     public ResponseEntity<List<UUID>> getBlockedUsers(Authentication authentication) {
+        long startTime = System.currentTimeMillis();
         try {
             UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
             UUID userId = principal.uid();
@@ -223,16 +224,16 @@ public class DirectChatController {
             // This is needed for marketplace filtering which uses residentIds
             List<UUID> blockedResidentIds = blockService.getBlockedUserIds(residentId);
             
-            log.info("🔍 [DirectChatController] Found {} users blocked by current user {} (residentIds)", blockedResidentIds.size(), residentId);
-            if (!blockedResidentIds.isEmpty()) {
-                log.info("🔍 [DirectChatController] Blocked residentIds: {}", blockedResidentIds);
+            long duration = System.currentTimeMillis() - startTime;
+            if (duration > 500) {
+                log.warn("getBlockedUsers took {}ms (target: <500ms) for residentId: {}", duration, residentId);
             }
-            log.info("🔍 [DirectChatController] Returning {} residentIds (NOT userIds) from /blocked-users endpoint", blockedResidentIds.size());
+            
             return ResponseEntity.ok(blockedResidentIds);
         } catch (Exception e) {
-            // Log error and return empty list instead of throwing 500
-            // This prevents the app from crashing if there's an issue
-            log.error("Error getting blocked users", e);
+            long duration = System.currentTimeMillis() - startTime;
+            log.warn("Error getting blocked users after {}ms: {}", duration, e.getMessage());
+            // Return empty list as fallback instead of error
             return ResponseEntity.ok(List.of());
         }
     }

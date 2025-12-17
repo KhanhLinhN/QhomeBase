@@ -8,6 +8,8 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.net.URI;
@@ -31,7 +33,7 @@ public class NotificationClient {
                                                          int reminderNumber,
                                                          boolean isFinalReminder) {
         if (residentId == null) {
-            log.warn("⚠️ [NotificationClient] residentId null, skip notification");
+            log.warn("[NotificationClient] residentId null, skip notification");
             return;
         }
 
@@ -98,9 +100,6 @@ public class NotificationClient {
                 internalPayload.put("actionUrl", payload.get("actionUrl"));
             }
 
-            log.debug("📤 [NotificationClient] Sending internal notification to: {}", uri);
-            log.debug("📤 [NotificationClient] Payload: {}", internalPayload);
-
             ResponseEntity<Void> response = restTemplate.exchange(
                     uri,
                     HttpMethod.POST,
@@ -109,12 +108,19 @@ public class NotificationClient {
             );
 
             if (!response.getStatusCode().is2xxSuccessful()) {
-                log.warn("❌ [NotificationClient] Failed to send notification: status={}", response.getStatusCode());
-            } else {
-                log.info("✅ [NotificationClient] Contract renewal reminder notification sent successfully");
+                log.warn("[NotificationClient] Failed to send notification: status={}", response.getStatusCode());
             }
+        } catch (ResourceAccessException e) {
+            // Connection refused/timeout - expected when notification service is not running
+            // Only log concise message without stacktrace (production-ready)
+            log.warn("[NotificationClient] Cannot connect to notification service at {}: {}", 
+                    notificationServiceBaseUrl, e.getMessage());
+        } catch (RestClientException e) {
+            // Other REST client errors - log without stacktrace
+            log.warn("[NotificationClient] Error sending notification: {}", e.getMessage());
         } catch (Exception ex) {
-            log.error("❌ [NotificationClient] Error sending notification", ex);
+            // Unexpected errors - log with stacktrace (production-ready)
+            log.error("[NotificationClient] Unexpected error sending notification: {}", ex.getMessage(), ex);
         }
     }
 }

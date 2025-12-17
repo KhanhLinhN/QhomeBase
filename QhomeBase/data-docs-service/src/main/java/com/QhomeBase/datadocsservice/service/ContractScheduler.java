@@ -41,7 +41,7 @@ public class ContractScheduler {
 
     private void triggerReminder3ForTesting() {
         try {
-            log.info("🔧 [ContractScheduler] Force triggering reminder 3 for testing");
+            // Force triggering reminder 3 for testing
             LocalDate today = LocalDate.now();
             
             List<Contract> contracts = contractService.findContractsNeedingRenewalReminder();
@@ -251,12 +251,9 @@ public class ContractScheduler {
             List<UUID> residentIds = baseServiceClient.getAllResidentIdsByUnitId(contract.getUnitId());
             
             if (residentIds.isEmpty()) {
-                log.warn("⚠️ Could not find any residents for unitId: {}", contract.getUnitId());
+                log.warn("[ContractScheduler] Could not find any residents for unitId: {}", contract.getUnitId());
                 return;
             }
-            
-            log.info("📧 Sending reminder #{} for contract {} to {} resident(s) in unit {}", 
-                    reminderNumber, contract.getContractNumber(), residentIds.size(), contract.getUnitId());
             
             // Send notification to each resident
             for (UUID residentId : residentIds) {

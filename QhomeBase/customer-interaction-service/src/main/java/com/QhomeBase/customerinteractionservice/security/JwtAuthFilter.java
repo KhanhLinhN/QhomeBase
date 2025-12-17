@@ -25,6 +25,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+        // DEV LOCAL mode: Skip JWT filter for WebSocket handshake
+        // WebSocket handshake must succeed to return 101 Switching Protocols
+        // JWT validation happens during STOMP CONNECT frame, not HTTP handshake
+        String path = request.getRequestURI();
+        if (path != null && (path.startsWith("/ws") || path.startsWith("/ws/"))) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+        
         String auth = request.getHeader("Authorization");
         
         if (auth != null && auth.startsWith("Bearer ")) {

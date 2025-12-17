@@ -605,7 +605,7 @@ public class ContractService {
                 } else {
                     // Not OWNER/TENANT - household member
                     permissionMessage = "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng";
-                    log.warn("⚠️ [ContractService] User is NOT owner. permissionMessage: {}", permissionMessage);
+                    // Silent - no need to log when user is not owner (expected case)
                 }
             } catch (RuntimeException e) {
                 // Timeout or base-service unavailable - use fallback for ACTIVE RENTAL contracts
@@ -622,28 +622,23 @@ public class ContractService {
                     log.info("✅ [ContractService] Fallback permissions: canRenew={}, canCancel={}, canExtend={}", 
                             canRenew, canCancel, canExtend);
                 } else {
-                    log.warn("⚠️ [ContractService] Error checking permission for contract {}: {}", 
+                    log.warn("[ContractService] Error checking permission for contract {}: {}", 
                             contract.getId(), e.getMessage());
                     permissionMessage = "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng";
                 }
             } catch (Exception e) {
-                log.warn("⚠️ [ContractService] Error checking permission for contract {}: {}", 
+                log.warn("[ContractService] Error checking permission for contract {}: {}", 
                         contract.getId(), e.getMessage());
                 permissionMessage = "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng";
             }
         } else {
             if (!needsPermissionCheck) {
-                log.info("🔍 [ContractService] Skipping permission check: contractType={}, status={}", 
-                        contract.getContractType(), contract.getStatus());
+                // Silent skip - no need to log
             } else {
-                log.warn("⚠️ [ContractService] Cannot check permissions: userId={}, unitId={}, accessToken={}", 
-                        userId, contract.getUnitId(), accessToken != null ? "present" : "null");
+                log.warn("[ContractService] Cannot check permissions: userId=null, unitId={}, accessToken=null", 
+                        contract.getUnitId());
             }
         }
-        
-        log.info("🔍 [ContractService] Final result: isOwner={}, canRenew={}, canCancel={}, canExtend={}, permissionMessage={}", 
-                isOwner, canRenew, canCancel, canExtend, permissionMessage);
-        log.info("🔍 [ContractService] =================================================================");
 
         return ContractDto.builder()
                 .id(contract.getId())

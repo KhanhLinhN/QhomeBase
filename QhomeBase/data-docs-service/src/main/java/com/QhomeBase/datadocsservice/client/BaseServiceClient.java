@@ -7,6 +7,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
@@ -140,7 +142,7 @@ public class BaseServiceClient {
                 }
             }
             
-            log.debug("✅ [BaseServiceClient] Found {} resident(s) in unit {}", residentIds.size(), unitId);
+            // Found residents in unit
             return residentIds;
         } catch (org.springframework.web.client.HttpClientErrorException.NotFound ex) {
             // 404 Not Found - unit may not have a current household (normal case)
@@ -255,7 +257,7 @@ public class BaseServiceClient {
      */
     public boolean isOwnerOfUnit(UUID userId, UUID unitId, String accessToken) {
         if (userId == null || unitId == null) {
-            log.warn("⚠️ [BaseServiceClient] userId or unitId is null");
+            log.warn("[BaseServiceClient] userId or unitId is null");
             return false;
         }
 
@@ -271,7 +273,7 @@ public class BaseServiceClient {
             
             HttpEntity<Void> request = new HttpEntity<>(headers);
             
-            log.debug("🔍 [BaseServiceClient] Checking if user {} is OWNER of unit {}", userId, unitId);
+            // Check if user is OWNER of unit
             ResponseEntity<Map> response = restTemplate.exchange(
                     url,
                     org.springframework.http.HttpMethod.GET,
@@ -285,19 +287,16 @@ public class BaseServiceClient {
                 // Kiểm tra household kind - OWNER hoặc TENANT đều được coi là chủ căn hộ
                 Object kindObj = household.get("kind");
                 if (kindObj == null) {
-                    log.debug("⚠️ [BaseServiceClient] Household kind is null");
                     return false;
                 }
                 String kind = kindObj.toString();
                 if (!"OWNER".equalsIgnoreCase(kind) && !"TENANT".equalsIgnoreCase(kind)) {
-                    log.debug("⚠️ [BaseServiceClient] Household kind is not OWNER or TENANT: {}", kind);
                     return false;
                 }
                 
                 // Kiểm tra primaryResidentId
                 Object primaryResidentIdObj = household.get("primaryResidentId");
                 if (primaryResidentIdObj == null) {
-                    log.debug("⚠️ [BaseServiceClient] Household has no primaryResidentId");
                     return false;
                 }
                 
@@ -319,7 +318,6 @@ public class BaseServiceClient {
                         String primaryResidentId = primaryResidentIdObj.toString();
                         
                         boolean isOwner = residentId.equals(primaryResidentId);
-                        log.debug("✅ [BaseServiceClient] User {} isOwner of unit {}: {}", userId, unitId, isOwner);
                         return isOwner;
                     }
                 }
@@ -331,16 +329,29 @@ public class BaseServiceClient {
             String errorMsg = e.getMessage();
             if (errorMsg != null && (errorMsg.contains("timeout") || errorMsg.contains("Read timed out") 
                     || errorMsg.contains("Connection timed out") || errorMsg.contains("Connection refused"))) {
-                log.warn("⚠️ [BaseServiceClient] Timeout/connection error checking if user {} is OWNER of unit {}: {}", 
+                log.warn("[BaseServiceClient] Timeout/connection error checking if user {} is OWNER of unit {}: {}", 
                         userId, unitId, errorMsg);
                 throw new RuntimeException("Base-service timeout or unavailable: " + errorMsg, e);
             }
-            log.error("❌ [BaseServiceClient] Error checking if user {} is OWNER of unit {}: {}", 
+            // Only log error message, no stacktrace for connection errors
+            log.error("[BaseServiceClient] Error checking if user {} is OWNER of unit {}: {}", 
                     userId, unitId, e.getMessage());
             return false;
+        } catch (HttpServerErrorException e) {
+            // HTTP 5xx errors from base-service - log at DEBUG level to avoid spam (production-ready)
+            // This is expected when base-service has internal errors, don't spam logs
+            log.debug("[BaseServiceClient] HTTP {} error checking if user {} is OWNER of unit {}: {}", 
+                    e.getStatusCode().value(), userId, unitId, e.getMessage());
+            return false;
+        } catch (HttpClientErrorException e) {
+            // HTTP 4xx errors - log at DEBUG level to avoid spam (production-ready)
+            log.debug("[BaseServiceClient] HTTP {} error checking if user {} is OWNER of unit {}: {}", 
+                    e.getStatusCode().value(), userId, unitId, e.getMessage());
+            return false;
         } catch (Exception e) {
-            log.error("❌ [BaseServiceClient] Error checking if user {} is OWNER of unit {}: {}", 
-                    userId, unitId, e.getMessage());
+            // Only log stacktrace for unexpected errors (production-ready)
+            log.error("[BaseServiceClient] Error checking if user {} is OWNER of unit {}: {}", 
+                    userId, unitId, e.getMessage(), e);
             return false;
         }
     }

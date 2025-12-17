@@ -132,15 +132,24 @@ public class ResidentController {
     @GetMapping("/my-units")
     @PreAuthorize("hasRole('RESIDENT')")
     public ResponseEntity<List<UnitDto>> getMyUnits(Authentication authentication) {
+        long startTime = System.currentTimeMillis();
         try {
             UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
             UUID userId = principal.uid();
             
             List<UnitDto> units = residentAccountService.getMyUnits(userId);
+            
+            long duration = System.currentTimeMillis() - startTime;
+            if (duration > 500) {
+                log.warn("getMyUnits took {}ms (target: <500ms) for userId: {}", duration, userId);
+            }
+            
             return ResponseEntity.ok(units);
         } catch (Exception e) {
-            log.warn("Failed to get my units: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
+            long duration = System.currentTimeMillis() - startTime;
+            log.warn("Failed to get my units after {}ms: {}", duration, e.getMessage());
+            // Return empty list as fallback instead of error
+            return ResponseEntity.ok(List.of());
         }
     }
 
@@ -191,6 +200,9 @@ public class ResidentController {
         } catch (IllegalArgumentException e) {
             log.warn("Failed to get resident by user {}: {}", userId, e.getMessage());
             return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            log.error("Error getting resident by user {}: {}", userId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 

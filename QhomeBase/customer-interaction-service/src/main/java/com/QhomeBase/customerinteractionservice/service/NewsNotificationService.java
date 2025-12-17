@@ -37,17 +37,9 @@ public class NewsNotificationService {
         String destination = "/topic/news";
         
         try {
-            String jsonMessage = objectMapper.writerWithDefaultPrettyPrinter()
-                    .writeValueAsString(message);
-            
-            log.info("🔔 WebSocket {} | Destination: {}", action, destination);
-            log.info("📨 Message Content:\n{}", jsonMessage);
-            
             messagingTemplate.convertAndSend(destination, message);
-            
-            log.info("✅ Message sent successfully");
         } catch (Exception e) {
-            log.error("❌ Error sending WebSocket message", e);
+            log.error("Error sending WebSocket message", e);
         }
     }
 }

@@ -201,9 +201,14 @@ public class HouseholdService {
         String primaryResidentName = null;
         
         // Use optimized query that already JOIN FETCHes building
-        Unit unit = unitRepository.findByIdWithBuilding(household.getUnitId());
-        if (unit != null) {
-            unitCode = unit.getCode();
+        try {
+            Unit unit = unitRepository.findByIdWithBuilding(household.getUnitId());
+            if (unit != null) {
+                unitCode = unit.getCode();
+            }
+        } catch (Exception e) {
+            // Unit not found or error loading - continue without unitCode
+            log.warn("[HouseholdService] Failed to load unit {}: {}", household.getUnitId(), e.getMessage());
         }
 
         // Load resident only if needed
@@ -224,9 +229,7 @@ public class HouseholdService {
             try {
                 contract = fetchContractSummary(contractId);
             } catch (Exception e) {
-                log.warn("⚠️ [HouseholdService] Failed to fetch contract summary for contract {}: {}", 
-                        contractId, e.getMessage());
-                // Continue without contract summary
+                // Continue without contract summary - not critical
             }
         }
         

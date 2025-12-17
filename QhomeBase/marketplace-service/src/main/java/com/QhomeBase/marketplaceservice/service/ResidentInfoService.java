@@ -45,10 +45,7 @@ public class ResidentInfoService {
         }
         
         try {
-            log.info("Getting residentId for userId: {} with token present: {}", userId, accessToken != null && !accessToken.isEmpty());
-            
             String url = baseServiceUrl + "/api/residents/by-user/" + userId;
-            log.info("Calling URL: {}", url);
             
             var webClientBuilder = webClient
                     .get()
@@ -70,6 +67,20 @@ public class ResidentInfoService {
                                 null
                         ));
                     })
+                    .onStatus(status -> status.value() == 500, clientResponse -> {
+                        log.error("Internal server error (500) when getting residentId for userId: {}", userId);
+                        return clientResponse.bodyToMono(String.class)
+                                .flatMap(body -> {
+                                    log.error("500 Response body: {}", body);
+                                    return Mono.error(WebClientResponseException.create(
+                                            HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                                            "Internal server error when getting resident for userId: " + userId,
+                                            clientResponse.headers().asHttpHeaders(),
+                                            body != null ? body.getBytes() : null,
+                                            null
+                                    ));
+                                });
+                    })
                     .bodyToMono(Map.class)
                     .block();
             
@@ -85,11 +96,18 @@ public class ResidentInfoService {
             }
             
             UUID residentId = UUID.fromString(idObj.toString());
-            log.info("Found residentId: {} for userId: {}", residentId, userId);
             return residentId;
             
         } catch (WebClientResponseException.NotFound e) {
             log.warn("Resident not found (404) for userId: {}", userId);
+            return null;
+        } catch (WebClientResponseException.InternalServerError e) {
+            log.error("Internal server error (500) when getting residentId for userId: {}. Response body: {}", 
+                    userId, e.getResponseBodyAsString());
+            return null;
+        } catch (WebClientResponseException e) {
+            log.error("HTTP error when getting residentId for userId: {} - Status: {}, Body: {}", 
+                    userId, e.getStatusCode(), e.getResponseBodyAsString());
             return null;
         } catch (Exception e) {
             log.error("Error getting residentId for userId: {}", userId, e);
@@ -132,7 +150,6 @@ public class ResidentInfoService {
             }
             
             String token = auth.substring(7);
-            log.debug("Successfully extracted access token from request header (length: {})", token.length());
             return token;
         } catch (Exception e) {
             log.error("Error getting access token from request: {}", e.getMessage(), e);
@@ -170,11 +187,7 @@ public class ResidentInfoService {
         }
 
         try {
-            log.info("Fetching resident info for residentId: {} with token present: {}, baseServiceUrl: {}", 
-                    residentId, accessToken != null && !accessToken.isEmpty(), baseServiceUrl);
-            
             String url = baseServiceUrl + "/api/residents/" + residentId;
-            log.info("Calling URL: {}", url);
             
             var webClientBuilder = webClient
                     .get()
@@ -235,15 +248,10 @@ public class ResidentInfoService {
                 return null;
             }
 
-            log.info("Received response for residentId {}: keys={}", residentId, response.keySet());
-            log.debug("Full response: {}", response); // Debug: log full response
-
             // Extract data from response - ResidentDto is a record, so fields are directly accessible
             String fullName = getStringValue(response, "fullName");
             String phone = getStringValue(response, "phone");
             String email = getStringValue(response, "email");
-            
-            log.info("Extracted resident info for {}: fullName={}, phone={}, email={}", residentId, fullName, phone, email);
             
             // Get unit info by calling /api/residents/my-units endpoint
             // First, we need to get userId from the resident response
@@ -266,7 +274,6 @@ public class ResidentInfoService {
             if (accessToken != null && !accessToken.isEmpty()) {
                 try {
                     String unitsUrl = baseServiceUrl + "/api/residents/" + residentId + "/units";
-                    log.debug("Calling URL to get units for resident {}: {}", residentId, unitsUrl);
                     
                     List<Map<String, Object>> units = webClient
                             .get()
@@ -295,7 +302,6 @@ public class ResidentInfoService {
                             if (buildingId != null) {
                                 try {
                                     String buildingUrl = baseServiceUrl + "/api/buildings/" + buildingId;
-                                    log.debug("Calling URL to get building: {}", buildingUrl);
                                     
                                     Map<String, Object> building = webClient
                                             .get()
@@ -307,18 +313,12 @@ public class ResidentInfoService {
                                     
                                     if (building != null) {
                                         buildingName = getStringValue(building, "name");
-                                        log.info("Extracted building name from building endpoint: {}", buildingName);
                                     }
                                 } catch (Exception e) {
                                     log.warn("Failed to get building name for buildingId {}: {}", buildingId, e.getMessage());
                                 }
                             }
-                        } else {
-                            log.info("Extracted building name from unit response: {}", buildingName);
                         }
-                        
-                        log.info("Extracted from /api/residents/{}/units: unitNumber={}, buildingId={}, buildingName={}", 
-                                residentId, unitNumber, buildingId, buildingName);
                     }
                 } catch (Exception e) {
                     log.warn("Failed to get unit info from /api/residents/{}/units: {}", residentId, e.getMessage());
@@ -334,8 +334,6 @@ public class ResidentInfoService {
                     .buildingName(buildingName)
                     .build();
             
-            log.info("Built ResidentInfoResponse for {}: name={}, unitNumber={}, buildingId={}, buildingName={}", 
-                    residentId, result.getName(), result.getUnitNumber(), result.getBuildingId(), result.getBuildingName());
             return result;
 
         } catch (WebClientResponseException.Forbidden e) {

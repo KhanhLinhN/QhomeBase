@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -30,27 +31,35 @@ public class UserController {
     @Transactional(readOnly = true)
     public ResponseEntity<Map<String, Object>> getCurrentUser(Authentication authentication) {
         try {
-            log.info("=== /api/users/me called ===");
             if (authentication == null) {
                 log.error("Authentication is null!");
                 return ResponseEntity.status(500).body(Map.of("error", "Authentication is null"));
             }
-            log.info("Authentication: {}", authentication.getClass().getSimpleName());
-            log.info("Principal: {}", authentication.getPrincipal() != null ? authentication.getPrincipal().getClass().getSimpleName() : "null");
             
             UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
             UUID userId = principal.uid();
-            log.info("Getting current user info for userId: {}", userId);
             
-            // Get user account info from IAM service
-            log.debug("Calling IAM service to get user account info for userId: {}", userId);
-            ResidentAccountDto accountDto = iamClientService.getUserAccountInfo(userId);
+            // Get user account info from IAM service with timeout handling
+            ResidentAccountDto accountDto;
+            try {
+                accountDto = iamClientService.getUserAccountInfo(userId);
+            } catch (Exception e) {
+                // IAM service timeout or error - return fallback response
+                log.warn("IAM service call failed for userId {}: {}", userId, e.getMessage());
+                Map<String, Object> fallbackResponse = new HashMap<>();
+                fallbackResponse.put("id", userId.toString());
+                fallbackResponse.put("username", "User");
+                fallbackResponse.put("email", "");
+                fallbackResponse.put("roles", List.of());
+                fallbackResponse.put("active", true);
+                fallbackResponse.put("fullName", "User");
+                return ResponseEntity.ok(fallbackResponse);
+            }
+            
             if (accountDto == null) {
                 log.warn("User account not found in IAM service for userId: {}", userId);
                 return ResponseEntity.notFound().build();
             }
-            log.debug("Retrieved user account info: username={}, email={}, roles={}", 
-                    accountDto.username(), accountDto.email(), accountDto.roles());
             
             // Get resident info if exists
             UUID residentId = null;
@@ -89,7 +98,6 @@ public class UserController {
             } else {
                 // Fallback to username if fullName is not available
                 response.put("fullName", accountDto.username() != null ? accountDto.username() : "User");
-                log.debug("fullName not available for userId {}, using username as fallback", userId);
             }
             if (phone != null) {
                 response.put("phoneNumber", phone);
@@ -101,15 +109,15 @@ public class UserController {
             if (dob != null) {
                 response.put("dateOfBirth", dob.toString());
             }
-            
-            log.debug("Returning user info response for userId: {}", userId);
             return ResponseEntity.ok(response);
         } catch (RuntimeException e) {
+            // Only log stacktrace for >=500 errors (production-ready)
             log.error("Runtime error getting current user: {}", e.getMessage(), e);
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("error", "Failed to get user info: " + e.getMessage());
             return ResponseEntity.status(500).body(errorResponse);
         } catch (Exception e) {
+            // Only log stacktrace for unexpected errors (production-ready)
             log.error("Unexpected error getting current user: {}", e.getMessage(), e);
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("error", "Internal server error: " + e.getMessage());

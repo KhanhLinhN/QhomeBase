@@ -1,22 +1,33 @@
 package com.QhomeBase.baseservice.config;
 
 import com.QhomeBase.baseservice.security.UserPrincipal;
+import io.netty.channel.ChannelOption;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.netty.http.client.HttpClient;
+
+import java.time.Duration;
 
 @Configuration
 public class WebClientConfig {
 
     @Bean
     public WebClient iamWebClient(@Value("${iam.service.url:http://localhost:8088}") String iamServiceUrl) {
+        // Configure HTTP client with timeout for DEV LOCAL mode
+        HttpClient httpClient = HttpClient.create()
+                .responseTimeout(Duration.ofSeconds(5)) // 5 seconds timeout for IAM service
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 3000); // 3 seconds connection timeout
+        
         return WebClient.builder()
                 .baseUrl(iamServiceUrl)
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .filter(addJwtTokenFilter())
                 .build();
     }
