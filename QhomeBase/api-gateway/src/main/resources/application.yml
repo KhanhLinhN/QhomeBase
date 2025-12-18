@@ -230,8 +230,8 @@ spring:
         # Connection timeout (time to establish connection to backend service)
         connect-timeout: 10000  # 10 seconds
         # Response timeout (time to wait for response from backend service)
-        # Reduced to prevent holding connections too long when downstream service is slow
-        response-timeout: 15s  # 15 seconds (reduced from 30s to fail fast)
+        # Increased for DEV LOCAL mode to handle slow microservices/database queries
+        response-timeout: 45s  # 45 seconds - allow more time for slow endpoints
         # Disable retries to prevent overload
         retry:
           enabled: false  # No automatic retries
