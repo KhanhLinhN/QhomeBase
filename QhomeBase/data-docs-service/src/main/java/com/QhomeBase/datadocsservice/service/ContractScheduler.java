@@ -25,17 +25,17 @@ public class ContractScheduler {
     private final NotificationClient notificationClient;
     private final BaseServiceClient baseServiceClient;
     
-    @EventListener(ApplicationReadyEvent.class)
-    public void onApplicationReady() {
-        contractService.markExpiredContracts();
-        contractService.triggerRenewalReminders();
-        sendRenewalReminders();
-        markRenewalDeclined();
-        //trigger for third sent
-        triggerReminder3ForTesting();
+    // @EventListener(ApplicationReadyEvent.class)
+    // public void onApplicationReady() {
+    //     contractService.markExpiredContracts();
+    //     contractService.triggerRenewalReminders();
+    //     sendRenewalReminders();
+    //     markRenewalDeclined();
+    //     //trigger for third sent
+    //     triggerReminder3ForTesting();
         
-        log.info("Initial contract status checks completed");
-    }
+    //     log.info("Initial contract status checks completed");
+    // }
     
 
     private void triggerReminder3ForTesting() {
