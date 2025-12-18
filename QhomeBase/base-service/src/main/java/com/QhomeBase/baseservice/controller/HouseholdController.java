@@ -87,6 +87,9 @@ public class HouseholdController {
         } catch (IllegalArgumentException e) {
             log.warn("Failed to get current household for unit {}: {}", unitId, e.getMessage());
             return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            log.error("Error getting current household for unit {}: {}", unitId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 

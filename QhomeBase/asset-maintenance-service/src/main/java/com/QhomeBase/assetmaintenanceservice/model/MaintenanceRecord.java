@@ -37,6 +37,9 @@ public class MaintenanceRecord {
     @Column(name = "maintenance_date", nullable = false)
     private LocalDate maintenanceDate;
 
+    @Column(name = "due_date")
+    private LocalDate dueDate;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "maintenance_schedule_id")
     private MaintenanceSchedule maintenanceSchedule;

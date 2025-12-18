@@ -68,8 +68,10 @@ public class ReadingCycleController {
     }
 
     @GetMapping("/{cycleId}/unassigned")
-    public ResponseEntity<ReadingCycleUnassignedInfoDto> getCycleUnassignedInfo(@PathVariable UUID cycleId) {
-        ReadingCycleUnassignedInfoDto info = readingCycleService.getUnassignedUnitsInfo(cycleId);
+    public ResponseEntity<ReadingCycleUnassignedInfoDto> getCycleUnassignedInfo(
+            @PathVariable UUID cycleId,
+            @RequestParam(required = false, defaultValue = "false") boolean onlyWithOwner) {
+        ReadingCycleUnassignedInfoDto info = readingCycleService.getUnassignedUnitsInfo(cycleId, onlyWithOwner);
         return ResponseEntity.ok(info);
     }
 

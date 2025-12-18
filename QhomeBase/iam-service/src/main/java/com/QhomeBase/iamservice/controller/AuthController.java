@@ -79,7 +79,7 @@ public class AuthController {
     public ResponseEntity<?> confirmReset(@Valid @RequestBody PasswordResetConfirmRequestDto request) {
         try {
             passwordResetService.resetPassword(request.email(), request.otp(), request.newPassword());
-            return ResponseEntity.ok(Map.of("message", "Password updated successfully"));
+            return ResponseEntity.ok(Map.of("message", "Mật khẩu đã được cập nhật thành công"));
         } catch (OtpExpiredException e) {
             log.warn("OTP expired for password reset email={}", request.email());
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));

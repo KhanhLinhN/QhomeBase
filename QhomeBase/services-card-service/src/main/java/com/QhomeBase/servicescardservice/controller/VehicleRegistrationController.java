@@ -194,8 +194,8 @@ public class VehicleRegistrationController {
     public ResponseEntity<?> getRegistrationsForAdmin(@RequestParam(name = "status", required = false) String status,
                                                       @RequestParam(name = "paymentStatus", required = false) String paymentStatus) {
         try {
-            // Mặc định chỉ lấy những thẻ có status = PENDING nếu không có query param
-            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : "PENDING";
+            // Only filter by status if explicitly provided (not empty string)
+            String finalStatus = (status != null && !status.isBlank()) ? status.trim() : null;
             String finalPaymentStatus = (paymentStatus != null && !paymentStatus.isBlank()) ? paymentStatus.trim() : null;
             
             return ResponseEntity.ok(
@@ -412,6 +412,7 @@ public class VehicleRegistrationController {
         body.put("vnpayTransactionRef", dto.vnpayTransactionRef());
         body.put("adminNote", dto.adminNote());
         body.put("approvedBy", dto.approvedBy() != null ? dto.approvedBy().toString() : null);
+        body.put("approvedByName", dto.approvedByName());
         body.put("approvedAt", dto.approvedAt());
         body.put("rejectionReason", dto.rejectionReason());
         body.put("createdAt", dto.createdAt());

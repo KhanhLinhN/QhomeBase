@@ -11,7 +11,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
@@ -130,9 +129,10 @@ public class ContractScheduler {
                 // Calculate days until end date
                 long daysUntilEndDate = ChronoUnit.DAYS.between(today, endDate);
                 
-                log.debug("Checking contract {}: endDate={}, today={}, daysUntilEndDate={}, renewalStatus={}, reminderSentAt={}", 
+                log.info("Checking contract {}: endDate={}, today={}, daysUntilEndDate={}, renewalStatus={}, reminderSentAt={}, todayDay={}, endDateMonth={}, endDateYear={}", 
                         contract.getContractNumber(), endDate, today, daysUntilEndDate,
-                        contract.getRenewalStatus(), contract.getRenewalReminderSentAt());
+                        contract.getRenewalStatus(), contract.getRenewalReminderSentAt(),
+                        today.getDayOfMonth(), endDate.getMonth(), endDate.getYear());
                 
                 try {
                     // Lần 1: 30 ngày trước khi hết hạn hợp đồng
@@ -145,15 +145,16 @@ public class ContractScheduler {
                         log.info("✅ Sent FIRST renewal reminder for contract {} (expires on {}, {} days until end date)", 
                                 contract.getContractNumber(), endDate, daysUntilEndDate);
                     }
-                    // Lần 2: 20 ngày trước khi hết hạn hợp đồng
+                    // Lần 2: Khi còn 18-22 ngày (buffer để đảm bảo không bỏ sót)
                     // Chỉ gửi nếu:
                     // - Đã gửi lần 1 (renewalReminderSentAt != null)
-                    // - Còn 19-21 ngày trước khi hết hạn (buffer)
-                    // - Lần 1 đã được gửi trước đó (ít nhất 1 ngày trước)
+                    // - Còn 18-22 ngày (target: 20 ngày)
+                    // - Lần 1 đã được gửi trước hôm nay (đảm bảo không gửi lần 2 trước lần 1)
                     else if (contract.getRenewalReminderSentAt() != null
-                            && daysUntilEndDate >= 19 && daysUntilEndDate <= 21) {
+                            && daysUntilEndDate >= 18 && daysUntilEndDate <= 22) {
+                        // Check if we already sent reminder 2 (by checking if reminder was sent before today)
                         LocalDate firstReminderDate = contract.getRenewalReminderSentAt().toLocalDate();
-                        // Đảm bảo lần 1 đã được gửi trước đó (ít nhất 1 ngày)
+                        // Kiểm tra: lần 1 phải được gửi trước hôm nay
                         if (firstReminderDate.isBefore(today)) {
                             contractService.sendRenewalReminder(contract.getId());
                             sendReminderNotificationToAllResidents(contract, 2, false);
@@ -165,15 +166,16 @@ public class ContractScheduler {
                                     contract.getContractNumber(), firstReminderDate, today);
                         }
                     }
-                    // Lần 3: 10 ngày trước khi hết hạn hợp đồng - BẮT BUỘC
+                    // Lần 3: Khi còn 8-12 ngày (buffer để đảm bảo không bỏ sót) - BẮT BUỘC
                     // Chỉ gửi nếu:
                     // - Đã gửi lần 1 (renewalReminderSentAt != null)
-                    // - Còn 9-11 ngày trước khi hết hạn (buffer)
-                    // - Lần 1 đã được gửi trước đó (ít nhất 1 ngày trước)
+                    // - Còn 8-12 ngày (target: 10 ngày)
+                    // - Lần 1 đã được gửi trước hôm nay (đảm bảo không gửi lần 3 trước lần 1)
                     else if (contract.getRenewalReminderSentAt() != null
-                            && daysUntilEndDate >= 9 && daysUntilEndDate <= 11) {
+                            && daysUntilEndDate >= 8 && daysUntilEndDate <= 12) {
+                        // Check if we already sent reminder 3 (by checking if reminder was sent before today)
                         LocalDate firstReminderDate = contract.getRenewalReminderSentAt().toLocalDate();
-                        // Đảm bảo lần 1 đã được gửi trước đó (ít nhất 1 ngày)
+                        // Kiểm tra: lần 1 phải được gửi trước hôm nay
                         if (firstReminderDate.isBefore(today)) {
                             contractService.sendRenewalReminder(contract.getId());
                             sendReminderNotificationToAllResidents(contract, 3, true);
@@ -201,32 +203,68 @@ public class ContractScheduler {
     public void markRenewalDeclined() {
         try {
             log.info("Starting scheduled task: Mark renewal declined");
-            OffsetDateTime deadlineDate = OffsetDateTime.now().minusDays(20);
+            LocalDate today = LocalDate.now();
             
-            List<Contract> contracts = contractService.findContractsWithRenewalDeclined(deadlineDate);
-            log.info("Found {} contract(s) with reminder sent >= 20 days ago", contracts.size());
+            // Get all active RENTAL contracts with REMINDED status
+            List<Contract> allContracts = contractService.findContractsNeedingRenewalReminder();
+            log.info("Found {} contract(s) that may need to be marked as declined", allContracts.size());
             
             int declinedCount = 0;
-            for (Contract contract : contracts) {
+            for (Contract contract : allContracts) {
                 try {
-                    if ("REMINDED".equals(contract.getRenewalStatus()) && contract.getRenewalReminderSentAt() != null) {
-                        long daysSinceFirstReminder = ChronoUnit.DAYS.between(
+                    if (!"REMINDED".equals(contract.getRenewalStatus()) 
+                            || contract.getRenewalReminderSentAt() == null
+                            || contract.getEndDate() == null) {
+                        continue;
+                    }
+                    
+                    LocalDate endDate = contract.getEndDate();
+                    long daysUntilEndDate = ChronoUnit.DAYS.between(today, endDate);
+                    long daysSinceFirstReminder = ChronoUnit.DAYS.between(
                             contract.getRenewalReminderSentAt().toLocalDate(),
-                            LocalDate.now()
-                        );
-                        
-                        log.debug("Checking contract {}: daysSinceFirstReminder = {}", 
-                                contract.getContractNumber(), daysSinceFirstReminder);
-                        
-                        if (daysSinceFirstReminder > 20) {
-                            contractService.markRenewalDeclined(contract.getId());
-                            declinedCount++;
-                            log.info("Marked contract {} as renewal declined (first reminder sent on {}, {} days ago - deadline passed)", 
-                                    contract.getContractNumber(), contract.getRenewalReminderSentAt(), daysSinceFirstReminder);
-                        } else {
-                            log.debug("Contract {} skipped: daysSinceFirstReminder ({}) is not > 20", 
-                                    contract.getContractNumber(), daysSinceFirstReminder);
+                            today
+                    );
+                    
+                    // Calculate reminder count to check if reminder 3 has been sent
+                    int reminderCount = contractService.calculateReminderCount(contract);
+                    
+                    log.info("Checking contract {}: daysUntilEndDate={}, daysSinceFirstReminder={}, reminderCount={}", 
+                            contract.getContractNumber(), daysUntilEndDate, daysSinceFirstReminder, reminderCount);
+                    
+                    // Đánh dấu DECLINED nếu:
+                    // 1. Đã gửi reminder lần 3 (reminderCount >= 3) VÀ
+                    // 2. (Đã hết hạn HOẶC đã qua 3 ngày sau reminder 3) VÀ
+                    // 3. Chưa được đánh dấu DECLINED
+                    boolean shouldDecline = false;
+                    String reason = "";
+                    
+                    if (reminderCount >= 3) {
+                        // Đã gửi reminder lần 3
+                        if (daysUntilEndDate < 0) {
+                            // Đã hết hạn
+                            shouldDecline = true;
+                            reason = String.format("Contract expired (endDate: %s, today: %s)", endDate, today);
+                        } else if (daysUntilEndDate <= 5 && daysSinceFirstReminder >= 20) {
+                            // Còn <= 5 ngày và đã qua 20 ngày từ lần nhắc đầu (đã gửi reminder 3)
+                            shouldDecline = true;
+                            reason = String.format("Less than 5 days remaining (daysUntilEndDate: %d, daysSinceFirstReminder: %d)", 
+                                    daysUntilEndDate, daysSinceFirstReminder);
                         }
+                    } else if (daysUntilEndDate < 0 && daysSinceFirstReminder >= 20) {
+                        // Đã hết hạn và đã qua 20 ngày từ lần nhắc đầu (fallback)
+                        shouldDecline = true;
+                        reason = String.format("Contract expired and reminder sent >= 20 days ago (endDate: %s, daysSinceFirstReminder: %d)", 
+                                endDate, daysSinceFirstReminder);
+                    }
+                    
+                    if (shouldDecline) {
+                        contractService.markRenewalDeclined(contract.getId());
+                        declinedCount++;
+                        log.info("✅ Marked contract {} as renewal declined. Reason: {}", 
+                                contract.getContractNumber(), reason);
+                    } else {
+                        log.debug("⏭️ Contract {} skipped: reminderCount={}, daysUntilEndDate={}, daysSinceFirstReminder={}", 
+                                contract.getContractNumber(), reminderCount, daysUntilEndDate, daysSinceFirstReminder);
                     }
                 } catch (Exception e) {
                     log.error("Error marking contract {} as renewal declined", contract.getId(), e);

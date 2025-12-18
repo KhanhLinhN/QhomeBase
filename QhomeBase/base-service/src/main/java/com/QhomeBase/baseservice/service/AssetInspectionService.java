@@ -374,6 +374,23 @@ public class AssetInspectionService {
         return toDto(inspection);
     }
 
+    @Transactional
+    public AssetInspectionDto assignInspector(UUID inspectionId, UUID inspectorId, String inspectorName) {
+        AssetInspection inspection = inspectionRepository.findById(inspectionId)
+                .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
+        
+        if (inspectorId == null) {
+            throw new IllegalArgumentException("Inspector ID cannot be null");
+        }
+        
+        inspection.setInspectorId(inspectorId);
+        inspection.setInspectorName(inspectorName);
+        inspection = inspectionRepository.save(inspection);
+        
+        log.info("Assigned inspector {} ({}) to inspection {}", inspectorName, inspectorId, inspectionId);
+        return toDto(inspection);
+    }
+
    
     @Transactional
     public AssetInspectionDto generateInvoice(UUID inspectionId, UUID createdBy) {
@@ -423,6 +440,108 @@ public class AssetInspectionService {
                 .externalRefId(inspectionId)
                 .build();
 
+        // Get water and electricity invoices for this unit
+        List<CreateInvoiceLineRequest> invoiceLines = new java.util.ArrayList<>(List.of(invoiceLine));
+        
+        try {
+            log.info("Attempting to get invoices for unit {} when generating asset inspection invoice", unitId);
+            List<com.QhomeBase.baseservice.dto.finance.InvoiceDto> unitInvoices = 
+                    financeBillingClient.getInvoicesByUnitSync(unitId);
+            
+            log.info("Found {} invoices for unit {} when generating asset inspection invoice", unitInvoices.size(), unitId);
+            
+            // Log raw invoice data to debug serialization issues
+            if (unitInvoices.isEmpty()) {
+                log.warn("No invoices found for unit {} - this might be expected if water/electric invoices haven't been created yet", unitId);
+            }
+            
+            // Log all invoice details for debugging
+            for (com.QhomeBase.baseservice.dto.finance.InvoiceDto inv : unitInvoices) {
+                if (inv.getLines() != null && !inv.getLines().isEmpty()) {
+                    List<String> serviceCodes = new java.util.ArrayList<>();
+                    for (com.QhomeBase.baseservice.dto.finance.InvoiceLineDto line : inv.getLines()) {
+                        if (line != null) {
+                            String code = line.getServiceCode();
+                            if (code != null) {
+                                serviceCodes.add(code);
+                            } else {
+                                log.warn("Invoice {} has line with null serviceCode. lineId={}, description={}", 
+                                        inv.getId(), line.getId(), line.getDescription());
+                            }
+                        }
+                    }
+                    log.info("Invoice {}: status={}, serviceCodes={}, totalAmount={}, linesCount={}", 
+                            inv.getId(), inv.getStatus(), serviceCodes, inv.getTotalAmount(), inv.getLines().size());
+                } else {
+                    log.warn("Invoice {} has no lines or lines is null. status={}, totalAmount={}", 
+                            inv.getId(), inv.getStatus(), inv.getTotalAmount());
+                }
+            }
+            
+            // Filter for WATER and ELECTRIC invoices that are PUBLISHED or PAID
+            int waterElectricCount = 0;
+            for (com.QhomeBase.baseservice.dto.finance.InvoiceDto invoice : unitInvoices) {
+                if (invoice.getLines() != null && !invoice.getLines().isEmpty()) {
+                    // Check if invoice has WATER or ELECTRIC service code
+                    boolean hasWaterOrElectric = invoice.getLines().stream()
+                            .filter(line -> line != null && line.getServiceCode() != null)
+                            .anyMatch(line -> "WATER".equals(line.getServiceCode()) || 
+                                            "ELECTRIC".equals(line.getServiceCode()));
+                    
+                    log.info("Invoice {} has status: {}, hasWaterOrElectric: {}, linesCount: {}", 
+                            invoice.getId(), invoice.getStatus(), hasWaterOrElectric, invoice.getLines().size());
+                    
+                    // Include PUBLISHED or PAID invoices (PAID invoices might have been paid but we still want to include them in the combined invoice)
+                    // This ensures we capture water/electric costs even if invoices were already paid
+                    if (hasWaterOrElectric && ("PUBLISHED".equals(invoice.getStatus()) || "PAID".equals(invoice.getStatus()))) {
+                        // Get the first line with WATER or ELECTRIC service code
+                        com.QhomeBase.baseservice.dto.finance.InvoiceLineDto firstLine = invoice.getLines().stream()
+                                .filter(line -> line != null && line.getServiceCode() != null)
+                                .filter(line -> "WATER".equals(line.getServiceCode()) || "ELECTRIC".equals(line.getServiceCode()))
+                                .findFirst()
+                                .orElse(null);
+                        
+                        if (firstLine == null) {
+                            log.warn("Could not find WATER or ELECTRIC line in invoice {}", invoice.getId());
+                            continue;
+                        }
+                        
+                        String serviceCode = firstLine.getServiceCode();
+                        
+                        // Create invoice line for water/electricity
+                        CreateInvoiceLineRequest waterElectricLine = CreateInvoiceLineRequest.builder()
+                                .serviceDate(firstLine.getServiceDate() != null ? firstLine.getServiceDate() : inspection.getInspectionDate())
+                                .description(String.format("Tiền %s - %s", 
+                                        "WATER".equals(serviceCode) ? "nước" : "điện",
+                                        firstLine.getDescription() != null ? firstLine.getDescription() : ""))
+                                .quantity(BigDecimal.ONE)
+                                .unit("hóa đơn")
+                                .unitPrice(invoice.getTotalAmount() != null ? invoice.getTotalAmount() : BigDecimal.ZERO)
+                                .taxRate(BigDecimal.ZERO)
+                                .serviceCode(serviceCode)
+                                .externalRefType("WATER_ELECTRIC_INVOICE")
+                                .externalRefId(invoice.getId())
+                                .build();
+                        
+                        invoiceLines.add(waterElectricLine);
+                        waterElectricCount++;
+                        log.info("Including {} invoice {} (amount: {}) in asset inspection invoice", 
+                                serviceCode, invoice.getId(), invoice.getTotalAmount());
+                    }
+                }
+            }
+            
+            if (waterElectricCount == 0) {
+                log.warn("No water/electric invoices found for unit {} when generating asset inspection invoice. " +
+                        "This might be because invoices haven't been created yet from meter readings.", unitId);
+            } else {
+                log.info("Added {} water/electric invoice lines to asset inspection invoice", waterElectricCount);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get water/electricity invoices for unit {}: {}. Proceeding with damage cost only.", 
+                    unitId, e.getMessage(), e);
+        }
+
         CreateInvoiceRequest invoiceRequest = CreateInvoiceRequest.builder()
                 .dueDate(LocalDate.now().plusDays(7))
                 .currency("VND")
@@ -432,7 +551,8 @@ public class AssetInspectionService {
                 .payerUnitId(unitId)
                 .payerResidentId(payerResidentId)
                 .cycleId(null)
-                .lines(List.of(invoiceLine))
+                .status("PAID") 
+                .lines(invoiceLines)
                 .build();
         try {
             com.QhomeBase.baseservice.dto.finance.InvoiceDto invoiceDto = financeBillingClient.createInvoiceSync(invoiceRequest);

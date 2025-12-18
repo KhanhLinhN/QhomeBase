@@ -152,5 +152,16 @@ public class AssetInspectionController {
         return ResponseEntity.ok(result);
     }
 
+    @PutMapping("/{inspectionId}/assign-inspector")
+    public ResponseEntity<AssetInspectionDto> assignInspector(
+            @PathVariable UUID inspectionId,
+            @RequestBody AssignInspectorRequest request) {
+        AssetInspectionDto result = inspectionService.assignInspector(
+                inspectionId, 
+                request.inspectorId(), 
+                request.inspectorName());
+        return ResponseEntity.ok(result);
+    }
+
 }
 

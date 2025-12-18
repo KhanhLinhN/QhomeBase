@@ -356,4 +356,80 @@ public class BaseServiceClient {
             // Don't throw exception - allow contract cancellation to proceed even if inspection creation fails
         }
     }
+
+    /**
+     * Get current household by unitId
+     */
+    @SuppressWarnings("unchecked")
+    public Optional<Map<String, Object>> getCurrentHouseholdByUnitId(UUID unitId) {
+        try {
+            String url = baseServiceBaseUrl + "/api/households/units/" + unitId + "/current";
+            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return Optional.of((Map<String, Object>) response.getBody());
+            }
+            return Optional.empty();
+        } catch (ResourceAccessException ex) {
+            if (ex.getCause() instanceof ConnectException) {
+                log.warn("⚠️ [BaseServiceClient] Base-service unavailable (connection refused) for unitId: {}. This is normal if base-service is not running.", unitId);
+            } else {
+                log.warn("⚠️ [BaseServiceClient] Network error connecting to base-service for unitId: {}", unitId, ex);
+            }
+            return Optional.empty();
+        } catch (Exception ex) {
+            log.error("❌ [BaseServiceClient] Error getting current household for unitId: {}", unitId, ex);
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Delete household (set endDate to today)
+     */
+    public void deleteHousehold(UUID householdId) {
+        try {
+            String url = baseServiceBaseUrl + "/api/households/" + householdId;
+            restTemplate.delete(url);
+            log.info("✅ [BaseServiceClient] Deleted household: {}", householdId);
+        } catch (ResourceAccessException ex) {
+            if (ex.getCause() instanceof ConnectException) {
+                log.warn("⚠️ [BaseServiceClient] Base-service unavailable (connection refused) when deleting household: {}. This is normal if base-service is not running.", householdId);
+            } else {
+                log.warn("⚠️ [BaseServiceClient] Network error connecting to base-service when deleting household: {}", householdId, ex);
+            }
+            // Don't throw exception - allow contract processing to proceed even if household deletion fails
+        } catch (Exception ex) {
+            log.error("❌ [BaseServiceClient] Error deleting household: {}", householdId, ex);
+            // Don't throw exception - allow contract processing to proceed even if household deletion fails
+        }
+    }
+
+    /**
+     * Clear primaryResidentId from household (set to null)
+     */
+    public void clearPrimaryResidentFromHousehold(UUID householdId) {
+        try {
+            String url = baseServiceBaseUrl + "/api/households/" + householdId;
+            
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("primaryResidentId", null);
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+            
+            restTemplate.put(url, request);
+            log.info("✅ [BaseServiceClient] Cleared primaryResidentId from household: {}", householdId);
+        } catch (ResourceAccessException ex) {
+            if (ex.getCause() instanceof ConnectException) {
+                log.warn("⚠️ [BaseServiceClient] Base-service unavailable (connection refused) when clearing primaryResident from household: {}. This is normal if base-service is not running.", householdId);
+            } else {
+                log.warn("⚠️ [BaseServiceClient] Network error connecting to base-service when clearing primaryResident from household: {}", householdId, ex);
+            }
+            // Don't throw exception - allow contract processing to proceed even if household update fails
+        } catch (Exception ex) {
+            log.error("❌ [BaseServiceClient] Error clearing primaryResidentId from household: {}", householdId, ex);
+            // Don't throw exception - allow contract processing to proceed even if household update fails
+        }
+    }
 }

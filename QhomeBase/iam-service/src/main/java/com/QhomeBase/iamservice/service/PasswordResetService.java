@@ -33,7 +33,7 @@ public class PasswordResetService {
     private static final String OTP_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Pattern STRONG_PASSWORD_PATTERN = Pattern.compile(
-            "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$"
+            "^(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$"
     );
 
     private final Map<String, Integer> otpRequestCount = new ConcurrentHashMap<>();
@@ -155,7 +155,7 @@ public class PasswordResetService {
         verifiedOtps.remove(emailKey);
 
         if (!isStrongPassword(newPassword)) {
-            throw new IllegalArgumentException("Password must contain uppercase, lowercase, number, and special character");
+            throw new IllegalArgumentException("Password must be at least 8 characters and contain at least one special character");
         }
 
         if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {

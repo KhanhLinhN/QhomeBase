@@ -72,6 +72,14 @@ public class ServiceController {
         return ResponseEntity.status(HttpStatus.CREATED).body(serviceConfigService.addAvailability(id, request));
     }
 
+    @PutMapping("/{id}/availabilities/{availabilityId}")
+    @PreAuthorize("@authz.canManageServiceConfig()")
+    public ResponseEntity<ServiceAvailabilityDto> updateAvailability(@PathVariable UUID id,
+                                                                     @PathVariable UUID availabilityId,
+                                                                     @Valid @RequestBody ServiceAvailabilityRequest request) {
+        return ResponseEntity.ok(serviceConfigService.updateAvailability(id, availabilityId, request));
+    }
+
     @DeleteMapping("/{id}/availabilities/{availabilityId}")
     @PreAuthorize("@authz.canManageServiceConfig()")
     public ResponseEntity<List<ServiceAvailabilityDto>> deleteAvailability(@PathVariable UUID id,

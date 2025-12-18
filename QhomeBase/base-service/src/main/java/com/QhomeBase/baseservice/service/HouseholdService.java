@@ -232,7 +232,13 @@ public class HouseholdService {
             }
         }
 
-        ContractSummary contract = fetchContractSummary(household.getContractId());
+        ContractSummary contract = null;
+        try {
+            contract = fetchContractSummary(household.getContractId());
+        } catch (Exception e) {
+            log.warn("Failed to fetch contract summary for household {}: {}", household.getId(), e.getMessage());
+            // Continue without contract info if contract service is unavailable
+        }
 
         return new HouseholdDto(
                 household.getId(),
@@ -292,9 +298,14 @@ public class HouseholdService {
         if (contractId == null) {
             return null;
         }
-        return contractClient.getContractById(contractId)
-                .map(this::summarizeContract)
-                .orElse(null);
+        try {
+            return contractClient.getContractById(contractId)
+                    .map(this::summarizeContract)
+                    .orElse(null);
+        } catch (Exception e) {
+            log.warn("Failed to fetch contract {}: {}", contractId, e.getMessage());
+            return null; // Return null if contract service is unavailable or contract not found
+        }
     }
 
     private ContractSummary summarizeContract(ContractDetailDto contract) {

@@ -397,7 +397,6 @@ public class ResidentAccountService {
                 log.info("Approved and created account for resident {}: userId={}, username={}", 
                         request.getResidentId(), account.userId(), account.username());
 
-                // Get building name for notification message
                 String buildingName = null;
                 if (request.getResidentId() != null) {
                     List<HouseholdMember> members = householdMemberRepository.findActiveMembersByResidentId(request.getResidentId());
@@ -617,7 +616,6 @@ public class ResidentAccountService {
         try {
             Resident requester = residentRepository.findByUserId(request.getRequestedBy()).orElse(null);
             if (requester == null || requester.getId() == null) {
-                log.warn("⚠️ [ResidentAccountService] Cannot notify requester {}, resident not found", request.getRequestedBy());
                 return;
             }
 
@@ -682,13 +680,10 @@ public class ResidentAccountService {
                     data
             );
         } catch (Exception ex) {
-            log.warn("⚠️ [ResidentAccountService] Failed to dispatch account request notification {}: {}", request.getId(), ex.getMessage());
+            log.warn("[ResidentAccountService] Failed to dispatch account request notification {}: {}", request.getId(), ex.getMessage());
         }
     }
 
-    /**
-     * Get units for a specific resident by residentId
-     */
     @Transactional(readOnly = true)
     public List<UnitDto> getUnitsByResidentId(UUID residentId) {
         List<HouseholdMember> members = householdMemberRepository.findActiveMembersByResidentId(residentId);

@@ -54,7 +54,8 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
     
     /**
      * Find contracts that need renewal reminders based on days until end date
-     * This includes contracts with endDate in the next 8-32 days
+     * This includes contracts with endDate in the next 0-32 days
+     * (0 days để bao gồm contracts sắp hết hạn cho reminder 3)
      */
     @Query("SELECT c FROM Contract c WHERE c.status = 'ACTIVE' " +
            "AND c.contractType = 'RENTAL' " +
