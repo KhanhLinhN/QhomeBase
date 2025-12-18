@@ -397,6 +397,11 @@ public class StaffImportService {
     private void validateRole(String roleName, int rowNumber) {
         try {
             UserRole.valueOf(roleName);
+        if (roleName.equals("Administrator")) {
+            throw new IllegalArgumentException(
+                    String.format("không thể import tài khoản cho admin")
+            );
+        }
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(
                     String.format("Role không hợp lệ tại dòng %d: '%s'. Các role hợp lệ cho staff: ACCOUNTANT, TECHNICIAN, SUPPORTER", rowNumber, roleName)
