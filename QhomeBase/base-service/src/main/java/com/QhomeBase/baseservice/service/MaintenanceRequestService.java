@@ -5,6 +5,10 @@ import com.QhomeBase.baseservice.dto.AdminServiceRequestActionDto;
 import com.QhomeBase.baseservice.dto.AddProgressNoteDto;
 import com.QhomeBase.baseservice.dto.CreateMaintenanceRequestDto;
 import com.QhomeBase.baseservice.dto.MaintenanceRequestDto;
+import com.QhomeBase.baseservice.dto.finance.CreateInvoiceRequest;
+import com.QhomeBase.baseservice.dto.finance.CreateInvoiceLineRequest;
+import com.QhomeBase.baseservice.dto.finance.InvoiceDto;
+import com.QhomeBase.baseservice.client.FinanceBillingClient;
 import com.QhomeBase.baseservice.service.vnpay.VnpayService;
 import com.QhomeBase.baseservice.service.vnpay.VnpayPaymentResult;
 import com.QhomeBase.baseservice.model.Household;
@@ -68,6 +72,7 @@ public class MaintenanceRequestService {
     private final HouseholdMemberRepository householdMemberRepository;
     private final NotificationClient notificationClient;
     private final VnpayService vnpayService;
+    private final FinanceBillingClient financeBillingClient;
 
     public MaintenanceRequestService(
             MaintenanceRequestRepository maintenanceRequestRepository,
@@ -77,6 +82,7 @@ public class MaintenanceRequestService {
             HouseholdMemberRepository householdMemberRepository,
             NotificationClient notificationClient,
             VnpayService vnpayService,
+            FinanceBillingClient financeBillingClient,
             @Value("${maintenance.request.working.hours.start:08:00}") String workingStartStr,
             @Value("${maintenance.request.working.hours.end:18:00}") String workingEndStr) {
         this.maintenanceRequestRepository = maintenanceRequestRepository;
@@ -86,6 +92,7 @@ public class MaintenanceRequestService {
         this.householdMemberRepository = householdMemberRepository;
         this.notificationClient = notificationClient;
         this.vnpayService = vnpayService;
+        this.financeBillingClient = financeBillingClient;
         this.workingStart = LocalTime.parse(workingStartStr, TIME_FORMATTER);
         this.workingEnd = LocalTime.parse(workingEndStr, TIME_FORMATTER);
     }
@@ -790,7 +797,60 @@ public class MaintenanceRequestService {
 
         MaintenanceRequest saved = maintenanceRequestRepository.save(request);
         log.info("VNPay payment successful for maintenance request {}: txnRef={}", request.getId(), txnRef);
+        
+        // Create invoice after successful payment
+        try {
+            InvoiceDto invoice = createInvoiceForMaintenanceRequest(saved);
+            log.info("✅ Invoice {} created for maintenance request {}", invoice.getId(), saved.getId());
+        } catch (Exception e) {
+            log.error("❌ Failed to create invoice for maintenance request {}: {}", saved.getId(), e.getMessage(), e);
+            // Don't throw exception - payment is already completed, invoice can be created manually later
+        }
+        
         return toDto(saved);
+    }
+    
+    /**
+     * Create invoice for paid maintenance request
+     */
+    private InvoiceDto createInvoiceForMaintenanceRequest(MaintenanceRequest request) {
+        // Get unit
+        Unit unit = unitRepository.findById(request.getUnitId())
+                .orElseThrow(() -> new IllegalArgumentException("Unit not found: " + request.getUnitId()));
+        
+        // Get resident for billing info
+        Resident resident = residentRepository.findById(request.getResidentId())
+                .orElseThrow(() -> new IllegalArgumentException("Resident not found: " + request.getResidentId()));
+        
+        // Build invoice line for maintenance service
+        CreateInvoiceLineRequest line = CreateInvoiceLineRequest.builder()
+                .serviceDate(LocalDate.now())
+                .description("Dịch vụ sửa chữa - " + request.getTitle())
+                .quantity(java.math.BigDecimal.ONE)
+                .unit("Lần")
+                .unitPrice(request.getPaymentAmount())
+                .taxRate(java.math.BigDecimal.ZERO)
+                .serviceCode("MAINTENANCE")
+                .externalRefType("MAINTENANCE_REQUEST")
+                .externalRefId(request.getId())
+                .build();
+        
+        // Build invoice request
+        CreateInvoiceRequest invoiceRequest = CreateInvoiceRequest.builder()
+                .dueDate(LocalDate.now().plusDays(7)) // Due in 7 days (already paid, but for record)
+                .currency("VND")
+                .billToName(resident.getFullName())
+                .billToAddress(unit.getCode() != null ? unit.getCode() : "Unit " + unit.getId())
+                .billToContact(resident.getPhone())
+                .payerUnitId(unit.getId())
+                .payerResidentId(resident.getId())
+                .cycleId(null) // No billing cycle for ad-hoc maintenance
+                .status("PAID") // Already paid via VNPAY
+                .lines(List.of(line))
+                .build();
+        
+        // Call finance service to create invoice
+        return financeBillingClient.createInvoiceSync(invoiceRequest);
     }
 }
 

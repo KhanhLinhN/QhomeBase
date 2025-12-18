@@ -1,5 +1,6 @@
 package com.QhomeBase.marketplaceservice.service;
 
+import com.QhomeBase.marketplaceservice.client.VideoClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -30,9 +31,11 @@ public class FileStorageService {
     private String cdnBaseUrl;
 
     private final ImageKitService imageKitService;
+    private final VideoClient videoClient;
 
-    public FileStorageService(ImageKitService imageKitService) {
+    public FileStorageService(ImageKitService imageKitService, VideoClient videoClient) {
         this.imageKitService = imageKitService;
+        this.videoClient = videoClient;
     }
 
     /**
@@ -53,25 +56,42 @@ public class FileStorageService {
     }
 
     /**
-     * Upload video to ImageKit for post
-     * Returns map with key: original (ImageKit URL optimized for streaming)
-     * Note: ImageKit supports video uploads and streaming natively
+     * Upload video to VideoStorageService (data-docs-service)
+     * Returns map with key: original (backend streaming URL)
+     * NO LONGER USES IMAGEKIT - videos now stored in backend
      */
     public Map<String, String> uploadVideo(MultipartFile file, String postId) throws IOException {
-        log.info("📤 [FileStorageService] Uploading video to ImageKit for post: {}", postId);
+        log.info("📤 [FileStorageService] Uploading video to VideoStorageService for post: {}", postId);
         
-        // Upload to ImageKit with folder "marketplace/posts/{postId}"
-        // ImageKit supports video files, so we can use uploadImage method
-        String videoUrl = imageKitService.uploadImage(file, "marketplace/posts/" + postId);
-        
-        // Get optimized streaming URL (ImageKit URLs are already optimized, but we can add transformations if needed)
-        String streamingUrl = imageKitService.getVideoStreamingUrl(videoUrl);
+        try {
+            // Upload video to data-docs-service VideoStorageService
+            // Assume uploadedBy is extracted from security context (for now use dummy UUID)
+            UUID uploadedBy = UUID.randomUUID(); // TODO: Get from SecurityContext
+            
+            Map<String, Object> uploadResponse = videoClient.uploadVideo(
+                    file,
+                    "marketplace_post",  // category
+                    UUID.fromString(postId),  // ownerId (post ID)
+                    uploadedBy
+            );
+            
+            // Extract videoId from response
+            String videoId = uploadResponse.get("videoId").toString();
+            
+            // Get streaming URL from data-docs-service
+            String streamingUrl = videoClient.getVideoStreamingUrl(UUID.fromString(videoId));
 
-        Map<String, String> videoUrls = new HashMap<>();
-        videoUrls.put("original", streamingUrl);
+            Map<String, String> videoUrls = new HashMap<>();
+            videoUrls.put("original", streamingUrl);
+            videoUrls.put("videoId", videoId);  // Also return videoId for reference
 
-        log.info("✅ [FileStorageService] Uploaded video to ImageKit: {} (streaming URL: {})", videoUrl, streamingUrl);
-        return videoUrls;
+            log.info("✅ [FileStorageService] Uploaded video to VideoStorageService: videoId={}, streamingUrl={}", 
+                    videoId, streamingUrl);
+            return videoUrls;
+        } catch (Exception e) {
+            log.error("❌ [FileStorageService] Failed to upload video to VideoStorageService", e);
+            throw new IOException("Failed to upload video: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -186,16 +206,32 @@ public class FileStorageService {
      * Returns the video URL optimized for streaming
      */
     public String uploadCommentVideo(MultipartFile file, String postId) throws IOException {
-        log.info("📤 [FileStorageService] Uploading comment video to ImageKit for post: {}", postId);
-        
-        // Upload to ImageKit with folder "marketplace/comments/{postId}"
-        String videoUrl = imageKitService.uploadImage(file, "marketplace/comments/" + postId);
-        
-        // Get optimized streaming URL
-        String streamingUrl = imageKitService.getVideoStreamingUrl(videoUrl);
-        
-        log.info("✅ [FileStorageService] Uploaded comment video to ImageKit: {} (streaming URL: {})", videoUrl, streamingUrl);
-        return streamingUrl;
+        log.info("📤 [FileStorageService] Uploading comment video to VideoStorageService for post: {}", postId);
+
+        try {
+            // Upload video to data-docs-service VideoStorageService
+            UUID uploadedBy = UUID.randomUUID(); // TODO: Get from SecurityContext
+            
+            Map<String, Object> uploadResponse = videoClient.uploadVideo(
+                    file,
+                    "marketplace_comment",  // category
+                    UUID.fromString(postId),  // ownerId (post ID)
+                    uploadedBy
+            );
+            
+            // Extract videoId from response
+            String videoId = uploadResponse.get("videoId").toString();
+            
+            // Get streaming URL
+            String streamingUrl = videoClient.getVideoStreamingUrl(UUID.fromString(videoId));
+
+            log.info("✅ [FileStorageService] Uploaded comment video to VideoStorageService: videoId={}, streamingUrl={}", 
+                    videoId, streamingUrl);
+            return streamingUrl;
+        } catch (Exception e) {
+            log.error("❌ [FileStorageService] Failed to upload comment video to VideoStorageService", e);
+            throw new IOException("Failed to upload comment video: " + e.getMessage(), e);
+        }
     }
 
     /**

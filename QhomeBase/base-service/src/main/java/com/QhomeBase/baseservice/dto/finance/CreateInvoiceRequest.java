@@ -22,7 +22,7 @@ public class CreateInvoiceRequest {
     private UUID payerUnitId;
     private UUID payerResidentId;
     private UUID cycleId;
-    private String status; // Optional: if not provided, defaults to PUBLISHED. Use "PAID" for asset inspection invoices
+    private String status; 
     private List<CreateInvoiceLineRequest> lines;
 }
 
