@@ -78,9 +78,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
     GROUP BY u.building_id, b.code, b.name, i.status
     """, nativeQuery = true)
     List<BuildingInvoiceSummary> summarizeByCycleAndBuilding(
-            @Param("cycleId") UUID cycleId,
-            @Param("serviceCode") String serviceCode,
-            @Param("serviceMonth") String serviceMonth);
+            @Param("cycleId") UUID cycleId);
 
 
     @Query(value = """

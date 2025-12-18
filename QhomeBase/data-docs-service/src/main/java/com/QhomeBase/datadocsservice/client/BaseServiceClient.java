@@ -12,7 +12,9 @@ import org.springframework.web.client.RestTemplate;
 
 import java.net.ConnectException;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -55,6 +57,83 @@ public class BaseServiceClient {
         } catch (Exception ex) {
             log.error("❌ [BaseServiceClient] Error getting primary residentId for unitId: {}", unitId, ex);
             return Optional.empty();
+        }
+    }
+
+    /**
+     * Get all resident IDs in a unit (including household members)
+     * Returns list of resident IDs who have accounts (userId != null)
+     */
+    public List<UUID> getAllResidentIdsByUnitId(UUID unitId) {
+        try {
+            // First, get household info
+            String householdUrl = baseServiceBaseUrl + "/api/households/units/" + unitId + "/current";
+            ResponseEntity<Map> householdResponse = restTemplate.getForEntity(householdUrl, Map.class);
+            
+            if (!householdResponse.getStatusCode().is2xxSuccessful() || householdResponse.getBody() == null) {
+                log.warn("⚠️ [BaseServiceClient] Could not get household for unitId: {}", unitId);
+                return java.util.Collections.emptyList();
+            }
+            
+            Map<String, Object> household = householdResponse.getBody();
+            Object householdIdObj = household.get("id");
+            if (householdIdObj == null) {
+                log.warn("⚠️ [BaseServiceClient] Household has no id for unitId: {}", unitId);
+                return java.util.Collections.emptyList();
+            }
+            
+            UUID householdId = householdIdObj instanceof UUID 
+                    ? (UUID) householdIdObj 
+                    : UUID.fromString(householdIdObj.toString());
+            
+            // Get all household members
+            String membersUrl = baseServiceBaseUrl + "/api/household-members/households/" + householdId;
+            ResponseEntity<List> membersResponse = restTemplate.getForEntity(membersUrl, List.class);
+            
+            if (!membersResponse.getStatusCode().is2xxSuccessful() || membersResponse.getBody() == null) {
+                log.warn("⚠️ [BaseServiceClient] Could not get household members for householdId: {}", householdId);
+                return java.util.Collections.emptyList();
+            }
+            
+            List<Map<String, Object>> members = (List<Map<String, Object>>) membersResponse.getBody();
+            List<UUID> residentIds = new java.util.ArrayList<>();
+            
+            // Get primary resident ID from household
+            Object primaryResidentIdObj = household.get("primaryResidentId");
+            if (primaryResidentIdObj != null) {
+                UUID primaryResidentId = primaryResidentIdObj instanceof UUID 
+                        ? (UUID) primaryResidentIdObj 
+                        : UUID.fromString(primaryResidentIdObj.toString());
+                residentIds.add(primaryResidentId);
+            }
+            
+            // Add all other household members' resident IDs
+            for (Map<String, Object> member : members) {
+                Object residentIdObj = member.get("residentId");
+                if (residentIdObj != null) {
+                    UUID residentId = residentIdObj instanceof UUID 
+                            ? (UUID) residentIdObj 
+                            : UUID.fromString(residentIdObj.toString());
+                    // Only add if not already in list (avoid duplicates)
+                    if (!residentIds.contains(residentId)) {
+                        residentIds.add(residentId);
+                    }
+                }
+            }
+            
+            log.debug("✅ [BaseServiceClient] Found {} resident(s) in unit {}", residentIds.size(), unitId);
+            return residentIds;
+        } catch (ResourceAccessException ex) {
+            // Connection refused or service unavailable - log as WARN, not ERROR
+            if (ex.getCause() instanceof ConnectException) {
+                log.warn("⚠️ [BaseServiceClient] Base-service unavailable (connection refused) for unitId: {}. This is normal if base-service is not running.", unitId);
+            } else {
+                log.warn("⚠️ [BaseServiceClient] Network error connecting to base-service for unitId: {}", unitId, ex);
+            }
+            return java.util.Collections.emptyList();
+        } catch (Exception ex) {
+            log.error("❌ [BaseServiceClient] Error getting all resident IDs for unitId: {}", unitId, ex);
+            return java.util.Collections.emptyList();
         }
     }
 
@@ -138,6 +217,100 @@ public class BaseServiceClient {
         } catch (Exception ex) {
             log.error("❌ [BaseServiceClient] Error getting residentId for userId: {}", userId, ex);
             return Optional.empty();
+        }
+    }
+
+    /**
+     * Kiểm tra xem user có phải là OWNER (chủ căn hộ) của unit không
+     * OWNER được định nghĩa là:
+     * - household.kind == OWNER HOẶC TENANT (người mua hoặc người thuê căn hộ)
+     * - VÀ user là primaryResidentId của household đó
+     * @param userId ID của user
+     * @param unitId ID của căn hộ
+     * @param accessToken Access token để authenticate với base-service
+     * @return true nếu user là OWNER của unit, false nếu không
+     */
+    public boolean isOwnerOfUnit(UUID userId, UUID unitId, String accessToken) {
+        if (userId == null || unitId == null) {
+            log.warn("⚠️ [BaseServiceClient] userId or unitId is null");
+            return false;
+        }
+
+        try {
+            // Lấy household info từ base-service
+            String url = baseServiceBaseUrl + "/api/households/units/" + unitId + "/current";
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            if (accessToken != null && !accessToken.isEmpty()) {
+                headers.setBearerAuth(accessToken);
+            }
+            
+            HttpEntity<Void> request = new HttpEntity<>(headers);
+            
+            log.debug("🔍 [BaseServiceClient] Checking if user {} is OWNER of unit {}", userId, unitId);
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    url,
+                    org.springframework.http.HttpMethod.GET,
+                    request,
+                    Map.class
+            );
+            
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Map<String, Object> household = response.getBody();
+                
+                // Kiểm tra household kind - OWNER hoặc TENANT đều được coi là chủ căn hộ
+                Object kindObj = household.get("kind");
+                if (kindObj == null) {
+                    log.debug("⚠️ [BaseServiceClient] Household kind is null");
+                    return false;
+                }
+                String kind = kindObj.toString();
+                if (!"OWNER".equalsIgnoreCase(kind) && !"TENANT".equalsIgnoreCase(kind)) {
+                    log.debug("⚠️ [BaseServiceClient] Household kind is not OWNER or TENANT: {}", kind);
+                    return false;
+                }
+                
+                // Kiểm tra primaryResidentId
+                Object primaryResidentIdObj = household.get("primaryResidentId");
+                if (primaryResidentIdObj == null) {
+                    log.debug("⚠️ [BaseServiceClient] Household has no primaryResidentId");
+                    return false;
+                }
+                
+                // Lấy residentId từ userId
+                String residentUrl = baseServiceBaseUrl + "/api/residents/by-user/" + userId;
+                ResponseEntity<Map> residentResponse = restTemplate.exchange(
+                        residentUrl,
+                        org.springframework.http.HttpMethod.GET,
+                        request,
+                        Map.class
+                );
+                
+                if (residentResponse.getStatusCode().is2xxSuccessful() && residentResponse.getBody() != null) {
+                    Map<String, Object> resident = residentResponse.getBody();
+                    Object residentIdObj = resident.get("id");
+                    
+                    if (residentIdObj != null) {
+                        String residentId = residentIdObj.toString();
+                        String primaryResidentId = primaryResidentIdObj.toString();
+                        
+                        boolean isOwner = residentId.equals(primaryResidentId);
+                        log.debug("✅ [BaseServiceClient] User {} isOwner of unit {}: {}", userId, unitId, isOwner);
+                        return isOwner;
+                    }
+                }
+            }
+            
+            return false;
+        } catch (ResourceAccessException e) {
+            log.error("❌ [BaseServiceClient] Error checking if user {} is OWNER of unit {}: {}", 
+                    userId, unitId, e.getMessage());
+            return false;
+        } catch (Exception e) {
+            log.error("❌ [BaseServiceClient] Error checking if user {} is OWNER of unit {}: {}", 
+                    userId, unitId, e.getMessage());
+            return false;
         }
     }
 

@@ -40,6 +40,7 @@ public class MessageService {
     private final ChatNotificationService notificationService;
     private final FcmPushService fcmPushService;
     private final com.QhomeBase.chatservice.service.GroupFileService groupFileService;
+    private final WebSocketPresenceService presenceService;
 
     @Value("${marketplace.service.url:http://localhost:8082}")
     private String marketplaceServiceUrl;
@@ -170,11 +171,40 @@ public class MessageService {
             log.info("Unhid group {} for {} members because a new message was sent", groupId, hiddenMembers.size());
         }
         
-        // Notify via WebSocket
-        notificationService.notifyNewMessage(groupId, response);
+        // Notify group members based on their online/offline status
+        // Get all group members except sender
+        List<GroupMember> allMembers = groupMemberRepository.findByGroupId(groupId);
         
-        // Send FCM push notification to group members (except sender)
-        fcmPushService.sendChatMessageNotification(groupId, response, residentId);
+        for (GroupMember groupMember : allMembers) {
+            if (groupMember.getResidentId().equals(residentId)) {
+                continue; // Don't send notification to sender
+            }
+
+            // Check if conversation is muted
+            if (isGroupMuted(groupMember)) {
+                log.debug("Skipping notification: group {} is muted for resident {}", groupId, groupMember.getResidentId());
+                continue;
+            }
+
+            // Check if recipient is online (has active WebSocket connection)
+            boolean isRecipientOnline = presenceService.isUserOnline(groupMember.getResidentId());
+
+            if (isRecipientOnline) {
+                // User is in app (has WebSocket connection) - send realtime notification via WebSocket
+                // The WebSocket notification will be sent to all subscribers of /topic/chat/{groupId}
+                // We still call notifyNewMessage once, but it will be received by all online members
+                log.info("📱 [MessageService] Recipient {} is ONLINE - will receive WebSocket realtime notification (groupId: {})",
+                        groupMember.getResidentId(), groupId);
+            } else {
+                // User is offline (out of app) - send FCM push notification
+                fcmPushService.sendChatMessageNotificationToResident(groupId, response, residentId, groupMember.getResidentId());
+                log.info("📱 [MessageService] Recipient {} is OFFLINE - sent FCM push notification (groupId: {})",
+                        groupMember.getResidentId(), groupId);
+            }
+        }
+        
+        // Send WebSocket notification to all subscribers (online users will receive it)
+        notificationService.notifyNewMessage(groupId, response);
 
         return response;
     }
@@ -562,6 +592,26 @@ public class MessageService {
         
         log.info("Deleted {} files from user {} in group {} from {}", 
                 files.size(), senderId, groupId, fromTime);
+    }
+
+    /**
+     * Check if group is muted for a member
+     */
+    private boolean isGroupMuted(GroupMember member) {
+        // Check old isMuted flag
+        if (Boolean.TRUE.equals(member.getIsMuted()) && member.getMuteUntil() == null) {
+            return true; // Muted indefinitely (old way)
+        }
+        
+        // Check muteUntil timestamp
+        if (member.getMuteUntil() != null) {
+            OffsetDateTime now = OffsetDateTime.now();
+            if (member.getMuteUntil().isAfter(now)) {
+                return true; // Still muted
+            }
+        }
+        
+        return false;
     }
 }
 

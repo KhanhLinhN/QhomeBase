@@ -331,9 +331,28 @@ public class VehicleRegistrationService {
         RegisterServiceRequest registration = requestRepository.findById(registrationId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
 
-        if (!STATUS_PENDING_REVIEW.equalsIgnoreCase(registration.getStatus()) 
-                && !STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(registration.getStatus())) {
-            throw new IllegalStateException("Đăng ký không ở trạng thái chờ duyệt. Trạng thái hiện tại: " + registration.getStatus());
+        // Save old status to check if status is actually changing
+        String oldStatus = registration.getStatus();
+        
+        if (!STATUS_PENDING_REVIEW.equalsIgnoreCase(oldStatus) 
+                && !STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(oldStatus)) {
+            throw new IllegalStateException("Đăng ký không ở trạng thái chờ duyệt. Trạng thái hiện tại: " + oldStatus);
+        }
+
+        // Check if status is actually changing from PENDING/READY_FOR_PAYMENT to APPROVED
+        // Only send notification if status is changing (not already APPROVED)
+        boolean statusChanging = !STATUS_APPROVED.equalsIgnoreCase(oldStatus);
+        
+        if (!statusChanging) {
+            log.warn("⚠️ [VehicleRegistration] Registration {} already approved. Status not changing. Skipping notification.", 
+                    registrationId);
+            // Still allow update of adminNote, issueMessage, issueTime if provided
+            if (adminNote != null) {
+                registration.setAdminNote(adminNote);
+            }
+            registration.setUpdatedAt(OffsetDateTime.now(ZoneId.of("UTC")));
+            RegisterServiceRequest saved = requestRepository.save(registration);
+            return toDto(saved);
         }
 
         // Check payment status - must be PAID before approval
@@ -378,10 +397,16 @@ public class VehicleRegistrationService {
             }
         }
 
-        // Send notification to resident
-        sendVehicleCardApprovalNotification(saved, issueMessage, issueTime);
-
-        log.info("✅ [VehicleRegistration] Admin {} đã approve đăng ký {}", adminId, registrationId);
+        // Send notification to resident ONLY if status changed from PENDING/READY_FOR_PAYMENT to APPROVED
+        if (statusChanging) {
+            sendVehicleCardApprovalNotification(saved, issueMessage, issueTime);
+            log.info("✅ [VehicleRegistration] Admin {} đã approve đăng ký {} (status changed from {} to APPROVED). Notification sent.", 
+                    adminId, registrationId, oldStatus);
+        } else {
+            log.info("✅ [VehicleRegistration] Admin {} đã approve đăng ký {} (status unchanged, notification skipped).", 
+                    adminId, registrationId);
+        }
+        
         return toDto(saved);
     }
 
@@ -390,11 +415,20 @@ public class VehicleRegistrationService {
         RegisterServiceRequest registration = requestRepository.findById(registrationId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
 
+        // Save old status to check if status is actually changing
+        String oldStatus = registration.getStatus();
+        
         // Admin cancel logic - set status to REJECTED (bị từ chối)
         // Note: Cư dân hủy sẽ set status = CANCELLED, admin hủy sẽ set status = REJECTED
-        if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
+        if (STATUS_REJECTED.equalsIgnoreCase(oldStatus)) {
             throw new IllegalStateException("Đăng ký đã bị từ chối");
         }
+
+        // Check if status is actually changing from PENDING/READY_FOR_PAYMENT to REJECTED
+        // Only send notification if status is changing (not already REJECTED)
+        boolean statusChanging = !STATUS_REJECTED.equalsIgnoreCase(oldStatus) 
+                && (STATUS_PENDING_REVIEW.equalsIgnoreCase(oldStatus) 
+                    || STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(oldStatus));
 
         OffsetDateTime now = OffsetDateTime.now(ZoneId.of("UTC"));
         registration.setStatus(STATUS_REJECTED);
@@ -404,8 +438,15 @@ public class VehicleRegistrationService {
 
         RegisterServiceRequest saved = requestRepository.save(registration);
 
-        // Send notification to resident (admin cancel = reject)
-        sendVehicleCardRejectionNotification(saved, adminNote);
+        // Send notification to resident ONLY if status changed from PENDING/READY_FOR_PAYMENT to REJECTED
+        if (statusChanging) {
+            sendVehicleCardRejectionNotification(saved, adminNote);
+            log.info("✅ [VehicleRegistration] Admin {} đã reject đăng ký {} (status changed from {} to REJECTED). Notification sent.", 
+                    adminId, registrationId, oldStatus);
+        } else {
+            log.info("✅ [VehicleRegistration] Admin {} đã reject đăng ký {} (status unchanged, notification skipped).", 
+                    adminId, registrationId);
+        }
 
         log.info("✅ [VehicleRegistration] Admin {} đã cancel (reject) đăng ký {}", adminId, registrationId);
         return toDto(saved);
@@ -413,6 +454,17 @@ public class VehicleRegistrationService {
 
     private void sendVehicleCardApprovalNotification(RegisterServiceRequest registration, String issueMessage, OffsetDateTime issueTime) {
         try {
+            // Check if already approved - don't send notification if already approved to avoid duplicate
+            if (STATUS_APPROVED.equalsIgnoreCase(registration.getStatus()) 
+                    && registration.getApprovedAt() != null 
+                    && registration.getApprovedBy() != null) {
+                // Double-check: if approvedAt was set before this call, skip notification
+                // This prevents duplicate notifications if method is called multiple times
+                log.warn("⚠️ [VehicleRegistration] Registration {} already approved. Skipping notification to avoid duplicate FCM push.", 
+                        registration.getId());
+                return;
+            }
+            
             // Resolve residentId from userId and unitId - CARD_APPROVED is PRIVATE (only resident who created the request can see)
             UUID residentId = residentUnitLookupService.resolveByUser(registration.getUserId(), registration.getUnitId())
                     .map(ResidentUnitLookupService.AddressInfo::residentId)

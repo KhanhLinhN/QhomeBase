@@ -20,8 +20,8 @@ public class GroupInvitationResponse {
     private String inviterName;
     private String inviteePhone;
     private UUID inviteeResidentId;
-    private String status; // PENDING, ACCEPTED, DECLINED, EXPIRED
+    private String status; // PENDING, ACCEPTED, DECLINED (no longer EXPIRED - invitations don't expire)
     private OffsetDateTime createdAt;
-    private OffsetDateTime expiresAt;
+    private OffsetDateTime expiresAt; // No longer used - invitations don't expire, only accept/decline changes status
 }
 

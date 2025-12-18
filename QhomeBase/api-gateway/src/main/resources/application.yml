@@ -103,6 +103,13 @@ spring:
             - Path=/api/imagekit/**
           filters:
             - StripPrefix=0
+        # Data Docs Service - Videos (must be before base-service catch-all)
+        - id: data-docs-videos
+          uri: ${data-docs.service.url:http://localhost:8082}
+          predicates:
+            - Path=/api/videos/**
+          filters:
+            - StripPrefix=0
         # Customer Interaction Service Routes (must be before base-service catch-all)
         - id: customer-interaction-service
           uri: ${customer-interaction.service.url:http://localhost:8086}
@@ -171,6 +178,13 @@ spring:
           uri: http://localhost:${server.port:8989}
           predicates:
             - Path=/api/health
+          filters:
+            - StripPrefix=0
+        # Root endpoint (must be before discovery)
+        - id: root-endpoint
+          uri: http://localhost:${server.port:8989}
+          predicates:
+            - Path=/
           filters:
             - StripPrefix=0
         # Discovery endpoint (must be before catch-all routes)

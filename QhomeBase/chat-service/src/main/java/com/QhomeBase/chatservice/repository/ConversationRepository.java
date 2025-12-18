@@ -35,6 +35,16 @@ public interface ConversationRepository extends JpaRepository<Conversation, UUID
     List<Conversation> findActiveConversationsByUserId(@Param("userId") UUID userId);
 
     /**
+     * Find all conversations for a user (ACTIVE, BLOCKED, PENDING - but not DELETED)
+     * This includes blocked conversations so users can see who they blocked
+     */
+    @Query("SELECT c FROM Conversation c WHERE " +
+           "(c.participant1Id = :userId OR c.participant2Id = :userId) " +
+           "AND c.status IN ('ACTIVE', 'BLOCKED', 'PENDING') " +
+           "ORDER BY c.updatedAt DESC")
+    List<Conversation> findVisibleConversationsByUserId(@Param("userId") UUID userId);
+
+    /**
      * Find all conversations (including pending) for a user
      */
     @Query("SELECT c FROM Conversation c WHERE " +

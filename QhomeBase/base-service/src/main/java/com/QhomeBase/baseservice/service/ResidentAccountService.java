@@ -36,7 +36,8 @@ public class ResidentAccountService {
         Household household = householdRepository.findCurrentHouseholdByUnitId(unitId)
                 .orElseThrow(() -> new IllegalArgumentException("Unit has no household"));
         
-        if (household.getKind() != HouseholdKind.OWNER) {
+        // Cả OWNER và TENANT đều có quyền tạo account cho thành viên
+        if (household.getKind() != HouseholdKind.OWNER && household.getKind() != HouseholdKind.TENANT) {
             return false;
         }
         

@@ -291,27 +291,36 @@ public class MarketplacePostController {
             }
         }
 
-        // Upload video if provided
-        if (video != null && !video.isEmpty()) {
+        // Handle video: use videoUrl from request if provided, otherwise upload video file
+        String finalVideoUrl = null;
+        
+        // Priority: videoUrl from request (already uploaded to data-docs-service) > video file
+        if (request.getVideoUrl() != null && !request.getVideoUrl().trim().isEmpty()) {
+            finalVideoUrl = request.getVideoUrl().trim();
+            log.info("✅ [MarketplacePostController] Using videoUrl from request: {}", finalVideoUrl);
+        } else if (video != null && !video.isEmpty()) {
             try {
-                // Upload video synchronously
+                // Upload video to data-docs-service (not ImageKit)
+                // Note: This will be handled by Flutter uploading to data-docs-service first
+                // For now, fallback to ImageKit if video file is provided directly
                 Map<String, String> videoUrls = fileStorageService.uploadVideo(video, saved.getId().toString());
-                String videoUrl = videoUrls.get("original");
-                
-                if (videoUrl != null && !videoUrl.isEmpty()) {
-                    // Save video to database as an image entry (using imageUrl field for video URL)
-                    MarketplacePostImage postVideo = MarketplacePostImage.builder()
-                            .post(saved)
-                            .imageUrl(videoUrl)
-                            .thumbnailUrl(null) // Videos don't have thumbnails in this implementation
-                            .sortOrder(images != null ? images.size() : 0) // Add after images
-                            .build();
-                    imageRepository.save(postVideo);
-                    log.info("✅ [MarketplacePostController] Saved video: {}", videoUrl);
-                }
+                finalVideoUrl = videoUrls.get("original");
+                log.info("✅ [MarketplacePostController] Uploaded video to ImageKit (fallback): {}", finalVideoUrl);
             } catch (Exception e) {
                 log.error("Error uploading video: {}", e.getMessage(), e);
             }
+        }
+        
+        if (finalVideoUrl != null && !finalVideoUrl.isEmpty()) {
+            // Save video to database as an image entry (using imageUrl field for video URL)
+            MarketplacePostImage postVideo = MarketplacePostImage.builder()
+                    .post(saved)
+                    .imageUrl(finalVideoUrl)
+                    .thumbnailUrl(null) // Videos don't have thumbnails in this implementation
+                    .sortOrder(images != null ? images.size() : 0) // Add after images
+                    .build();
+            imageRepository.save(postVideo);
+            log.info("✅ [MarketplacePostController] Saved video: {}", finalVideoUrl);
         }
 
         // Refresh post to ensure images are loaded (lazy loading)
@@ -542,29 +551,40 @@ public class MarketplacePostController {
             }
         }
 
-        // Handle video upload if provided
-        if (video != null && !video.isEmpty()) {
+        // Handle video: use videoUrl from request if provided, otherwise upload video file
+        String finalVideoUrl = null;
+        
+        // Priority: videoUrl from request (already uploaded to data-docs-service) > video file
+        if (request.getVideoUrl() != null && !request.getVideoUrl().trim().isEmpty()) {
+            finalVideoUrl = request.getVideoUrl().trim();
+            log.info("✅ [MarketplacePostController] Using videoUrl from request: {}", finalVideoUrl);
+        } else if (video != null && !video.isEmpty()) {
             try {
-                // Upload video synchronously
+                // Upload video to ImageKit (fallback if video file is provided directly)
                 Map<String, String> videoUrls = fileStorageService.uploadVideo(video, updated.getId().toString());
-                String videoUrl = videoUrls.get("original");
+                finalVideoUrl = videoUrls.get("original");
+                log.info("✅ [MarketplacePostController] Uploaded video to ImageKit (fallback): {}", finalVideoUrl);
+            } catch (Exception e) {
+                log.error("Error uploading video: {}", e.getMessage(), e);
+            }
+        }
+        
+        if (finalVideoUrl != null && !finalVideoUrl.isEmpty()) {
+            try {
+                // Get current image count to determine sort order
+                int currentImageCount = updated.getImages().size();
                 
-                if (videoUrl != null && !videoUrl.isEmpty()) {
-                    // Get current image count to determine sort order
-                    int currentImageCount = updated.getImages().size();
-                    
-                    // Save video to database as an image entry (using imageUrl field for video URL)
-                    MarketplacePostImage postVideo = MarketplacePostImage.builder()
-                            .post(updated)
-                            .imageUrl(videoUrl)
+                // Save video to database as an image entry (using imageUrl field for video URL)
+                MarketplacePostImage postVideo = MarketplacePostImage.builder()
+                        .post(updated)
+                            .imageUrl(finalVideoUrl)
                             .thumbnailUrl(null) // Videos don't have thumbnails
                             .sortOrder(currentImageCount) // Add after images
                             .build();
                     imageRepository.save(postVideo);
-                    log.info("✅ [MarketplacePostController] Saved video: {}", videoUrl);
-                }
+                    log.info("✅ [MarketplacePostController] Saved video: {}", finalVideoUrl);
             } catch (Exception e) {
-                log.error("Error uploading video: {}", e.getMessage(), e);
+                log.error("Error saving video: {}", e.getMessage(), e);
             }
         }
 

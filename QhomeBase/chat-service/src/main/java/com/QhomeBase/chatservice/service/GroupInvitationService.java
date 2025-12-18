@@ -184,19 +184,51 @@ public class GroupInvitationService {
                 log.info("Resident {} is already a member of group {}", residentId, groupId);
                 continue;
             }
-
-            // Check if there's already a pending invitation (try both formats)
-            Optional<GroupInvitation> existing = invitationRepository.findPendingByGroupIdAndPhone(groupId, phoneForStorage);
-            if (existing.isEmpty() && !phoneForStorage.startsWith("0")) {
-                // Also try with leading zero
-                existing = invitationRepository.findPendingByGroupIdAndPhone(groupId, "0" + phoneForStorage);
-            }
-            if (existing.isPresent()) {
-                skippedPhones.add(phone + " (Đã có lời mời đang chờ)");
-                log.info("Pending invitation already exists for phone {} in group {}", phoneForStorage, groupId);
+            
+            // Check if this user (residentId) has already sent a PENDING invitation to the inviter for this group
+            // This handles the case: A invites B to group, B doesn't know, B invites A to same group
+            Optional<GroupInvitation> reverseInvitation = invitationRepository.findPendingByGroupIdAndInviterInvitee(
+                    groupId, residentId, inviterResidentId);
+            if (reverseInvitation.isPresent()) {
+                // Get invitee name (the person who sent the reverse invitation)
+                Map<String, Object> inviteeInfo = residentInfoService.getResidentInfo(residentId);
+                String inviteeName = inviteeInfo != null ? (String) inviteeInfo.get("fullName") : null;
+                String message = inviteeName != null 
+                    ? inviteeName + " đã gửi lời mời cho bạn rồi. Vui lòng vào mục lời mời để xác nhận."
+                    : "Người dùng này đã gửi lời mời cho bạn rồi. Vui lòng vào mục lời mời để xác nhận.";
+                skippedPhones.add(phone + " (" + message + ")");
+                log.info("Resident {} has already sent PENDING invitation to {} for group {}. Skipping.", 
+                        residentId, inviterResidentId, groupId);
                 continue;
             }
 
+            // Check if there's already a PENDING invitation from inviter to this phone
+            // If A already sent PENDING invitation to B, skip and inform A (don't throw exception to allow processing other phones)
+            Optional<GroupInvitation> existingPending = invitationRepository.findPendingByGroupIdAndPhone(groupId, phoneForStorage);
+            if (existingPending.isEmpty() && !phoneForStorage.startsWith("0")) {
+                // Also try with leading zero
+                existingPending = invitationRepository.findPendingByGroupIdAndPhone(groupId, "0" + phoneForStorage);
+            }
+            if (existingPending.isPresent()) {
+                // Check if this is the same inviter (A sending invitation to B again)
+                if (existingPending.get().getInviterId().equals(inviterResidentId)) {
+                    log.info("⚠️ User {} already sent PENDING invitation to phone {} for group {}. Skipping duplicate invitation.", 
+                            inviterResidentId, phoneForStorage, groupId);
+                    log.info("   Existing invitation details - ID: {}, Status: {}, Inviter: {}, InviteePhone: {}", 
+                            existingPending.get().getId(), existingPending.get().getStatus(), 
+                            existingPending.get().getInviterId(), existingPending.get().getInviteePhone());
+                    // Add to skippedPhones with clear message instead of throwing exception
+                    // This allows processing other phone numbers in the same request
+                    skippedPhones.add(phone + " (Bạn đã gửi lời mời rồi. Vui lòng đợi phản hồi từ người dùng.)");
+                    continue;
+                } else {
+                    // Different inviter - this is a reverse invitation case, skip with message
+                    skippedPhones.add(phone + " (Đã có lời mời đang chờ)");
+                    log.info("Pending invitation already exists for phone {} in group {} (from different inviter)", phoneForStorage, groupId);
+                    continue;
+                }
+            }
+            
             // Check if inviter has blocked the invitee or vice versa
             if (blockRepository.findByBlockerIdAndBlockedId(inviterResidentId, residentId).isPresent() ||
                 blockRepository.findByBlockerIdAndBlockedId(residentId, inviterResidentId).isPresent()) {
@@ -205,7 +237,8 @@ public class GroupInvitationService {
                 continue;
             }
 
-            // Create invitation
+            // Create new invitation (invitations don't expire, so we always create new ones)
+            // DECLINED invitations are deleted (like direct invitations), so we don't need to check for them
             GroupInvitation invitation = GroupInvitation.builder()
                     .group(group)
                     .groupId(groupId)
@@ -213,9 +246,7 @@ public class GroupInvitationService {
                     .inviteePhone(phoneForStorage)
                     .inviteeResidentId(residentId)
                     .status("PENDING")
-                    .expiresAt(OffsetDateTime.now().plusDays(7))
                     .build();
-
             invitation = invitationRepository.save(invitation);
 
             log.info("✅ [GroupInvitationService] Created invitation - ID: {}, GroupId: {}, InviteeResidentId: {}, InviteePhone: {}, Status: {}", 
@@ -387,6 +418,27 @@ public class GroupInvitationService {
     }
 
     /**
+     * Get all invitations for a specific group (PENDING and ACCEPTED)
+     * Includes invitations sent by current user (as inviter) and received by current user (as invitee)
+     */
+    public List<GroupInvitationResponse> getGroupInvitations(UUID groupId, UUID userId) {
+        String accessToken = getCurrentAccessToken();
+        UUID residentId = residentInfoService.getResidentIdFromUserId(userId, accessToken);
+        if (residentId == null) {
+            throw new RuntimeException("Resident not found for user: " + userId);
+        }
+
+        // Get all invitations for this group with PENDING or ACCEPTED status
+        List<GroupInvitation> allGroupInvitations = invitationRepository.findInvitationsByGroupId(groupId);
+        
+        log.info("Found {} invitations (PENDING/ACCEPTED) for groupId: {}", allGroupInvitations.size(), groupId);
+        
+        return allGroupInvitations.stream()
+                .map(this::toInvitationResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Accept invitation
      */
     @Transactional
@@ -502,10 +554,26 @@ public class GroupInvitationService {
             }
         }
 
-        invitation.setStatus("DECLINED");
-        invitation.setInviteeResidentId(residentId);
-        invitation.setRespondedAt(OffsetDateTime.now());
-        invitationRepository.save(invitation);
+        // Delete invitation when declined - this resets state to "chưa gửi lời mời"
+        // After decline, users are in "chưa gửi lời mời" state and can send new invitation
+        // This matches the behavior of direct chat invitations
+        UUID inviterId = invitation.getInviterId();
+        UUID groupId = invitation.getGroupId();
+        UUID deletedInvitationId = invitation.getId();
+        
+        // Delete the invitation
+        invitationRepository.delete(invitation);
+        log.info("Deleted group invitation {} after decline (Inviter: {}, GroupId: {}, Invitee: {}). Users are now in 'chưa gửi lời mời' state.", 
+                deletedInvitationId, inviterId, groupId, residentId);
+        
+        // Notify inviter via WebSocket (if notification service supports group invitations)
+        // Note: Group invitation declined notification may need to be implemented separately
+        try {
+            // TODO: Implement group invitation declined notification if needed
+            log.debug("Group invitation declined notification not yet implemented");
+        } catch (Exception e) {
+            log.warn("Failed to send group invitation declined notification: {}", e.getMessage());
+        }
     }
 
     private GroupInvitationResponse toInvitationResponse(GroupInvitation invitation) {

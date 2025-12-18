@@ -274,9 +274,14 @@ public class ElevatorCardRegistrationController {
         log.debug("🔍 [ElevatorCard] getHouseholdMembers request: unitId={}, userId={}", unitId, userId);
         
         try {
-            List<Map<String, Object>> members = registrationService.getHouseholdMembersByUnit(unitId);
+            String accessToken = extractAccessToken(headers);
+            List<Map<String, Object>> members = registrationService.getHouseholdMembersByUnit(unitId, userId, accessToken);
             log.info("✅ [ElevatorCard] getHouseholdMembers success: {} members", members.size());
             return ResponseEntity.ok(members);
+        } catch (IllegalStateException e) {
+            log.warn("⚠️ [ElevatorCard] Permission denied: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
             log.error("❌ [ElevatorCard] Lỗi lấy danh sách thành viên", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

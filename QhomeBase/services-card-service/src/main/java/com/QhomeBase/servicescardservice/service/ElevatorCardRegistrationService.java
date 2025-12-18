@@ -70,6 +70,27 @@ public class ElevatorCardRegistrationService {
     public ElevatorCardRegistrationDto createRegistration(UUID userId, ElevatorCardRegistrationCreateDto dto, String accessToken) {
         validatePayload(dto);
 
+        // Kiểm tra quyền OWNER: chỉ OWNER mới được đăng ký thẻ cho thành viên khác
+        // Thành viên chỉ được đăng ký cho chính mình
+        UUID requesterResidentId = residentUnitLookupService.resolveByUser(userId, dto.unitId())
+                .map(info -> info.residentId())
+                .orElse(null);
+        
+        if (requesterResidentId == null) {
+            throw new IllegalStateException("Không tìm thấy thông tin cư dân của bạn. Vui lòng thử lại sau.");
+        }
+        
+        // Kiểm tra xem user có phải OWNER không
+        boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, dto.unitId(), accessToken);
+        
+        // Nếu không phải OWNER, chỉ được đăng ký cho chính mình
+        if (!isOwner && !requesterResidentId.equals(dto.residentId())) {
+            throw new IllegalStateException(
+                "Chỉ chủ căn hộ (OWNER) mới được đăng ký thẻ thang máy cho thành viên khác. " +
+                "Thành viên chỉ được đăng ký thẻ cho chính mình."
+            );
+        }
+
         // Kiểm tra xem cư dân đã được duyệt thành thành viên chưa
         if (dto.residentId() != null) {
             boolean isApproved = baseServiceClient.isResidentMemberApproved(dto.residentId(), accessToken);
@@ -245,9 +266,28 @@ public class ElevatorCardRegistrationService {
 
         if ("APPROVE".equalsIgnoreCase(decision) || "APPROVED".equalsIgnoreCase(decision)) {
             // Approve logic
-            if (!STATUS_PENDING_REVIEW.equalsIgnoreCase(registration.getStatus()) 
-                    && !STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(registration.getStatus())) {
-                throw new IllegalStateException("Đăng ký không ở trạng thái chờ duyệt. Trạng thái hiện tại: " + registration.getStatus());
+            // Save old status to check if status is actually changing
+            String oldStatus = registration.getStatus();
+            
+            if (!STATUS_PENDING_REVIEW.equalsIgnoreCase(oldStatus) 
+                    && !STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(oldStatus)) {
+                throw new IllegalStateException("Đăng ký không ở trạng thái chờ duyệt. Trạng thái hiện tại: " + oldStatus);
+            }
+
+            // Check if status is actually changing from PENDING/READY_FOR_PAYMENT to APPROVED
+            // Only send notification if status is changing (not already APPROVED)
+            boolean statusChanging = !STATUS_APPROVED.equalsIgnoreCase(oldStatus);
+            
+            if (!statusChanging) {
+                log.warn("⚠️ [ElevatorCard] Registration {} already approved. Status not changing. Skipping notification.", 
+                        registrationId);
+                // Still allow update of adminNote, issueMessage, issueTime if provided
+                if (request.note() != null) {
+                    registration.setAdminNote(request.note());
+                }
+                registration.setUpdatedAt(now);
+                ElevatorCardRegistration saved = repository.save(registration);
+                return toDto(saved);
             }
 
             // Check payment status - must be PAID before approval
@@ -286,16 +326,31 @@ public class ElevatorCardRegistrationService {
                 }
             }
 
-            // Send notification to resident
-            sendElevatorCardApprovalNotification(saved, request.issueMessage(), request.issueTime());
-
-            log.info("✅ [ElevatorCard] Admin {} đã approve đăng ký {}", adminId, registrationId);
+            // Send notification to resident ONLY if status changed from PENDING/READY_FOR_PAYMENT to APPROVED
+            if (statusChanging) {
+                sendElevatorCardApprovalNotification(saved, request.issueMessage(), request.issueTime());
+                log.info("✅ [ElevatorCard] Admin {} đã approve đăng ký {} (status changed from {} to APPROVED). Notification sent.", 
+                        adminId, registrationId, oldStatus);
+            } else {
+                log.info("✅ [ElevatorCard] Admin {} đã approve đăng ký {} (status unchanged, notification skipped).", 
+                        adminId, registrationId);
+            }
+            
             return toDto(saved);
         } else if ("REJECT".equalsIgnoreCase(decision) || "REJECTED".equalsIgnoreCase(decision)) {
             // Reject logic
-            if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
+            // Save old status to check if status is actually changing
+            String oldStatus = registration.getStatus();
+            
+            if (STATUS_REJECTED.equalsIgnoreCase(oldStatus)) {
                 throw new IllegalStateException("Đăng ký đã bị từ chối");
             }
+
+            // Check if status is actually changing from PENDING/READY_FOR_PAYMENT to REJECTED
+            // Only send notification if status is changing (not already REJECTED)
+            boolean statusChanging = !STATUS_REJECTED.equalsIgnoreCase(oldStatus) 
+                    && (STATUS_PENDING_REVIEW.equalsIgnoreCase(oldStatus) 
+                        || STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(oldStatus));
 
             registration.setStatus(STATUS_REJECTED);
             registration.setAdminNote(request.note());
@@ -304,17 +359,32 @@ public class ElevatorCardRegistrationService {
 
             ElevatorCardRegistration saved = repository.save(registration);
 
-            // Send notification to resident
-            sendElevatorCardRejectionNotification(saved, request.note());
-
-            log.info("✅ [ElevatorCard] Admin {} đã reject đăng ký {}", adminId, registrationId);
+            // Send notification to resident ONLY if status changed from PENDING/READY_FOR_PAYMENT to REJECTED
+            if (statusChanging) {
+                sendElevatorCardRejectionNotification(saved, request.note());
+                log.info("✅ [ElevatorCard] Admin {} đã reject đăng ký {} (status changed from {} to REJECTED). Notification sent.", 
+                        adminId, registrationId, oldStatus);
+            } else {
+                log.info("✅ [ElevatorCard] Admin {} đã reject đăng ký {} (status unchanged, notification skipped).", 
+                        adminId, registrationId);
+            }
+            
             return toDto(saved);
         } else if ("CANCEL".equalsIgnoreCase(decision) || "CANCELLED".equalsIgnoreCase(decision)) {
             // Admin cancel logic - set status to REJECTED (bị từ chối)
             // Note: Cư dân hủy sẽ set status = CANCELLED, admin hủy sẽ set status = REJECTED
-            if (STATUS_REJECTED.equalsIgnoreCase(registration.getStatus())) {
+            // Save old status to check if status is actually changing
+            String oldStatus = registration.getStatus();
+            
+            if (STATUS_REJECTED.equalsIgnoreCase(oldStatus)) {
                 throw new IllegalStateException("Đăng ký đã bị từ chối");
             }
+
+            // Check if status is actually changing from PENDING/READY_FOR_PAYMENT to REJECTED
+            // Only send notification if status is changing (not already REJECTED)
+            boolean statusChanging = !STATUS_REJECTED.equalsIgnoreCase(oldStatus) 
+                    && (STATUS_PENDING_REVIEW.equalsIgnoreCase(oldStatus) 
+                        || STATUS_READY_FOR_PAYMENT.equalsIgnoreCase(oldStatus));
 
             registration.setStatus(STATUS_REJECTED);
             registration.setAdminNote(request.note());
@@ -323,10 +393,16 @@ public class ElevatorCardRegistrationService {
 
             ElevatorCardRegistration saved = repository.save(registration);
 
-            // Send notification to resident (admin cancel = reject)
-            sendElevatorCardRejectionNotification(saved, request.note());
-
-            log.info("✅ [ElevatorCard] Admin {} đã cancel (reject) đăng ký {}", adminId, registrationId);
+            // Send notification to resident ONLY if status changed from PENDING/READY_FOR_PAYMENT to REJECTED
+            if (statusChanging) {
+                sendElevatorCardRejectionNotification(saved, request.note());
+                log.info("✅ [ElevatorCard] Admin {} đã cancel (reject) đăng ký {} (status changed from {} to REJECTED). Notification sent.", 
+                        adminId, registrationId, oldStatus);
+            } else {
+                log.info("✅ [ElevatorCard] Admin {} đã cancel (reject) đăng ký {} (status unchanged, notification skipped).", 
+                        adminId, registrationId);
+            }
+            
             return toDto(saved);
         } else {
             throw new IllegalArgumentException("Invalid decision: " + decision + ". Must be APPROVE, REJECT, or CANCEL");
@@ -335,6 +411,17 @@ public class ElevatorCardRegistrationService {
 
     private void sendElevatorCardApprovalNotification(ElevatorCardRegistration registration, String issueMessage, OffsetDateTime issueTime) {
         try {
+            // Check if already approved - don't send notification if already approved to avoid duplicate
+            if (STATUS_APPROVED.equalsIgnoreCase(registration.getStatus()) 
+                    && registration.getApprovedAt() != null 
+                    && registration.getApprovedBy() != null) {
+                // Double-check: if approvedAt was set before this call, skip notification
+                // This prevents duplicate notifications if method is called multiple times
+                log.warn("⚠️ [ElevatorCard] Registration {} already approved. Skipping notification to avoid duplicate FCM push.", 
+                        registration.getId());
+                return;
+            }
+            
             // CARD_APPROVED is PRIVATE - only resident who created the request can see
             // Get residentId from userId (người tạo request) instead of residentId (người được đăng ký thẻ)
             UUID requesterResidentId = residentUnitLookupService.resolveByUser(
@@ -1268,12 +1355,23 @@ public class ElevatorCardRegistrationService {
     /**
      * Lấy danh sách thành viên trong căn hộ (bao gồm chủ căn hộ và household members)
      * Tương tự như ResidentCard nhưng check thẻ thang máy thay vì thẻ cư dân
+     * Chỉ OWNER mới được xem danh sách thành viên để đăng ký cho nhiều người
      */
-    public List<Map<String, Object>> getHouseholdMembersByUnit(UUID unitId) {
+    public List<Map<String, Object>> getHouseholdMembersByUnit(UUID unitId, UUID userId, String accessToken) {
         if (unitId == null) {
             log.warn("⚠️ [ElevatorCard] getHouseholdMembersByUnit called with null unitId");
             return List.of();
         }
+        
+        // Kiểm tra quyền OWNER: chỉ OWNER mới được xem danh sách thành viên để đăng ký cho nhiều người
+        boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, unitId, accessToken);
+        if (!isOwner) {
+            log.warn("⚠️ [ElevatorCard] User {} is not OWNER of unit {}, cannot get household members list", userId, unitId);
+            throw new IllegalStateException("Chỉ chủ căn hộ (OWNER) mới được xem danh sách thành viên để đăng ký thẻ. Thành viên chỉ được đăng ký thẻ cho chính mình.");
+        }
+        
+        // Log để debug: xác nhận user là OWNER
+        log.info("✅ [ElevatorCard] User {} được xác nhận là OWNER/TENANT của unit {}", userId, unitId);
         
         try {
             MapSqlParameterSource params = new MapSqlParameterSource()
@@ -1282,6 +1380,7 @@ public class ElevatorCardRegistrationService {
             log.debug("🔍 [ElevatorCard] Đang lấy danh sách thành viên trong căn hộ unitId: {}", unitId);
             
             // Query để lấy danh sách thành viên và check xem họ đã có thẻ thang máy được approve chưa
+            // Thêm thông tin về household kind để Flutter có thể verify
             List<Map<String, Object>> members = jdbcTemplate.query("""
                     SELECT DISTINCT
                         r.id AS resident_id,
@@ -1290,6 +1389,7 @@ public class ElevatorCardRegistrationService {
                         r.phone AS phone_number,
                         r.email AS email,
                         r.dob AS date_of_birth,
+                        h.kind AS household_kind,
                         CASE 
                             WHEN EXISTS (
                                 SELECT 1 FROM card.elevator_card_registration ecr
@@ -1325,10 +1425,19 @@ public class ElevatorCardRegistrationService {
                     ? rs.getDate("date_of_birth").toString() : null);
                 member.put("hasApprovedCard", rs.getBoolean("has_approved_card"));
                 member.put("waitingForApproval", rs.getBoolean("waiting_for_approval"));
+                // Thêm household kind vào response để Flutter có thể verify
+                String householdKind = rs.getString("household_kind");
+                member.put("householdKind", householdKind);
                 return member;
             });
             
-            log.info("✅ [ElevatorCard] Căn hộ {} có {} thành viên", unitId, members.size());
+            // Log household kind để debug
+            if (!members.isEmpty()) {
+                String householdKind = (String) members.get(0).get("householdKind");
+                log.info("✅ [ElevatorCard] Căn hộ {} có {} thành viên, household kind: {}", unitId, members.size(), householdKind);
+            } else {
+                log.warn("⚠️ [ElevatorCard] Căn hộ {} không có thành viên nào trong household_members", unitId);
+            }
             return members;
         } catch (Exception e) {
             log.error("❌ [ElevatorCard] Không thể lấy danh sách thành viên trong căn hộ unitId: {}", unitId, e);

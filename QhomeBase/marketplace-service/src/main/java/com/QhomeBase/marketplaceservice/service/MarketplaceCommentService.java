@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
+import org.springframework.lang.NonNull;
 
 @Service
 @RequiredArgsConstructor
@@ -246,8 +247,15 @@ public class MarketplaceCommentService {
         post.incrementCommentCount();
         postRepository.save(post);
 
-        // Notify post owner and viewers
-        notificationService.notifyNewComment(postId, saved.getId(), residentId, "User");
+        // Get post owner residentId for notification
+        UUID postOwnerResidentId = post.getResidentId();
+        
+        // Get comment author name for notification (optional, can be "User" if not available)
+        String authorName = "User"; // Default name, can be enhanced later to fetch from resident info
+        
+        // Get parentCommentId if this is a reply
+        // Notify post owner and viewers (both WebSocket and FCM push)
+        notificationService.notifyNewComment(postId, saved.getId(), residentId, authorName, postOwnerResidentId, parentCommentId);
 
         return saved;
     }
@@ -256,7 +264,7 @@ public class MarketplaceCommentService {
      * Update comment
      */
     @Transactional
-    public MarketplaceComment updateComment(UUID commentId, UUID residentId, String content) {
+    public MarketplaceComment updateComment(@NonNull UUID commentId, @NonNull UUID residentId, String content) {
         log.info("Updating comment: {} by user: {}", commentId, residentId);
 
         MarketplaceComment comment = commentRepository.findById(commentId)
@@ -280,7 +288,7 @@ public class MarketplaceCommentService {
      */
     @CacheEvict(value = {"postDetails"}, allEntries = true)
     @Transactional
-    public void deleteComment(UUID commentId, UUID residentId) {
+    public void deleteComment(@NonNull UUID commentId, @NonNull UUID residentId) {
         log.info("Deleting comment: {} by user: {}", commentId, residentId);
 
         MarketplaceComment comment = commentRepository.findById(commentId)

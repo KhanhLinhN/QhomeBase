@@ -20,6 +20,9 @@ public interface ResidentRepository extends JpaRepository<Resident, UUID> {
            "LOWER(r.email) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
     List<Resident> searchByTerm(@Param("searchTerm") String searchTerm);
     
+    @Query("SELECT r FROM Resident r WHERE r.phone IS NOT NULL AND r.phone LIKE CONCAT(:phonePrefix, '%') AND r.status = 'ACTIVE' ORDER BY r.fullName ASC")
+    List<Resident> findByPhonePrefix(@Param("phonePrefix") String phonePrefix);
+    
     Optional<Resident> findByPhone(String phone);
     
     Optional<Resident> findByEmail(String email);

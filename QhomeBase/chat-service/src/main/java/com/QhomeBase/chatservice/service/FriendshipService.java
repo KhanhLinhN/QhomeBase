@@ -133,6 +133,38 @@ public class FriendshipService {
     }
 
     /**
+     * Reactivate friendship if it exists (when unblocking)
+     * Only reactivates existing friendship, does not create new one
+     */
+    @Transactional
+    public void reactivateFriendshipIfExists(UUID userId1, UUID userId2) {
+        // Validate inputs
+        if (userId1 == null || userId2 == null) {
+            log.warn("Cannot reactivate friendship: one or both userIds are null (userId1: {}, userId2: {})", userId1, userId2);
+            return;
+        }
+        
+        // Ensure user1_id < user2_id for consistency (using PostgreSQL byte order)
+        UUID[] ordered = orderUuidsForFriendship(userId1, userId2);
+        UUID user1Id = ordered[0];
+        UUID user2Id = ordered[1];
+
+        friendshipRepository.findFriendshipBetweenUsers(user1Id, user2Id)
+                .ifPresent(friendship -> {
+                    if (!Boolean.TRUE.equals(friendship.getIsActive())) {
+                        friendship.setIsActive(true);
+                        friendshipRepository.save(friendship);
+                        log.info("Reactivated friendship between {} and {} (user unblocked)", user1Id, user2Id);
+                    } else {
+                        log.debug("Friendship between {} and {} is already active", user1Id, user2Id);
+                    }
+                });
+        
+        // If friendship doesn't exist, don't create it - they weren't friends before block
+        // This ensures we don't create friendships for users who weren't friends originally
+    }
+
+    /**
      * Get all active friendships for a user
      */
     @Transactional(readOnly = true)

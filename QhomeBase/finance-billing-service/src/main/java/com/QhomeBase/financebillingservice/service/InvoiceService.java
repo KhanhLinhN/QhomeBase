@@ -675,7 +675,7 @@ public class InvoiceService {
         for (Invoice invoice : invoices) {
             List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceId(invoice.getId());
             for (InvoiceLine line : lines) {
-                result.add(toInvoiceLineResponseDto(invoice, line));
+                result.add(toInvoiceLineResponseDto(invoice, line, userId));
             }
         }
         
@@ -693,41 +693,27 @@ public class InvoiceService {
         UUID residentId = residentRepository.findResidentIdByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy cư dân cho user: " + userId));
 
-        // Kiểm tra quyền: cho phép thanh toán nếu invoice thuộc căn hộ của user
-        // (tất cả thành viên trong cùng căn hộ có thể thanh toán invoice của căn hộ đó)
-        if (unitFilter != null && !unitFilter.equals(invoice.getPayerUnitId())) {
-            throw new IllegalArgumentException("Hóa đơn không thuộc căn hộ đã chọn");
-        }
-        
-        // Nếu không có unitFilter, kiểm tra xem invoice có thuộc căn hộ của resident không
-        if (unitFilter == null && invoice.getPayerUnitId() != null) {
-            // Kiểm tra xem resident có thuộc căn hộ này không
-            try {
-                BaseServiceClient.ServiceInfo.HouseholdInfo household = baseServiceClient.getCurrentHouseholdByUnitId(invoice.getPayerUnitId());
-                if (household != null && household.getId() != null) {
-                    List<BaseServiceClient.ServiceInfo.HouseholdMemberInfo> members = baseServiceClient.getActiveMembersByHouseholdId(household.getId());
-                    boolean isMember = members.stream()
-                            .anyMatch(member -> member.getResidentId() != null && member.getResidentId().equals(residentId));
-                    if (!isMember && household.getPrimaryResidentId() != null && !household.getPrimaryResidentId().equals(residentId)) {
-                        throw new IllegalArgumentException("Bạn không có quyền thanh toán hóa đơn này");
-                    }
-                } else {
-                    // Fallback: kiểm tra payerResidentId
-                    if (!residentId.equals(invoice.getPayerResidentId())) {
-                        throw new IllegalArgumentException("Bạn không có quyền thanh toán hóa đơn này");
-                    }
-                }
-            } catch (Exception e) {
-                // Fallback: kiểm tra payerResidentId
-                if (!residentId.equals(invoice.getPayerResidentId())) {
-                    throw new IllegalArgumentException("Bạn không có quyền thanh toán hóa đơn này");
-                }
+        // Kiểm tra quyền OWNER: chỉ OWNER hoặc TENANT mới được thanh toán hóa đơn điện/nước cho căn hộ
+        UUID unitIdToCheck = unitFilter != null ? unitFilter : invoice.getPayerUnitId();
+        if (unitIdToCheck != null) {
+            boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, unitIdToCheck);
+            if (!isOwner) {
+                throw new IllegalStateException(
+                    "Chỉ chủ căn hộ (OWNER hoặc người thuê TENANT) mới được thanh toán hóa đơn điện, nước cho căn hộ. " +
+                    "Thành viên hộ gia đình không được phép thanh toán."
+                );
             }
         } else if (invoice.getPayerUnitId() == null) {
             // Nếu invoice không có payerUnitId, chỉ cho phép payerResidentId thanh toán
+            // Nhưng vẫn cần kiểm tra OWNER nếu có thể
             if (!residentId.equals(invoice.getPayerResidentId())) {
                 throw new IllegalArgumentException("Bạn không có quyền thanh toán hóa đơn này");
             }
+        }
+        
+        // Kiểm tra invoice có thuộc căn hộ đã chọn không
+        if (unitFilter != null && !unitFilter.equals(invoice.getPayerUnitId())) {
+            throw new IllegalArgumentException("Hóa đơn không thuộc căn hộ đã chọn");
         }
 
         if (InvoiceStatus.PAID.equals(invoice.getStatus())) {
@@ -816,13 +802,25 @@ public class InvoiceService {
                 log.info(" [InvoiceService] Duplicate VNPAY callback received for already paid invoice {} (txnRef: {})", 
                         invoiceId, txnRef);
             }
-            return new VnpayCallbackResult(invoiceId, true, responseCode, true);
+            return new VnpayCallbackResult(
+                invoiceId, 
+                true, 
+                responseCode, 
+                true,
+                "Đã thanh toán hóa đơn thành công"
+            );
         }
 
         invoiceRepository.save(invoice);
         log.warn(" [InvoiceService] VNPAY payment failed for invoice {} (txnRef: {}) - responseCode={}, validSignature={}",
                 invoiceId, txnRef, responseCode, signatureValid);
-        return new VnpayCallbackResult(invoiceId, false, responseCode, signatureValid);
+        return new VnpayCallbackResult(
+            invoiceId, 
+            false, 
+            responseCode, 
+            signatureValid,
+            "Thanh toán không thành công. Vui lòng thử lại."
+        );
     }
 
     public UUID getInvoiceIdFromTxnRef(String txnRef) {
@@ -922,31 +920,78 @@ public class InvoiceService {
         Map<String, List<InvoiceLineResponseDto>> grouped = new HashMap<>();
 
         for (Invoice invoice : invoices) {
-            if (invoice.getStatus() == InvoiceStatus.PAID || invoice.getStatus() == InvoiceStatus.VOID || invoice.getStatus() == InvoiceStatus.UNPAID) {
+            // Include UNPAID invoices - they need to be shown with warning
+            // Only exclude PAID and VOID invoices
+            if (invoice.getStatus() == InvoiceStatus.PAID || invoice.getStatus() == InvoiceStatus.VOID) {
                 continue;
             }
 
             List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceId(invoice.getId());
+            
+            // Log for debugging UNPAID invoices
+            if (invoice.getStatus() == InvoiceStatus.UNPAID) {
+                log.info("🔍 [InvoiceService] Found UNPAID invoice {} (code: {}) with {} lines for unit {}", 
+                        invoice.getId(), invoice.getCode(), lines.size(), unitFilter);
+                if (lines.isEmpty()) {
+                    log.warn("⚠️ [InvoiceService] UNPAID invoice {} has no invoice lines!", invoice.getId());
+                }
+                for (InvoiceLine line : lines) {
+                    log.info("   Line {}: serviceCode={}, description={}", 
+                            line.getId(), line.getServiceCode(), line.getDescription());
+                }
+            }
+            
+            if (lines.isEmpty()) {
+                // Skip invoices without lines
+                log.debug("⚠️ [InvoiceService] Invoice {} has no lines, skipping", invoice.getId());
+                continue;
+            }
+            
             for (InvoiceLine line : lines) {
-                InvoiceLineResponseDto dto = toInvoiceLineResponseDto(invoice, line);
+                InvoiceLineResponseDto dto = toInvoiceLineResponseDto(invoice, line, userId);
+                // Include UNPAID invoices - they need to be shown with warning
+                // Only exclude PAID invoices
                 if ("PAID".equalsIgnoreCase(dto.getStatus())) {
                     continue;
                 }
 
                 // Only show electricity and water invoices - skip all others (contract renewal, etc.)
+                // This applies to ALL statuses including UNPAID - only ELECTRIC and WATER are shown
                 String serviceCode = line.getServiceCode();
                 if (serviceCode == null || serviceCode.isBlank()) {
+                    log.debug("⚠️ [InvoiceService] Invoice {} line {} has no serviceCode, skipping", invoice.getId(), line.getId());
                     continue;
                 }
                 String normalized = serviceCode.trim().toUpperCase();
-                // Only allow ELECTRICITY and WATER service codes
+                // Only allow ELECTRICITY and WATER service codes (for all statuses including UNPAID)
                 if (!normalized.contains("ELECTRIC") && !normalized.contains("WATER")) {
+                    if (invoice.getStatus() == InvoiceStatus.UNPAID) {
+                        log.info("ℹ️ [InvoiceService] UNPAID invoice {} line {} serviceCode {} is not ELECTRIC or WATER, skipping (only electricity/water invoices are shown in 'Hóa đơn mới')", 
+                                invoice.getId(), line.getId(), serviceCode);
+                    } else {
+                        log.debug("⚠️ [InvoiceService] Invoice {} line {} serviceCode {} is not ELECTRIC or WATER, skipping", 
+                                invoice.getId(), line.getId(), serviceCode);
+                    }
                     continue;
                 }
 
                 String category = determineCategory(line.getServiceCode());
                 grouped.computeIfAbsent(category, key -> new ArrayList<>()).add(dto);
+                
+                // Log for debugging
+                if (invoice.getStatus() == InvoiceStatus.UNPAID) {
+                    log.info("✅ [InvoiceService] Added UNPAID invoice {} line {} (serviceCode: {}, status: {}) to category {}", 
+                            invoice.getId(), line.getId(), serviceCode, dto.getStatus(), category);
+                }
             }
+        }
+        
+        // Log summary
+        int totalUnpaidInvoices = grouped.values().stream()
+                .mapToInt(list -> (int) list.stream().filter(dto -> "UNPAID".equalsIgnoreCase(dto.getStatus())).count())
+                .sum();
+        if (totalUnpaidInvoices > 0) {
+            log.info("✅ [InvoiceService] Found {} UNPAID invoice lines across {} categories", totalUnpaidInvoices, grouped.size());
         }
 
         List<InvoiceCategoryResponseDto> response = new ArrayList<>();
@@ -1067,7 +1112,7 @@ public class InvoiceService {
                 }
 
                 String category = determineCategory(line.getServiceCode());
-                InvoiceLineResponseDto dto = toInvoiceLineResponseDto(invoice, line);
+                InvoiceLineResponseDto dto = toInvoiceLineResponseDto(invoice, line, userId);
                 grouped.computeIfAbsent(category, key -> new ArrayList<>()).add(dto);
                 log.debug(" [InvoiceService] Added line {} to category {}", line.getId(), category);
             }
@@ -1163,7 +1208,11 @@ public class InvoiceService {
         return result;
     }
     
-    public record VnpayCallbackResult(UUID invoiceId, boolean success, String responseCode, boolean signatureValid) {}
+    public record VnpayCallbackResult(UUID invoiceId, boolean success, String responseCode, boolean signatureValid, String message) {
+        public VnpayCallbackResult(UUID invoiceId, boolean success, String responseCode, boolean signatureValid) {
+            this(invoiceId, success, responseCode, signatureValid, null);
+        }
+    }
 
     private void notifyPaymentSuccess(Invoice invoice, Map<String, String> params) {
         if (invoice.getPayerResidentId() == null) {
@@ -1293,6 +1342,35 @@ public class InvoiceService {
     }
     
     private InvoiceLineResponseDto toInvoiceLineResponseDto(Invoice invoice, InvoiceLine line) {
+        return toInvoiceLineResponseDto(invoice, line, null);
+    }
+    
+    private InvoiceLineResponseDto toInvoiceLineResponseDto(Invoice invoice, InvoiceLine line, UUID userId) {
+        // Check permission: isOwner, canPay
+        boolean isOwner = false;
+        boolean canPay = false;
+        String permissionMessage = null;
+        
+        if (userId != null && invoice.getPayerUnitId() != null) {
+            try {
+                isOwner = baseServiceClient.isOwnerOfUnit(userId, invoice.getPayerUnitId());
+                
+                if (isOwner) {
+                    // OWNER/TENANT can pay if invoice is not already paid
+                    canPay = invoice.getStatus() != InvoiceStatus.PAID && invoice.getStatus() != InvoiceStatus.VOID;
+                } else {
+                    // Not OWNER/TENANT - household member
+                    canPay = false;
+                    permissionMessage = "Bạn không được phép thanh toán hóa đơn này";
+                }
+            } catch (Exception e) {
+                log.warn("⚠️ [InvoiceService] Error checking permission for invoice {}: {}", 
+                        invoice.getId(), e.getMessage());
+                // If check fails, default to no permission
+                permissionMessage = "Bạn không được phép thanh toán hóa đơn này";
+            }
+        }
+        
         return InvoiceLineResponseDto.builder()
                 .payerUnitId(invoice.getPayerUnitId() != null ? invoice.getPayerUnitId().toString() : "")
                 .invoiceId(invoice.getId().toString())
@@ -1305,6 +1383,9 @@ public class InvoiceService {
                 .lineTotal(line.getLineTotal() != null ? line.getLineTotal().doubleValue() : 0.0)
                 .serviceCode(line.getServiceCode())
                 .status(invoice.getStatus() != null ? invoice.getStatus().name() : "PUBLISHED")
+                .isOwner(isOwner)
+                .canPay(canPay)
+                .permissionMessage(permissionMessage)
                 .build();
     }
 

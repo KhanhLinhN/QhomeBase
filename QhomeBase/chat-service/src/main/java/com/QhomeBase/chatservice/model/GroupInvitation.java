@@ -46,14 +46,14 @@ public class GroupInvitation {
 
     @Column(name = "status", nullable = false, length = 50)
     @Builder.Default
-    private String status = "PENDING"; // PENDING, ACCEPTED, DECLINED, EXPIRED
+    private String status = "PENDING"; // PENDING, ACCEPTED, DECLINED (no longer EXPIRED - invitations don't expire)
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
-    @Column(name = "expires_at", nullable = false)
-    private OffsetDateTime expiresAt;
+    @Column(name = "expires_at")
+    private OffsetDateTime expiresAt; // No longer used - invitations don't expire, only accept/decline changes status
 
     @Column(name = "responded_at")
     private OffsetDateTime respondedAt;

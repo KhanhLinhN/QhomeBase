@@ -40,5 +40,8 @@ public class CreatePostRequest {
     private ContactInfoRequest contactInfo;
     
     private String scope; // BUILDING, ALL, or BOTH
+    
+    // Video URL (if video was uploaded to data-docs-service separately)
+    private String videoUrl;
 }
 

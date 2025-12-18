@@ -18,6 +18,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
@@ -71,15 +73,23 @@ public class ContractController {
 
     @GetMapping("/{contractId}")
     @Operation(summary = "Get contract", description = "Get contract by ID")
-    public ResponseEntity<ContractDto> getContract(@PathVariable UUID contractId) {
-        ContractDto contract = contractService.getContractById(contractId);
+    public ResponseEntity<ContractDto> getContract(
+            @PathVariable UUID contractId,
+            @RequestHeader HttpHeaders headers) {
+        String accessToken = extractAccessToken(headers);
+        UUID userId = extractUserIdFromHeaders(headers);
+        ContractDto contract = contractService.getContractById(contractId, userId, accessToken);
         return ResponseEntity.ok(contract);
     }
 
     @GetMapping("/unit/{unitId}")
     @Operation(summary = "Get contracts by unit", description = "Get all contracts for a specific unit")
-    public ResponseEntity<List<ContractDto>> getContractsByUnit(@PathVariable UUID unitId) {
-        List<ContractDto> contracts = contractService.getContractsByUnitId(unitId);
+    public ResponseEntity<List<ContractDto>> getContractsByUnit(
+            @PathVariable UUID unitId,
+            @RequestHeader HttpHeaders headers) {
+        String accessToken = extractAccessToken(headers);
+        UUID userId = extractUserIdFromHeaders(headers);
+        List<ContractDto> contracts = contractService.getContractsByUnitId(unitId, userId, accessToken);
         return ResponseEntity.ok(contracts);
     }
 
@@ -92,8 +102,12 @@ public class ContractController {
 
     @GetMapping("/unit/{unitId}/active")
     @Operation(summary = "Get active contracts by unit", description = "Get active contracts for a specific unit")
-    public ResponseEntity<List<ContractDto>> getActiveContractsByUnit(@PathVariable UUID unitId) {
-        List<ContractDto> contracts = contractService.getActiveContractsByUnit(unitId);
+    public ResponseEntity<List<ContractDto>> getActiveContractsByUnit(
+            @PathVariable UUID unitId,
+            @RequestHeader HttpHeaders headers) {
+        String accessToken = extractAccessToken(headers);
+        UUID userId = extractUserIdFromHeaders(headers);
+        List<ContractDto> contracts = contractService.getActiveContractsByUnit(unitId, userId, accessToken);
         return ResponseEntity.ok(contracts);
     }
 
@@ -157,8 +171,16 @@ public class ContractController {
     public ResponseEntity<ContractDto> extendContract(
             @PathVariable UUID contractId,
             @RequestParam("newEndDate") java.time.LocalDate newEndDate,
+            @RequestHeader HttpHeaders headers,
             @RequestParam(value = "updatedBy", required = false) UUID updatedBy) {
-        ContractDto contract = contractService.extendContract(contractId, newEndDate, updatedBy);
+        String accessToken = extractAccessToken(headers);
+        UUID userId = extractUserIdFromHeaders(headers);
+        
+        if (updatedBy == null) {
+            updatedBy = userId != null ? userId : UUID.randomUUID();
+        }
+        
+        ContractDto contract = contractService.extendContract(contractId, newEndDate, updatedBy, userId, accessToken);
         return ResponseEntity.ok(contract);
     }
 
@@ -526,8 +548,12 @@ public class ContractController {
 
     @GetMapping("/unit/{unitId}/popup")
     @Operation(summary = "Get contracts needing popup", description = "Get contracts that need to show popup to resident (renewal reminders)")
-    public ResponseEntity<List<ContractDto>> getContractsNeedingPopup(@PathVariable UUID unitId) {
-        List<ContractDto> contracts = contractService.getContractsNeedingPopup(unitId);
+    public ResponseEntity<List<ContractDto>> getContractsNeedingPopup(
+            @PathVariable UUID unitId,
+            @RequestHeader HttpHeaders headers) {
+        String accessToken = extractAccessToken(headers);
+        UUID userId = extractUserIdFromHeaders(headers);
+        List<ContractDto> contracts = contractService.getContractsNeedingPopup(unitId, userId, accessToken);
         return ResponseEntity.ok(contracts);
     }
 
@@ -536,17 +562,23 @@ public class ContractController {
     public ResponseEntity<ContractDto> renewContract(
             @PathVariable UUID contractId,
             @Valid @RequestBody RenewContractRequest request,
+            @RequestHeader HttpHeaders headers,
             @RequestParam(value = "createdBy", required = false) UUID createdBy) {
         
+        String accessToken = extractAccessToken(headers);
+        UUID userId = extractUserIdFromHeaders(headers);
+        
         if (createdBy == null) {
-            createdBy = UUID.randomUUID();
+            createdBy = userId != null ? userId : UUID.randomUUID();
         }
         
         ContractDto contract = contractService.renewContract(
                 contractId,
                 request.getStartDate(),
                 request.getEndDate(),
-                createdBy
+                createdBy,
+                userId,
+                accessToken
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(contract);
     }
@@ -556,14 +588,18 @@ public class ContractController {
     public ResponseEntity<ContractDto> cancelContract(
             @PathVariable UUID contractId,
             @RequestBody(required = false) CancelContractRequest request,
+            @RequestHeader HttpHeaders headers,
             @RequestParam(value = "updatedBy", required = false) UUID updatedBy) {
         
+        String accessToken = extractAccessToken(headers);
+        UUID userId = extractUserIdFromHeaders(headers);
+        
         if (updatedBy == null) {
-            updatedBy = UUID.randomUUID();
+            updatedBy = userId != null ? userId : UUID.randomUUID();
         }
         
         java.time.LocalDate scheduledDate = request != null ? request.scheduledDate() : null;
-        ContractDto contract = contractService.cancelContract(contractId, updatedBy, scheduledDate);
+        ContractDto contract = contractService.cancelContract(contractId, updatedBy, scheduledDate, userId, accessToken);
         return ResponseEntity.ok(contract);
     }
 
@@ -572,11 +608,15 @@ public class ContractController {
     public ResponseEntity<ContractRenewalResponse> createRenewalPaymentUrl(
             @PathVariable UUID contractId,
             @Valid @RequestBody RenewContractRequest request,
+            @RequestHeader HttpHeaders headers,
             @RequestParam(value = "createdBy", required = false) UUID createdBy,
             HttpServletRequest httpRequest) {
         
+        String accessToken = extractAccessToken(headers);
+        UUID userId = extractUserIdFromHeaders(headers);
+        
         if (createdBy == null) {
-            createdBy = UUID.randomUUID();
+            createdBy = userId != null ? userId : UUID.randomUUID();
         }
         
         String clientIp = getClientIp(httpRequest);
@@ -585,7 +625,9 @@ public class ContractController {
                 request.getStartDate(),
                 request.getEndDate(),
                 createdBy,
-                clientIp
+                clientIp,
+                userId,
+                accessToken
         );
         
         return ResponseEntity.ok(response);
@@ -653,6 +695,76 @@ public class ContractController {
             ip = request.getRemoteAddr();
         }
         return ip;
+    }
+
+    private String extractAccessToken(HttpHeaders headers) {
+        String authHeader = headers.getFirst(HttpHeaders.AUTHORIZATION);
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+        return null;
+    }
+
+    private UUID extractUserIdFromHeaders(HttpHeaders headers) {
+        try {
+            // Try to get from SecurityContext first (if available)
+            try {
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.getPrincipal() != null) {
+                    String principalStr = auth.getPrincipal().toString();
+                    // Try to extract UUID from principal string if it's a UUID
+                    if (principalStr.length() == 36) {
+                        try {
+                            return UUID.fromString(principalStr);
+                        } catch (IllegalArgumentException e) {
+                            // Not a UUID, continue to JWT parsing
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                // SecurityContext not available, continue to JWT parsing
+                log.debug("SecurityContext not available, trying JWT parsing");
+            }
+            
+            // Fallback: try to parse from JWT token in Authorization header
+            String token = extractAccessToken(headers);
+            if (token != null && !token.isEmpty()) {
+                // Simple JWT parsing - extract from payload
+                // Note: This is a simplified version. For production, use proper JWT library
+                String[] parts = token.split("\\.");
+                if (parts.length == 3) {
+                    try {
+                        // Decode payload (base64 URL-safe)
+                        String payload = new String(java.util.Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+                        // Extract "sub" field (user ID)
+                        if (payload.contains("\"sub\"")) {
+                            int start = payload.indexOf("\"sub\"") + 6;
+                            // Skip whitespace and colon
+                            while (start < payload.length() && (payload.charAt(start) == ' ' || payload.charAt(start) == ':')) {
+                                start++;
+                            }
+                            // Skip opening quote if present
+                            if (start < payload.length() && payload.charAt(start) == '"') {
+                                start++;
+                            }
+                            int end = start;
+                            while (end < payload.length() && payload.charAt(end) != '"' && payload.charAt(end) != ',' && payload.charAt(end) != '}') {
+                                end++;
+                            }
+                            if (end > start) {
+                                String userIdStr = payload.substring(start, end);
+                                return UUID.fromString(userIdStr);
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.debug("Failed to parse JWT token: {}", e.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ [ContractController] Could not extract userId from headers: {}", e.getMessage());
+        }
+        return null;
     }
 
     record ErrorResponse(int status, String message) {}

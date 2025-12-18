@@ -63,6 +63,24 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
         ORDER BY n.createdAt DESC
     """)
     List<Notification> findAllActive();
+    
+    /**
+     * Find notification by referenceId, type, and targetResidentId
+     * Used to check if notification already exists to avoid duplicate FCM push
+     */
+    @Query("""
+        SELECT n FROM Notification n
+        WHERE n.referenceId = :referenceId
+        AND n.type = :type
+        AND n.targetResidentId = :targetResidentId
+        AND n.deletedAt IS NULL
+        ORDER BY n.createdAt DESC
+    """)
+    List<Notification> findByReferenceIdAndTypeAndTargetResidentId(
+            @Param("referenceId") UUID referenceId,
+            @Param("type") com.QhomeBase.customerinteractionservice.model.NotificationType type,
+            @Param("targetResidentId") UUID targetResidentId
+    );
 }
 
 

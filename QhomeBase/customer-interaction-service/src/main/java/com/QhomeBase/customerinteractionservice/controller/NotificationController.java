@@ -131,12 +131,16 @@ public class NotificationController {
     }
 
     @PostMapping("/device-tokens")
-    @PreAuthorize("isAuthenticated()")
+    // Allow both authenticated and unauthenticated requests (for push notifications before login)
     public ResponseEntity<DeviceTokenResponse> registerDeviceToken(
             @Valid @RequestBody RegisterDeviceTokenRequest request,
             org.springframework.security.core.Authentication authentication) {
 
-        var principal = (com.QhomeBase.customerinteractionservice.security.UserPrincipal) authentication.getPrincipal();
+        UUID userId = null;
+        if (authentication != null && authentication.getPrincipal() instanceof com.QhomeBase.customerinteractionservice.security.UserPrincipal) {
+            var principal = (com.QhomeBase.customerinteractionservice.security.UserPrincipal) authentication.getPrincipal();
+            userId = principal.uid();
+        }
 
         RegisterDeviceTokenRequest effectiveRequest = RegisterDeviceTokenRequest.builder()
                 .token(request.getToken())
@@ -145,7 +149,7 @@ public class NotificationController {
                 .residentId(request.getResidentId())
                 .buildingId(request.getBuildingId())
                 .role(request.getRole())
-                .userId(Optional.ofNullable(request.getUserId()).orElse(principal.uid()))
+                .userId(Optional.ofNullable(request.getUserId()).orElse(userId))
                 .build();
 
         DeviceTokenResponse response = notificationDeviceTokenService.registerToken(effectiveRequest);
@@ -153,7 +157,7 @@ public class NotificationController {
     }
 
     @DeleteMapping("/device-tokens/{token}")
-    @PreAuthorize("isAuthenticated()")
+    // Allow both authenticated and unauthenticated requests (for logout/uninstall scenarios)
     public ResponseEntity<Void> deleteDeviceToken(@PathVariable String token) {
         notificationDeviceTokenService.removeToken(token);
         return ResponseEntity.noContent().build();

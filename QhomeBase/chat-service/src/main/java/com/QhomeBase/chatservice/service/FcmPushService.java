@@ -40,7 +40,9 @@ public class FcmPushService {
     /**
      * Send FCM push notification to group members when a new message is received
      * This will call customer-interaction-service to send push notifications
+     * @deprecated Use sendChatMessageNotificationToResident() instead for better control
      */
+    @Deprecated
     public void sendChatMessageNotification(UUID groupId, MessageResponse message, UUID senderId) {
         try {
             // Get all group members except sender
@@ -81,6 +83,55 @@ public class FcmPushService {
             }
         } catch (Exception e) {
             log.error("Error sending FCM push notification for chat message: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Send FCM push notification to a specific resident for a group chat message
+     * This method is called when the recipient is offline (no active WebSocket connection)
+     */
+    public void sendChatMessageNotificationToResident(UUID groupId, MessageResponse message, UUID senderId, UUID recipientId) {
+        try {
+            // Get group member info to check mute status
+            com.QhomeBase.chatservice.model.GroupMember member = groupMemberRepository
+                    .findByGroupIdAndResidentId(groupId, recipientId)
+                    .orElse(null);
+            
+            if (member == null) {
+                log.warn("Group member not found for group {} and resident {}", groupId, recipientId);
+                return;
+            }
+
+            // Check if conversation is muted
+            if (isGroupMuted(member)) {
+                log.debug("Skipping notification: group {} is muted for resident {}", groupId, recipientId);
+                return;
+            }
+
+            String title = "Tin nhắn mới";
+            String excerptMessage = getMessagePreview(message);
+            String body = message.getSenderName() != null 
+                ? message.getSenderName() + ": " + excerptMessage
+                : "Bạn có tin nhắn mới";
+
+            // Get unread count for this user
+            Long unreadCount = getGroupUnreadCount(groupId, recipientId);
+
+            Map<String, String> data = new HashMap<>();
+            data.put("type", "groupMessage");
+            data.put("chatId", groupId.toString());
+            data.put("groupId", groupId.toString());
+            data.put("messageId", message.getId().toString());
+            data.put("senderId", senderId.toString());
+            data.put("senderName", message.getSenderName() != null ? message.getSenderName() : "");
+            data.put("excerptMessage", excerptMessage);
+            data.put("unreadCount", String.valueOf(unreadCount));
+
+            // Call customer-interaction-service to send push notification
+            sendPushToResident(recipientId, title, body, data);
+            log.info("📱 [FcmPushService] Sent FCM push notification to resident {} for group {} message", recipientId, groupId);
+        } catch (Exception e) {
+            log.error("Error sending FCM push notification for chat message to resident {}: {}", recipientId, e.getMessage(), e);
         }
     }
 

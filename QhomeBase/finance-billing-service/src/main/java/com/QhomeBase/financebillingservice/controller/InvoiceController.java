@@ -348,7 +348,13 @@ public class InvoiceController {
         try {
             result = invoiceService.handleVnpayCallback(params);
         } catch (Exception e) {
-            String fallbackUrl = "qhomeapp://vnpay-result?success=false&message=" + e.getMessage();
+            log.error("❌ [InvoiceController] Lỗi xử lý callback redirect", e);
+            // URL encode message to avoid Unicode characters in HTTP header
+            String encodedMessage = java.net.URLEncoder.encode(
+                    e.getMessage() != null ? e.getMessage() : "Unknown error",
+                    java.nio.charset.StandardCharsets.UTF_8
+            );
+            String fallbackUrl = "qhomeapp://vnpay-result?success=false&message=" + encodedMessage;
             response.sendRedirect(fallbackUrl);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("success", false, "message", e.getMessage()));
@@ -356,10 +362,18 @@ public class InvoiceController {
 
         Map<String, Object> body = buildVnpayResponse(result, params);
         String invoiceId = result.invoiceId() != null ? result.invoiceId().toString() : "";
+        String responseCode = result.responseCode() != null 
+                ? java.net.URLEncoder.encode(result.responseCode(), java.nio.charset.StandardCharsets.UTF_8)
+                : "";
+        String message = result.message() != null 
+                ? java.net.URLEncoder.encode(result.message(), java.nio.charset.StandardCharsets.UTF_8)
+                : "";
+        
         String redirectUrl = new StringBuilder("qhomeapp://vnpay-result")
                 .append("?invoiceId=").append(invoiceId)
-                .append("&responseCode=").append(result.responseCode() != null ? result.responseCode() : "")
+                .append("&responseCode=").append(responseCode)
                 .append("&success=").append(result.success())
+                .append("&message=").append(message)
                 .toString();
 
         response.sendRedirect(redirectUrl);
@@ -373,6 +387,7 @@ public class InvoiceController {
         body.put("invoiceId", result.invoiceId() != null ? result.invoiceId().toString() : null);
         body.put("responseCode", result.responseCode());
         body.put("signatureValid", result.signatureValid());
+        body.put("message", result.message());
         body.put("params", params);
         return body;
     }

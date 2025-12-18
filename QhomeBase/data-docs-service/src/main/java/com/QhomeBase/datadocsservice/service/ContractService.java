@@ -199,18 +199,29 @@ public class ContractService {
 
     public ContractDto getContractById(UUID contractId) {
         Contract contract = contractRepository.findByIdWithFiles(contractId)
-                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Contract not found: " + contractId));
-        return toDto(contract);
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+        return toDto(contract, null, null);
+    }
+    
+    public ContractDto getContractById(UUID contractId, UUID userId, String accessToken) {
+        Contract contract = contractRepository.findByIdWithFiles(contractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+        return toDto(contract, userId, accessToken);
     }
 
     @Transactional(readOnly = true)
     public List<ContractDto> getContractsByUnitId(UUID unitId) {
+        return getContractsByUnitId(unitId, null, null);
+    }
+    
+    @Transactional(readOnly = true)
+    public List<ContractDto> getContractsByUnitId(UUID unitId, UUID userId, String accessToken) {
         try {
             List<Contract> contracts = contractRepository.findByUnitId(unitId);
             return contracts.stream()
                     .map(contract -> {
                         try {
-                            return toDto(contract);
+                            return toDto(contract, userId, accessToken);
                         } catch (Exception e) {
                             log.error("[ContractService] Lỗi khi convert contract {} sang DTO: {}", 
                                     contract.getId(), e.getMessage(), e);
@@ -296,9 +307,14 @@ public class ContractService {
     }
 
     public List<ContractDto> getActiveContractsByUnit(UUID unitId) {
+        return getActiveContractsByUnit(unitId, null, null);
+    }
+    
+    @Transactional(readOnly = true)
+    public List<ContractDto> getActiveContractsByUnit(UUID unitId, UUID userId, String accessToken) {
         List<Contract> contracts = contractRepository.findActiveContractsByUnit(unitId, LocalDate.now());
         return contracts.stream()
-                .map(this::toDto)
+                .map(c -> toDto(c, userId, accessToken))
                 .collect(Collectors.toList());
     }
 
@@ -460,6 +476,10 @@ public class ContractService {
     }
 
     private ContractDto toDto(Contract contract) {
+        return toDto(contract, null, null);
+    }
+    
+    private ContractDto toDto(Contract contract, UUID userId, String accessToken) {
         List<ContractFileDto> files = List.of();
         try {
             if (contract.getFiles() != null) {
@@ -485,6 +505,42 @@ public class ContractService {
         int reminderCount = calculateReminderCount(contract);
         boolean isFinalReminder = reminderCount == 3;
         boolean needsRenewal = calculateNeedsRenewal(contract);
+
+        // Check permission: isOwner, canRenew, canCancel, canExtend
+        boolean isOwner = false;
+        boolean canRenew = false;
+        boolean canCancel = false;
+        boolean canExtend = false;
+        String permissionMessage = null;
+        
+        if (userId != null && contract.getUnitId() != null && accessToken != null) {
+            try {
+                isOwner = baseServiceClient.isOwnerOfUnit(userId, contract.getUnitId(), accessToken);
+                
+                if (isOwner) {
+                    // OWNER/TENANT can renew, cancel, extend if contract is in valid state
+                    if ("RENTAL".equals(contract.getContractType()) && "ACTIVE".equals(contract.getStatus())) {
+                        // Can renew if contract is renewable (not already renewed, in REMINDED status)
+                        canRenew = contract.getRenewedContractId() == null 
+                                && ("REMINDED".equals(contract.getRenewalStatus()) || "PENDING".equals(contract.getRenewalStatus()));
+                        
+                        // Can cancel if contract is active
+                        canCancel = true;
+                        
+                        // Can extend if contract has endDate
+                        canExtend = contract.getEndDate() != null;
+                    }
+                } else {
+                    // Not OWNER/TENANT - household member
+                    permissionMessage = "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng";
+                }
+            } catch (Exception e) {
+                log.warn("⚠️ [ContractService] Error checking permission for contract {}: {}", 
+                        contract.getId(), e.getMessage());
+                // If check fails, default to no permission
+                permissionMessage = "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng";
+            }
+        }
 
         return ContractDto.builder()
                 .id(contract.getId())
@@ -514,6 +570,11 @@ public class ContractService {
                 .needsRenewal(needsRenewal)
                 .renewedContractId(contract.getRenewedContractId())
                 .files(files)
+                .isOwner(isOwner)
+                .canRenew(canRenew)
+                .canCancel(canCancel)
+                .canExtend(canExtend)
+                .permissionMessage(permissionMessage)
                 .build();
     }
 
@@ -793,7 +854,7 @@ public class ContractService {
     }
     @Deprecated
     @Transactional
-    public ContractDto extendContract(UUID contractId, LocalDate newEndDate, UUID updatedBy) {
+    public ContractDto extendContract(UUID contractId, LocalDate newEndDate, UUID updatedBy, UUID userId, String accessToken) {
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
         
@@ -812,6 +873,17 @@ public class ContractService {
         if (newEndDate.isBefore(contract.getEndDate()) || newEndDate.isEqual(contract.getEndDate())) {
             throw new IllegalArgumentException("New end date must be after current end date");
         }
+
+        // Kiểm tra quyền OWNER/TENANT: chỉ OWNER hoặc TENANT mới được gia hạn hợp đồng
+        if (userId != null && contract.getUnitId() != null) {
+            boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, contract.getUnitId(), accessToken);
+            if (!isOwner) {
+                throw new IllegalStateException(
+                    "Chỉ chủ căn hộ (OWNER hoặc người thuê TENANT) mới được gia hạn hợp đồng. " +
+                    "Thành viên hộ gia đình không được phép gia hạn."
+                );
+            }
+        }
         
         contract.setEndDate(newEndDate);
         contract.setRenewalStatus("PENDING");
@@ -823,7 +895,12 @@ public class ContractService {
         log.info("Extended contract {} to new end date: {}. Renewal status reset to PENDING for new cycle.", 
                 contractId, newEndDate);
         
-        return toDto(contract);
+        return toDto(contract, userId, accessToken);
+    }
+    
+    // Overload method for backward compatibility
+    public ContractDto extendContract(UUID contractId, LocalDate newEndDate, UUID updatedBy) {
+        return extendContract(contractId, newEndDate, updatedBy, null, null);
     }
 
     /**
@@ -832,12 +909,16 @@ public class ContractService {
      */
     @Transactional(readOnly = true)
     public List<ContractDto> getContractsNeedingPopup(UUID unitId) {
+        return getContractsNeedingPopup(unitId, null, null);
+    }
+    
+    public List<ContractDto> getContractsNeedingPopup(UUID unitId, UUID userId, String accessToken) {
         List<Contract> contracts = contractRepository.findByUnitIdAndStatus(unitId, "ACTIVE");
         return contracts.stream()
                 .filter(c -> "RENTAL".equals(c.getContractType()))
                 .filter(c -> "REMINDED".equals(c.getRenewalStatus()))
                 .filter(c -> c.getRenewalReminderSentAt() != null)
-                .map(this::toDto)
+                .map(c -> toDto(c, userId, accessToken))
                 .collect(Collectors.toList());
     }
 
@@ -866,16 +947,16 @@ public class ContractService {
         LocalDate endDate = contract.getEndDate();
         long daysUntilEndDate = ChronoUnit.DAYS.between(today, endDate);
         
-        // Needs renewal only when in the same window as reminder 1: 28-32 days before endDate
+        // Needs renewal only when in the same window as reminder 1: 29-31 days before endDate
         // This is when reminder 1 is sent (same time point)
-        return daysUntilEndDate >= 28 && daysUntilEndDate <= 32;
+        return daysUntilEndDate >= 29 && daysUntilEndDate <= 31;
     }
 
     /**
-     * Calculate reminder count based on days until end date:
-     * - Lần 1: Trước 30 ngày hết hạn (28-32 ngày trước endDate)
-     * - Lần 2: Khi còn 18-22 ngày (target: 20 ngày)
-     * - Lần 3: Khi còn 8-12 ngày (target: 10 ngày)
+     * Calculate reminder count based on:
+     * - Lần 1: 30 ngày trước khi hết hạn (29-31 ngày trước endDate)
+     * - Lần 2: 20 ngày trước khi hết hạn (19-21 ngày trước endDate)
+     * - Lần 3: 10 ngày trước khi hết hạn (9-11 ngày trước endDate)
      */
     public int calculateReminderCount(Contract contract) {
         if (contract.getEndDate() == null || contract.getRenewalReminderSentAt() == null) {
@@ -885,49 +966,40 @@ public class ContractService {
         LocalDate today = LocalDate.now();
         LocalDate endDate = contract.getEndDate();
         long daysUntilEndDate = ChronoUnit.DAYS.between(today, endDate);
-        LocalDate firstReminderDate = contract.getRenewalReminderSentAt().toLocalDate();
-        long daysSinceFirstReminder = ChronoUnit.DAYS.between(firstReminderDate, today);
         
-        log.debug("Calculating reminder count for contract {}: today={}, endDate={}, daysUntilEndDate={}, daysSinceFirstReminder={}", 
-                contract.getContractNumber(), today, endDate, daysUntilEndDate, daysSinceFirstReminder);
+        log.debug("Calculating reminder count for contract {}: today={}, endDate={}, daysUntilEndDate={}", 
+                contract.getContractNumber(), today, endDate, daysUntilEndDate);
         
-        // Lần 1: Trước 30 ngày hết hạn (28-32 ngày trước endDate)
-        if (daysUntilEndDate >= 28 && daysUntilEndDate <= 32) {
-            log.debug("Contract {}: reminderCount = 1 (daysUntilEndDate={} in range 28-32)", contract.getContractNumber(), daysUntilEndDate);
-            return 1;
-        }
+        // Tính reminder count dựa vào số ngày trước endDate:
+        // Lần 1: 30 ngày trước (29-31 ngày)
+        // Lần 2: 20 ngày trước (19-21 ngày)
+        // Lần 3: 10 ngày trước (9-11 ngày)
         
-        // Lần 3: Khi còn 8-12 ngày (target: 10 ngày) - BẮT BUỘC
-        // Kiểm tra lần 3 trước lần 2 để ưu tiên
-        if (daysUntilEndDate >= 8 && daysUntilEndDate <= 12 && daysUntilEndDate > 0) {
-            log.debug("Contract {}: reminderCount = 3 (daysUntilEndDate={} in range 8-12)", contract.getContractNumber(), daysUntilEndDate);
+        // Lần 3: 10 ngày trước khi hết hạn (9-11 ngày)
+        if (daysUntilEndDate >= 9 && daysUntilEndDate <= 11) {
+            log.debug("Contract {}: reminderCount = 3 ({} days until endDate - FINAL REMINDER)", 
+                    contract.getContractNumber(), daysUntilEndDate);
             return 3;
         }
         
-        // Lần 2: Khi còn 18-22 ngày (target: 20 ngày)
-        if (daysUntilEndDate >= 18 && daysUntilEndDate <= 22 && daysUntilEndDate > 0) {
-            log.debug("Contract {}: reminderCount = 2 (daysUntilEndDate={} in range 18-22)", contract.getContractNumber(), daysUntilEndDate);
+        // Lần 2: 20 ngày trước khi hết hạn (19-21 ngày)
+        if (daysUntilEndDate >= 19 && daysUntilEndDate <= 21) {
+            log.debug("Contract {}: reminderCount = 2 ({} days until endDate)", 
+                    contract.getContractNumber(), daysUntilEndDate);
             return 2;
         }
         
-        // Nếu đã gửi lần 1 nhưng không trong các khoảng trên
-        // Tính dựa trên số ngày từ lần reminder đầu
-        if (daysUntilEndDate > 0 && daysUntilEndDate < 60) {
-            // Nếu đã qua 20 ngày từ lần reminder đầu, có thể đã gửi reminder lần 3
-            if (daysSinceFirstReminder >= 20) {
-                log.debug("Contract {}: reminderCount = 3 (daysSinceFirstReminder={} >= 20)", 
-                        contract.getContractNumber(), daysSinceFirstReminder);
-                return 3;
-            }
-            // Nếu đã qua 10 ngày từ lần reminder đầu, có thể đã gửi reminder lần 2
-            if (daysSinceFirstReminder >= 10) {
-                log.debug("Contract {}: reminderCount = 2 (daysSinceFirstReminder={} >= 10)", 
-                        contract.getContractNumber(), daysSinceFirstReminder);
-                return 2;
-            }
-            // Vẫn tính là lần 1
-            log.debug("Contract {}: reminderCount = 1 (daysUntilEndDate={}, daysSinceFirstReminder={})", 
-                    contract.getContractNumber(), daysUntilEndDate, daysSinceFirstReminder);
+        // Lần 1: 30 ngày trước khi hết hạn (29-31 ngày)
+        if (daysUntilEndDate >= 29 && daysUntilEndDate <= 31) {
+            log.debug("Contract {}: reminderCount = 1 ({} days until endDate)", 
+                    contract.getContractNumber(), daysUntilEndDate);
+            return 1;
+        }
+        
+        // Nếu không trong các khoảng trên, nhưng đã gửi reminder và còn > 0 ngày, trả về 1 (đã gửi lần 1)
+        if (daysUntilEndDate > 0 && daysUntilEndDate < 32) {
+            log.debug("Contract {}: reminderCount = 1 (fallback - {} days until endDate, reminder already sent)", 
+                    contract.getContractNumber(), daysUntilEndDate);
             return 1;
         }
         
@@ -940,7 +1012,7 @@ public class ContractService {
      * If scheduledDate is provided, creates an asset inspection
      */
     @Transactional
-    public ContractDto cancelContract(UUID contractId, UUID updatedBy, java.time.LocalDate scheduledDate) {
+    public ContractDto cancelContract(UUID contractId, UUID updatedBy, java.time.LocalDate scheduledDate, UUID userId, String accessToken) {
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
         
@@ -950,6 +1022,17 @@ public class ContractService {
         
         if (!"ACTIVE".equals(contract.getStatus())) {
             throw new IllegalArgumentException("Only ACTIVE contracts can be cancelled");
+        }
+        
+        // Kiểm tra quyền OWNER/TENANT: chỉ OWNER hoặc TENANT mới được hủy gia hạn hợp đồng
+        if (userId != null && contract.getUnitId() != null) {
+            boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, contract.getUnitId(), accessToken);
+            if (!isOwner) {
+                throw new IllegalStateException(
+                    "Chỉ chủ căn hộ (OWNER hoặc người thuê TENANT) mới được hủy gia hạn hợp đồng. " +
+                    "Thành viên hộ gia đình không được phép hủy gia hạn."
+                );
+            }
         }
         
         contract.setStatus("CANCELLED");
@@ -984,7 +1067,7 @@ public class ContractService {
      */
     @Transactional
     public ContractDto cancelContract(UUID contractId, UUID updatedBy) {
-        return cancelContract(contractId, updatedBy, null);
+        return cancelContract(contractId, updatedBy, null, null, null);
     }
 
     /**
@@ -992,7 +1075,7 @@ public class ContractService {
      * This will be called from the controller which will handle VNPay payment
      */
     @Transactional
-    public ContractDto renewContract(UUID oldContractId, LocalDate newStartDate, LocalDate newEndDate, UUID createdBy) {
+    public ContractDto renewContract(UUID oldContractId, LocalDate newStartDate, LocalDate newEndDate, UUID createdBy, UUID userId, String accessToken) {
         Contract oldContract = contractRepository.findById(oldContractId)
                 .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + oldContractId));
         
@@ -1007,6 +1090,17 @@ public class ContractService {
         // Check if contract has already been renewed
         if (oldContract.getRenewedContractId() != null) {
             throw new IllegalArgumentException("Hợp đồng này đã được gia hạn thành công. Không thể gia hạn lại.");
+        }
+        
+        // Kiểm tra quyền OWNER/TENANT: chỉ OWNER hoặc TENANT mới được gia hạn hợp đồng
+        if (userId != null && oldContract.getUnitId() != null) {
+            boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, oldContract.getUnitId(), accessToken);
+            if (!isOwner) {
+                throw new IllegalStateException(
+                    "Chỉ chủ căn hộ (OWNER hoặc người thuê TENANT) mới được gia hạn hợp đồng. " +
+                    "Thành viên hộ gia đình không được phép gia hạn."
+                );
+            }
         }
         
         // Validate dates: Ngày kết thúc phải sau ngày bắt đầu và không được trùng nhau
@@ -1144,7 +1238,9 @@ public class ContractService {
                                                            LocalDate newStartDate, 
                                                            LocalDate newEndDate,
                                                            UUID createdBy,
-                                                           String clientIp) {
+                                                           String clientIp,
+                                                           UUID userId,
+                                                           String accessToken) {
         try {
             Contract oldContract = contractRepository.findById(contractId)
                     .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
@@ -1160,6 +1256,17 @@ public class ContractService {
             // Check if contract has already been renewed
             if (oldContract.getRenewedContractId() != null) {
                 throw new IllegalArgumentException("Hợp đồng này đã được gia hạn thành công. Không thể gia hạn lại.");
+            }
+            
+            // Kiểm tra quyền OWNER/TENANT: chỉ OWNER hoặc TENANT mới được gia hạn hợp đồng
+            if (userId != null && oldContract.getUnitId() != null) {
+                boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, oldContract.getUnitId(), accessToken);
+                if (!isOwner) {
+                    throw new IllegalStateException(
+                        "Chỉ chủ căn hộ (OWNER hoặc người thuê TENANT) mới được gia hạn hợp đồng. " +
+                        "Thành viên hộ gia đình không được phép gia hạn."
+                    );
+                }
             }
             
             // Validate dates: Ngày kết thúc phải sau ngày bắt đầu và không được trùng nhau
@@ -1499,48 +1606,47 @@ public class ContractService {
                     contract.getRenewalStatus(), contract.getRenewalReminderSentAt());
             
             try {
-                // Lần 1: Trước 30 ngày hết hạn hợp đồng
-                // Gửi khi còn 28-32 ngày (buffer để đảm bảo không bỏ sót)
-                if (daysUntilEndDate >= 28 && daysUntilEndDate <= 32 
+                // Lần 1: 30 ngày trước khi hết hạn hợp đồng
+                // Gửi khi còn 29-31 ngày (buffer để đảm bảo không bỏ sót)
+                if (daysUntilEndDate >= 29 && daysUntilEndDate <= 31 
                         && contract.getRenewalReminderSentAt() == null) {
                     sendRenewalReminder(contract.getId());
                     firstReminderCount++;
                     log.info("✅ Sent FIRST renewal reminder for contract {} (expires on {}, {} days until end date)", 
                             contract.getContractNumber(), endDate, daysUntilEndDate);
                 }
-                // Lần 3: Khi còn 8-12 ngày (buffer để đảm bảo không bỏ sót) - BẮT BUỘC
-                // Kiểm tra lần 3 trước lần 2 để ưu tiên
+                // Lần 2: 20 ngày trước khi hết hạn hợp đồng
                 // Chỉ gửi nếu:
                 // - Đã gửi lần 1 (renewalReminderSentAt != null)
-                // - Còn 8-12 ngày (target: 10 ngày)
-                // - Lần 1 đã được gửi trước hôm nay (đảm bảo không gửi lần 3 trước lần 1)
+                // - Còn 19-21 ngày trước khi hết hạn (buffer)
+                // - Lần 1 đã được gửi trước đó (ít nhất 1 ngày trước)
                 else if (contract.getRenewalReminderSentAt() != null
-                        && daysUntilEndDate >= 8 && daysUntilEndDate <= 12) {
+                        && daysUntilEndDate >= 19 && daysUntilEndDate <= 21) {
                     java.time.LocalDate firstReminderDate = contract.getRenewalReminderSentAt().toLocalDate();
-                    // Kiểm tra: lần 1 phải được gửi trước hôm nay
+                    // Đảm bảo lần 1 đã được gửi trước đó (ít nhất 1 ngày)
                     if (firstReminderDate.isBefore(today)) {
                         sendRenewalReminder(contract.getId());
-                        thirdReminderCount++;
-                        log.info("✅ Sent THIRD (FINAL) renewal reminder for contract {} (expires on {}, {} days until end date - BẮT BUỘC HỦY HOẶC GIA HẠN)", 
+                        secondReminderCount++;
+                        log.info("✅ Sent SECOND renewal reminder for contract {} (expires on {}, {} days until end date)", 
                                 contract.getContractNumber(), endDate, daysUntilEndDate);
                     } else {
                         log.debug("⏭️ Skipping reminder 3 for contract {}: firstReminderDate={}, today={}", 
                                 contract.getContractNumber(), firstReminderDate, today);
                     }
                 }
-                // Lần 2: Khi còn 18-22 ngày (buffer để đảm bảo không bỏ sót)
+                // Lần 3: 10 ngày trước khi hết hạn hợp đồng - BẮT BUỘC
                 // Chỉ gửi nếu:
                 // - Đã gửi lần 1 (renewalReminderSentAt != null)
-                // - Còn 18-22 ngày (target: 20 ngày)
-                // - Lần 1 đã được gửi trước hôm nay (đảm bảo không gửi lần 2 trước lần 1)
+                // - Còn 9-11 ngày trước khi hết hạn (buffer)
+                // - Lần 1 đã được gửi trước đó (ít nhất 1 ngày trước)
                 else if (contract.getRenewalReminderSentAt() != null
-                        && daysUntilEndDate >= 18 && daysUntilEndDate <= 22) {
+                        && daysUntilEndDate >= 9 && daysUntilEndDate <= 11) {
                     java.time.LocalDate firstReminderDate = contract.getRenewalReminderSentAt().toLocalDate();
-                    // Kiểm tra: lần 1 phải được gửi trước hôm nay
+                    // Đảm bảo lần 1 đã được gửi trước đó (ít nhất 1 ngày)
                     if (firstReminderDate.isBefore(today)) {
                         sendRenewalReminder(contract.getId());
-                        secondReminderCount++;
-                        log.info("✅ Sent SECOND renewal reminder for contract {} (expires on {}, {} days until end date)", 
+                        thirdReminderCount++;
+                        log.info("✅ Sent THIRD (FINAL) renewal reminder for contract {} (expires on {}, {} days until end date - BẮT BUỘC HỦY HOẶC GIA HẠN)", 
                                 contract.getContractNumber(), endDate, daysUntilEndDate);
                     } else {
                         log.debug("⏭️ Skipping reminder 2 for contract {}: firstReminderDate={}, today={}", 

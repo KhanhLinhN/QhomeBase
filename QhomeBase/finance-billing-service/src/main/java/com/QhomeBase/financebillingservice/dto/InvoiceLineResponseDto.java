@@ -21,5 +21,10 @@ public class InvoiceLineResponseDto {
     private Double lineTotal;
     private String serviceCode;
     private String status;
+    
+    // Permission fields
+    private Boolean isOwner; // true if current user is OWNER or TENANT of the unit
+    private Boolean canPay; // true if user can pay this invoice
+    private String permissionMessage; // Message to display if user doesn't have permission
 }
 

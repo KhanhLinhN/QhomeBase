@@ -36,5 +36,8 @@ public class UpdatePostRequest {
 
     // ID of video to delete (only one video allowed per post)
     private String videoToDelete;
+    
+    // Video URL (if video was uploaded to data-docs-service separately)
+    private String videoUrl;
 }
 

@@ -42,7 +42,7 @@ public class DirectInvitation {
 
     @Column(name = "status", nullable = false, length = 50)
     @Builder.Default
-    private String status = "PENDING"; // PENDING, ACCEPTED, DECLINED, EXPIRED
+    private String status = "PENDING"; // PENDING, ACCEPTED, DECLINED (no longer EXPIRED - invitations don't expire)
 
     @Column(name = "initial_message", columnDefinition = "TEXT")
     private String initialMessage; // First message sent with invitation (optional)
@@ -51,17 +51,10 @@ public class DirectInvitation {
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
-    @Column(name = "expires_at", nullable = false)
-    private OffsetDateTime expiresAt; // Invitation expires after 7 days
+    @Column(name = "expires_at")
+    private OffsetDateTime expiresAt; // No longer used - invitations don't expire, only accept/decline changes status
 
     @Column(name = "responded_at")
     private OffsetDateTime respondedAt;
-
-    /**
-     * Check if invitation is expired
-     */
-    public boolean isExpired() {
-        return OffsetDateTime.now().isAfter(expiresAt);
-    }
 }
 

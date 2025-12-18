@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -30,6 +31,7 @@ public class GroupService {
 
     private final GroupRepository groupRepository;
     private final GroupMemberRepository groupMemberRepository;
+    private final com.QhomeBase.chatservice.repository.GroupInvitationRepository invitationRepository;
     private final ResidentInfoService residentInfoService;
     private final MessageService messageService;
     private final ChatNotificationService notificationService;
@@ -80,6 +82,21 @@ public class GroupService {
             for (UUID memberId : membersToAdd) {
                 if (!memberId.equals(residentId) && 
                     !groupMemberRepository.existsByGroupIdAndResidentId(group.getId(), memberId)) {
+                    
+                    // Check if this user (memberId) has already sent a PENDING invitation to the creator (residentId) for this group
+                    // This handles the case: A invites B to group, B doesn't know, B creates new group and adds A
+                    Optional<com.QhomeBase.chatservice.model.GroupInvitation> reverseInvitation = 
+                            invitationRepository.findPendingByGroupIdAndInviterInvitee(group.getId(), memberId, residentId);
+                    
+                    if (reverseInvitation.isPresent()) {
+                        // Get member name for error message
+                        String memberName = residentInfoService.getResidentName(memberId, accessToken);
+                        String errorMessage = memberName != null 
+                            ? memberName + " đã gửi lời mời cho bạn rồi. Vui lòng vào mục lời mời để xác nhận."
+                            : "Người dùng này đã gửi lời mời cho bạn rồi. Vui lòng vào mục lời mời để xác nhận.";
+                        throw new RuntimeException(errorMessage);
+                    }
+                    
                     GroupMember member = GroupMember.builder()
                             .group(group)
                             .groupId(group.getId())
@@ -214,6 +231,20 @@ public class GroupService {
                 .collect(Collectors.toList());
 
         for (UUID memberId : membersToAdd) {
+            // Check if this user (memberId) has already sent a PENDING invitation to the current user (residentId) for this group
+            // This handles the case: A invites B to group, B doesn't know, B creates new group and adds A
+            Optional<com.QhomeBase.chatservice.model.GroupInvitation> reverseInvitation = 
+                    invitationRepository.findPendingByGroupIdAndInviterInvitee(groupId, memberId, residentId);
+            
+            if (reverseInvitation.isPresent()) {
+                // Get member name for error message
+                String memberName = residentInfoService.getResidentName(memberId, accessToken);
+                String errorMessage = memberName != null 
+                    ? memberName + " đã gửi lời mời cho bạn rồi. Vui lòng vào mục lời mời để xác nhận."
+                    : "Người dùng này đã gửi lời mời cho bạn rồi. Vui lòng vào mục lời mời để xác nhận.";
+                throw new RuntimeException(errorMessage);
+            }
+            
             GroupMember newMember = GroupMember.builder()
                     .group(group)
                     .groupId(group.getId())

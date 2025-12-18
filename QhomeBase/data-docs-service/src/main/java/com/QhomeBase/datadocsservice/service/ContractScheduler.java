@@ -57,14 +57,12 @@ public class ContractScheduler {
                 
                 // Check if contract is eligible for reminder 3 (has sent reminder 1, in endDate month, not expired)
                 if (contract.getRenewalReminderSentAt() != null
-                        && today.getYear() == endDate.getYear()
-                        && today.getMonth() == endDate.getMonth()
-                        && daysUntilEndDate > 0 && daysUntilEndDate < 30) {
+                        && daysUntilEndDate >= 9 && daysUntilEndDate <= 11) {
                     
                     try {
-                        // Force send reminder 3 for testing (bypass day 20 check)
+                        // Force send reminder 3 for testing (bypass normal check)
                         contractService.sendRenewalReminder(contract.getId());
-                        sendReminderNotification(contract, 3, true);
+                        sendReminderNotificationToAllResidents(contract, 3, true);
                         thirdReminderCount++;
                         log.info("✅ [TEST] Force sent THIRD (FINAL) renewal reminder for contract {} (expires on {})", 
                                 contract.getContractNumber(), endDate);
@@ -137,29 +135,28 @@ public class ContractScheduler {
                         today.getDayOfMonth(), endDate.getMonth(), endDate.getYear());
                 
                 try {
-                    // Lần 1: Trước 30 ngày hết hạn hợp đồng
-                    // Gửi khi còn 28-32 ngày (buffer để đảm bảo không bỏ sót do scheduler chạy 1 lần/ngày)
-                    if (daysUntilEndDate >= 28 && daysUntilEndDate <= 32 
+                    // Lần 1: 30 ngày trước khi hết hạn hợp đồng
+                    // Gửi khi còn 29-31 ngày (buffer để đảm bảo không bỏ sót do scheduler chạy 1 lần/ngày)
+                    if (daysUntilEndDate >= 29 && daysUntilEndDate <= 31 
                             && contract.getRenewalReminderSentAt() == null) {
                         contractService.sendRenewalReminder(contract.getId());
-                        sendReminderNotification(contract, 1, false);
+                        sendReminderNotificationToAllResidents(contract, 1, false);
                         firstReminderCount++;
                         log.info("✅ Sent FIRST renewal reminder for contract {} (expires on {}, {} days until end date)", 
                                 contract.getContractNumber(), endDate, daysUntilEndDate);
                     }
-                    // Lần 2: Khi còn 18-22 ngày (buffer để đảm bảo không bỏ sót)
+                    // Lần 2: 20 ngày trước khi hết hạn hợp đồng
                     // Chỉ gửi nếu:
                     // - Đã gửi lần 1 (renewalReminderSentAt != null)
-                    // - Còn 18-22 ngày (target: 20 ngày)
-                    // - Lần 1 đã được gửi trước hôm nay (đảm bảo không gửi lần 2 trước lần 1)
+                    // - Còn 19-21 ngày trước khi hết hạn (buffer)
+                    // - Lần 1 đã được gửi trước đó (ít nhất 1 ngày trước)
                     else if (contract.getRenewalReminderSentAt() != null
-                            && daysUntilEndDate >= 18 && daysUntilEndDate <= 22) {
-                        // Check if we already sent reminder 2 (by checking if reminder was sent before today)
+                            && daysUntilEndDate >= 19 && daysUntilEndDate <= 21) {
                         LocalDate firstReminderDate = contract.getRenewalReminderSentAt().toLocalDate();
-                        // Kiểm tra: lần 1 phải được gửi trước hôm nay
+                        // Đảm bảo lần 1 đã được gửi trước đó (ít nhất 1 ngày)
                         if (firstReminderDate.isBefore(today)) {
                             contractService.sendRenewalReminder(contract.getId());
-                            sendReminderNotification(contract, 2, false);
+                            sendReminderNotificationToAllResidents(contract, 2, false);
                             secondReminderCount++;
                             log.info("✅ Sent SECOND renewal reminder for contract {} (expires on {}, {} days until end date)", 
                                     contract.getContractNumber(), endDate, daysUntilEndDate);
@@ -168,19 +165,18 @@ public class ContractScheduler {
                                     contract.getContractNumber(), firstReminderDate, today);
                         }
                     }
-                    // Lần 3: Khi còn 8-12 ngày (buffer để đảm bảo không bỏ sót) - BẮT BUỘC
+                    // Lần 3: 10 ngày trước khi hết hạn hợp đồng - BẮT BUỘC
                     // Chỉ gửi nếu:
                     // - Đã gửi lần 1 (renewalReminderSentAt != null)
-                    // - Còn 8-12 ngày (target: 10 ngày)
-                    // - Lần 1 đã được gửi trước hôm nay (đảm bảo không gửi lần 3 trước lần 1)
+                    // - Còn 9-11 ngày trước khi hết hạn (buffer)
+                    // - Lần 1 đã được gửi trước đó (ít nhất 1 ngày trước)
                     else if (contract.getRenewalReminderSentAt() != null
-                            && daysUntilEndDate >= 8 && daysUntilEndDate <= 12) {
-                        // Check if we already sent reminder 3 (by checking if reminder was sent before today)
+                            && daysUntilEndDate >= 9 && daysUntilEndDate <= 11) {
                         LocalDate firstReminderDate = contract.getRenewalReminderSentAt().toLocalDate();
-                        // Kiểm tra: lần 1 phải được gửi trước hôm nay
+                        // Đảm bảo lần 1 đã được gửi trước đó (ít nhất 1 ngày)
                         if (firstReminderDate.isBefore(today)) {
                             contractService.sendRenewalReminder(contract.getId());
-                            sendReminderNotification(contract, 3, true);
+                            sendReminderNotificationToAllResidents(contract, 3, true);
                             thirdReminderCount++;
                             log.info("✅ Sent THIRD (FINAL) renewal reminder for contract {} (expires on {}, {} days until end date - BẮT BUỘC HỦY HOẶC GIA HẠN)", 
                                     contract.getContractNumber(), endDate, daysUntilEndDate);
@@ -280,32 +276,47 @@ public class ContractScheduler {
     }
 
     /**
-     * Send notification for contract renewal reminder
+     * Send notification for contract renewal reminder to all residents in the unit
      */
-    private void sendReminderNotification(Contract contract, int reminderNumber, boolean isFinalReminder) {
+    private void sendReminderNotificationToAllResidents(Contract contract, int reminderNumber, boolean isFinalReminder) {
         try {
-            Optional<UUID> residentIdOpt = baseServiceClient.getPrimaryResidentIdByUnitId(contract.getUnitId());
             Optional<UUID> buildingIdOpt = baseServiceClient.getBuildingIdByUnitId(contract.getUnitId());
+            UUID buildingId = buildingIdOpt.orElse(null);
             
-            if (residentIdOpt.isPresent()) {
-                UUID residentId = residentIdOpt.get();
-                UUID buildingId = buildingIdOpt.orElse(null);
-                
-                notificationClient.sendContractRenewalReminderNotification(
-                        residentId,
-                        buildingId,
-                        contract.getId(),
-                        contract.getContractNumber(),
-                        reminderNumber,
-                        isFinalReminder
-                );
-                log.info("✅ Sent notification for contract {} reminder #{} to resident {}", 
-                        contract.getContractNumber(), reminderNumber, residentId);
-            } else {
-                log.warn("⚠️ Could not find primary resident for unitId: {}", contract.getUnitId());
+            // Get all residents in the unit (including household members)
+            List<UUID> residentIds = baseServiceClient.getAllResidentIdsByUnitId(contract.getUnitId());
+            
+            if (residentIds.isEmpty()) {
+                log.warn("⚠️ Could not find any residents for unitId: {}", contract.getUnitId());
+                return;
             }
+            
+            log.info("📧 Sending reminder #{} for contract {} to {} resident(s) in unit {}", 
+                    reminderNumber, contract.getContractNumber(), residentIds.size(), contract.getUnitId());
+            
+            // Send notification to each resident
+            for (UUID residentId : residentIds) {
+                try {
+                    notificationClient.sendContractRenewalReminderNotification(
+                            residentId,
+                            buildingId,
+                            contract.getId(),
+                            contract.getContractNumber(),
+                            reminderNumber,
+                            isFinalReminder
+                    );
+                    log.debug("✅ Sent notification for contract {} reminder #{} to resident {}", 
+                            contract.getContractNumber(), reminderNumber, residentId);
+                } catch (Exception e) {
+                    log.error("❌ Error sending notification to resident {} for contract {} reminder #{}", 
+                            residentId, contract.getContractNumber(), reminderNumber, e);
+                }
+            }
+            
+            log.info("✅ Sent reminder #{} notifications for contract {} to {} resident(s)", 
+                    reminderNumber, contract.getContractNumber(), residentIds.size());
         } catch (Exception e) {
-            log.error("❌ Error sending notification for contract {} reminder #{}", 
+            log.error("❌ Error sending notifications for contract {} reminder #{}", 
                     contract.getContractNumber(), reminderNumber, e);
         }
     }

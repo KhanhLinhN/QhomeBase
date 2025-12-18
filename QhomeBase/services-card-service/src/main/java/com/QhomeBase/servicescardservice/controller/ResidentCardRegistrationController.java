@@ -237,9 +237,14 @@ public class ResidentCardRegistrationController {
         
         try {
             log.debug("🔍 [ResidentCard] getHouseholdMembers request: unitId={}, userId={}", unitId, userId);
-            List<Map<String, Object>> members = registrationService.getHouseholdMembersByUnit(unitId);
+            String accessToken = extractAccessToken(headers);
+            List<Map<String, Object>> members = registrationService.getHouseholdMembersByUnit(unitId, userId, accessToken);
             log.info("✅ [ResidentCard] getHouseholdMembers success: {} members", members.size());
             return ResponseEntity.ok(members);
+        } catch (IllegalStateException e) {
+            log.warn("⚠️ [ResidentCard] Permission denied: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
             log.error("❌ [ResidentCard] Lỗi lấy danh sách thành viên", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
