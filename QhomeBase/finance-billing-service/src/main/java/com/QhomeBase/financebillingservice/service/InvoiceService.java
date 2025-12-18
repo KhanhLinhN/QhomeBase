@@ -796,6 +796,10 @@ public class InvoiceService {
                 // Clear vnpayInitiatedAt since payment is now complete
                 invoice.setVnpayInitiatedAt(null);
                 invoiceRepository.save(invoice);
+                
+                // Note: Paid invoices are automatically available via getMyInvoices API
+                // No separate history table needed - Flutter queries billing.invoices directly
+                
                 notifyPaymentSuccess(invoice, params);
                 log.info(" [InvoiceService] Invoice {} marked as PAID via VNPAY (txnRef: {})", invoiceId, txnRef);
             } else {
@@ -1214,6 +1218,7 @@ public class InvoiceService {
         }
     }
 
+
     private void notifyPaymentSuccess(Invoice invoice, Map<String, String> params) {
         if (invoice.getPayerResidentId() == null) {
             return;
@@ -1371,9 +1376,16 @@ public class InvoiceService {
             }
         }
         
+        // Calculate total after tax for this invoice
+        List<InvoiceLine> allLines = invoiceLineRepository.findByInvoiceId(invoice.getId());
+        BigDecimal totalAfterTax = allLines.stream()
+                .map(InvoiceLine::getLineTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         return InvoiceLineResponseDto.builder()
                 .payerUnitId(invoice.getPayerUnitId() != null ? invoice.getPayerUnitId().toString() : "")
                 .invoiceId(invoice.getId().toString())
+                .invoiceCode(invoice.getCode()) // ✅ Add invoice code
                 .serviceDate(line.getServiceDate().toString())
                 .description(line.getDescription())
                 .quantity(line.getQuantity() != null ? line.getQuantity().doubleValue() : 0.0)
@@ -1381,8 +1393,11 @@ public class InvoiceService {
                 .unitPrice(line.getUnitPrice() != null ? line.getUnitPrice().doubleValue() : 0.0)
                 .taxAmount(line.getTaxAmount() != null ? line.getTaxAmount().doubleValue() : 0.0)
                 .lineTotal(line.getLineTotal() != null ? line.getLineTotal().doubleValue() : 0.0)
+                .totalAfterTax(totalAfterTax.doubleValue()) // ✅ Add total
                 .serviceCode(line.getServiceCode())
                 .status(invoice.getStatus() != null ? invoice.getStatus().name() : "PUBLISHED")
+                .paidAt(invoice.getPaidAt()) // ✅ Add paid date
+                .paymentGateway(invoice.getPaymentGateway()) // ✅ Add payment gateway
                 .isOwner(isOwner)
                 .canPay(canPay)
                 .permissionMessage(permissionMessage)
@@ -1688,6 +1703,34 @@ public class InvoiceService {
             "INTERNET", "CABLE_TV", "VEHICLE_CARD", 
             "ELEVATOR_CARD", "RESIDENT_CARD"
         );
+    }
+
+    public List<InvoiceLineResponseDto> getPaidInvoicesForCurrentMonth(UUID userId, UUID unitId) {
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime firstDayOfMonth = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
+        OffsetDateTime lastDayOfMonth = firstDayOfMonth.plusMonths(1).minusNanos(1);
+
+        log.info("📋 [InvoiceService] Getting paid invoices for current month - unitId: {}, date range: {} to {}", 
+                unitId, firstDayOfMonth, lastDayOfMonth);
+
+        // Get all invoices for this user/unit
+        List<InvoiceLineResponseDto> allInvoices = getMyInvoices(userId, unitId, null);
+
+        // Filter: Only PAID invoices in current month
+        List<InvoiceLineResponseDto> paidInvoices = allInvoices.stream()
+                .filter(invoice -> {
+                    boolean isPaid = InvoiceStatus.PAID.name().equals(invoice.getStatus());
+                    if (!isPaid || invoice.getPaidAt() == null) return false;
+
+                    OffsetDateTime paidAt = invoice.getPaidAt();
+                    return !paidAt.isBefore(firstDayOfMonth) && !paidAt.isAfter(lastDayOfMonth);
+                })
+                .collect(Collectors.toList());
+
+        log.info("✅ [InvoiceService] Found {} paid invoices in current month for unit {}", 
+                paidInvoices.size(), unitId);
+
+        return paidInvoices;
     }
 }
 

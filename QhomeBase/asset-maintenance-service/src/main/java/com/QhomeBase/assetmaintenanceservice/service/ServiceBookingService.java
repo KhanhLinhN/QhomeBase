@@ -755,47 +755,13 @@ public class ServiceBookingService {
             throw new IllegalArgumentException("Slot end time must be after start time");
         }
 
-        // Check for overlapping slots
-        List<com.QhomeBase.assetmaintenanceservice.model.service.ServiceBookingSlot> overlappingSlots;
-        if (bookingId == null) {
-            overlappingSlots = serviceBookingSlotRepository
-                    .findAllByServiceIdAndSlotDateAndStartTimeLessThanAndEndTimeGreaterThan(serviceId, date, end, start);
-        } else {
-            overlappingSlots = serviceBookingSlotRepository
-                    .findAllByServiceIdAndSlotDateAndStartTimeLessThanAndEndTimeGreaterThanAndBooking_IdNot(
-                            serviceId, date, end, start, bookingId);
-        }
-
-        // Filter to only include bookings with visible status (PENDING, APPROVED, COMPLETED)
-        List<com.QhomeBase.assetmaintenanceservice.model.service.ServiceBooking> overlappingBookings = overlappingSlots.stream()
-                .map(com.QhomeBase.assetmaintenanceservice.model.service.ServiceBookingSlot::getBooking)
-                .filter(booking -> booking != null)
-                .filter(booking -> {
-                    com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus status = booking.getStatus();
-                    return status == com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus.PENDING
-                            || status == com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus.APPROVED
-                            || status == com.QhomeBase.assetmaintenanceservice.model.service.enums.ServiceBookingStatus.COMPLETED;
-                })
-                .toList();
-
-        if (!overlappingBookings.isEmpty()) {
-            // Check capacity if maxCapacity is set
-            if (maxCapacity != null && maxCapacity > 0 && requestedNumberOfPeople != null) {
-                int totalPeople = overlappingBookings.stream()
-                        .mapToInt(booking -> booking.getNumberOfPeople() != null ? booking.getNumberOfPeople() : 0)
-                        .sum();
-                
-                if (totalPeople + requestedNumberOfPeople > maxCapacity) {
-                    throw new IllegalArgumentException(String.format(
-                            "Slot %s %s-%s đã đạt giới hạn số người. Số người hiện tại: %d, giới hạn: %d, yêu cầu thêm: %d",
-                            date, start, end, totalPeople, maxCapacity, requestedNumberOfPeople));
-                }
-            } else {
-                // If no capacity limit or no requested people, just check for any overlap
-                throw new IllegalArgumentException(String.format(
-                        "Requested slot %s %s-%s is already booked for this service", date, start, end));
-            }
-        }
+        // ✅ TICKET-BASED BOOKING: Removed time slot conflict validation
+        // Residents book using tickets, not specific time slots
+        // Multiple bookings can use the same time slot as long as they have valid tickets
+        
+        // Note: Time slot validation is now disabled to support ticket-based system
+        // Previous logic checked for overlapping bookings and capacity limits
+        // Now bookings are validated based on ticket availability instead
     }
 
     private void validateSlotWithinAvailability(com.QhomeBase.assetmaintenanceservice.model.service.Service service,

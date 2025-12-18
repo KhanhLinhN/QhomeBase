@@ -391,5 +391,27 @@ public class InvoiceController {
         body.put("params", params);
         return body;
     }
+
+    @GetMapping("/me/paid-current-month")
+    public ResponseEntity<?> getMyPaidInvoicesForCurrentMonth(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestParam(value = "unitId") UUID unitId) {
+        try {
+            UUID userId = jwtUtil.getUserIdFromHeader(authHeader);
+            if (userId == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Invalid or missing authentication token"));
+            }
+
+            List<InvoiceLineResponseDto> paidInvoices = invoiceService.getPaidInvoicesForCurrentMonth(userId, unitId);
+            return ResponseEntity.ok(Map.of(
+                    "data", paidInvoices,
+                    "count", paidInvoices.size()
+            ));
+        } catch (Exception e) {
+            log.error("❌ Error getting paid invoices for current month: unitId={}, error={}", unitId, e.getMessage(), e);
+            return ResponseEntity.ok(Map.of("data", List.of(), "count", 0));
+        }
+    }
 }
 

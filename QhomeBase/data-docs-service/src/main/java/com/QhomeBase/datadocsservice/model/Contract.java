@@ -89,7 +89,7 @@ public class Contract {
     @Column(name = "renewal_status", length = 20)
     @Builder.Default
     private String renewalStatus = "PENDING";
-    
+
     /**
      * Track which reminder count user has dismissed
      * - 0: Not dismissed yet
