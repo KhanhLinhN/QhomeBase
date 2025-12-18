@@ -707,27 +707,33 @@ public class ContractController {
 
     private UUID extractUserIdFromHeaders(HttpHeaders headers) {
         try {
+            log.debug("🔍 [ContractController] Extracting userId from headers");
             // Try to get from SecurityContext first (if available)
             try {
                 Authentication auth = SecurityContextHolder.getContext().getAuthentication();
                 if (auth != null && auth.getPrincipal() != null) {
+                    log.debug("🔍 [ContractController] SecurityContext auth found: {}", auth.getPrincipal());
                     String principalStr = auth.getPrincipal().toString();
                     // Try to extract UUID from principal string if it's a UUID
                     if (principalStr.length() == 36) {
                         try {
-                            return UUID.fromString(principalStr);
+                            UUID userId = UUID.fromString(principalStr);
+                            log.debug("✅ [ContractController] Extracted userId from SecurityContext: {}", userId);
+                            return userId;
                         } catch (IllegalArgumentException e) {
                             // Not a UUID, continue to JWT parsing
+                            log.debug("⚠️ [ContractController] Principal is not UUID: {}", principalStr);
                         }
                     }
                 }
             } catch (Exception e) {
                 // SecurityContext not available, continue to JWT parsing
-                log.debug("SecurityContext not available, trying JWT parsing");
+                log.debug("⚠️ [ContractController] SecurityContext not available: {}", e.getMessage());
             }
             
             // Fallback: try to parse from JWT token in Authorization header
             String token = extractAccessToken(headers);
+            log.debug("🔍 [ContractController] AccessToken: {}", token != null ? "present (length=" + token.length() + ")" : "null");
             if (token != null && !token.isEmpty()) {
                 // Simple JWT parsing - extract from payload
                 // Note: This is a simplified version. For production, use proper JWT library
@@ -736,9 +742,10 @@ public class ContractController {
                     try {
                         // Decode payload (base64 URL-safe)
                         String payload = new String(java.util.Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
-                        // Extract "sub" field (user ID)
-                        if (payload.contains("\"sub\"")) {
-                            int start = payload.indexOf("\"sub\"") + 6;
+                        log.debug("🔍 [ContractController] JWT payload: {}", payload);
+                        // Extract "uid" field (user ID) - NOT "sub" which is username!
+                        if (payload.contains("\"uid\"")) {
+                            int start = payload.indexOf("\"uid\"") + 5;
                             // Skip whitespace and colon
                             while (start < payload.length() && (payload.charAt(start) == ' ' || payload.charAt(start) == ':')) {
                                 start++;
@@ -753,17 +760,26 @@ public class ContractController {
                             }
                             if (end > start) {
                                 String userIdStr = payload.substring(start, end);
-                                return UUID.fromString(userIdStr);
+                                UUID userId = UUID.fromString(userIdStr);
+                                log.debug("✅ [ContractController] Extracted userId from JWT: {}", userId);
+                                return userId;
                             }
+                        } else {
+                            log.debug("⚠️ [ContractController] JWT payload does not contain 'uid' field");
                         }
                     } catch (Exception e) {
-                        log.debug("Failed to parse JWT token: {}", e.getMessage());
+                        log.debug("⚠️ [ContractController] Failed to parse JWT token: {}", e.getMessage());
                     }
+                } else {
+                    log.debug("⚠️ [ContractController] JWT token does not have 3 parts (has {})", parts.length);
                 }
+            } else {
+                log.debug("⚠️ [ContractController] AccessToken is null or empty");
             }
         } catch (Exception e) {
             log.warn("⚠️ [ContractController] Could not extract userId from headers: {}", e.getMessage());
         }
+        log.debug("❌ [ContractController] Returning null userId");
         return null;
     }
 

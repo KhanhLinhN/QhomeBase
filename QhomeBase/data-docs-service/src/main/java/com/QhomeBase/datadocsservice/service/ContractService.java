@@ -218,10 +218,24 @@ public class ContractService {
     public List<ContractDto> getContractsByUnitId(UUID unitId, UUID userId, String accessToken) {
         try {
             List<Contract> contracts = contractRepository.findByUnitId(unitId);
+            
+            // ✅ OPTIMIZATION: Check isOwner ONCE for the unitId, not N times for each contract!
+            Boolean cachedIsOwner = null;
+            if (userId != null && unitId != null && accessToken != null) {
+                try {
+                    cachedIsOwner = baseServiceClient.isOwnerOfUnit(userId, unitId, accessToken);
+                    log.debug("✅ [ContractService] Cached isOwner check for unitId {}: isOwner={}", unitId, cachedIsOwner);
+                } catch (Exception e) {
+                    log.warn("⚠️ [ContractService] Error checking isOwner for unitId {}: {}", unitId, e.getMessage());
+                    cachedIsOwner = false;
+                }
+            }
+            
+            final Boolean finalCachedIsOwner = cachedIsOwner;
             return contracts.stream()
                     .map(contract -> {
                         try {
-                            return toDto(contract, userId, accessToken);
+                            return toDtoWithCachedOwnership(contract, userId, accessToken, finalCachedIsOwner);
                         } catch (Exception e) {
                             log.error("[ContractService] Lỗi khi convert contract {} sang DTO: {}", 
                                     contract.getId(), e.getMessage(), e);
@@ -479,6 +493,92 @@ public class ContractService {
         return toDto(contract, null, null);
     }
     
+    /**
+     * ✅ NEW: Convert to DTO with cached isOwner result (avoid N+1 calls to base-service)
+     */
+    private ContractDto toDtoWithCachedOwnership(Contract contract, UUID userId, String accessToken, Boolean cachedIsOwner) {
+        List<ContractFileDto> files = List.of();
+        try {
+            if (contract.getFiles() != null) {
+                files = contract.getFiles().stream()
+                        .filter(f -> f != null && !f.getIsDeleted())
+                        .map(file -> {
+                            try {
+                                return toFileDto(file);
+                            } catch (Exception e) {
+                                log.warn("[ContractService] Lỗi khi convert file {} sang DTO: {}", 
+                                        file != null ? file.getId() : "null", e.getMessage());
+                                return null;
+                            }
+                        })
+                        .filter(f -> f != null)
+                        .collect(Collectors.toList());
+            }
+        } catch (Exception e) {
+            log.warn("[ContractService] Lỗi khi load files cho contract {}: {}", 
+                    contract.getId(), e.getMessage());
+        }
+
+        int reminderCount = calculateReminderCount(contract);
+        boolean isFinalReminder = reminderCount == 3;
+        boolean needsRenewal = calculateNeedsRenewal(contract);
+
+        // Use cached isOwner result
+        boolean isOwner = cachedIsOwner != null && cachedIsOwner;
+        boolean canRenew = false;
+        boolean canCancel = false;
+        boolean canExtend = false;
+        String permissionMessage = null;
+        
+        if (isOwner) {
+            // OWNER/TENANT can renew, cancel, extend if contract is in valid state
+            if ("RENTAL".equals(contract.getContractType()) && "ACTIVE".equals(contract.getStatus())) {
+                canRenew = contract.getRenewedContractId() == null 
+                        && ("REMINDED".equals(contract.getRenewalStatus()) || "PENDING".equals(contract.getRenewalStatus()));
+                canCancel = true;
+                canExtend = contract.getEndDate() != null;
+            }
+        } else if (cachedIsOwner != null) {
+            // Not OWNER/TENANT - household member
+            permissionMessage = "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng";
+        }
+
+        return ContractDto.builder()
+                .id(contract.getId())
+                .unitId(contract.getUnitId())
+                .contractNumber(contract.getContractNumber())
+                .contractType(contract.getContractType())
+                .startDate(contract.getStartDate())
+                .endDate(contract.getEndDate())
+                .checkoutDate(contract.getCheckoutDate())
+                .monthlyRent(contract.getMonthlyRent())
+                .totalRent(calculateTotalRent(contract))
+                .purchasePrice(contract.getPurchasePrice())
+                .paymentMethod(contract.getPaymentMethod())
+                .paymentTerms(contract.getPaymentTerms())
+                .purchaseDate(contract.getPurchaseDate())
+                .notes(contract.getNotes())
+                .status(contract.getStatus())
+                .createdBy(contract.getCreatedBy())
+                .createdAt(contract.getCreatedAt())
+                .updatedAt(contract.getUpdatedAt())
+                .updatedBy(contract.getUpdatedBy())
+                .renewalReminderSentAt(contract.getRenewalReminderSentAt())
+                .renewalDeclinedAt(contract.getRenewalDeclinedAt())
+                .renewalStatus(contract.getRenewalStatus())
+                .reminderCount(reminderCount > 0 ? reminderCount : null)
+                .isFinalReminder(isFinalReminder)
+                .needsRenewal(needsRenewal)
+                .renewedContractId(contract.getRenewedContractId())
+                .files(files)
+                .isOwner(isOwner)
+                .canRenew(canRenew)
+                .canCancel(canCancel)
+                .canExtend(canExtend)
+                .permissionMessage(permissionMessage)
+                .build();
+    }
+    
     private ContractDto toDto(Contract contract, UUID userId, String accessToken) {
         List<ContractFileDto> files = List.of();
         try {
@@ -516,6 +616,8 @@ public class ContractService {
         if (userId != null && contract.getUnitId() != null && accessToken != null) {
             try {
                 isOwner = baseServiceClient.isOwnerOfUnit(userId, contract.getUnitId(), accessToken);
+                log.debug("🔍 [ContractService] isOwner check: userId={}, unitId={}, isOwner={}", 
+                        userId, contract.getUnitId(), isOwner);
                 
                 if (isOwner) {
                     // OWNER/TENANT can renew, cancel, extend if contract is in valid state
@@ -529,10 +631,18 @@ public class ContractService {
                         
                         // Can extend if contract has endDate
                         canExtend = contract.getEndDate() != null;
+                        
+                        log.debug("✅ [ContractService] Permissions: contractId={}, canRenew={}, canCancel={}, canExtend={}", 
+                                contract.getId(), canRenew, canCancel, canExtend);
+                    } else {
+                        log.debug("⚠️ [ContractService] Contract not RENTAL+ACTIVE: type={}, status={}", 
+                                contract.getContractType(), contract.getStatus());
                     }
                 } else {
                     // Not OWNER/TENANT - household member
                     permissionMessage = "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng";
+                    log.debug("❌ [ContractService] User is NOT owner: userId={}, unitId={}", 
+                            userId, contract.getUnitId());
                 }
             } catch (Exception e) {
                 log.warn("⚠️ [ContractService] Error checking permission for contract {}: {}", 
@@ -540,6 +650,9 @@ public class ContractService {
                 // If check fails, default to no permission
                 permissionMessage = "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng";
             }
+        } else {
+            log.debug("⚠️ [ContractService] Missing params: userId={}, unitId={}, hasAccessToken={}", 
+                    userId, contract.getUnitId(), accessToken != null);
         }
 
         return ContractDto.builder()
