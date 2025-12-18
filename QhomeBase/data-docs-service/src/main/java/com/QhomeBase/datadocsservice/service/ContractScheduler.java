@@ -163,8 +163,8 @@ public class ContractScheduler {
                         } else {
                             log.debug("⏭️ Skipping reminder 2 for contract {}: firstReminderDate={}, today={}", 
                                     contract.getContractNumber(), firstReminderDate, today);
-                }
-            }
+                        }
+                    }
                     // Lần 3: 10 ngày trước khi hết hạn hợp đồng - BẮT BUỘC
                     // Chỉ gửi nếu:
                     // - Đã gửi lần 1 (renewalReminderSentAt != null)
