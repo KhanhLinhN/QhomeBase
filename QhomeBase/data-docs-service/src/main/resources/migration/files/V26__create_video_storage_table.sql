@@ -1,4 +1,4 @@
--- Migration: V25__create_video_storage_table.sql
+-- Migration: V26__create_video_storage_table.sql
 -- Tạo bảng video_storage để lưu video thay vì ImageKit
 
 CREATE TABLE IF NOT EXISTS files.video_storage (
