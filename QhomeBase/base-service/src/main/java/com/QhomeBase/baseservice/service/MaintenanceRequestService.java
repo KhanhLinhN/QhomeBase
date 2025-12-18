@@ -849,8 +849,25 @@ public class MaintenanceRequestService {
                 .lines(List.of(line))
                 .build();
         
+        // Debug logging
+        log.info("📋 Creating invoice for maintenance request {}", request.getId());
+        log.info("  - Unit: {} ({})", unit.getId(), unit.getCode());
+        log.info("  - Resident: {} ({})", resident.getId(), resident.getFullName());
+        log.info("  - Amount: {}", request.getPaymentAmount());
+        log.info("  - Lines count: {}", invoiceRequest.getLines() != null ? invoiceRequest.getLines().size() : 0);
+        if (invoiceRequest.getLines() != null && !invoiceRequest.getLines().isEmpty()) {
+            CreateInvoiceLineRequest firstLine = invoiceRequest.getLines().get(0);
+            log.info("  - Line 1: {} x {} {} = {}", 
+                    firstLine.getDescription(), 
+                    firstLine.getQuantity(),
+                    firstLine.getUnit(),
+                    firstLine.getUnitPrice());
+        }
+        
         // Call finance service to create invoice
-        return financeBillingClient.createInvoiceSync(invoiceRequest);
+        InvoiceDto result = financeBillingClient.createInvoiceSync(invoiceRequest);
+        log.info("✅ Invoice created: {} with {} lines", result.getId(), result.getLines() != null ? result.getLines().size() : 0);
+        return result;
     }
 }
 
