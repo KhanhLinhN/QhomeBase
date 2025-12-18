@@ -509,16 +509,36 @@ public class ReadingCycleService {
     }
 
     private String buildUnassignedMessage(int total, List<ReadingCycleUnassignedInfoDto.ReadingCycleUnassignedFloorDto> floors) {
+        // Aggregate units by building, separating those with/without meters
+        Map<String, Integer> buildingUnassigned = new LinkedHashMap<>();
+        Map<String, Integer> buildingMissingMeter = new LinkedHashMap<>();
+        
+        for (ReadingCycleUnassignedInfoDto.ReadingCycleUnassignedFloorDto floor : floors) {
+            String buildingKey = floor.buildingCode() != null ? floor.buildingCode() :
+                    floor.buildingName() != null ? floor.buildingName() : "Unknown";
+            
+            if (floor.unitCodes() != null) {
+                for (String unitCode : floor.unitCodes()) {
+                    buildingUnassigned.merge(buildingKey, 1, Integer::sum);
+                    if (unitCode.contains("(chưa có công tơ)")) {
+                        buildingMissingMeter.merge(buildingKey, 1, Integer::sum);
+                    }
+                }
+            }
+        }
+        
+        // Build optimized message showing only building totals
         StringBuilder message = new StringBuilder();
         message.append("Còn ").append(total).append(" căn hộ/phòng chưa được assign:");
-        for (ReadingCycleUnassignedInfoDto.ReadingCycleUnassignedFloorDto floor : floors) {
-            message.append("\n")
-                    .append(floor.buildingCode() != null ? floor.buildingCode() :
-                            floor.buildingName() != null ? floor.buildingName() : "Unknown")
-                    .append(" - Tầng ")
-                    .append(floor.floor() != null ? floor.floor() : "N/A")
-                    .append(": ")
-                    .append(String.join(", ", floor.unitCodes()));
+        for (Map.Entry<String, Integer> entry : buildingUnassigned.entrySet()) {
+            String buildingKey = entry.getKey();
+            int totalUnits = entry.getValue();
+            int missingMeterCount = buildingMissingMeter.getOrDefault(buildingKey, 0);
+            
+            message.append("\n").append(buildingKey).append(": ").append(totalUnits).append(" căn hộ");
+            if (missingMeterCount > 0) {
+                message.append(" (").append(missingMeterCount).append(" chưa có công tơ)");
+            }
         }
         return message.toString();
     }
