@@ -26,7 +26,7 @@ public class BillingCycleInvoiceService {
     }
 
     public List<BuildingInvoiceSummaryDto> summarizeByCycle(UUID cycleId, String serviceCode, String month) {
-        List<BuildingInvoiceSummary> summaryRows = invoiceRepository.summarizeByCycleAndBuilding(cycleId, null, null);
+        List<BuildingInvoiceSummary> summaryRows = invoiceRepository.summarizeByCycleAndBuilding(cycleId);
         
         return summaryRows.stream()
                 .map(row -> BuildingInvoiceSummaryDto.builder()

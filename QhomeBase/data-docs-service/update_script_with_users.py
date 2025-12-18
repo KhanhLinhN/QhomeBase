@@ -105,3 +105,5 @@ with open('create_residents_for_cde_g_buildings.sql', 'w', encoding='utf-8') as 
 
 print("Script updated successfully!")
 
+
+
