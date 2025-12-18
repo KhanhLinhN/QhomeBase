@@ -53,8 +53,9 @@ public class MeterReadingImportService {
                     .build();
         }
 
+        // Group by unitId + cycleId + serviceCode to create separate invoices for WATER and ELECTRIC
         Map<String, List<ImportedReadingDto>> grouped = readings.stream()
-                .collect(Collectors.groupingBy(r -> key(r.getUnitId(), r.getCycleId())));
+                .collect(Collectors.groupingBy(r -> key(r.getUnitId(), r.getCycleId(), r.getServiceCode())));
 
         Map<UUID, ReadingCycleDto> cycleCache = new HashMap<>();
         
@@ -86,15 +87,11 @@ public class MeterReadingImportService {
                     }
                 });
 
-                if (!"COMPLETED".equalsIgnoreCase(readingCycle.status())) {
-                    String errorMsg = String.format("Unit %s, Cycle %s: Cycle status is %s, must be COMPLETED", 
-                            unitId, readingCycleId, readingCycle.status());
-                    log.warn("Cannot create invoice for unit={}, cycle={}. Cycle status is {}, must be COMPLETED", 
-                            unitId, readingCycleId, readingCycle.status());
-                    errors.add(errorMsg);
-                    skipped++;
-                    continue;
-                }
+                // Allow creating invoices for any cycle status
+                // Removed status validation to allow invoices from OPEN cycles (e.g., from asset inspections)
+                String cycleStatus = readingCycle.status();
+                log.debug("Processing invoice for unit={}, cycle={}, status={}", 
+                        unitId, readingCycleId, cycleStatus);
             } catch (Exception e) {
                 String errorMsg = String.format("Unit %s, Cycle %s: %s", unitId, readingCycleId, e.getMessage());
                 log.error("Error processing unit={}, cycle={}: {}", unitId, readingCycleId, e.getMessage());
@@ -150,12 +147,19 @@ public class MeterReadingImportService {
 
                 UUID billingCycleId = findOrCreateBillingCycle(readingCycleId, serviceDate);
 
-                List<Invoice> existingInvoices = invoiceRepository.findByPayerUnitIdAndCycleId(unitId, billingCycleId);
-                if (!existingInvoices.isEmpty()) {
-                    Invoice existingInvoice = existingInvoices.get(0);
-                    log.warn("Invoice already exists for unit={}, cycle={}. Invoice ID: {}. Skipping creation.", 
-                            unitId, billingCycleId, existingInvoice.getId());
-                    invoiceIds.add(existingInvoice.getId());
+                // Check for existing invoice with same unit, cycle, and serviceCode
+                // Since we now create separate invoices for WATER and ELECTRIC, we need to check by serviceCode too
+                // Use the repository method that finds invoices by serviceCode and cycleId
+                List<Invoice> existingInvoicesForService = invoiceRepository.findByServiceCodeAndAndCycle(billingCycleId, serviceCode);
+                Invoice existingInvoiceForService = existingInvoicesForService.stream()
+                        .filter(inv -> unitId.equals(inv.getPayerUnitId()))
+                        .findFirst()
+                        .orElse(null);
+                
+                if (existingInvoiceForService != null) {
+                    log.warn("Invoice already exists for unit={}, cycle={}, serviceCode={}. Invoice ID: {}. Skipping creation.", 
+                            unitId, billingCycleId, serviceCode, existingInvoiceForService.getId());
+                    invoiceIds.add(existingInvoiceForService.getId());
                     continue;
                 }
 
@@ -190,12 +194,23 @@ public class MeterReadingImportService {
 
                 LocalDate dueDate = calculateDueDate(readingCycle.periodTo());
                 
+                // Get billToName from primary resident or unit code
+                String billToName = getBillToName(unitId, residentId);
+                
+               
+                com.QhomeBase.financebillingservice.model.InvoiceStatus invoiceStatus = 
+                        "OPEN".equalsIgnoreCase(readingCycle.status()) 
+                        ? com.QhomeBase.financebillingservice.model.InvoiceStatus.PAID 
+                        : null; // null will default to PUBLISHED in InvoiceService
+                
                 CreateInvoiceRequest req = CreateInvoiceRequest.builder()
                         .payerUnitId(unitId)
                         .payerResidentId(residentId)
                         .cycleId(billingCycleId)
                         .currency("VND")
                         .dueDate(dueDate)
+                        .billToName(billToName)
+                        .status(invoiceStatus)
                         .lines(invoiceLines)
                         .build();
 
@@ -244,8 +259,9 @@ public class MeterReadingImportService {
                 .build();
     }
 
-    private String key(UUID unitId, UUID cycleId) {
-        return unitId + "|" + cycleId;
+    private String key(UUID unitId, UUID cycleId, String serviceCode) {
+        String normalizedServiceCode = serviceCode != null ? normalizeServiceCode(serviceCode) : "UNKNOWN";
+        return unitId + "|" + cycleId + "|" + normalizedServiceCode;
     }
 
     private List<CreateInvoiceLineRequest> calculateInvoiceLines(
@@ -422,9 +438,6 @@ public class MeterReadingImportService {
         return saved.getId();
     }
 
-    /**
-     * Send notification to resident about new invoice created from meter reading import
-     */
     private void sendInvoiceNotification(UUID residentId, UUID unitId, InvoiceDto invoice, 
                                          String serviceCode, BigDecimal totalUsage) {
         if (residentId == null) {
@@ -482,6 +495,35 @@ public class MeterReadingImportService {
         } catch (Exception e) {
             log.error("❌ Error sending notification for invoice {}: {}", invoice.getId(), e.getMessage(), e);
             // Don't throw - notification failure shouldn't break import
+        }
+    }
+
+    /**
+     * Get billToName from primary resident or unit code
+     * Format: "Căn hộ {unitCode}" to match asset inspection invoices
+     */
+    private String getBillToName(UUID unitId, UUID residentId) {
+        try {
+            // Use unit code format to match asset inspection invoices: "Căn hộ {unitCode}"
+            BaseServiceClient.UnitInfo unitInfo = baseServiceClient.getUnitById(unitId);
+            if (unitInfo != null && unitInfo.getCode() != null) {
+                return String.format("Căn hộ %s", unitInfo.getCode());
+            }
+            
+            // Fallback
+            return "Căn hộ";
+        } catch (Exception e) {
+            log.warn("Error getting billToName for unit {}: {}", unitId, e.getMessage());
+            // Fallback to unit code or default
+            try {
+                BaseServiceClient.UnitInfo unitInfo = baseServiceClient.getUnitById(unitId);
+                if (unitInfo != null && unitInfo.getCode() != null) {
+                    return String.format("Căn hộ %s", unitInfo.getCode());
+                }
+            } catch (Exception ex) {
+                log.warn("Error getting unit info for billToName: {}", ex.getMessage());
+            }
+            return "Căn hộ";
         }
     }
 }

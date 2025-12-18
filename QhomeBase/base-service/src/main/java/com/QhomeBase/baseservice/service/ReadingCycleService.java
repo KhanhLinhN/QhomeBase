@@ -37,6 +37,7 @@ public class ReadingCycleService {
     private final UnitRepository unitRepository;
     private final MeterService meterService;
     private final FinanceBillingClient financeBillingClient;
+    private final HouseholdService householdService;
     public ReadingCycleDto createCycle(ReadingCycleCreateReq req, Authentication authentication) {
         var principal = (UserPrincipal) authentication.getPrincipal();
         UUID createdBy = principal.uid();
@@ -340,11 +341,11 @@ public class ReadingCycleService {
     private String buildCycleName(YearMonth month) {
         return month.format(MONTH_FORMATTER);
     }
-    public ReadingCycleUnassignedInfoDto getUnassignedUnitsInfo(UUID cycleId) {
-        return buildUnassignedUnitsInfo(cycleId);
+    public ReadingCycleUnassignedInfoDto getUnassignedUnitsInfo(UUID cycleId, boolean onlyWithOwner) {
+        return buildUnassignedUnitsInfo(cycleId, onlyWithOwner);
     }
 
-    private ReadingCycleUnassignedInfoDto buildUnassignedUnitsInfo(UUID cycleId) {
+    private ReadingCycleUnassignedInfoDto buildUnassignedUnitsInfo(UUID cycleId, boolean onlyWithOwner) {
         ReadingCycle readingCycle = readingCycleRepository.findById(cycleId)
                 .orElseThrow(() -> new IllegalArgumentException("Reading cycle not found: " + cycleId));
 
@@ -374,18 +375,38 @@ public class ReadingCycleService {
         List<UnitWithoutMeterDto> missingMeterUnits = meterService.getUnitsDoNotHaveMeter(serviceId, null);
 
         List<UnassignedUnit> collectedUnits = new ArrayList<>();
+        List<UnassignedUnit> collectedUnitsWithMeter = new ArrayList<>(); // Only units with meters (for validation)
         for (UUID unitId : unassignedUnits) {
             unitRepository.findById(unitId).ifPresent(unit -> {
+                // Filter by primary resident if onlyWithOwner is true
+                if (onlyWithOwner) {
+                    Optional<UUID> primaryResidentId = householdService.getPrimaryResidentForUnit(unitId);
+                    if (primaryResidentId.isEmpty()) {
+                        return; // Skip units without primary resident
+                    }
+                }
+                
                 String buildingLabel = determineBuildingLabel(unit);
                 UUID buildingId = unit.getBuilding() != null ? unit.getBuilding().getId() : null;
                 String buildingCode = unit.getBuilding() != null ? unit.getBuilding().getCode() : null;
                 String unitCode = unit.getCode() != null ? unit.getCode() : unitId.toString();
-                collectedUnits.add(new UnassignedUnit(
-                        unitId, unitCode, unit.getFloor(), buildingId, buildingCode, buildingLabel, false));
+                UnassignedUnit unassignedUnit = new UnassignedUnit(
+                        unitId, unitCode, unit.getFloor(), buildingId, buildingCode, buildingLabel, false);
+                collectedUnits.add(unassignedUnit);
+                collectedUnitsWithMeter.add(unassignedUnit); // Units with meters count for validation
             });
         }
 
-        for (UnitWithoutMeterDto dto : missingMeterUnits) {
+        // Filter missingMeterUnits if onlyWithOwner is true
+        List<UnitWithoutMeterDto> filteredMissingMeterUnits = missingMeterUnits;
+        if (onlyWithOwner) {
+            filteredMissingMeterUnits = missingMeterUnits.stream()
+                    .filter(dto -> householdService.getPrimaryResidentForUnit(dto.unitId()).isPresent())
+                    .collect(Collectors.toList());
+        }
+
+        // Add missing meter units to collectedUnits for display, but NOT to collectedUnitsWithMeter for validation
+        for (UnitWithoutMeterDto dto : filteredMissingMeterUnits) {
             collectedUnits.add(new UnassignedUnit(
                     dto.unitId(),
                     dto.unitCode() != null ? dto.unitCode() : dto.unitId().toString(),
@@ -397,8 +418,11 @@ public class ReadingCycleService {
             ));
         }
 
+        // For validation: only count units with meters (not missingMeterUnits)
+        int totalUnassignedForValidation = collectedUnitsWithMeter.size();
+
         if (collectedUnits.isEmpty()) {
-            return new ReadingCycleUnassignedInfoDto(cycleId, serviceId, 0, List.of(), "", missingMeterUnits);
+            return new ReadingCycleUnassignedInfoDto(cycleId, serviceId, totalUnassignedForValidation, List.of(), "", filteredMissingMeterUnits);
         }
 
         Map<FloorGroup, List<String>> groupedUnits = new HashMap<>();
@@ -437,7 +461,7 @@ public class ReadingCycleService {
                 .collect(Collectors.toList());
 
         String message = buildUnassignedMessage(collectedUnits.size(), floorDtos);
-        return new ReadingCycleUnassignedInfoDto(cycleId, serviceId, collectedUnits.size(), floorDtos, message, missingMeterUnits);
+        return new ReadingCycleUnassignedInfoDto(cycleId, serviceId, totalUnassignedForValidation, floorDtos, message, filteredMissingMeterUnits);
     }
 
     private void collectAssignedUnits(MeterReadingAssignment assignment, Set<UUID> assignedUnits) {
@@ -505,7 +529,8 @@ public class ReadingCycleService {
                                   String buildingCode, String buildingLabel, boolean missingMeter) {}
 
     private void validateAllAssigned(UUID cycleId) {
-        ReadingCycleUnassignedInfoDto info = getUnassignedUnitsInfo(cycleId);
+        // For validation, we want to check all units (not just those with owner)
+        ReadingCycleUnassignedInfoDto info = getUnassignedUnitsInfo(cycleId, false);
         if (info.totalUnassigned() > 0) {
             throw new IllegalStateException(info.message());
         }

@@ -56,7 +56,7 @@ public class NewsController {
     }
 
     @GetMapping
-    @PreAuthorize("@authz.canViewNews()")
+    // @PreAuthorize("@authz.canViewNews()")
     public ResponseEntity<List<NewsManagementResponse>> getAllNews() {
         
         List<NewsManagementResponse> news = newsService.getAllNews();

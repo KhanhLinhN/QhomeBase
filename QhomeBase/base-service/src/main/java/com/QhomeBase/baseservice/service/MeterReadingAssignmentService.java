@@ -89,10 +89,13 @@ public class MeterReadingAssignmentService {
     private void validateCycleMonth(ReadingCycle cycle) {
         YearMonth cycleMonth = YearMonth.from(cycle.getPeriodFrom());
         YearMonth currentMonth = YearMonth.from(LocalDate.now());
-        if (!cycleMonth.equals(currentMonth)) {
+        YearMonth nextMonth = currentMonth.plusMonths(1);
+        
+        // Allow assignment for current month or next month
+        if (!cycleMonth.equals(currentMonth) && !cycleMonth.equals(nextMonth)) {
             throw new RuntimeException(
-                String.format("Cannot assign meters for cycle %s because it is not in the current month %s",
-                        cycle.getName(), currentMonth)
+                String.format("Cannot assign meters for cycle %s because it is not in the current month %s or next month %s",
+                        cycle.getName(), currentMonth, nextMonth)
             );
         }
     }

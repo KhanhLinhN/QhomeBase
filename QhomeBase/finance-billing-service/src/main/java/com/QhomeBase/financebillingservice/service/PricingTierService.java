@@ -86,7 +86,7 @@ public class PricingTierService {
 
         PricingTier saved = pricingTierRepository.save(newPricingTier);
         
-        validateHasFinalTier(serviceCode, saved.getId());
+        // Removed validateHasFinalTier - no longer require final tier
         
         log.info("Created pricing tier: id={}, serviceCode={}, tierOrder={}", 
                 saved.getId(), saved.getServiceCode(), saved.getTierOrder());
@@ -239,7 +239,7 @@ public class PricingTierService {
 
         PricingTier updated = pricingTierRepository.save(tier);
         
-        validateHasFinalTier(tier.getServiceCode(), updated.getId());
+        // Removed validateHasFinalTier - no longer require final tier
         
         log.info("Updated pricing tier: id={}, serviceCode={}", updated.getId(), updated.getServiceCode());
         return toDto(updated);
@@ -250,26 +250,14 @@ public class PricingTierService {
         PricingTier tier = pricingTierRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Pricing tier not found: " + id));
         
-        String serviceCode = tier.getServiceCode();
-        
-        List<PricingTier> activeTiers = pricingTierRepository.findActiveTiersByService(serviceCode);
-        long finalTierCount = activeTiers.stream()
-                .filter(t -> t.getMaxQuantity() == null)
-                .count();
-        
-        boolean isFinalTier = tier.getMaxQuantity() == null;
-        boolean isActive = Boolean.TRUE.equals(tier.getActive());
-        
-        if (isFinalTier && isActive && finalTierCount <= 1) {
-            throw new IllegalArgumentException(
-                "Không thể xóa bậc giá cuối cùng (maxQuantity = null). Hệ thống yêu cầu phải có ít nhất một bậc cuối cùng để bao phủ tất cả các trường hợp.");
-        }
+        // Allow deletion of final tier - removed restriction
+        // Users can now delete final tiers if needed
         
         pricingTierRepository.deleteById(id);
         
-        validateHasFinalTier(serviceCode, null);
+        // Removed validateHasFinalTier - no longer require final tier
         
-        log.info("Deleted pricing tier: id={}", id);
+        log.info("Deleted pricing tier: id={}, serviceCode={}", id, tier.getServiceCode());
     }
 
     @Transactional(readOnly = true)
@@ -492,28 +480,4 @@ public class PricingTierService {
         }
     }
 
-    private void validateHasFinalTier(String serviceCode, UUID excludeId) {
-        LocalDate today = LocalDate.now();
-        List<PricingTier> activeTiers = pricingTierRepository.findActiveTiersByServiceAndDate(serviceCode, today);
-        
-        boolean hasFinalTier = activeTiers.stream()
-                .filter(tier -> excludeId == null || !tier.getId().equals(excludeId))
-                .anyMatch(tier -> tier.getMaxQuantity() == null && Boolean.TRUE.equals(tier.getActive()));
-        
-        if (!hasFinalTier && excludeId != null) {
-            PricingTier excludedTier = pricingTierRepository.findById(excludeId).orElse(null);
-            if (excludedTier != null && 
-                excludedTier.getMaxQuantity() == null && 
-                Boolean.TRUE.equals(excludedTier.getActive()) &&
-                isTierCurrentlyActive(excludedTier, excludedTier.getEffectiveFrom(), excludedTier.getEffectiveUntil())) {
-                hasFinalTier = true;
-            }
-        }
-        
-        if (!hasFinalTier) {
-            throw new IllegalArgumentException(
-                "Hệ thống yêu cầu phải có ít nhất một bậc giá cuối cùng (maxQuantity = null) đang active và có hiệu lực để bao phủ tất cả các trường hợp. " +
-                "Vui lòng tạo hoặc kích hoạt một bậc giá với maxQuantity = null (không giới hạn).");
-        }
-    }
 }

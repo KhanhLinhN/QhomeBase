@@ -26,6 +26,7 @@ public record RegisterServiceRequestDto(
         String vnpayTransactionRef,
         String adminNote,
         UUID approvedBy,
+        String approvedByName,
         OffsetDateTime approvedAt,
         String rejectionReason,
         List<RegisterServiceImageDto> images,

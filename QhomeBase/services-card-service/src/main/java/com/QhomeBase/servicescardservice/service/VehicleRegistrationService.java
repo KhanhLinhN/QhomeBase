@@ -12,6 +12,8 @@ import com.QhomeBase.servicescardservice.service.vnpay.VnpayService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -61,6 +63,7 @@ public class VehicleRegistrationService {
     private final ResidentUnitLookupService residentUnitLookupService;
     private final NotificationClient notificationClient;
     private final CardFeeReminderService cardFeeReminderService;
+    private final NamedParameterJdbcTemplate jdbcTemplate;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
     private Path ensureUploadDir() throws IOException {
@@ -350,6 +353,14 @@ public class VehicleRegistrationService {
             registration.setUpdatedAt(OffsetDateTime.now(ZoneId.of("UTC")));
             RegisterServiceRequest saved = requestRepository.save(registration);
             return toDto(saved);
+        }
+
+        // Check payment status - must be PAID before approval
+        if (!"PAID".equalsIgnoreCase(registration.getPaymentStatus())) {
+            throw new IllegalStateException(
+                String.format("Không thể duyệt thẻ. Thẻ phải đã thanh toán trước khi được duyệt. Trạng thái thanh toán hiện tại: %s", 
+                    registration.getPaymentStatus())
+            );
         }
 
         OffsetDateTime now = OffsetDateTime.now(ZoneId.of("UTC"));
@@ -926,10 +937,13 @@ public class VehicleRegistrationService {
                 .map(img -> new RegisterServiceImageDto(img.getId(), entity.getId(), img.getImageUrl(), img.getCreatedAt()))
                 .toList();
 
-        // Normalize COMPLETED to APPROVED for backward compatibility with old seed data
+       
         String normalizedStatus = "COMPLETED".equalsIgnoreCase(entity.getStatus()) 
                 ? STATUS_APPROVED 
                 : entity.getStatus();
+
+        
+        String approvedByName = resolveUsernameById(entity.getApprovedBy());
 
         return new RegisterServiceRequestDto(
                 entity.getId(),
@@ -952,12 +966,41 @@ public class VehicleRegistrationService {
                 entity.getVnpayTransactionRef(),
                 entity.getAdminNote(),
                 entity.getApprovedBy(),
+                approvedByName,
                 entity.getApprovedAt(),
                 entity.getRejectionReason(),
                 images,
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
         );
+    }
+
+    /**
+     * Resolve username from iam.users table by userId
+     */
+    private String resolveUsernameById(UUID userId) {
+        if (userId == null) {
+            return null;
+        }
+        try {
+            MapSqlParameterSource params = new MapSqlParameterSource()
+                    .addValue("userId", userId);
+            
+            List<String> results = jdbcTemplate.queryForList("""
+                    SELECT username
+                    FROM iam.users
+                    WHERE id = :userId
+                    LIMIT 1
+                    """, params, String.class);
+            
+            if (results != null && !results.isEmpty()) {
+                return results.get(0);
+            }
+            return null;
+        } catch (Exception e) {
+            log.warn("⚠️ [VehicleRegistration] Không thể lấy username cho userId {}: {}", userId, e.getMessage());
+            return null;
+        }
     }
 
     public record VehicleRegistrationPaymentResponse(UUID registrationId, String paymentUrl) {}

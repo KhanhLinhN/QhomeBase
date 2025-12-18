@@ -364,7 +364,7 @@ public class requestService {
             request.setUpdatedAt(now);
             Request savedRequest = requestRepository.save(request);
             
-            // Create log entry with format: "<tên staff> sẽ tới sửa chữa vào ngày <ngày> với giá <giá> với ghi chú là: <Note>"
+
             String logContent = String.format("%s sẽ tới sửa chữa vào ngày %s với giá %s VND với ghi chú là: %s",
                     staffName,
                     repairedDate.toString(),

@@ -22,6 +22,8 @@ public class UpdateMaintenanceRecordRequest {
 
     private LocalDate maintenanceDate;
 
+    private LocalDate dueDate;
+
     private String description;
 
     private String completionReport;

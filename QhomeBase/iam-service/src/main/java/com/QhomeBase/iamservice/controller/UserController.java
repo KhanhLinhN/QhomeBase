@@ -11,10 +11,11 @@ import com.QhomeBase.iamservice.repository.RolePermissionRepository;
 import com.QhomeBase.iamservice.repository.UserRepository;
 import com.QhomeBase.iamservice.service.UserService;
 import com.QhomeBase.iamservice.service.imports.StaffImportService;
+import com.QhomeBase.iamservice.service.exports.AccountExportService;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +46,7 @@ public class UserController {
     private final RolePermissionRepository rolePermissionRepository;
     private final UserService userService;
     private final StaffImportService staffImportService;
+    private final AccountExportService accountExportService;
     private final BaseServiceClient baseServiceClient;
 
     @GetMapping("/{userId}")
@@ -94,6 +96,55 @@ public class UserController {
                     return ResponseEntity.ok(status);
                 })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/{userId}")
+    @PreAuthorize("@authz.canUpdateUser(#userId)")
+    public ResponseEntity<UserAccountDto> updateUserProfile(
+            @PathVariable UUID userId,
+            @Valid @RequestBody UpdateUserProfileRequest request) {
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+            
+            if (request.username() != null && !request.username().isBlank() && !request.username().equalsIgnoreCase(user.getUsername())) {
+                String trimmedUsername = request.username().trim();
+                userRepository.findByUsername(trimmedUsername).ifPresent(existing -> {
+                    if (!existing.getId().equals(userId)) {
+                        throw new IllegalArgumentException("Username already exists: " + trimmedUsername);
+                    }
+                });
+                user.setUsername(trimmedUsername);
+            }
+
+            if (request.email() != null && !request.email().isBlank() && !request.email().equalsIgnoreCase(user.getEmail())) {
+                String trimmedEmail = request.email().trim();
+                userRepository.findByEmail(trimmedEmail).ifPresent(existing -> {
+                    if (!existing.getId().equals(userId)) {
+                        throw new IllegalArgumentException("Email already exists: " + trimmedEmail);
+                    }
+                });
+                user.setEmail(trimmedEmail);
+            }
+
+            if (request.active() != null) {
+                user.setActive(request.active());
+            }
+
+            userRepository.save(user);
+            
+            // Reload user with roles initialized to avoid lazy loading issues
+            User saved = userService.findUserWithRolesById(userId)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+            
+            return ResponseEntity.ok(toAccountDto(saved));
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to update user profile {}: {}", userId, e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Error updating user profile {}", userId, e);
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     @RequestMapping(value = "/{userId}/password", method = {RequestMethod.PATCH, RequestMethod.PUT})
@@ -360,6 +411,21 @@ public class UserController {
                 .body(data);
     }
 
+    @GetMapping("/export")
+    @PreAuthorize("@authz.canViewAllUsers()")
+    public ResponseEntity<byte[]> exportAccounts() {
+        try {
+            byte[] data = accountExportService.exportAccountsToExcel();
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"accounts_export.xlsx\"")
+                    .body(data);
+        } catch (Exception e) {
+            log.error("Failed to export accounts", e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @GetMapping("/residents")
     @PreAuthorize("@authz.canViewAllUsers()")
     public ResponseEntity<List<UserAccountDto>> listResidentAccounts() {
@@ -405,6 +471,42 @@ public class UserController {
         }
     }
 
+    @DeleteMapping("/{userId}")
+    @PreAuthorize("@authz.canDeleteUser(#userId)")
+    public ResponseEntity<Void> deleteUserAccount(@PathVariable UUID userId) {
+        try {
+            User user = userService.findUserWithRolesById(userId)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+            
+            // Check if user is staff or resident
+            boolean isStaff = user.getRoles().stream().anyMatch(role -> 
+                role == UserRole.ADMIN || 
+                role == UserRole.ACCOUNTANT || 
+                role == UserRole.TECHNICIAN || 
+                role == UserRole.SUPPORTER
+            );
+            
+            if (isStaff) {
+                userService.deleteStaffAccount(userId);
+            } else {
+                // For resident accounts, check if inactive
+                if (user.isActive()) {
+                    throw new IllegalArgumentException("Cannot delete active resident account. Please deactivate it first.");
+                }
+                userRepository.delete(user);
+                log.info("Deleted resident user account {}", userId);
+            }
+            
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to delete account {}: {}", userId, e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Error deleting account {}", userId, e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @DeleteMapping("/staff/{userId}")
     @PreAuthorize("@authz.canDeleteUser(#userId)")
     public ResponseEntity<Void> deleteStaffAccount(@PathVariable UUID userId) {
@@ -427,9 +529,19 @@ public class UserController {
             java.time.LocalDateTime lastLogin
     ) {}
 
+    public record UpdateUserProfileRequest(
+            String username,
+            String email,
+            Boolean active
+    ) {}
+
     public record UpdatePasswordRequest(
             @NotBlank(message = "New password is required")
-            @Size(min = 8, message = "New password must be at least 8 characters")
+            @Size(min = 8, max = 100, message = "Password must be between 8 and 100 characters")
+            @Pattern(
+                    regexp = "^(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$",
+                    message = "Password must be at least 8 characters and contain at least one special character"
+            )
             String newPassword
     ) {}
 
@@ -438,7 +550,7 @@ public class UserController {
             @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
             String username,
             @NotBlank(message = "Email is required")
-            @Email(message = "Email must be valid")
+            @Pattern(regexp = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.com$", message = "Email phải có đuôi .com. Ví dụ: user@example.com")
             String email,
             @NotEmpty(message = "Staff roles are required")
             List<@NotBlank(message = "Role value cannot be blank") String> roles,
@@ -450,7 +562,7 @@ public class UserController {
             @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
             String username,
             @NotBlank(message = "Email is required")
-            @Email(message = "Email must be valid")
+            @Pattern(regexp = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.com$", message = "Email phải có đuôi .com. Ví dụ: user@example.com")
             String email,
             Boolean active,
             List<@NotBlank(message = "Role value cannot be blank") String> roles,

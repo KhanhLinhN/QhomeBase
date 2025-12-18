@@ -39,6 +39,7 @@ public class AssetDetailResponse {
     public static class MaintenanceRecordSummaryDto {
         private java.util.UUID id;
         private java.time.LocalDate maintenanceDate;
+        private java.time.LocalDate dueDate;
         private String maintenanceType;
         private String status;
         private String assignedToName;
