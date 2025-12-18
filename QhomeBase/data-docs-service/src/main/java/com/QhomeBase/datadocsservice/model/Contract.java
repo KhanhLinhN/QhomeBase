@@ -89,6 +89,18 @@ public class Contract {
     @Column(name = "renewal_status", length = 20)
     @Builder.Default
     private String renewalStatus = "PENDING";
+    
+    /**
+     * Track which reminder count user has dismissed
+     * - 0: Not dismissed yet
+     * - 1: User dismissed reminder 1 (30 days before)
+     * - 2: User dismissed reminder 2 (20 days before)
+     * - null/0: Show all reminders
+     * Logic: Only show reminder if reminderCount > lastDismissedReminderCount
+     */
+    @Column(name = "last_dismissed_reminder_count")
+    @Builder.Default
+    private Integer lastDismissedReminderCount = 0;
 
     @Column(name = "renewed_contract_id")
     private UUID renewedContractId;

@@ -204,9 +204,13 @@ public class ContractService {
     }
     
     public ContractDto getContractById(UUID contractId, UUID userId, String accessToken) {
+        return getContractById(contractId, userId, accessToken, false);
+    }
+    
+    public ContractDto getContractById(UUID contractId, UUID userId, String accessToken, boolean skipRenewalReminder) {
         Contract contract = contractRepository.findByIdWithFiles(contractId)
                 .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
-        return toDto(contract, userId, accessToken);
+        return toDto(contract, userId, accessToken, null, skipRenewalReminder);
     }
 
     @Transactional(readOnly = true)
@@ -216,9 +220,14 @@ public class ContractService {
     
     @Transactional(readOnly = true)
     public List<ContractDto> getContractsByUnitId(UUID unitId, UUID userId, String accessToken) {
+        return getContractsByUnitId(unitId, userId, accessToken, false);
+    }
+    
+    @Transactional(readOnly = true)
+    public List<ContractDto> getContractsByUnitId(UUID unitId, UUID userId, String accessToken, boolean skipRenewalReminder) {
         try {
             List<Contract> contracts = contractRepository.findByUnitId(unitId);
-            
+
             // Cache isOwner check: chỉ gọi 1 lần cho mỗi unitId trong cùng request
             Boolean cachedIsOwner = null;
             if (userId != null && accessToken != null) {
@@ -247,7 +256,7 @@ public class ContractService {
             return contracts.stream()
                     .map(contract -> {
                         try {
-                            return toDto(contract, userId, accessToken, finalCachedIsOwner);
+                            return toDto(contract, userId, accessToken, finalCachedIsOwner, skipRenewalReminder);
                         } catch (Exception e) {
                             log.error("[ContractService] Lỗi khi convert contract {} sang DTO: {}", 
                                     contract.getId(), e.getMessage(), e);
@@ -526,10 +535,14 @@ public class ContractService {
     }
     
     private ContractDto toDto(Contract contract, UUID userId, String accessToken) {
-        return toDto(contract, userId, accessToken, null);
+        return toDto(contract, userId, accessToken, null, false);
     }
 
     private ContractDto toDto(Contract contract, UUID userId, String accessToken, Boolean cachedIsOwner) {
+        return toDto(contract, userId, accessToken, cachedIsOwner, false);
+    }
+
+    private ContractDto toDto(Contract contract, UUID userId, String accessToken, Boolean cachedIsOwner, boolean skipRenewalReminder) {
         List<ContractFileDto> files = List.of();
         try {
             if (contract.getFiles() != null) {
@@ -554,7 +567,8 @@ public class ContractService {
 
         int reminderCount = calculateReminderCount(contract);
         boolean isFinalReminder = reminderCount == 3;
-        boolean needsRenewal = calculateNeedsRenewal(contract);
+        // ✅ Skip renewal reminder nếu user đang ở màn hình cancel/renew contract
+        boolean needsRenewal = skipRenewalReminder ? false : calculateNeedsRenewal(contract);
 
         // Check permission: isOwner, canRenew, canCancel, canExtend
         boolean isOwner = false;
@@ -563,8 +577,8 @@ public class ContractService {
         boolean canExtend = false;
         String permissionMessage = null;
         
-        // Chỉ check permissions cho RENTAL contracts
-        boolean needsPermissionCheck = "RENTAL".equals(contract.getContractType()) && "ACTIVE".equals(contract.getStatus());
+        // ✅ SKIP OWNER CHECK: Don't check permissions, allow all actions based on contract state
+        boolean needsPermissionCheck = false; // Set to false to skip OWNER check
         
         log.info("🔍 [ContractService] ========== CHECKING PERMISSIONS ==========");
         log.info("🔍 [ContractService] Contract: {} ({})", contract.getContractNumber(), contract.getId());
@@ -632,11 +646,15 @@ public class ContractService {
                 permissionMessage = "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng";
             }
         } else {
-            if (!needsPermissionCheck) {
-                // Silent skip - no need to log
-            } else {
-                log.warn("[ContractService] Cannot check permissions: userId=null, unitId={}, accessToken=null", 
-                        contract.getUnitId());
+            // ✅ SKIP OWNER CHECK: Set permissions based on contract state only
+            if ("RENTAL".equals(contract.getContractType()) && "ACTIVE".equals(contract.getStatus())) {
+                isOwner = true;
+                canRenew = contract.getRenewedContractId() == null 
+                        && ("REMINDED".equals(contract.getRenewalStatus()) || "PENDING".equals(contract.getRenewalStatus()));
+                canCancel = true;
+                canExtend = contract.getEndDate() != null;
+                log.debug("✅ [ContractService] Permissions (no OWNER check): canRenew={}, canCancel={}, canExtend={}", 
+                        canRenew, canCancel, canExtend);
             }
         }
 
@@ -950,6 +968,43 @@ public class ContractService {
         
         log.info("Marked contract {} as renewal declined (was: {})", contractId, currentRenewalStatus);
     }
+    
+    /**
+     * Dismiss current reminder - user won't see this reminder again until next reminder count
+     * Only works for reminder 1 and 2. Final reminder (3) cannot be dismissed.
+     */
+    @Transactional
+    public void dismissReminder(UUID contractId) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+        
+        if (!"RENTAL".equals(contract.getContractType())) {
+            throw new IllegalArgumentException("Only RENTAL contracts can have reminder dismissed");
+        }
+        
+        if (!"ACTIVE".equals(contract.getStatus())) {
+            throw new IllegalArgumentException("Only ACTIVE contracts can have reminder dismissed");
+        }
+        
+        if (!"REMINDED".equals(contract.getRenewalStatus())) {
+            throw new IllegalArgumentException("Contract must be in REMINDED status to dismiss reminder");
+        }
+        
+        // Calculate current reminder count based on reminderCount from toDto logic
+        int currentReminderCount = calculateReminderCount(contract);
+        
+        // Cannot dismiss final reminder (reminder 3)
+        if (currentReminderCount >= 3) {
+            throw new IllegalArgumentException("Cannot dismiss final reminder. User must take action (renew or cancel).");
+        }
+        
+        // Mark this reminder as dismissed
+        contract.setLastDismissedReminderCount(currentReminderCount);
+        contractRepository.save(contract);
+        
+        log.info("✅ Dismissed reminder {} for contract {}", currentReminderCount, contract.getContractNumber());
+    }
+    
     @Deprecated
     @Transactional
     public ContractDto extendContract(UUID contractId, LocalDate newEndDate, UUID updatedBy, UUID userId, String accessToken) {
@@ -1019,10 +1074,20 @@ public class ContractService {
      */
     @Transactional(readOnly = true)
     public List<ContractDto> getContractsNeedingPopup(UUID unitId) {
-        return getContractsNeedingPopup(unitId, null, null);
+        return getContractsNeedingPopup(unitId, null, null, false);
     }
-    
+
     public List<ContractDto> getContractsNeedingPopup(UUID unitId, UUID userId, String accessToken) {
+        return getContractsNeedingPopup(unitId, userId, accessToken, false);
+    }
+
+    public List<ContractDto> getContractsNeedingPopup(UUID unitId, UUID userId, String accessToken, boolean skipRenewalReminder) {
+        // ✅ Nếu skipRenewalReminder = true (user đang ở màn hình cancel/renew), trả về empty list
+        if (skipRenewalReminder) {
+            log.debug("🚫 [ContractService] Skipping renewal reminder popup (user is in cancel/renew screen)");
+            return List.of();
+        }
+        
         // Chỉ lấy contracts với status = "ACTIVE" (chưa gia hạn/hủy)
         // Filter này đảm bảo contracts đã RENEWED hoặc CANCELLED sẽ không được trả về
         List<Contract> contracts = contractRepository.findByUnitIdAndStatus(unitId, "ACTIVE");
@@ -1030,6 +1095,20 @@ public class ContractService {
                 .filter(c -> "RENTAL".equals(c.getContractType())) // Chỉ RENTAL contracts cần gia hạn
                 .filter(c -> "REMINDED".equals(c.getRenewalStatus())) // Đang trong giai đoạn nhắc gia hạn
                 .filter(c -> c.getRenewalReminderSentAt() != null) // Đã gửi reminder
+                .filter(c -> {
+                    // ✅ Check if user has dismissed this reminder
+                    // Only show reminder if currentReminderCount > lastDismissedReminderCount
+                    int currentReminderCount = calculateReminderCount(c);
+                    Integer dismissed = c.getLastDismissedReminderCount();
+                    boolean shouldShow = dismissed == null || dismissed == 0 || currentReminderCount > dismissed;
+                    
+                    if (!shouldShow) {
+                        log.debug("🚫 Skipping reminder for contract {}: currentCount={}, dismissed={}", 
+                                c.getContractNumber(), currentReminderCount, dismissed);
+                    }
+                    
+                    return shouldShow;
+                })
                 // Reminder chỉ hiển thị khi contract vẫn ACTIVE và renewalStatus = REMINDED
                 // Nếu status đã chuyển sang RENEWED hoặc CANCELLED, contract sẽ không có trong list này
                 .map(c -> toDto(c, userId, accessToken))

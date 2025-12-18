@@ -75,10 +75,11 @@ public class ContractController {
     @Operation(summary = "Get contract", description = "Get contract by ID")
     public ResponseEntity<ContractDto> getContract(
             @PathVariable UUID contractId,
-            @RequestHeader HttpHeaders headers) {
+            @RequestHeader HttpHeaders headers,
+            @RequestParam(value = "skipRenewalReminder", required = false, defaultValue = "false") boolean skipRenewalReminder) {
         String accessToken = extractAccessToken(headers);
         UUID userId = extractUserIdFromHeaders(headers);
-        ContractDto contract = contractService.getContractById(contractId, userId, accessToken);
+        ContractDto contract = contractService.getContractById(contractId, userId, accessToken, skipRenewalReminder);
         return ResponseEntity.ok(contract);
     }
 
@@ -86,10 +87,11 @@ public class ContractController {
     @Operation(summary = "Get contracts by unit", description = "Get all contracts for a specific unit")
     public ResponseEntity<List<ContractDto>> getContractsByUnit(
             @PathVariable UUID unitId,
-            @RequestHeader HttpHeaders headers) {
+            @RequestHeader HttpHeaders headers,
+            @RequestParam(value = "skipRenewalReminder", required = false, defaultValue = "false") boolean skipRenewalReminder) {
         String accessToken = extractAccessToken(headers);
         UUID userId = extractUserIdFromHeaders(headers);
-        List<ContractDto> contracts = contractService.getContractsByUnitId(unitId, userId, accessToken);
+        List<ContractDto> contracts = contractService.getContractsByUnitId(unitId, userId, accessToken, skipRenewalReminder);
         return ResponseEntity.ok(contracts);
     }
 
@@ -318,6 +320,32 @@ public class ContractController {
             return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                 "success", false,
                 "message", "Failed to decline renewal: " + e.getMessage()
+            ));
+        }
+    }
+    
+    @PutMapping("/{contractId}/dismiss-reminder")
+    @Operation(summary = "Dismiss renewal reminder", description = "Mark that user has dismissed the current reminder. User won't see this reminder again until next reminder count. Only works for reminder 1 and 2, not final reminder.")
+    public ResponseEntity<Map<String, Object>> dismissReminder(
+            @PathVariable UUID contractId,
+            @RequestParam(value = "updatedBy", required = false) UUID updatedBy) {
+        try {
+            contractService.dismissReminder(contractId);
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Reminder dismissed successfully",
+                "contractId", contractId.toString()
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", e.getMessage()
+            ));
+        } catch (Exception e) {
+            log.error("Error dismissing reminder for contract {}", contractId, e);
+            return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "success", false,
+                "message", "Failed to dismiss reminder: " + e.getMessage()
             ));
         }
     }
@@ -550,10 +578,11 @@ public class ContractController {
     @Operation(summary = "Get contracts needing popup", description = "Get contracts that need to show popup to resident (renewal reminders)")
     public ResponseEntity<List<ContractDto>> getContractsNeedingPopup(
             @PathVariable UUID unitId,
-            @RequestHeader HttpHeaders headers) {
+            @RequestHeader HttpHeaders headers,
+            @RequestParam(value = "skipRenewalReminder", required = false, defaultValue = "false") boolean skipRenewalReminder) {
         String accessToken = extractAccessToken(headers);
         UUID userId = extractUserIdFromHeaders(headers);
-        List<ContractDto> contracts = contractService.getContractsNeedingPopup(unitId, userId, accessToken);
+        List<ContractDto> contracts = contractService.getContractsNeedingPopup(unitId, userId, accessToken, skipRenewalReminder);
         return ResponseEntity.ok(contracts);
     }
 
