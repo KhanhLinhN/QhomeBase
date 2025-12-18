@@ -740,6 +740,9 @@ public class ContractService {
         contract = contractRepository.save(contract);
         log.info("Checked out contract: {} with checkout date: {}", contractId, checkoutDate);
 
+        // Delete household or clear primaryResidentId when contract is cancelled
+        handleContractEnd(contract.getUnitId());
+
         return toDto(contract);
     }
 
@@ -777,6 +780,9 @@ public class ContractService {
             expiredCount++;
             log.info("Marked contract as expired: {} (contract number: {}, endDate: {}, renewalStatus: {})", 
                     contract.getId(), contract.getContractNumber(), contract.getEndDate(), contract.getRenewalStatus());
+            
+            // Delete household or clear primaryResidentId when contract expires
+            handleContractEnd(contract.getUnitId());
         }
         
         if (expiredCount > 0) {
@@ -850,10 +856,11 @@ public class ContractService {
     @Transactional(readOnly = true)
     public List<Contract> findContractsNeedingRenewalReminder() {
         LocalDate today = LocalDate.now();
-        // Find contracts with endDate in next 8-32 days (for all 3 reminder levels)
+        // Find contracts with endDate in next 0-32 days (for all 3 reminder levels)
         // Lần 1: 30 ngày trước endDate (28-32 buffer)
         // Lần 2: 22 ngày trước endDate (20-24 buffer) - ngày thứ 8 trong tháng
-        // Lần 3: 10 ngày trước endDate (8-12 buffer) - ngày 20 trong tháng
+        // Lần 3: 10 ngày trước endDate (0-30 buffer) - ngày 20 trong tháng
+        // Mở rộng range để bao gồm contracts sắp hết hạn (0-7 ngày) cho reminder 3
         LocalDate maxDate = today.plusDays(32);
         
         return contractRepository.findContractsNeedingRenewalReminderByDateRange(today, maxDate);
@@ -1162,6 +1169,9 @@ public class ContractService {
         // The selected date is now stored in inspectionDate, not scheduledDate
         // Pass null for scheduledDate since we're using inspectionDate instead
         baseServiceClient.createAssetInspection(contractId, contract.getUnitId(), inspectionDate, null);
+        
+        // Delete household or clear primaryResidentId when contract is cancelled
+        handleContractEnd(contract.getUnitId());
         
         return toDto(contract);
     }
@@ -1734,7 +1744,7 @@ public class ContractService {
                         log.info("✅ Sent SECOND renewal reminder for contract {} (expires on {}, {} days until end date)", 
                                 contract.getContractNumber(), endDate, daysUntilEndDate);
                     } else {
-                        log.debug("⏭️ Skipping reminder 2 for contract {}: firstReminderDate={}, today={}", 
+                        log.debug("⏭️ Skipping reminder 3 for contract {}: firstReminderDate={}, today={}", 
                                 contract.getContractNumber(), firstReminderDate, today);
                     }
                 }
@@ -1753,7 +1763,7 @@ public class ContractService {
                         log.info("✅ Sent THIRD (FINAL) renewal reminder for contract {} (expires on {}, {} days until end date - BẮT BUỘC HỦY HOẶC GIA HẠN)", 
                                 contract.getContractNumber(), endDate, daysUntilEndDate);
                     } else {
-                        log.debug("⏭️ Skipping reminder 3 for contract {}: firstReminderDate={}, today={}", 
+                        log.debug("⏭️ Skipping reminder 2 for contract {}: firstReminderDate={}, today={}", 
                                 contract.getContractNumber(), firstReminderDate, today);
                     }
                 }
@@ -1764,6 +1774,39 @@ public class ContractService {
         
         log.info("Manual trigger completed: Sent {} first reminder(s), {} second reminder(s), {} third reminder(s)", 
                 firstReminderCount, secondReminderCount, thirdReminderCount);
+    }
+
+    /**
+     * Handle contract end: delete household or clear primaryResidentId
+     * This is called when a rental contract is EXPIRED or CANCELLED
+     */
+    private void handleContractEnd(UUID unitId) {
+        try {
+            // Get current household for this unit
+            Optional<Map<String, Object>> householdOpt = baseServiceClient.getCurrentHouseholdByUnitId(unitId);
+            
+            if (householdOpt.isPresent()) {
+                Map<String, Object> household = householdOpt.get();
+                Object householdIdObj = household.get("id");
+                
+                if (householdIdObj != null) {
+                    UUID householdId = householdIdObj instanceof UUID 
+                            ? (UUID) householdIdObj 
+                            : UUID.fromString(householdIdObj.toString());
+                    
+                    // Delete household (set endDate to today)
+                    baseServiceClient.deleteHousehold(householdId);
+                    log.info("✅ Deleted household {} for unit {} after contract ended", householdId, unitId);
+                } else {
+                    log.warn("⚠️ Household found but no ID for unit: {}", unitId);
+                }
+            } else {
+                log.debug("No active household found for unit: {} (may have already been deleted)", unitId);
+            }
+        } catch (Exception ex) {
+            log.error("❌ Error handling contract end for unit: {}", unitId, ex);
+            // Don't throw exception - allow contract processing to proceed even if household deletion fails
+        }
     }
 
 }

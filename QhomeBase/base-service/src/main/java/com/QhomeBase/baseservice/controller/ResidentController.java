@@ -297,5 +297,44 @@ public class ResidentController {
             return ResponseEntity.badRequest().build();
         }
     }
+
+    @GetMapping("/check/email")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORTER')")
+    public ResponseEntity<Map<String, Boolean>> checkEmailExists(@RequestParam String email) {
+        try {
+            boolean exists = residentService.existsEmail(email, null);
+            return ResponseEntity.ok(Map.of("exists", exists));
+        } catch (Exception e) {
+            log.error("Error checking email existence: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("exists", false));
+        }
+    }
+
+    @GetMapping("/check/phone")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORTER')")
+    public ResponseEntity<Map<String, Boolean>> checkPhoneExists(@RequestParam String phone) {
+        try {
+            boolean exists = residentService.existsPhone(phone, null);
+            return ResponseEntity.ok(Map.of("exists", exists));
+        } catch (Exception e) {
+            log.error("Error checking phone existence: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("exists", false));
+        }
+    }
+
+    @GetMapping("/check/national-id")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPPORTER')")
+    public ResponseEntity<Map<String, Boolean>> checkNationalIdExists(@RequestParam String nationalId) {
+        try {
+            boolean exists = residentService.existsNationalId(nationalId, null);
+            return ResponseEntity.ok(Map.of("exists", exists));
+        } catch (Exception e) {
+            log.error("Error checking national ID existence: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("exists", false));
+        }
+    }
 }
 
