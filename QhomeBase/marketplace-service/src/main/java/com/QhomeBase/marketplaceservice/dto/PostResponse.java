@@ -30,6 +30,7 @@ public class PostResponse {
     private Long viewCount;
     private Long commentCount;
     private List<PostImageResponse> images;
+    private String videoUrl; // URL to video in data-docs-service
     private ResidentInfoResponse author;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;

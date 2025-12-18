@@ -19,7 +19,7 @@ import java.util.UUID;
 @Slf4j
 public class NotificationClient {
 
-    @Value("${customer-interaction.service.url:http://localhost:8083}")
+    @Value("${customer-interaction.service.url:http://localhost:8086}")
     private String customerInteractionServiceUrl;
 
     private WebClient webClient = WebClient.builder().build();

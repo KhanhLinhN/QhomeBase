@@ -70,6 +70,7 @@ public class MarketplaceMapper {
                 .images(images != null ? images.stream()
                         .map(this::toPostImageResponse)
                         .collect(Collectors.toList()) : new java.util.ArrayList<>())
+                .videoUrl(post.getVideoUrl())
                 .author(author)
                 .createdAt(post.getCreatedAt())
                 .updatedAt(post.getUpdatedAt())

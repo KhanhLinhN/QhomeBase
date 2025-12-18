@@ -98,6 +98,9 @@ public class MarketplacePost {
     @Builder.Default
     private List<MarketplacePostImage> images = new ArrayList<>();
 
+    @Column(name = "video_url", columnDefinition = "TEXT")
+    private String videoUrl; // URL to video stored in data-docs-service VideoStorage
+
     @OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @BatchSize(size = 50)
     @Builder.Default

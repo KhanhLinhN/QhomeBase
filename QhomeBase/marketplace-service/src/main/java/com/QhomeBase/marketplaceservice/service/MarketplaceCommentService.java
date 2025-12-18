@@ -247,6 +247,9 @@ public class MarketplaceCommentService {
         post.incrementCommentCount();
         postRepository.save(post);
 
+        // ✅ FIX LazyInitializationException: Initialize replies collection within transaction
+        saved.getReplies().size(); // Force initialization
+
         // Get post owner residentId for notification
         UUID postOwnerResidentId = post.getResidentId();
         
@@ -275,7 +278,13 @@ public class MarketplaceCommentService {
         }
 
         comment.setContent(content);
-        return commentRepository.save(comment);
+        MarketplaceComment saved = commentRepository.save(comment);
+        
+        // ✅ FIX LazyInitializationException: Initialize replies collection within transaction
+        // This prevents "no Session" error when mapper tries to access replies later
+        saved.getReplies().size(); // Force initialization of lazy collection
+        
+        return saved;
     }
 
     /**
