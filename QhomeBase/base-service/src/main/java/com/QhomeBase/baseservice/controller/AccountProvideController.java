@@ -2,6 +2,7 @@ package com.QhomeBase.baseservice.controller;
 
 import com.QhomeBase.baseservice.dto.PrimaryResidentProvisionRequest;
 import com.QhomeBase.baseservice.dto.PrimaryResidentProvisionResponse;
+import com.QhomeBase.baseservice.exception.GlobalExceptionHandler;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import com.QhomeBase.baseservice.service.AccountProvideService;
 import jakarta.validation.Valid;
@@ -13,6 +14,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @RestController
@@ -26,7 +28,7 @@ public class AccountProvideController {
 
     @PostMapping("/{unitId}/primary-resident/provision")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<PrimaryResidentProvisionResponse> provisionPrimaryResident(
+    public ResponseEntity<?> provisionPrimaryResident(
             @PathVariable UUID unitId,
             @Valid @RequestBody PrimaryResidentProvisionRequest request,
             Authentication authentication
@@ -43,10 +45,22 @@ public class AccountProvideController {
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (IllegalArgumentException | IllegalStateException e) {
             log.warn("Failed to provision primary resident for unit {}: {}", unitId, e.getMessage());
-            return ResponseEntity.badRequest().build();
+            // Return proper error response with message
+            GlobalExceptionHandler.ErrorResponse error = new GlobalExceptionHandler.ErrorResponse(
+                    HttpStatus.BAD_REQUEST.value(),
+                    e.getMessage() != null ? e.getMessage() : "Failed to provision primary resident",
+                    Instant.now()
+            );
+            return ResponseEntity.badRequest().body(error);
         } catch (Exception e) {
             log.error("Unexpected error while provisioning primary resident for unit {}", unitId, e);
-            return ResponseEntity.internalServerError().build();
+            // Return proper error response with message
+            GlobalExceptionHandler.ErrorResponse error = new GlobalExceptionHandler.ErrorResponse(
+                    HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                    e.getMessage() != null ? e.getMessage() : "Internal server error",
+                    Instant.now()
+            );
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }
 }

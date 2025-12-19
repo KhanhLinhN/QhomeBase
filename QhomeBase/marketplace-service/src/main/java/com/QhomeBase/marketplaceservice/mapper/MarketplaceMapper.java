@@ -70,7 +70,7 @@ public class MarketplaceMapper {
                 .images(images != null ? images.stream()
                         .map(this::toPostImageResponse)
                         .collect(Collectors.toList()) : new java.util.ArrayList<>())
-                .videoUrl(post.getVideoUrl())
+                .videoUrl(post.getVideoUrl()) // Keep original URL - client should handle base URL correctly
                 .author(author)
                 .createdAt(post.getCreatedAt())
                 .updatedAt(post.getUpdatedAt())
@@ -164,7 +164,7 @@ public class MarketplaceMapper {
                 .updatedAt(comment.getUpdatedAt())
                 .isDeleted(comment.isDeleted())
                 .imageUrl(comment.getImageUrl())
-                .videoUrl(comment.getVideoUrl())
+                .videoUrl(comment.getVideoUrl()) // Keep original URL - client should handle base URL correctly
                 .build();
     }
 

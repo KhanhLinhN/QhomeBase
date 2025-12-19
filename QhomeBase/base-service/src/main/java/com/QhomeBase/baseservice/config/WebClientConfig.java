@@ -21,9 +21,10 @@ public class WebClientConfig {
     @Bean
     public WebClient iamWebClient(@Value("${iam.service.url:http://localhost:8088}") String iamServiceUrl) {
         // Configure HTTP client with timeout for DEV LOCAL mode
+        // Increased timeouts to handle slow IAM service responses
         HttpClient httpClient = HttpClient.create()
-                .responseTimeout(Duration.ofSeconds(5)) // 5 seconds timeout for IAM service
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 3000); // 3 seconds connection timeout
+                .responseTimeout(Duration.ofSeconds(30)) // 30 seconds timeout for IAM service (increased from 5s)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000); // 10 seconds connection timeout (increased from 3s)
         
         return WebClient.builder()
                 .baseUrl(iamServiceUrl)

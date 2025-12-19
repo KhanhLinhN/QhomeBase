@@ -60,6 +60,8 @@ public class IamClientService {
                         .bodyValue(request)
                         .retrieve()
                         .bodyToMono(UserAccountResponse.class)
+                        .timeout(java.time.Duration.ofSeconds(30)) // 30 seconds timeout
+                        .doOnError(error -> log.error("Error in WebClient call to IAM service: {}", error.getMessage(), error))
                         .block();
             } else {
                 log.error("No JWT token available when calling IAM service - this will cause 403 Forbidden");
@@ -69,11 +71,15 @@ public class IamClientService {
                         .bodyValue(request)
                         .retrieve()
                         .bodyToMono(UserAccountResponse.class)
+                        .timeout(java.time.Duration.ofSeconds(30)) // 30 seconds timeout
+                        .doOnError(error -> log.error("Error in WebClient call to IAM service: {}", error.getMessage(), error))
                         .block();
             }
             
             if (response == null) {
-                throw new RuntimeException("Failed to create user account: null response");
+                log.error("IAM service returned null response for create user request. Request: username={}, email={}, autoGenerate={}, residentId={}", 
+                        request.username(), request.email(), request.autoGenerate(), request.residentId());
+                throw new RuntimeException("IAM service returned null response. This may indicate the service is unavailable or returned an empty response.");
             }
             
             return new ResidentAccountDto(
@@ -84,14 +90,54 @@ public class IamClientService {
                     response.active()
             );
         } catch (WebClientResponseException e) {
-            log.error("Error calling IAM service to create user: {}", e.getMessage());
-            if (e.getStatusCode() == HttpStatus.BAD_REQUEST) {
-                throw new IllegalArgumentException("Failed to create user account: " + e.getMessage());
+            String errorMessage = e.getResponseBodyAsString();
+            if (errorMessage == null || errorMessage.isEmpty()) {
+                errorMessage = "No error details provided by IAM service (status: " + e.getStatusCode() + ")";
             }
-            throw new RuntimeException("Failed to create user account: " + e.getMessage(), e);
+            log.error("Error calling IAM service to create user: status={}, message={}, body={}, request={}", 
+                    e.getStatusCode(), e.getMessage(), errorMessage, 
+                    "username=" + request.username() + ", email=" + request.email() + ", autoGenerate=" + request.autoGenerate());
+            
+            // Try to parse error response if it's JSON
+            try {
+                if (errorMessage.contains("\"message\"")) {
+                    // Extract message from JSON response
+                    int messageStart = errorMessage.indexOf("\"message\"");
+                    if (messageStart > 0) {
+                        int colonIndex = errorMessage.indexOf(":", messageStart);
+                        int quoteStart = errorMessage.indexOf("\"", colonIndex) + 1;
+                        int quoteEnd = errorMessage.indexOf("\"", quoteStart);
+                        if (quoteEnd > quoteStart) {
+                            errorMessage = errorMessage.substring(quoteStart, quoteEnd);
+                        }
+                    }
+                }
+            } catch (Exception parseEx) {
+                // Ignore parsing errors, use original error message
+            }
+            
+            if (e.getStatusCode() == HttpStatus.BAD_REQUEST) {
+                throw new IllegalArgumentException("Failed to create user account: " + errorMessage);
+            }
+            if (e.getStatusCode() == HttpStatus.FORBIDDEN) {
+                throw new IllegalStateException("Access denied when creating user account. Check authentication token.");
+            }
+            throw new RuntimeException("Failed to create user account: " + errorMessage, e);
+        } catch (org.springframework.web.reactive.function.client.WebClientRequestException e) {
+            // Connection/timeout errors (includes timeout exceptions from Reactor)
+            String errorMessage;
+            if (e.getMessage() != null && e.getMessage().contains("timeout")) {
+                errorMessage = "IAM service request timed out. The service may be overloaded or unavailable.";
+            } else {
+                errorMessage = "Cannot connect to IAM service. Please check if IAM service is running and accessible.";
+            }
+            log.error("Connection/timeout error calling IAM service: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to create user account: " + errorMessage, e);
         } catch (Exception e) {
-            log.error("Unexpected error calling IAM service", e);
-            throw new RuntimeException("Failed to create user account: " + e.getMessage(), e);
+            String errorMessage = e.getMessage() != null ? e.getMessage() : "Unknown error";
+            String errorType = e.getClass().getSimpleName();
+            log.error("Unexpected error calling IAM service (type: {}): {}", errorType, errorMessage, e);
+            throw new RuntimeException("Failed to create user account: " + errorMessage, e);
         }
     }
     

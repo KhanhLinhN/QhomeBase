@@ -51,5 +51,6 @@ public class ContractDto {
     private Boolean canCancel; // true if user can cancel contract (isOwner && contract is cancellable)
     private Boolean canExtend; // true if user can extend contract (isOwner && contract is extendable)
     private String permissionMessage; // Message to display if user doesn't have permission (e.g., "Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng")
+    private LocalDate inspectionDate; // Ngày kiểm tra tài sản (từ AssetInspection)
 }
 

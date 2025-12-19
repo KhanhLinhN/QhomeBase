@@ -658,6 +658,15 @@ public class ContractService {
             }
         }
 
+        LocalDate inspectionDate = null;
+        try {
+            Optional<LocalDate> inspectionDateOpt = baseServiceClient.getInspectionDateByContractId(contract.getId());
+            inspectionDate = inspectionDateOpt.orElse(null);
+        } catch (Exception e) {
+            log.debug("Could not fetch inspection date for contract {}: {}", contract.getId(), e.getMessage());
+            // Don't fail if inspection date cannot be fetched
+        }
+
         return ContractDto.builder()
                 .id(contract.getId())
                 .unitId(contract.getUnitId())
@@ -691,10 +700,21 @@ public class ContractService {
                 .canCancel(canCancel)
                 .canExtend(canExtend)
                 .permissionMessage(permissionMessage)
+                .inspectionDate(inspectionDate)
                 .build();
     }
 
     private ContractDto toDtoSummary(Contract contract) {
+        
+        LocalDate inspectionDate = null;
+        try {
+            Optional<LocalDate> inspectionDateOpt = baseServiceClient.getInspectionDateByContractId(contract.getId());
+            inspectionDate = inspectionDateOpt.orElse(null);
+        } catch (Exception e) {
+            log.debug("Could not fetch inspection date for contract {} in summary: {}", contract.getId(), e.getMessage());
+       
+        }
+
         return ContractDto.builder()
                 .id(contract.getId())
                 .unitId(contract.getUnitId())
@@ -719,6 +739,7 @@ public class ContractService {
                 .renewalStatus(contract.getRenewalStatus())
                 .renewedContractId(contract.getRenewedContractId())
                 .files(null)
+                .inspectionDate(inspectionDate)
                 .build();
     }
 
