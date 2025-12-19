@@ -104,6 +104,20 @@ public class ContractService {
                 .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
 
         if (request.getContractNumber() != null && !request.getContractNumber().equals(contract.getContractNumber())) {
+            // Prevent editing contract number if:
+            // 1. Contract has been renewed (renewedContractId != null) - this is the old contract
+            // 2. Contract number contains "Gia hạn lần" - this is a renewed contract (new format)
+            // 3. Contract number contains "-RENEW-" - this is a renewed contract (old format, for backward compatibility)
+            if (contract.getRenewedContractId() != null) {
+                throw new IllegalArgumentException("Không thể chỉnh sửa tên hợp đồng đã được gia hạn. Hợp đồng này đã được gia hạn thành công.");
+            }
+            if (contract.getContractNumber() != null && contract.getContractNumber().contains("Gia hạn lần")) {
+                throw new IllegalArgumentException("Không thể chỉnh sửa tên hợp đồng sau khi gia hạn. Tên hợp đồng đã được hệ thống tự động sinh và không thể thay đổi.");
+            }
+            if (contract.getContractNumber() != null && contract.getContractNumber().contains("-RENEW-")) {
+                throw new IllegalArgumentException("Không thể chỉnh sửa tên hợp đồng sau khi gia hạn. Tên hợp đồng đã được hệ thống tự động sinh và không thể thay đổi.");
+            }
+            
             contractRepository.findByContractNumber(request.getContractNumber())
                     .ifPresent(existing -> {
                         throw new IllegalArgumentException("Contract number already exists: " + request.getContractNumber());
@@ -1747,6 +1761,204 @@ public class ContractService {
     }
 
     /**
+     * Map contract type to Vietnamese name
+     */
+    private String mapContractTypeToVietnamese(String contractType) {
+        if (contractType == null) {
+            return "THUÊ";
+        }
+        String upperType = contractType.toUpperCase();
+        return switch (upperType) {
+            case "RENTAL" -> "THUÊ";
+            case "PURCHASE" -> "MUA";
+            case "SERVICE" -> "DỊCH VỤ";
+            case "PARKING" -> "GIỮ XE";
+            default -> upperType;
+        };
+    }
+
+    /**
+     * Find the original contract (not a renewal) from a given contract
+     * Traces back through the renewal chain to find the root contract
+     */
+    private Contract findOriginalContract(Contract contract) {
+        if (contract == null) {
+            return null;
+        }
+        
+        // Check if this contract is already the original (not a renewal)
+        String contractNumber = contract.getContractNumber();
+        boolean isRenewal = (contractNumber != null && contractNumber.contains("Gia hạn lần")) ||
+                           (contractNumber != null && contractNumber.contains("-RENEW-"));
+        
+        if (!isRenewal && contract.getRenewedContractId() == null) {
+            // This is the original contract
+            return contract;
+        }
+        
+        // Find the original contract by looking for contracts in the same unit that:
+        // 1. Don't have "Gia hạn lần" in their name
+        // 2. Don't have "-RENEW-" in their name (old format)
+        // 3. Don't have renewedContractId set (not a renewal)
+        // 4. Have the earliest created date (the first contract)
+        List<Contract> allContracts = contractRepository.findByUnitId(contract.getUnitId());
+        List<Contract> originalCandidates = allContracts.stream()
+                .filter(c -> {
+                    String cn = c.getContractNumber();
+                    return cn != null && 
+                           !cn.contains("Gia hạn lần") && 
+                           !cn.contains("-RENEW-") &&
+                           c.getRenewedContractId() == null;
+                })
+                .collect(Collectors.toList());
+        
+        if (originalCandidates.isEmpty()) {
+            // No original found, return the contract itself
+            return contract;
+        }
+        
+        // Return the one with earliest created date
+        return originalCandidates.stream()
+                .min((a, b) -> {
+                    if (a.getCreatedAt() == null && b.getCreatedAt() == null) return 0;
+                    if (a.getCreatedAt() == null) return 1;
+                    if (b.getCreatedAt() == null) return -1;
+                    return a.getCreatedAt().compareTo(b.getCreatedAt());
+                })
+                .orElse(contract);
+    }
+
+    /**
+     * Count the number of renewals from the original contract
+     * Returns the renewal count (0 = original, 1 = first renewal, 2 = second renewal, etc.)
+     */
+    private int countRenewalSequence(Contract contract) {
+        if (contract == null) {
+            return 0;
+        }
+        
+        Contract originalContract = findOriginalContract(contract);
+        if (originalContract == null) {
+            return 0;
+        }
+        
+        // If this is the original contract itself, return 0
+        if (originalContract.getId().equals(contract.getId())) {
+            return 0;
+        }
+        
+        // Count renewals by following the chain from original to current
+        // The chain: original -> renewal1 (renewedContractId = original.id) -> renewal2 (renewedContractId = renewal1.id) -> ...
+        int renewalCount = 0;
+        Contract current = originalContract;
+        
+        while (current != null && !current.getId().equals(contract.getId())) {
+            // Store current contract ID in final variable for use in lambda
+            final UUID currentContractId = current.getId();
+            final UUID currentUnitId = current.getUnitId();
+            
+            // Find the contract that was renewed from current (where renewedContractId = current.id)
+            List<Contract> renewals = contractRepository.findByUnitId(currentUnitId).stream()
+                    .filter(c -> currentContractId.equals(c.getRenewedContractId()))
+                    .collect(Collectors.toList());
+            
+            if (renewals.isEmpty()) {
+                // No renewal found, we've reached the end of the chain
+                // If we haven't found the target contract, it means it's not in the chain
+                break;
+            }
+            
+            // Should only be one renewal per contract, but if there are multiple, use the first one
+            current = renewals.get(0);
+            renewalCount++;
+            
+            // Safety check to avoid infinite loop
+            if (renewalCount > 100) {
+                log.warn("Renewal chain too long for contract {}, stopping at count {}", contract.getId(), renewalCount);
+                break;
+            }
+        }
+        
+        // If we found the contract in the chain, return the count
+        // Otherwise, count all renewals for this unit (fallback)
+        if (current != null && current.getId().equals(contract.getId())) {
+            return renewalCount;
+        } else {
+            // Fallback: count all contracts with "Gia hạn lần" for this unit
+            List<Contract> allRenewals = contractRepository.findByUnitId(contract.getUnitId()).stream()
+                    .filter(c -> {
+                        String cn = c.getContractNumber();
+                        return cn != null && cn.contains("Gia hạn lần");
+                    })
+                    .collect(Collectors.toList());
+            return allRenewals.size();
+        }
+    }
+
+    /**
+     * Generate a standardized contract number for renewal contracts
+     * Format: HĐ-{LOẠI_HỢP_ĐỒNG}-{MÃ_CĂN} – Gia hạn lần {N}
+     * Example: HĐ-THUÊ-A1---01 – Gia hạn lần 1
+     */
+    private String generateRenewalContractNumber(UUID unitId, String contractType, LocalDate startDate, Contract oldContract) {
+        // Get unit code
+        Optional<String> unitCodeOpt = baseServiceClient.getUnitCodeByUnitId(unitId);
+        String unitCode = unitCodeOpt.orElse("UNKNOWN");
+        
+        // Map contract type to Vietnamese
+        String contractTypeVi = mapContractTypeToVietnamese(contractType);
+        
+        // Find original contract
+        Contract originalContract = findOriginalContract(oldContract);
+        
+        // Count how many renewals have been made from the original contract
+        int renewalSequence = 0;
+        
+        if (originalContract != null) {
+            // Count all contracts that are renewals of the original contract
+            // These are contracts where we can trace back to the original through renewedContractId chain
+            List<Contract> allContracts = contractRepository.findByUnitId(unitId);
+            List<Contract> renewals = allContracts.stream()
+                    .filter(c -> {
+                        // Check if this contract is a renewal (has "Gia hạn lần" in name)
+                        String cn = c.getContractNumber();
+                        if (cn == null) return false;
+                        return cn.contains("Gia hạn lần") || cn.contains("-RENEW-");
+                    })
+                    .collect(Collectors.toList());
+            
+            renewalSequence = renewals.size() + 1; // Next renewal number
+        } else {
+            // Fallback: count all renewals for this unit
+            List<Contract> allRenewals = contractRepository.findByUnitId(unitId).stream()
+                    .filter(c -> {
+                        String cn = c.getContractNumber();
+                        return cn != null && (cn.contains("Gia hạn lần") || cn.contains("-RENEW-"));
+                    })
+                    .collect(Collectors.toList());
+            renewalSequence = allRenewals.size() + 1;
+        }
+        
+        // Format: HĐ-{LOẠI}-{MÃ_CĂN} – Gia hạn lần {N}
+        String contractNumber = String.format("HĐ-%s-%s – Gia hạn lần %d", contractTypeVi, unitCode, renewalSequence);
+        
+        // Ensure uniqueness (retry if needed)
+        int retryCount = 0;
+        while (contractRepository.findByContractNumber(contractNumber).isPresent() && retryCount < 10) {
+            renewalSequence++;
+            contractNumber = String.format("HĐ-%s-%s – Gia hạn lần %d", contractTypeVi, unitCode, renewalSequence);
+            retryCount++;
+        }
+        
+        if (retryCount >= 10) {
+            // Fallback: use timestamp if too many retries
+            contractNumber = String.format("HĐ-%s-%s – Gia hạn lần %d-%d", contractTypeVi, unitCode, renewalSequence, System.currentTimeMillis());
+        }
+        
+        return contractNumber;
+    }
+
+    /**
      * Complete contract renewal after successful payment
      */
     @Transactional
@@ -1761,6 +1973,61 @@ public class ContractService {
         // Get unit code
         Optional<String> unitCodeOpt = baseServiceClient.getUnitCodeByUnitId(newContract.getUnitId());
         String unitCode = unitCodeOpt.orElse("N/A");
+        
+        // Save old contract number before generating new one (to find old contract later)
+        String oldContractNumber = null;
+        Contract oldContract = null;
+        String tempContractNumber = newContract.getContractNumber();
+        if (tempContractNumber != null && tempContractNumber.contains("-RENEW-")) {
+            // Extract old contract number from temporary format: {oldContractNumber}-RENEW-{timestamp}
+            oldContractNumber = tempContractNumber.substring(0, tempContractNumber.indexOf("-RENEW-"));
+            // Find the old contract
+            Optional<Contract> oldContractOpt = contractRepository.findByContractNumber(oldContractNumber);
+            if (oldContractOpt.isPresent()) {
+                oldContract = oldContractOpt.get();
+            }
+        }
+
+        // If we couldn't find old contract by number, try to find it by tracing back through renewedContractId
+        if (oldContract == null) {
+            // Store newContract properties in final variables for use in lambda
+            final UUID newContractUnitId = newContract.getUnitId();
+            final UUID currentContractId = newContract.getId();
+            
+            // Try to find contracts that might be renewed into this one
+            List<Contract> possibleOldContracts = contractRepository.findByUnitId(newContractUnitId).stream()
+                    .filter(c -> !c.getId().equals(currentContractId))
+                    .filter(c -> c.getContractNumber() != null && !c.getContractNumber().contains("Gia hạn lần"))
+                    .filter(c -> c.getContractNumber() != null && !c.getContractNumber().contains("-RENEW-"))
+                    .collect(Collectors.toList());
+            
+            // If there's only one possible old contract, use it
+            if (possibleOldContracts.size() == 1) {
+                oldContract = possibleOldContracts.get(0);
+            } else if (!possibleOldContracts.isEmpty()) {
+                // Use the most recent one (by created date)
+                oldContract = possibleOldContracts.stream()
+                        .max((a, b) -> {
+                            if (a.getCreatedAt() == null && b.getCreatedAt() == null) return 0;
+                            if (a.getCreatedAt() == null) return -1;
+                            if (b.getCreatedAt() == null) return 1;
+                            return a.getCreatedAt().compareTo(b.getCreatedAt());
+                        })
+                        .orElse(null);
+            }
+        }
+
+        // Generate new standardized contract number for renewal
+        // This replaces the temporary "-RENEW-{timestamp}" format with a proper standardized name
+        String newContractNumber = generateRenewalContractNumber(
+                newContract.getUnitId(),
+                newContract.getContractType(),
+                newContract.getStartDate(),
+                oldContract != null ? oldContract : newContract // Use newContract as fallback
+        );
+        newContract.setContractNumber(newContractNumber);
+        log.info("Generated new contract number for renewal: {} (replacing temporary number: {})", 
+                newContractNumber, tempContractNumber);
         
         // Calculate total amount
         BigDecimal totalAmount = calculateTotalRent(newContract);
@@ -1793,24 +2060,31 @@ public class ContractService {
         newContract = contractRepository.save(newContract);
         
         // Find and update the old contract to mark it as renewed
-        // The new contract number format is: {oldContractNumber}-RENEW-{timestamp}
-        String newContractNumber = newContract.getContractNumber();
-        if (newContractNumber != null && newContractNumber.contains("-RENEW-")) {
-            String oldContractNumber = newContractNumber.substring(0, newContractNumber.indexOf("-RENEW-"));
+        if (oldContractNumber != null && oldContract == null) {
+            // Try to find old contract by number if we haven't found it yet
             Optional<Contract> oldContractOpt = contractRepository.findByContractNumber(oldContractNumber);
             if (oldContractOpt.isPresent()) {
-                Contract oldContract = oldContractOpt.get();
-                oldContract.setRenewedContractId(newContract.getId());
-                contractRepository.save(oldContract);
-                log.info("Marked old contract {} as renewed with new contract {}", 
-                        oldContract.getId(), newContract.getId());
-            } else {
-                log.warn("Could not find old contract with number: {}", oldContractNumber);
+                oldContract = oldContractOpt.get();
             }
         }
         
-        log.info("Completed contract renewal payment: contractId={}, invoiceId={}, vnpayTxnRef={}", 
-                newContract.getId(), invoiceId, vnpayTransactionRef);
+        if (oldContract != null) {
+            oldContract.setRenewedContractId(newContract.getId());
+            contractRepository.save(oldContract);
+            log.info("Marked old contract {} ({}) as renewed with new contract {} ({})", 
+                    oldContract.getId(), oldContract.getContractNumber(), 
+                    newContract.getId(), newContract.getContractNumber());
+        } else {
+            if (oldContractNumber != null) {
+                log.warn("Could not find old contract with number: {} to mark as renewed", oldContractNumber);
+            } else {
+                log.warn("Could not extract old contract number from temporary number: {} for new contract {}", 
+                        tempContractNumber, newContractId);
+            }
+        }
+        
+        log.info("Completed contract renewal payment: contractId={}, contractNumber={}, invoiceId={}, vnpayTxnRef={}", 
+                newContract.getId(), newContract.getContractNumber(), invoiceId, vnpayTransactionRef);
         
         return toDto(newContract);
     }
