@@ -376,48 +376,34 @@ public class NotificationService {
 
     private void sendWebSocketNotification(Notification notification, String action) {
         try {
-            log.info("🔔 [NotificationService] Sending WebSocket notification: action={}, notificationId={}, targetResidentId={}", 
-                    action, notification.getId(), notification.getTargetResidentId());
-            
             NotificationWebSocketMessage payload = NotificationWebSocketMessage.of(notification, action);
             
             // If notification has targetResidentId, only send to that specific resident
             // Don't broadcast to building/external channels to prevent other residents from receiving it
             if (notification.getTargetResidentId() != null) {
                 String residentDestination = "/topic/notifications/resident/" + notification.getTargetResidentId();
-                log.info("📤 [NotificationService] Sending WebSocket to resident-specific channel: {}", residentDestination);
                 messagingTemplate.convertAndSend(residentDestination, payload);
-                log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {} | ResidentId: {}", 
-                        action, residentDestination, notification.getId(), notification.getTargetResidentId());
-                log.info("✅ Notification sent successfully via WebSocket to resident {}", notification.getTargetResidentId());
                 return;
             }
 
             // Gửi kênh tổng cho tất cả client quan tâm (only for non-resident-specific notifications)
             messagingTemplate.convertAndSend("/topic/notifications", payload);
-            log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, "/topic/notifications", notification.getId());
 
             if (notification.getScope() == NotificationScope.EXTERNAL) {
                 if (notification.getTargetBuildingId() != null) {
                     String destination = "/topic/notifications/building/" + notification.getTargetBuildingId();
                     messagingTemplate.convertAndSend(destination, payload);
-                    log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, destination, notification.getId());
                 } else {
                     messagingTemplate.convertAndSend("/topic/notifications/external", payload);
-                    log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, "/topic/notifications/external", notification.getId());
                 }
             } else if (notification.getScope() == NotificationScope.INTERNAL) {
                 if (notification.getTargetRole() != null && !notification.getTargetRole().isBlank()) {
                     String destination = "/topic/notifications/role/" + notification.getTargetRole();
                     messagingTemplate.convertAndSend(destination, payload);
-                    log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, destination, notification.getId());
                 } else {
                     messagingTemplate.convertAndSend("/topic/notifications/internal", payload);
-                    log.info("🔔 WebSocket {} | Destination: {} | Notification ID: {}", action, "/topic/notifications/internal", notification.getId());
                 }
             }
-
-            log.info("✅ Notification sent successfully via WebSocket");
         } catch (Exception e) {
             log.error("❌ Error sending WebSocket notification", e);
         }
@@ -531,18 +517,9 @@ public class NotificationService {
             // Send WebSocket notification ONLY if we also sent FCM push (i.e., no duplicate)
             // This ensures both FCM and WebSocket are sent together, or both are skipped together
             if (shouldSendNotifications) {
-                log.info("📡 [NotificationService] Preparing to send WebSocket notification: residentId={}, notificationId={}, type={}", 
-                        request.getResidentId(), savedNotification.getId(), type);
-                
                 // Send WebSocket notification - will automatically route to resident-specific channel
                 // since targetResidentId is set, it won't broadcast to building/external channels
                 sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
-                
-                log.info("✅ Created internal notification for residentId: {} | Notification ID: {} | Type: {} | FCM push and WebSocket sent to /topic/notifications/resident/{}", 
-                        request.getResidentId(), savedNotification.getId(), type, request.getResidentId());
-            } else {
-                log.info("⏭️ Created internal notification for residentId: {} | Notification ID: {} | Type: {} | FCM push and WebSocket skipped (duplicate notification)", 
-                        request.getResidentId(), savedNotification.getId(), type);
             }
         } else {
             // Fallback to regular notification creation

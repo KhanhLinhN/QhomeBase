@@ -656,25 +656,17 @@ public class MaintenanceRequestService {
             return;
         }
 
-        Unit unit = null;
-        UUID unitId = request.getUnitId();
-        if (unitId != null) {
-            unit = unitRepository.findById(unitId).orElse(null);
-        }
-
         Map<String, String> data = new HashMap<>();
         data.put("entity", "MAINTENANCE_REQUEST");
         data.put("requestId", request.getId().toString());
         data.put("status", status);
         data.put("category", request.getCategory());
 
-        UUID buildingId = (unit != null && unit.getBuilding() != null)
-                ? unit.getBuilding().getId()
-                : null;
-
+        // Maintenance request notifications are PRIVATE - only the resident who created the request should see them
+        // Set buildingId = null to ensure notification is sent to resident-specific channel only
         notificationClient.sendResidentNotification(
                 request.getResidentId(),
-                buildingId,
+                null, // buildingId = null for private notification (riêng tư)
                 "REQUEST",
                 title,
                 body,

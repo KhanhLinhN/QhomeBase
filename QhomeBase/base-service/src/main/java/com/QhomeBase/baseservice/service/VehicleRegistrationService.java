@@ -12,6 +12,7 @@ import com.QhomeBase.baseservice.repository.VehicleRegistrationRepository;
 import com.QhomeBase.baseservice.repository.VehicleRepository;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class VehicleRegistrationService {
@@ -29,6 +31,7 @@ public class VehicleRegistrationService {
     private final VehicleRepository vehicleRepository;
     private final FinanceBillingClient financeBillingClient;
     private final HouseholdService householdService;
+    private final NotificationClient notificationClient;
 
     private OffsetDateTime nowUTC() {
         return OffsetDateTime.now(ZoneOffset.UTC);
@@ -111,6 +114,10 @@ public class VehicleRegistrationService {
         request.setUpdatedAt(nowUTC());
 
         var savedRequest = vehicleRegistrationRepository.save(request);
+        
+        // Send notification to resident when request is rejected
+        notifyVehicleRejected(savedRequest, dto.reason());
+        
         return toDto(savedRequest);
     }
 
@@ -229,6 +236,60 @@ public class VehicleRegistrationService {
                 .build();
 
         financeBillingClient.notifyVehicleActivatedSync(event);
+    }
+
+    private void notifyVehicleRejected(VehicleRegistrationRequest request, String reason) {
+        try {
+            var vehicle = request.getVehicle();
+            if (vehicle == null) {
+                log.warn("⚠️ [VehicleRegistration] Cannot send rejection notification: vehicle is null for request {}", request.getId());
+                return;
+            }
+
+            UUID unitId = vehicle.getUnit() != null ? vehicle.getUnit().getId() : null;
+            UUID residentId = null;
+            
+            // Get residentId: try payer first, then vehicle's residentId
+            if (unitId != null) {
+                residentId = householdService.getPayerForUnit(unitId);
+            }
+            if (residentId == null) {
+                residentId = vehicle.getResidentId();
+            }
+            
+            if (residentId == null) {
+                log.warn("⚠️ [VehicleRegistration] Cannot send rejection notification: residentId is null for request {}", request.getId());
+                return;
+            }
+
+            String plateNo = vehicle.getPlateNo() != null ? vehicle.getPlateNo() : "xe";
+            String title = "Yêu cầu đăng ký thẻ xe bị từ chối";
+            String message = reason != null && !reason.isBlank()
+                    ? String.format("Yêu cầu đăng ký thẻ xe với biển số %s đã bị từ chối. Lý do: %s", plateNo, reason)
+                    : String.format("Yêu cầu đăng ký thẻ xe với biển số %s đã bị từ chối. Vui lòng liên hệ quản trị viên để biết thêm chi tiết.", plateNo);
+
+            java.util.Map<String, String> data = new java.util.HashMap<>();
+            data.put("requestId", request.getId().toString());
+            data.put("status", "REJECTED");
+            data.put("plateNo", plateNo);
+            if (reason != null) {
+                data.put("reason", reason);
+            }
+
+            // Send PRIVATE notification to resident (buildingId = null for private notification)
+            notificationClient.sendResidentNotification(
+                    residentId,
+                    null, // buildingId = null for private notification (riêng tư)
+                    "REQUEST",
+                    title,
+                    message,
+                    request.getId(),
+                    "VEHICLE_REGISTRATION",
+                    data
+            );
+        } catch (Exception e) {
+            log.error("❌ [VehicleRegistration] Failed to send rejection notification for request {}: {}", request.getId(), e.getMessage(), e);
+        }
     }
 
     public VehicleRegistrationDto toDto(VehicleRegistrationRequest request) {

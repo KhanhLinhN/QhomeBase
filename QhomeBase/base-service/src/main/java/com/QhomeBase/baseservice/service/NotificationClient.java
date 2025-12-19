@@ -47,12 +47,12 @@ public class NotificationClient {
             );
 
             if (!response.getStatusCode().is2xxSuccessful()) {
-                log.warn("❌ [NotificationClient] Failed to push notification: status={}", response.getStatusCode());
-            } else {
-                log.info("✅ [NotificationClient] Notification sent successfully");
+                log.warn("❌ [NotificationClient] Failed to push notification to notification service | Status: {} | ResidentId: {} | Type: {}", 
+                        response.getStatusCode(), payload.get("residentId"), payload.get("type"));
             }
         } catch (Exception ex) {
-            log.error("❌ [NotificationClient] Error sending notification", ex);
+            log.error("❌ [NotificationClient] Error sending notification to notification service | ResidentId: {} | Type: {} | Error: {}", 
+                    payload.get("residentId"), payload.get("type"), ex.getMessage(), ex);
         }
     }
 

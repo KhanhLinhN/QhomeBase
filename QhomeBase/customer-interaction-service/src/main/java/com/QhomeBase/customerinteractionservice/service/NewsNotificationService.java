@@ -39,7 +39,8 @@ public class NewsNotificationService {
         try {
             messagingTemplate.convertAndSend(destination, message);
         } catch (Exception e) {
-            log.error("Error sending WebSocket message", e);
+            log.error("❌ [NewsNotificationService] Error sending WebSocket news notification | Action: {} | Destination: {} | NewsId: {} | Error: {}", 
+                    action, destination, message.getNewsId(), e.getMessage(), e);
         }
     }
 }
