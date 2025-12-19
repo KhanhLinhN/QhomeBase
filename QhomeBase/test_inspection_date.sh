@@ -42,3 +42,4 @@ echo "Full response (formatted):"
 echo "$RESPONSE" | python -m json.tool 2>/dev/null || echo "$RESPONSE"
 
 
+

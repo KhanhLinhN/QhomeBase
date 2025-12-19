@@ -1117,6 +1117,26 @@ public class ContractService {
                 .filter(c -> "REMINDED".equals(c.getRenewalStatus())) // Đang trong giai đoạn nhắc gia hạn
                 .filter(c -> c.getRenewalReminderSentAt() != null) // Đã gửi reminder
                 .filter(c -> {
+                    // ✅ Kiểm tra nếu contract đã được gia hạn thành công
+                    // Nếu renewedContractId != null, nghĩa là contract đã được gia hạn thành công
+                    if (c.getRenewedContractId() != null) {
+                        log.debug("🚫 Skipping reminder for contract {}: already renewed (renewedContractId={})", 
+                                c.getContractNumber(), c.getRenewedContractId());
+                        return false;
+                    }
+                    return true;
+                })
+                .filter(c -> {
+                    // ✅ Kiểm tra nếu contract đã hủy gia hạn thành công
+                    // Nếu renewalStatus = "DECLINED", nghĩa là user đã hủy gia hạn hợp đồng
+                    if ("DECLINED".equals(c.getRenewalStatus())) {
+                        log.debug("🚫 Skipping reminder for contract {}: renewal declined", 
+                                c.getContractNumber());
+                        return false;
+                    }
+                    return true;
+                })
+                .filter(c -> {
                     // ✅ Check if user has dismissed this reminder
                     // Only show reminder if currentReminderCount > lastDismissedReminderCount
                     int currentReminderCount = calculateReminderCount(c);
@@ -1132,6 +1152,8 @@ public class ContractService {
                 })
                 // Reminder chỉ hiển thị khi contract vẫn ACTIVE và renewalStatus = REMINDED
                 // Nếu status đã chuyển sang RENEWED hoặc CANCELLED, contract sẽ không có trong list này
+                // Nếu contract đã được gia hạn (renewedContractId != null) hoặc đã hủy (renewalStatus = DECLINED), 
+                // contract sẽ không được hiển thị popup reminder nữa
                 .map(c -> toDto(c, userId, accessToken))
                 .collect(Collectors.toList());
     }
