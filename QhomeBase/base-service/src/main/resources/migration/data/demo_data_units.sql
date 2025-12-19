@@ -12,7 +12,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---01',
+    b.code || '1---01',
     1,
     50.00,
     1,
@@ -37,7 +37,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---02',
+    b.code || '2---02',
     2,
     65.50,
     2,
@@ -62,7 +62,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---03',
+    b.code || '3---03',
     3,
     80.00,
     2,
@@ -87,7 +87,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---04',
+    b.code || '4---04',
     4,
     95.75,
     3,
@@ -112,7 +112,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---05',
+    b.code || '5---05',
     5,
     75.25,
     2,
@@ -137,7 +137,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---01',
+    b.code || '1---01',
     1,
     55.00,
     1,
@@ -162,7 +162,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---02',
+    b.code || '2---02',
     2,
     70.50,
     2,
@@ -187,7 +187,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---03',
+    b.code || '3---03',
     3,
     85.00,
     2,
@@ -212,7 +212,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---04',
+    b.code || '4---04',
     4,
     100.00,
     3,
@@ -237,7 +237,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---05',
+    b.code || '5---05',
     5,
     78.50,
     2,
@@ -262,7 +262,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---01',
+    b.code || '1---01',
     1,
     60.00,
     1,
@@ -287,7 +287,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---02',
+    b.code || '2---02',
     2,
     75.50,
     2,
@@ -312,7 +312,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---03',
+    b.code || '3---03',
     3,
     90.00,
     2,
@@ -337,7 +337,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---04',
+    b.code || '4---04',
     4,
     105.25,
     3,
@@ -362,7 +362,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---05',
+    b.code || '5---05',
     5,
     82.75,
     2,
@@ -387,7 +387,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---01',
+    b.code || '1---01',
     1,
     48.00,
     1,
@@ -412,7 +412,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---02',
+    b.code || '2---02',
     2,
     63.50,
     2,
@@ -437,7 +437,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---03',
+    b.code || '3---03',
     3,
     78.00,
     2,
@@ -462,7 +462,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---04',
+    b.code || '4---04',
     4,
     92.50,
     3,
@@ -487,7 +487,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---05',
+    b.code || '5---05',
     5,
     73.25,
     2,
@@ -512,7 +512,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---01',
+    b.code || '1---01',
     1,
     52.00,
     1,
@@ -537,7 +537,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---02',
+    b.code || '2---02',
     2,
     67.50,
     2,
@@ -562,7 +562,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---03',
+    b.code || '3---03',
     3,
     82.00,
     2,
@@ -587,7 +587,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---04',
+    b.code || '4---04',
     4,
     97.75,
     3,
@@ -612,7 +612,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---05',
+    b.code || '5---05',
     5,
     76.50,
     2,
@@ -637,7 +637,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---01',
+    b.code || '1---01',
     1,
     54.00,
     1,
@@ -662,7 +662,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---02',
+    b.code || '2---02',
     2,
     69.50,
     2,
@@ -687,7 +687,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---03',
+    b.code || '3---03',
     3,
     84.00,
     2,
@@ -712,7 +712,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---04',
+    b.code || '4---04',
     4,
     99.25,
     3,
@@ -737,7 +737,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---05',
+    b.code || '5---05',
     5,
     77.75,
     2,
@@ -762,7 +762,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---01',
+    b.code || '1---01',
     1,
     56.00,
     1,
@@ -787,7 +787,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---02',
+    b.code || '2---02',
     2,
     71.50,
     2,
@@ -812,7 +812,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---03',
+    b.code || '3---03',
     3,
     86.00,
     2,
@@ -837,7 +837,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---04',
+    b.code || '4---04',
     4,
     101.00,
     3,
@@ -862,7 +862,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---05',
+    b.code || '5---05',
     5,
     79.50,
     2,
@@ -887,7 +887,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---01',
+    b.code || '1---01',
     1,
     58.00,
     1,
@@ -912,7 +912,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---02',
+    b.code || '2---02',
     2,
     73.50,
     2,
@@ -937,7 +937,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---03',
+    b.code || '3---03',
     3,
     88.00,
     2,
@@ -962,7 +962,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---04',
+    b.code || '4---04',
     4,
     103.25,
     3,
@@ -987,7 +987,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---05',
+    b.code || '5---05',
     5,
     81.75,
     2,
@@ -1012,7 +1012,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---01',
+    b.code || '1---01',
     1,
     60.00,
     1,
@@ -1037,7 +1037,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---02',
+    b.code || '2---02',
     2,
     75.50,
     2,
@@ -1062,7 +1062,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---03',
+    b.code || '3---03',
     3,
     90.00,
     2,
@@ -1087,7 +1087,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---04',
+    b.code || '4---04',
     4,
     105.50,
     3,
@@ -1112,7 +1112,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---05',
+    b.code || '5---05',
     5,
     83.25,
     2,
@@ -1137,7 +1137,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---01',
+    b.code || '1---01',
     1,
     62.00,
     1,
@@ -1162,7 +1162,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---02',
+    b.code || '2---02',
     2,
     77.50,
     2,
@@ -1187,7 +1187,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---03',
+    b.code || '3---03',
     3,
     92.00,
     2,
@@ -1212,7 +1212,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---04',
+    b.code || '4---04',
     4,
     107.75,
     3,
@@ -1237,7 +1237,7 @@ INSERT INTO data.units (
 SELECT
     gen_random_uuid(),
     b.id,
-    b.code || '---05',
+    b.code || '5---05',
     5,
     85.50,
     2,
@@ -1247,4 +1247,5 @@ SELECT
 FROM data.buildings b
 WHERE b.code = 'J'
 ON CONFLICT (building_id, code) DO NOTHING;
+
 
