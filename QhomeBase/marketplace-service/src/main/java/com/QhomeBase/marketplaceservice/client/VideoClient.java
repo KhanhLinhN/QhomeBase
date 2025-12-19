@@ -88,11 +88,14 @@ public class VideoClient {
     }
 
     /**
-     * Get video streaming URL
+     * Get video streaming URL (relative path)
+     * Returns relative path - client should prepend base URL from app_config.dart
      * @param videoId UUID of the video
-     * @return Streaming URL for the video
+     * @return Relative path for the video stream (e.g., "/api/videos/stream/{videoId}")
      */
     public String getVideoStreamingUrl(UUID videoId) {
-        return dataDocsServiceUrl + "/api/videos/stream/" + videoId;
+        // Return relative path - Flutter app will prepend base URL from app_config.dart
+        // This allows easy URL updates without database changes
+        return "/api/videos/stream/" + videoId;
     }
 }

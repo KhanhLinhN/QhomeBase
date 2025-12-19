@@ -119,7 +119,28 @@ public class VideoUploadController {
             String[] parts = fileUrl.split("/api/videos/stream/");
             if (parts.length > 1) {
                 String videoIdStr = parts[1].split("\\?")[0]; // Remove query params if any
-                return "/api/videos/stream/" + videoIdStr;
+                // Validate that videoIdStr matches the actual videoId
+                if (videoIdStr.equals(videoId.toString())) {
+                    return "/api/videos/stream/" + videoIdStr;
+                }
+            }
+        }
+        
+        // If it's a full URL (starts with http:// or https://), extract path
+        if (fileUrl.startsWith("http://") || fileUrl.startsWith("https://")) {
+            try {
+                java.net.URL url = new java.net.URL(fileUrl);
+                String path = url.getPath();
+                if (path != null && !path.isEmpty() && path.contains("/api/videos/stream/")) {
+                    // Extract relative path from full URL
+                    String[] parts = path.split("/api/videos/stream/");
+                    if (parts.length > 1) {
+                        String videoIdStr = parts[1].split("\\?")[0];
+                        return "/api/videos/stream/" + videoIdStr;
+                    }
+                }
+            } catch (Exception e) {
+                // If URL parsing fails, fall through to use videoId
             }
         }
         
