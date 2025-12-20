@@ -709,7 +709,7 @@ public class MaintenanceRequestService {
         if (existingNotes == null || existingNotes.isBlank()) {
             request.setProgressNotes(formattedNote);
         } else {
-            request.setProgressNotes(existingNotes + "\n\n" + formattedNote);
+            request.setProgressNotes(existingNotes + "\n" + formattedNote);
         }
 
         // Update cost if provided (if null, keep original estimated cost)
