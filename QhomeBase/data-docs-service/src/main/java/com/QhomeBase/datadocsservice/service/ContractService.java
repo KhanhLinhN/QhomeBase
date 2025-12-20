@@ -190,6 +190,7 @@ public class ContractService {
         if (request.getNotes() != null) {
             contract.setNotes(request.getNotes());
         }
+        String oldStatus = contract.getStatus();
         if (request.getStatus() != null) {
             contract.setStatus(request.getStatus());
         }
@@ -206,6 +207,21 @@ public class ContractService {
 
         contract.setUpdatedBy(updatedBy);
         contract = contractRepository.save(contract);
+        
+        // If contract status changed to CANCELLED or EXPIRED, handle contract end
+        // This ensures household is deactivated when contract is cancelled/expired via updateContract
+        String newStatus = contract.getStatus();
+        if (oldStatus != null && !oldStatus.equals(newStatus) && 
+            ("CANCELLED".equals(newStatus) || "EXPIRED".equals(newStatus)) &&
+            "RENTAL".equals(currentType) &&
+            contract.getUnitId() != null) {
+            log.info("Contract {} status changed from {} to {} via updateContract, handling contract end", 
+                    contractId, oldStatus, newStatus);
+            // Flush to ensure status change is committed before calling base-service
+            entityManager.flush();
+            handleContractEnd(contract.getUnitId());
+        }
+        
         log.info("Updated contract: {}", contractId);
 
         return toDto(contract);
