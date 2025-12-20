@@ -15,6 +15,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -45,22 +47,19 @@ public class AccountProvideController {
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (IllegalArgumentException | IllegalStateException e) {
             log.warn("Failed to provision primary resident for unit {}: {}", unitId, e.getMessage());
-            // Return proper error response with message
-            GlobalExceptionHandler.ErrorResponse error = new GlobalExceptionHandler.ErrorResponse(
-                    HttpStatus.BAD_REQUEST.value(),
-                    e.getMessage() != null ? e.getMessage() : "Failed to provision primary resident",
-                    Instant.now()
-            );
-            return ResponseEntity.badRequest().body(error);
+            // Return error message in response body so frontend can display it
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("status", HttpStatus.BAD_REQUEST.value());
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("timestamp", Instant.now().toString());
+            return ResponseEntity.badRequest().body(errorResponse);
         } catch (Exception e) {
             log.error("Unexpected error while provisioning primary resident for unit {}", unitId, e);
-            // Return proper error response with message
-            GlobalExceptionHandler.ErrorResponse error = new GlobalExceptionHandler.ErrorResponse(
-                    HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                    e.getMessage() != null ? e.getMessage() : "Internal server error",
-                    Instant.now()
-            );
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
+            errorResponse.put("message", e.getMessage() != null ? e.getMessage() : "Internal server error");
+            errorResponse.put("timestamp", Instant.now().toString());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
 }
