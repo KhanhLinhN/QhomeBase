@@ -1053,6 +1053,8 @@ public class ResidentCardRegistrationService {
             
             // Query để lấy danh sách thành viên và check xem họ đã có thẻ được approve chưa
             // Thêm thông tin về household kind để Flutter có thể verify
+            // Chỉ lấy những household members đã được admin approve (có request với status APPROVED)
+            // OWNER (primary member) luôn được phép, không cần request
             List<Map<String, Object>> members = jdbcTemplate.query("""
                     SELECT DISTINCT
                         r.id AS resident_id,
@@ -1085,6 +1087,21 @@ public class ResidentCardRegistrationService {
                     WHERE h.unit_id = :unitId
                       AND (hm.left_at IS NULL OR hm.left_at >= CURRENT_DATE)
                       AND (h.end_date IS NULL OR h.end_date >= CURRENT_DATE)
+                      AND (
+                          -- OWNER (primary member) luôn được phép
+                          hm.is_primary = true
+                          OR
+                          -- Hoặc có request đã được approve
+                          EXISTS (
+                              SELECT 1 FROM data.household_member_requests hmr
+                              WHERE hmr.household_id = hm.household_id
+                                AND (hmr.resident_id = r.id 
+                                     OR (hmr.resident_id IS NULL 
+                                         AND hmr.resident_national_id = r.national_id
+                                         AND hmr.resident_phone = r.phone))
+                                AND hmr.status = 'APPROVED'
+                          )
+                      )
                     ORDER BY r.full_name
                     """, params, (rs, rowNum) -> {
                 Map<String, Object> member = new HashMap<>();
