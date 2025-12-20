@@ -207,10 +207,24 @@ public class ServiceBookingController {
                     .body(Map.of("success", false, "message", e.getMessage()));
         }
         String bookingId = result.bookingId() != null ? result.bookingId().toString() : "";
+        String responseCode = result.responseCode() != null 
+                ? java.net.URLEncoder.encode(result.responseCode(), java.nio.charset.StandardCharsets.UTF_8)
+                : "";
+        
+        // Build message based on payment result
+        String message;
+        if (result.success()) {
+            message = "Đã thanh toán dịch vụ thành công";
+        } else {
+            message = "Thanh toán không thành công. Vui lòng thử lại.";
+        }
+        String encodedMessage = java.net.URLEncoder.encode(message, java.nio.charset.StandardCharsets.UTF_8);
+        
         String redirectUrl = new StringBuilder("qhomeapp://vnpay-service-booking-result")
                 .append("?bookingId=").append(bookingId)
-                .append("&responseCode=").append(result.responseCode() != null ? result.responseCode() : "")
+                .append("&responseCode=").append(responseCode)
                 .append("&success=").append(result.success())
+                .append("&message=").append(encodedMessage)
                 .toString();
         response.sendRedirect(redirectUrl);
 

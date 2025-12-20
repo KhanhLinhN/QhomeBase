@@ -124,5 +124,22 @@ public class UserController {
             return ResponseEntity.status(500).body(errorResponse);
         }
     }
+
+    @GetMapping("/{userId}/email")
+    @PreAuthorize("hasAnyRole('RESIDENT', 'ADMIN', 'STAFF')")
+    @Transactional(readOnly = true)
+    public ResponseEntity<String> getUserEmail(@PathVariable UUID userId) {
+        try {
+            ResidentAccountDto accountDto = iamClientService.getUserAccountInfo(userId);
+            if (accountDto == null) {
+                log.warn("User account not found in IAM service for userId: {}", userId);
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok(accountDto.email() != null ? accountDto.email() : "");
+        } catch (Exception e) {
+            log.warn("Error getting user email for userId {}: {}", userId, e.getMessage());
+            return ResponseEntity.status(500).body("");
+        }
+    }
 }
 
