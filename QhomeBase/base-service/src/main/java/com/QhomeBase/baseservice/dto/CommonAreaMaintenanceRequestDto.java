@@ -1,0 +1,33 @@
+package com.QhomeBase.baseservice.dto;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
+
+public record CommonAreaMaintenanceRequestDto(
+        UUID id,
+        UUID buildingId,
+        UUID residentId,
+        UUID userId,
+        UUID createdBy,
+        String areaType,
+        String title,
+        String description,
+        List<String> attachments,
+        String location,
+        String contactName,
+        String contactPhone,
+        String note,
+        String status,
+        OffsetDateTime createdAt,
+        OffsetDateTime updatedAt,
+        String adminResponse,
+        BigDecimal estimatedCost,
+        UUID respondedBy,
+        OffsetDateTime respondedAt,
+        String responseStatus,
+        String progressNotes,
+        UUID assignedTo,
+        OffsetDateTime completedAt
+) {}
