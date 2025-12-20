@@ -524,13 +524,29 @@ public class MaintenanceRequestService {
         if (residentId == null) {
             return;
         }
-        boolean hasPending = maintenanceRequestRepository
-                .existsByResidentIdAndStatusIgnoreCase(residentId, STATUS_PENDING);
-        boolean hasInProgress = maintenanceRequestRepository
-                .existsByResidentIdAndStatusIgnoreCase(residentId, STATUS_IN_PROGRESS);
-        if (hasPending || hasInProgress) {
-            throw new IllegalStateException(
-                    "Bạn đang có yêu cầu sửa chữa chưa hoàn tất. Vui lòng chờ đơn hiện tại sang trạng thái DONE trước khi tạo thêm.");
+        
+        // Check if resident has any active request (status not DONE or CANCELLED)
+        // This includes: NEW, PENDING, IN_PROGRESS, DENIED, etc.
+        boolean hasActiveRequest = maintenanceRequestRepository.existsActiveRequestByResidentId(residentId);
+        
+        if (hasActiveRequest) {
+            // Get the active request to show more details
+            List<MaintenanceRequest> activeRequests = maintenanceRequestRepository
+                    .findByResidentIdOrderByCreatedAtDesc(residentId)
+                    .stream()
+                    .filter(r -> !STATUS_DONE.equals(r.getStatus()) && !STATUS_CANCELLED.equals(r.getStatus()))
+                    .limit(1)
+                    .toList();
+            
+            if (!activeRequests.isEmpty()) {
+                MaintenanceRequest activeRequest = activeRequests.get(0);
+                throw new IllegalStateException(
+                        String.format("Bạn đang có yêu cầu sửa chữa chưa xử lý (trạng thái: %s). Vui lòng chờ yêu cầu hiện tại chuyển sang trạng thái DONE hoặc CANCELLED trước khi tạo yêu cầu mới.",
+                                activeRequest.getStatus()));
+            } else {
+                throw new IllegalStateException(
+                        "Bạn đang có yêu cầu sửa chữa chưa xử lý. Vui lòng chờ yêu cầu hiện tại chuyển sang trạng thái DONE hoặc CANCELLED trước khi tạo yêu cầu mới.");
+            }
         }
     }
 

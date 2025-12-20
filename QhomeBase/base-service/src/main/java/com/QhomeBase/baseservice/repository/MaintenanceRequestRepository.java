@@ -61,5 +61,13 @@ public interface MaintenanceRequestRepository extends JpaRepository<MaintenanceR
             "and m.paymentStatus = 'PAID' " +
             "order by m.paymentDate desc nulls last, m.createdAt desc")
     List<MaintenanceRequest> findByResidentIdAndPaymentStatusPaid(@Param("residentId") UUID residentId);
+
+    /**
+     * Check if resident has any active maintenance request (status not DONE or CANCELLED)
+     */
+    @Query("select count(m) > 0 from MaintenanceRequest m " +
+            "where m.residentId = :residentId " +
+            "and m.status not in ('DONE', 'CANCELLED')")
+    boolean existsActiveRequestByResidentId(@Param("residentId") UUID residentId);
 }
 
