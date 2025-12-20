@@ -1402,8 +1402,13 @@ public class ContractService {
         
         // Always create asset inspection when contract is cancelled
         // Use the selected date (scheduledDate) as inspectionDate instead of scheduledDate
-        // If scheduledDate is null, use today as inspectionDate
-        java.time.LocalDate inspectionDate = scheduledDate != null ? scheduledDate : java.time.LocalDate.now();
+        // If scheduledDate is null, use contract endDate as inspectionDate (not today, not last day of month)
+        java.time.LocalDate inspectionDate = scheduledDate != null ? scheduledDate : contract.getEndDate();
+        if (inspectionDate == null) {
+            // Fallback to today only if contract has no endDate (should not happen for RENTAL contracts)
+            inspectionDate = java.time.LocalDate.now();
+            log.warn("Contract {} has no endDate, using today as inspectionDate", contractId);
+        }
         // The selected date is now stored in inspectionDate, not scheduledDate
         // Pass null for scheduledDate since we're using inspectionDate instead
         baseServiceClient.createAssetInspection(contractId, contract.getUnitId(), inspectionDate, null);
