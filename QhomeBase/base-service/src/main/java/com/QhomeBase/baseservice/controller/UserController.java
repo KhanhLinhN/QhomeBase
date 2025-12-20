@@ -141,5 +141,28 @@ public class UserController {
             return ResponseEntity.status(500).body("");
         }
     }
+
+    @GetMapping("/check-username/{username}")
+    @PreAuthorize("hasAnyRole('RESIDENT', 'ADMIN', 'STAFF')")
+    @Transactional(readOnly = true)
+    public ResponseEntity<Map<String, Object>> checkUsernameAvailability(@PathVariable String username) {
+        try {
+            boolean exists = iamClientService.usernameExists(username);
+            return ResponseEntity.ok(Map.of(
+                    "username", username,
+                    "available", !exists,
+                    "message", exists 
+                            ? "Username '" + username + "' đã được sử dụng trong hệ thống. Vui lòng chọn username khác."
+                            : "Username có thể sử dụng."
+            ));
+        } catch (Exception e) {
+            log.warn("Error checking username availability for {}: {}", username, e.getMessage());
+            return ResponseEntity.status(500).body(Map.of(
+                    "username", username,
+                    "available", false,
+                    "message", "Không thể kiểm tra username. Vui lòng thử lại."
+            ));
+        }
+    }
 }
 

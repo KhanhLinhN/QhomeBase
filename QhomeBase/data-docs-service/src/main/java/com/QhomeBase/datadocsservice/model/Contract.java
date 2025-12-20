@@ -83,6 +83,9 @@ public class Contract {
     @Column(name = "renewal_reminder_sent_at")
     private OffsetDateTime renewalReminderSentAt;
 
+    @Column(name = "third_reminder_sent_at")
+    private OffsetDateTime thirdReminderSentAt;
+
     @Column(name = "renewal_declined_at")
     private OffsetDateTime renewalDeclinedAt;
 

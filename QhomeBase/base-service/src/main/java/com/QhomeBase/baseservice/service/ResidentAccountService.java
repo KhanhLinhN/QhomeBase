@@ -316,8 +316,9 @@ public class ResidentAccountService {
                 throw new IllegalArgumentException("Username can only contain letters, numbers, underscore, and hyphen");
             }
             
+            // Validate username uniqueness in database
             if (iamClientService.usernameExists(username)) {
-                throw new IllegalArgumentException("Username already exists: " + username);
+                throw new IllegalArgumentException("Username '" + username + "' đã được sử dụng trong hệ thống. Vui lòng chọn username khác.");
             }
         }
 

@@ -967,6 +967,108 @@ public class ContractService {
         }
     }
 
+    /**
+     * Set third reminder sent timestamp when third reminder is sent
+     */
+    @Transactional
+    public void setThirdReminderSentAt(UUID contractId) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+
+        if (!"RENTAL".equals(contract.getContractType())) {
+            throw new IllegalArgumentException("Only RENTAL contracts can have third reminder timestamp");
+        }
+
+        contract.setThirdReminderSentAt(OffsetDateTime.now());
+        contractRepository.save(contract);
+        log.info("Set third reminder sent timestamp for contract: {}", contractId);
+    }
+
+    /**
+     * Auto-cancel contract after 24 hours from third reminder if user hasn't taken action
+     * This method is called by scheduled task
+     */
+    @Transactional
+    public int autoCancelContractsAfterThirdReminder() {
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime twentyFourHoursAgo = now.minusHours(24);
+        
+        // Find contracts that:
+        // 1. Are RENTAL type
+        // 2. Are ACTIVE status
+        // 3. Have thirdReminderSentAt set (third reminder was sent)
+        // 4. thirdReminderSentAt was more than 24 hours ago
+        // 5. Still in REMINDED status (user hasn't taken action)
+        // 6. Not already renewed (renewedContractId is null)
+        List<Contract> contractsToCancel = contractRepository.findAll().stream()
+                .filter(c -> "RENTAL".equals(c.getContractType()))
+                .filter(c -> "ACTIVE".equals(c.getStatus()))
+                .filter(c -> "REMINDED".equals(c.getRenewalStatus()))
+                .filter(c -> c.getThirdReminderSentAt() != null)
+                .filter(c -> c.getThirdReminderSentAt().isBefore(twentyFourHoursAgo))
+                .filter(c -> c.getRenewedContractId() == null)
+                .filter(c -> c.getEndDate() != null)
+                .toList();
+
+        int cancelledCount = 0;
+        for (Contract contract : contractsToCancel) {
+            try {
+                log.info("🔄 Auto-cancelling contract {} after 24 hours from third reminder (thirdReminderSentAt: {})", 
+                        contract.getContractNumber(), contract.getThirdReminderSentAt());
+                
+                // Auto-cancel contract without permission check (system action)
+                autoCancelContractWithoutPermissionCheck(contract.getId(), contract.getEndDate());
+                cancelledCount++;
+                
+                log.info("✅ Auto-cancelled contract {} (inspectionDate set to endDate: {})", 
+                        contract.getContractNumber(), contract.getEndDate());
+            } catch (Exception e) {
+                log.error("❌ Error auto-cancelling contract {}: {}", contract.getId(), e.getMessage(), e);
+            }
+        }
+
+        return cancelledCount;
+    }
+
+    /**
+     * Auto-cancel contract without permission check (for system scheduled tasks)
+     * Sets inspectionDate to the contract's endDate
+     */
+    @Transactional
+    private void autoCancelContractWithoutPermissionCheck(UUID contractId, LocalDate inspectionDate) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+        
+        if (!"RENTAL".equals(contract.getContractType())) {
+            throw new IllegalArgumentException("Only RENTAL contracts can be auto-cancelled");
+        }
+        
+        if (!"ACTIVE".equals(contract.getStatus())) {
+            throw new IllegalArgumentException("Only ACTIVE contracts can be auto-cancelled");
+        }
+        
+        contract.setStatus("CANCELLED");
+        contract.setRenewalStatus("DECLINED");
+        contract.setRenewalDeclinedAt(OffsetDateTime.now());
+        contract.setUpdatedBy(null); // System action, no user
+        contract = contractRepository.save(contract);
+        
+        // Flush to ensure the status change is committed to database before calling base-service
+        entityManager.flush();
+        
+        log.info("Auto-cancelled contract: {} (renewalStatus set to DECLINED)", contractId);
+        
+        // Create asset inspection with endDate as inspectionDate
+        LocalDate inspectionDateToUse = inspectionDate != null ? inspectionDate : contract.getEndDate();
+        if (inspectionDateToUse == null) {
+            inspectionDateToUse = LocalDate.now();
+        }
+        baseServiceClient.createAssetInspection(contractId, contract.getUnitId(), inspectionDateToUse, null);
+        
+        // Delete household or clear primaryResidentId when contract is cancelled
+        handleContractEnd(contract.getUnitId());
+    }
+
     @Transactional(readOnly = true)
     public List<Contract> findContractsNeedingSecondReminder() {
         OffsetDateTime sevenDaysAgo = OffsetDateTime.now().minusDays(7);
