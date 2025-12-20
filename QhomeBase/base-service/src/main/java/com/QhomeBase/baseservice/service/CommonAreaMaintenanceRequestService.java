@@ -2,19 +2,19 @@ package com.QhomeBase.baseservice.service;
 
 import com.QhomeBase.baseservice.dto.CommonAreaMaintenanceRequestDto;
 import com.QhomeBase.baseservice.dto.CreateCommonAreaMaintenanceRequestDto;
-import com.QhomeBase.baseservice.dto.AdminMaintenanceResponseDto;
+import com.QhomeBase.baseservice.dto.AdminCommonAreaMaintenanceResponseDto;
 import com.QhomeBase.baseservice.dto.AdminServiceRequestActionDto;
 import com.QhomeBase.baseservice.model.CommonAreaMaintenanceRequest;
 import com.QhomeBase.baseservice.model.Resident;
 import com.QhomeBase.baseservice.repository.CommonAreaMaintenanceRequestRepository;
 import com.QhomeBase.baseservice.repository.ResidentRepository;
+import com.QhomeBase.baseservice.service.NotificationClient;
 import jakarta.persistence.EntityManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -32,9 +32,7 @@ public class CommonAreaMaintenanceRequestService {
     private static final String STATUS_CANCELLED = "CANCELLED";
     private static final String STATUS_REJECTED = "REJECTED";
     
-    private static final String RESPONSE_STATUS_PENDING_APPROVAL = "PENDING_APPROVAL";
-    private static final String RESPONSE_STATUS_APPROVED = "APPROVED";
-    private static final String RESPONSE_STATUS_REJECTED = "REJECTED";
+    // Removed RESPONSE_STATUS constants - không cần nữa vì đơn giản hóa luồng
 
     private final CommonAreaMaintenanceRequestRepository repository;
     private final ResidentRepository residentRepository;
@@ -180,25 +178,24 @@ public class CommonAreaMaintenanceRequestService {
     public CommonAreaMaintenanceRequestDto respondToRequest(
             UUID adminId,
             UUID requestId,
-            AdminMaintenanceResponseDto dto) {
+            AdminCommonAreaMaintenanceResponseDto dto) {
         CommonAreaMaintenanceRequest request = repository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Common area maintenance request not found"));
 
         if (!STATUS_PENDING.equalsIgnoreCase(request.getStatus())) {
-            throw new IllegalStateException("Only pending requests can be responded to");
+            throw new IllegalStateException("Only pending requests can be approved");
         }
 
-        request.setAdminResponse(dto.adminResponse());
-        request.setEstimatedCost(dto.estimatedCost());
-        request.setRespondedBy(adminId);
-        request.setRespondedAt(OffsetDateTime.now());
-        request.setResponseStatus(RESPONSE_STATUS_PENDING_APPROVAL);
-        request.setStatus(STATUS_PENDING); // Keep as PENDING until resident approves
+        // Approve request - đơn giản chỉ đổi status sang IN_PROGRESS
+        request.setStatus(STATUS_IN_PROGRESS);
+        if (StringUtils.hasText(dto.adminResponse())) {
+            request.setAdminResponse(dto.adminResponse());
+        }
 
         CommonAreaMaintenanceRequest saved = repository.save(request);
-        notifyResidentResponse(saved);
-        log.info("Admin {} responded to common area maintenance request {}", adminId, requestId);
+        notifyResidentApproved(saved);
+        log.info("Admin {} approved common area maintenance request {}", adminId, requestId);
         return toDto(saved);
     }
 
@@ -215,10 +212,11 @@ public class CommonAreaMaintenanceRequestService {
             throw new IllegalStateException("Only pending requests can be denied");
         }
 
+        // Deny request - đơn giản chỉ đổi status sang REJECTED
         request.setStatus(STATUS_REJECTED);
-        request.setAdminResponse(dto.note());
-        request.setRespondedBy(adminId);
-        request.setRespondedAt(OffsetDateTime.now());
+        if (dto != null && StringUtils.hasText(dto.note())) {
+            request.setAdminResponse(dto.note());
+        }
 
         CommonAreaMaintenanceRequest saved = repository.save(request);
         notifyResidentDenied(saved);
@@ -239,14 +237,10 @@ public class CommonAreaMaintenanceRequestService {
             throw new IllegalStateException("Only in-progress requests can be completed");
         }
 
+        // Complete request - đơn giản chỉ đổi status sang COMPLETED
         request.setStatus(STATUS_COMPLETED);
-        request.setCompletedAt(OffsetDateTime.now());
         if (dto != null && StringUtils.hasText(dto.note())) {
-            String existingNotes = request.getProgressNotes();
-            String newNote = StringUtils.hasText(existingNotes)
-                    ? existingNotes + "\n" + dto.note()
-                    : dto.note();
-            request.setProgressNotes(newNote);
+            request.setAdminResponse(dto.note());
         }
 
         CommonAreaMaintenanceRequest saved = repository.save(request);
@@ -255,61 +249,7 @@ public class CommonAreaMaintenanceRequestService {
         return toDto(saved);
     }
 
-    @SuppressWarnings("null")
-    public CommonAreaMaintenanceRequestDto approveResponse(UUID userId, UUID requestId) {
-        Resident resident = residentRepository.findByUserId(userId)
-                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
-        
-        CommonAreaMaintenanceRequest request = repository.findById(requestId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Common area maintenance request not found"));
-
-        if (request.getResidentId() == null || !request.getResidentId().equals(resident.getId())) {
-            throw new IllegalArgumentException("You can only approve responses for your own requests");
-        }
-
-        if (!RESPONSE_STATUS_PENDING_APPROVAL.equalsIgnoreCase(request.getResponseStatus())) {
-            throw new IllegalStateException("No pending response to approve");
-        }
-
-        if (!STATUS_PENDING.equalsIgnoreCase(request.getStatus())) {
-            throw new IllegalStateException("Request status must be PENDING to approve response");
-        }
-
-        request.setResponseStatus(RESPONSE_STATUS_APPROVED);
-        request.setStatus(STATUS_IN_PROGRESS);
-
-        CommonAreaMaintenanceRequest saved = repository.save(request);
-        log.info("Resident {} approved response for common area maintenance request {}", 
-                resident.getId(), requestId);
-        return toDto(saved);
-    }
-
-    @SuppressWarnings("null")
-    public CommonAreaMaintenanceRequestDto rejectResponse(UUID userId, UUID requestId) {
-        Resident resident = residentRepository.findByUserId(userId)
-                .orElseThrow(() -> new IllegalArgumentException("Resident profile not found"));
-        
-        CommonAreaMaintenanceRequest request = repository.findById(requestId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Common area maintenance request not found"));
-
-        if (request.getResidentId() == null || !request.getResidentId().equals(resident.getId())) {
-            throw new IllegalArgumentException("You can only reject responses for your own requests");
-        }
-
-        if (!RESPONSE_STATUS_PENDING_APPROVAL.equalsIgnoreCase(request.getResponseStatus())) {
-            throw new IllegalStateException("No pending response to reject");
-        }
-
-        request.setResponseStatus(RESPONSE_STATUS_REJECTED);
-        request.setStatus(STATUS_CANCELLED);
-        CommonAreaMaintenanceRequest saved = repository.save(request);
-        notifyResidentResponseRejected(saved);
-        log.info("Resident {} rejected response for common area maintenance request {}", 
-                resident.getId(), requestId);
-        return toDto(saved);
-    }
+    // Removed approveResponse and rejectResponse - không cần resident approve/reject response nữa
 
     @SuppressWarnings("null")
     public CommonAreaMaintenanceRequestDto cancelRequest(UUID userId, UUID requestId) {
@@ -331,53 +271,13 @@ public class CommonAreaMaintenanceRequestService {
         }
 
         request.setStatus(STATUS_CANCELLED);
-        if (request.getResponseStatus() == null || 
-                RESPONSE_STATUS_PENDING_APPROVAL.equalsIgnoreCase(request.getResponseStatus())) {
-            request.setResponseStatus(RESPONSE_STATUS_REJECTED);
-        }
         CommonAreaMaintenanceRequest saved = repository.save(request);
         return toDto(saved);
     }
 
-    @SuppressWarnings("null")
-    public CommonAreaMaintenanceRequestDto assignToStaff(UUID adminId, UUID requestId, UUID staffId) {
-        CommonAreaMaintenanceRequest request = repository.findById(requestId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Common area maintenance request not found"));
+    // Removed assignToStaff and addProgressNote - đơn giản hóa luồng, không cần các chức năng này
 
-        if (!STATUS_PENDING.equalsIgnoreCase(request.getStatus()) && 
-                !STATUS_IN_PROGRESS.equalsIgnoreCase(request.getStatus())) {
-            throw new IllegalStateException("Can only assign pending or in-progress requests");
-        }
-
-        request.setAssignedTo(staffId);
-        if (STATUS_PENDING.equalsIgnoreCase(request.getStatus())) {
-            request.setStatus(STATUS_IN_PROGRESS);
-        }
-
-        CommonAreaMaintenanceRequest saved = repository.save(request);
-        log.info("Admin {} assigned common area maintenance request {} to staff {}", 
-                adminId, requestId, staffId);
-        return toDto(saved);
-    }
-
-    @SuppressWarnings("null")
-    public CommonAreaMaintenanceRequestDto addProgressNote(UUID adminId, UUID requestId, String note) {
-        CommonAreaMaintenanceRequest request = repository.findById(requestId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Common area maintenance request not found"));
-
-        String existingNotes = request.getProgressNotes();
-        String newNote = StringUtils.hasText(existingNotes)
-                ? existingNotes + "\n" + note
-                : note;
-        request.setProgressNotes(newNote);
-
-        CommonAreaMaintenanceRequest saved = repository.save(request);
-        return toDto(saved);
-    }
-
-    private void notifyResidentResponse(CommonAreaMaintenanceRequest request) {
+    private void notifyResidentApproved(CommonAreaMaintenanceRequest request) {
         if (request.getResidentId() == null) {
             log.warn("⚠️ [CommonAreaMaintenanceRequest] Missing residentId for request {}", request.getId());
             return;
@@ -385,14 +285,7 @@ public class CommonAreaMaintenanceRequestService {
 
         StringBuilder body = new StringBuilder("Yêu cầu bảo trì khu vực chung \"")
                 .append(request.getTitle())
-                .append("\" đã nhận được phản hồi từ admin.");
-        
-        if (request.getEstimatedCost() != null) {
-            body.append(" Chi phí ước tính: ")
-                    .append(String.format("%,.0f", request.getEstimatedCost()))
-                    .append(" VNĐ.");
-        }
-        body.append(" Vui lòng xem chi tiết và xác nhận.");
+                .append("\" đã được admin duyệt và đang được xử lý.");
 
         Map<String, String> data = new HashMap<>();
         data.put("entity", "COMMON_AREA_MAINTENANCE_REQUEST");
@@ -453,10 +346,6 @@ public class CommonAreaMaintenanceRequestService {
         StringBuilder body = new StringBuilder("Yêu cầu bảo trì khu vực chung \"")
                 .append(request.getTitle())
                 .append("\" đã hoàn tất.");
-        
-        if (request.getProgressNotes() != null && !request.getProgressNotes().isBlank()) {
-            body.append(" ").append(request.getProgressNotes());
-        }
 
         Map<String, String> data = new HashMap<>();
         data.put("entity", "COMMON_AREA_MAINTENANCE_REQUEST");
@@ -476,13 +365,10 @@ public class CommonAreaMaintenanceRequestService {
         );
     }
 
-    private void notifyResidentResponseRejected(CommonAreaMaintenanceRequest request) {
-        // Log for admin awareness - admin can view via API
-        log.info("Resident {} rejected response for common area maintenance request {}", 
-                request.getResidentId(), request.getId());
-    }
+    // Removed notifyResidentResponseRejected - không cần nữa vì không có resident reject response
 
     private CommonAreaMaintenanceRequestDto toDto(CommonAreaMaintenanceRequest entity) {
+        // Đơn giản hóa DTO - chỉ trả về các field cần thiết
         return new CommonAreaMaintenanceRequestDto(
                 entity.getId(),
                 entity.getBuildingId(),
@@ -500,14 +386,7 @@ public class CommonAreaMaintenanceRequestService {
                 entity.getStatus(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt(),
-                entity.getAdminResponse(),
-                entity.getEstimatedCost(),
-                entity.getRespondedBy(),
-                entity.getRespondedAt(),
-                entity.getResponseStatus(),
-                entity.getProgressNotes(),
-                entity.getAssignedTo(),
-                entity.getCompletedAt()
+                entity.getAdminResponse()
         );
     }
 }

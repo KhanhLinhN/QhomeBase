@@ -19,8 +19,6 @@ public interface CommonAreaMaintenanceRequestRepository extends
     
     List<CommonAreaMaintenanceRequest> findByBuildingIdOrderByCreatedAtDesc(UUID buildingId);
     
-    List<CommonAreaMaintenanceRequest> findByAssignedToOrderByCreatedAtDesc(UUID assignedTo);
-    
     List<CommonAreaMaintenanceRequest> findByResidentIdAndStatusNotIn(
             UUID residentId, 
             List<String> excludedStatuses

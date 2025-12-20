@@ -1,6 +1,5 @@
 package com.QhomeBase.baseservice.dto;
 
-import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -22,12 +21,5 @@ public record CommonAreaMaintenanceRequestDto(
         String status,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
-        String adminResponse,
-        BigDecimal estimatedCost,
-        UUID respondedBy,
-        OffsetDateTime respondedAt,
-        String responseStatus,
-        String progressNotes,
-        UUID assignedTo,
-        OffsetDateTime completedAt
+        String adminResponse // Optional - admin can add notes when approve/deny/complete
 ) {}

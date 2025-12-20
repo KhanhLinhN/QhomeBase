@@ -70,28 +70,7 @@ public class CommonAreaMaintenanceRequest {
     private OffsetDateTime updatedAt;
 
     @Column(name = "admin_response", columnDefinition = "TEXT")
-    private String adminResponse;
-
-    @Column(name = "estimated_cost", precision = 15, scale = 2)
-    private java.math.BigDecimal estimatedCost;
-
-    @Column(name = "responded_by")
-    private UUID respondedBy;
-
-    @Column(name = "responded_at")
-    private OffsetDateTime respondedAt;
-
-    @Column(name = "response_status", length = 50)
-    private String responseStatus;
-
-    @Column(name = "progress_notes", columnDefinition = "TEXT")
-    private String progressNotes;
-
-    @Column(name = "assigned_to")
-    private UUID assignedTo; // Staff assigned to handle this request
-
-    @Column(name = "completed_at")
-    private OffsetDateTime completedAt;
+    private String adminResponse; // Optional - admin can add notes when approve/deny/complete
 
     @PrePersist
     public void onCreate() {
