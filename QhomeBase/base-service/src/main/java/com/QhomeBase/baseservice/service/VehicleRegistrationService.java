@@ -211,6 +211,7 @@ public class VehicleRegistrationService {
 
         var vehicle = request.getVehicle();
         if (vehicle == null) {
+            log.warn("⚠️ [VehicleRegistration] Cannot send approval notification: vehicle is null for request {}", request.getId());
             return;
         }
 
@@ -224,7 +225,13 @@ public class VehicleRegistrationService {
         if (payerResidentId == null) {
             payerResidentId = vehicle.getResidentId();
         }
+        
+        if (payerResidentId == null) {
+            log.warn("⚠️ [VehicleRegistration] Cannot send approval notification: residentId is null for request {}", request.getId());
+            return;
+        }
 
+        // Send to finance billing service
         var event = VehicleActivatedEvent.builder()
                 .vehicleId(vehicle.getId())
                 .unitId(unitId)
@@ -236,6 +243,37 @@ public class VehicleRegistrationService {
                 .build();
 
         financeBillingClient.notifyVehicleActivatedSync(event);
+        
+        // Send private notification to resident
+        try {
+            String plateNo = vehicle.getPlateNo() != null ? vehicle.getPlateNo() : "xe";
+            String title = "Yêu cầu đăng ký thẻ xe đã được chấp nhận";
+            String message = String.format("Yêu cầu đăng ký thẻ xe với biển số %s đã được chấp nhận. Thẻ xe của bạn đã được kích hoạt.", plateNo);
+
+            java.util.Map<String, String> data = new java.util.HashMap<>();
+            data.put("requestId", request.getId().toString());
+            data.put("status", "APPROVED");
+            data.put("plateNo", plateNo);
+            if (request.getNote() != null && !request.getNote().isBlank()) {
+                data.put("note", request.getNote());
+            }
+
+            // Send PRIVATE notification to resident (buildingId = null for private notification)
+            notificationClient.sendResidentNotification(
+                    payerResidentId,
+                    null, // buildingId = null for private notification (riêng tư)
+                    "REQUEST",
+                    title,
+                    message,
+                    request.getId(),
+                    "VEHICLE_REGISTRATION",
+                    data
+            );
+            
+            log.info("✅ [VehicleRegistration] Sent approval notification to resident {} for request {}", payerResidentId, request.getId());
+        } catch (Exception e) {
+            log.error("❌ [VehicleRegistration] Failed to send approval notification for request {}: {}", request.getId(), e.getMessage(), e);
+        }
     }
 
     private void notifyVehicleRejected(VehicleRegistrationRequest request, String reason) {
@@ -287,6 +325,8 @@ public class VehicleRegistrationService {
                     "VEHICLE_REGISTRATION",
                     data
             );
+            
+            log.info("✅ [VehicleRegistration] Sent rejection notification to resident {} for request {}", residentId, request.getId());
         } catch (Exception e) {
             log.error("❌ [VehicleRegistration] Failed to send rejection notification for request {}: {}", request.getId(), e.getMessage(), e);
         }

@@ -432,6 +432,9 @@ public class NotificationService {
     }
 
     public void createInternalNotification(com.QhomeBase.customerinteractionservice.dto.notification.InternalNotificationRequest request) {
+        log.info("📥 [NotificationService] Received internal notification request | Type: {} | ResidentId: {} | Title: {} | ReferenceType: {} | ReferenceId: {}", 
+                request.getType(), request.getResidentId(), request.getTitle(), request.getReferenceType(), request.getReferenceId());
+        
         NotificationType type = request.getType();
         
         // Validate: All card-related notifications require residentId (private notifications)
@@ -446,6 +449,8 @@ public class NotificationService {
         
             // If residentId is provided, send directly to that resident (private notification)
         if (request.getResidentId() != null) {
+            log.info("📤 [NotificationService] Processing private notification for residentId: {} | Type: {} | ReferenceType: {}", 
+                    request.getResidentId(), request.getType(), request.getReferenceType());
             // Check if notification already exists for this referenceId, type, and residentId
             // This prevents duplicate FCM push and WebSocket notifications when admin approves/denies the same request multiple times
             boolean shouldSendNotifications = true;
@@ -513,6 +518,8 @@ public class NotificationService {
                     .build();
 
             Notification savedNotification = notificationRepository.save(notification);
+            log.info("💾 [NotificationService] Saved notification to database | ID: {} | ResidentId: {} | Type: {} | ReferenceType: {}", 
+                    savedNotification.getId(), request.getResidentId(), request.getType(), request.getReferenceType());
             
             // Send WebSocket notification ONLY if we also sent FCM push (i.e., no duplicate)
             // This ensures both FCM and WebSocket are sent together, or both are skipped together
@@ -520,8 +527,15 @@ public class NotificationService {
                 // Send WebSocket notification - will automatically route to resident-specific channel
                 // since targetResidentId is set, it won't broadcast to building/external channels
                 sendWebSocketNotification(savedNotification, "NOTIFICATION_CREATED");
+                log.info("🔔 [NotificationService] Sent WebSocket notification | Notification ID: {} | ResidentId: {} | Type: {}", 
+                        savedNotification.getId(), request.getResidentId(), request.getType());
+            } else {
+                log.warn("⚠️ [NotificationService] Skipped WebSocket notification (duplicate detected) | Notification ID: {} | ResidentId: {} | Type: {}", 
+                        savedNotification.getId(), request.getResidentId(), request.getType());
             }
         } else {
+            log.warn("⚠️ [NotificationService] No residentId provided, using fallback notification creation | Type: {} | BuildingId: {}", 
+                    request.getType(), request.getBuildingId());
             // Fallback to regular notification creation
             CreateNotificationRequest createRequest = CreateNotificationRequest.builder()
                     .type(request.getType())
