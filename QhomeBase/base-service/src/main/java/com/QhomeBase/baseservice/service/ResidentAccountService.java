@@ -522,6 +522,7 @@ public class ResidentAccountService {
                 .collect(Collectors.toList());
     }
 
+
     private AccountCreationRequestDto mapToDto(AccountCreationRequest request) {
         Resident resident = residentRepository.findById(request.getResidentId())
                 .orElse(null);

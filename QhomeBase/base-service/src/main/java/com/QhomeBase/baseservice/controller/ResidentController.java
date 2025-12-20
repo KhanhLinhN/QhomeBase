@@ -65,6 +65,7 @@ public class ResidentController {
                     .body(Map.of("message", e.getMessage()));
         }
     }
+
     
     @GetMapping("/my-account-requests")
     @PreAuthorize("hasRole('RESIDENT')")
