@@ -451,14 +451,19 @@ public class HouseholdMemberRequestService {
             return;
         }
 
-        // Validate: không có khoảng trắng
+        // Validate: không được có dấu cách
         if (normalizedId.contains(" ")) {
-            throw new IllegalArgumentException("CCCD không được chứa khoảng trắng");
+            throw new IllegalArgumentException("CCCD không được chứa dấu cách");
         }
 
-        // Validate: không có ký tự đặc biệt (chỉ cho phép chữ và số)
-        if (!normalizedId.matches("^[a-zA-Z0-9]+$")) {
-            throw new IllegalArgumentException("CCCD không được chứa ký tự đặc biệt");
+        // Validate: không được có ký tự đặc biệt (chỉ cho phép số)
+        if (!normalizedId.matches("^[0-9]+$")) {
+            throw new IllegalArgumentException("CCCD chỉ được chứa chữ số, không được có ký tự đặc biệt");
+        }
+
+        // Validate: phải có đúng 12 chữ số
+        if (!normalizedId.matches("^[0-9]{12}$")) {
+            throw new IllegalArgumentException("CCCD phải có đúng 12 chữ số");
         }
 
         // Validate: không trùng với CCCD khác trong database
@@ -475,6 +480,21 @@ public class HouseholdMemberRequestService {
         String normalizedPhone = createDto.residentPhone().trim();
         if (normalizedPhone.isEmpty()) {
             return;
+        }
+
+        // Validate: không được có dấu cách
+        if (normalizedPhone.contains(" ")) {
+            throw new IllegalArgumentException("Số điện thoại không được chứa dấu cách");
+        }
+
+        // Validate: không được có ký tự đặc biệt (chỉ cho phép số)
+        if (!normalizedPhone.matches("^[0-9]+$")) {
+            throw new IllegalArgumentException("Số điện thoại chỉ được chứa chữ số, không được có ký tự đặc biệt");
+        }
+
+        // Validate: phải có đúng 10 số và bắt đầu từ số 0
+        if (!normalizedPhone.matches("^0[0-9]{9}$")) {
+            throw new IllegalArgumentException("Số điện thoại phải có đúng 10 số và bắt đầu từ số 0");
         }
 
         if (residentRepository.existsByPhone(normalizedPhone)) {
