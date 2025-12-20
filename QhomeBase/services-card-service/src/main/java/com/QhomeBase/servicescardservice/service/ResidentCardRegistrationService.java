@@ -344,17 +344,6 @@ public class ResidentCardRegistrationService {
 
     private void sendCardApprovalNotification(ResidentCardRegistration registration, String issueMessage, OffsetDateTime issueTime) {
         try {
-            // Check if already approved - don't send notification if already approved to avoid duplicate
-            if (STATUS_APPROVED.equalsIgnoreCase(registration.getStatus()) 
-                    && registration.getApprovedAt() != null 
-                    && registration.getApprovedBy() != null) {
-                // Double-check: if approvedAt was set before this call, skip notification
-                // This prevents duplicate notifications if method is called multiple times
-                log.warn("⚠️ [ResidentCard] Registration {} already approved. Skipping notification to avoid duplicate FCM push.", 
-                        registration.getId());
-                return;
-            }
-            
             // CARD_APPROVED is PRIVATE - only resident who created the request can see
             // Get residentId from userId (người tạo request) instead of residentId (người được đăng ký thẻ)
             UUID requesterResidentId = residentUnitLookupService.resolveByUser(
