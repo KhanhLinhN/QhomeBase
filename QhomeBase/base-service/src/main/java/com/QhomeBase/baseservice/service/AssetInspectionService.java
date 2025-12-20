@@ -192,8 +192,12 @@ public class AssetInspectionService {
         AssetInspection inspection = inspectionRepository.findById(inspectionId)
                 .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
 
+        // Update total damage cost before completing
         updateTotalDamageCost(inspection);
-        inspection = inspectionRepository.findById(inspectionId).orElse(inspection);
+        
+        // Reload inspection to get the updated totalDamageCost
+        inspection = inspectionRepository.findById(inspectionId)
+                .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
 
         inspection.setStatus(InspectionStatus.COMPLETED);
         inspection.setInspectorNotes(inspectorNotes);
@@ -334,14 +338,20 @@ public class AssetInspectionService {
 
     private void updateTotalDamageCost(AssetInspection inspection) {
         List<AssetInspectionItem> items = inspectionItemRepository.findByInspectionId(inspection.getId());
+        log.debug("Calculating total damage cost for inspection {} with {} items", inspection.getId(), items.size());
+        
         BigDecimal total = items.stream()
-                .map(item -> item.getDamageCost() != null ? item.getDamageCost() : BigDecimal.ZERO)
+                .map(item -> {
+                    BigDecimal damageCost = item.getDamageCost() != null ? item.getDamageCost() : BigDecimal.ZERO;
+                    log.debug("Item {} has damageCost: {}", item.getId(), damageCost);
+                    return damageCost;
+                })
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         
         inspection.setTotalDamageCost(total);
         inspectionRepository.save(inspection);
         
-        log.info("Updated total damage cost for inspection {}: {}", inspection.getId(), total);
+        log.info("Updated total damage cost for inspection {}: {} (from {} items)", inspection.getId(), total, items.size());
     }
 
     @Transactional
@@ -401,7 +411,14 @@ public class AssetInspectionService {
             throw new IllegalArgumentException("Can only generate invoice for completed inspections");
         }
         
+        // Recalculate total damage cost before generating invoice to ensure accuracy
+        updateTotalDamageCost(inspection);
+        inspection = inspectionRepository.findById(inspectionId)
+                .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
+        
         if (inspection.getTotalDamageCost() == null || inspection.getTotalDamageCost().compareTo(BigDecimal.ZERO) <= 0) {
+            log.warn("Cannot generate invoice for inspection {}: totalDamageCost is {} (null or zero)", 
+                    inspectionId, inspection.getTotalDamageCost());
             throw new IllegalArgumentException("No damage cost to invoice. Total damage cost is zero.");
         }
         

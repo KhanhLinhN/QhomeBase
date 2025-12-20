@@ -13,6 +13,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -26,7 +29,7 @@ public class AccountProvideController {
 
     @PostMapping("/{unitId}/primary-resident/provision")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<PrimaryResidentProvisionResponse> provisionPrimaryResident(
+    public ResponseEntity<?> provisionPrimaryResident(
             @PathVariable UUID unitId,
             @Valid @RequestBody PrimaryResidentProvisionRequest request,
             Authentication authentication
@@ -43,10 +46,19 @@ public class AccountProvideController {
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (IllegalArgumentException | IllegalStateException e) {
             log.warn("Failed to provision primary resident for unit {}: {}", unitId, e.getMessage());
-            return ResponseEntity.badRequest().build();
+            // Return error message in response body so frontend can display it
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("status", HttpStatus.BAD_REQUEST.value());
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("timestamp", Instant.now().toString());
+            return ResponseEntity.badRequest().body(errorResponse);
         } catch (Exception e) {
             log.error("Unexpected error while provisioning primary resident for unit {}", unitId, e);
-            return ResponseEntity.internalServerError().build();
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
+            errorResponse.put("message", e.getMessage() != null ? e.getMessage() : "Internal server error");
+            errorResponse.put("timestamp", Instant.now().toString());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
 }

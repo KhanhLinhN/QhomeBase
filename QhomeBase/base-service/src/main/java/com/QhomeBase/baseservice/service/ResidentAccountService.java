@@ -177,15 +177,22 @@ public class ResidentAccountService {
             if (username == null || username.isEmpty()) {
                 throw new IllegalArgumentException("Username is required when autoGenerate is false");
             }
-            if (password == null || password.isEmpty()) {
-                throw new IllegalArgumentException("Password is required when autoGenerate is false");
+            
+            // Trim username before validation and duplicate check
+            username = username.trim();
+            if (username.isEmpty()) {
+                throw new IllegalArgumentException("Username cannot be empty after trimming");
             }
+            
+            // Password is optional - if not provided, backend will auto-generate it
+            // This allows users to choose username without needing to provide password
         }
         
         String email = resident.getEmail() != null && !resident.getEmail().isEmpty() 
                 ? resident.getEmail() 
                 : username + "@qhome.local";
         
+        // Check for duplicate username (already trimmed above)
         if (iamClientService.usernameExists(username, token)) {
             throw new IllegalArgumentException("Username already exists: " + username);
         }
