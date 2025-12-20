@@ -267,7 +267,7 @@ public class MarketplaceCommentService {
      * Update comment
      */
     @Transactional
-    public MarketplaceComment updateComment(@NonNull UUID commentId, @NonNull UUID residentId, String content) {
+    public MarketplaceComment updateComment(@NonNull UUID commentId, @NonNull UUID residentId, String content, String imageUrl, String videoUrl) {
         log.info("Updating comment: {} by user: {}", commentId, residentId);
 
         MarketplaceComment comment = commentRepository.findById(commentId)
@@ -277,7 +277,25 @@ public class MarketplaceCommentService {
             throw new RuntimeException("Not authorized to update this comment");
         }
 
-        comment.setContent(content);
+        // Validate: content, imageUrl, or videoUrl must be provided
+        String trimmedContent = content != null ? content.trim() : "";
+        boolean hasContent = !trimmedContent.isEmpty();
+        boolean hasImage = imageUrl != null && !imageUrl.trim().isEmpty();
+        boolean hasVideo = videoUrl != null && !videoUrl.trim().isEmpty();
+        
+        if (!hasContent && !hasImage && !hasVideo) {
+            throw new IllegalArgumentException("Comment must have content, image, or video");
+        }
+
+        // Update content (set to null if empty)
+        comment.setContent(hasContent ? trimmedContent : null);
+        
+        // Update imageUrl
+        comment.setImageUrl(hasImage ? imageUrl.trim() : null);
+        
+        // Update videoUrl
+        comment.setVideoUrl(hasVideo ? videoUrl.trim() : null);
+        
         MarketplaceComment saved = commentRepository.save(comment);
         
         // ✅ FIX LazyInitializationException: Initialize replies collection within transaction

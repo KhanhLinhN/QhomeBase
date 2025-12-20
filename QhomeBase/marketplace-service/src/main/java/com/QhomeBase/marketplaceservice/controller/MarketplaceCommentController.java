@@ -151,7 +151,9 @@ public class MarketplaceCommentController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
 
-        MarketplaceComment comment = commentService.updateComment(commentId, residentId, request.getContent());
+        MarketplaceComment comment = commentService.updateComment(
+                commentId, residentId, request.getContent(), 
+                request.getImageUrl(), request.getVideoUrl());
         CommentResponse response = mapper.toCommentResponse(comment);
         return ResponseEntity.ok(response);
     }
