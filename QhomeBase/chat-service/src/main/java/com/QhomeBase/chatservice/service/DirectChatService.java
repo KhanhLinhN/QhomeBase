@@ -87,7 +87,6 @@ public class DirectChatService {
         List<Conversation> conversations = conversationRepository
                 .findVisibleConversationsByUserId(residentId);
         
-        log.info("🔍 [DirectChatService] Found {} visible conversations (ACTIVE/BLOCKED/PENDING) from DB for residentId: {}", conversations.size(), residentId);
 
         List<ConversationResponse> filteredConversations = conversations.stream()
                 .filter(conv -> {
@@ -100,12 +99,13 @@ public class DirectChatService {
                         return false;
                     }
                     
-                    // IMPORTANT: Only show ACTIVE and BLOCKED conversations
-                    // - ACTIVE: Both users are friends and invitation accepted
-                    // - BLOCKED: User has blocked the other participant (still visible to show unblock option)
+                    // IMPORTANT: Show ACTIVE, BLOCKED, and LOCKED conversations (but not PENDING)
+                    // - ACTIVE: Both users are friends and can chat
+                    // - BLOCKED: One user blocked the other (still visible to show unblock option)
+                    // - LOCKED: Not friends anymore but conversation exists (can view history, cannot send)
                     // - PENDING conversations should NOT appear in chat list until invitation is accepted
-                    if (!"ACTIVE".equals(conv.getStatus()) && !"BLOCKED".equals(conv.getStatus())) {
-                        log.debug("❌ [DirectChatService] Filtered out conversation with status {}: {}", conv.getStatus(), conv.getId());
+                    if ("PENDING".equals(conv.getStatus())) {
+                        log.debug("❌ [DirectChatService] Filtered out PENDING conversation: {}", conv.getId());
                         return false;
                     }
                     
@@ -204,18 +204,33 @@ public class DirectChatService {
             throw new RuntimeException("You are not a participant in this conversation");
         }
 
-        // Check if conversation is active
+        // Check conversation status and permissions to send messages
         log.info("=== sendMessage ===");
         log.info("Conversation ID: {}", conversationId);
         log.info("Conversation status: {}", conversation.getStatus());
         log.info("Resident ID: {}", residentId);
         
-        if (!"ACTIVE".equals(conversation.getStatus())) {
-            log.error("Conversation is not active. Status: {}", conversation.getStatus());
-            throw new RuntimeException("Conversation is not active. Current status: " + conversation.getStatus());
-        }
-
         UUID otherParticipantId = conversation.getOtherParticipantId(residentId);
+        
+        // Check conversation status - only ACTIVE conversations allow sending messages
+        if (!"ACTIVE".equals(conversation.getStatus())) {
+            String errorMessage;
+            if ("BLOCKED".equals(conversation.getStatus())) {
+                // Check who blocked whom to provide appropriate error message
+                boolean currentUserBlockedOther = blockRepository.findByBlockerIdAndBlockedId(residentId, otherParticipantId).isPresent();
+                if (currentUserBlockedOther) {
+                    errorMessage = "Bạn đã chặn người dùng này";
+                } else {
+                    errorMessage = "Người dùng hiện không hoạt động";
+                }
+            } else if ("LOCKED".equals(conversation.getStatus())) {
+                errorMessage = "Bạn chưa gửi lời mời trò chuyện";
+            } else {
+                errorMessage = "Không thể gửi tin nhắn. Trạng thái: " + conversation.getStatus();
+            }
+            log.error("Conversation is not active. Status: {}, error: {}", conversation.getStatus(), errorMessage);
+            throw new RuntimeException(errorMessage);
+        }
         
         // Check bidirectional blocking - if either party has blocked the other, prevent sending messages
         // If A blocks B, then:
@@ -847,6 +862,13 @@ public class DirectChatService {
         
         // Check if users are friends
         boolean areFriends = friendshipService.areFriends(currentUserId, otherParticipantId);
+        
+        // Determine if current user can send messages
+        // Can send only if: status=ACTIVE, areFriends=true, not blocked by either party
+        boolean canSendMessage = "ACTIVE".equals(conversation.getStatus())
+                && areFriends
+                && !isBlockedByOther
+                && !isBlockedByMe;
 
         return ConversationResponse.builder()
                 .id(conversation.getId())
@@ -862,6 +884,7 @@ public class DirectChatService {
                 .isBlockedByOther(isBlockedByOther)
                 .isBlockedByMe(isBlockedByMe)
                 .areFriends(areFriends)
+                .canSendMessage(canSendMessage)
                 .createdAt(conversation.getCreatedAt())
                 .updatedAt(conversation.getUpdatedAt())
                 .build();

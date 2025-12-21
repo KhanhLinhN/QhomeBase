@@ -145,9 +145,11 @@ public class BlockService {
         if (conversationOpt.isPresent()) {
             Conversation conversation = conversationOpt.get();
             if ("BLOCKED".equals(conversation.getStatus()) || "ACTIVE".equals(conversation.getStatus())) {
-                conversation.setStatus("PENDING");
+                // After unblock, users are no longer friends, so conversation becomes LOCKED
+                // They can view history but cannot send messages until invitation is sent and accepted
+                conversation.setStatus("LOCKED");
                 conversationRepository.save(conversation);
-                log.info("Changed conversation {} status from {} to PENDING after unblock", 
+                log.info("Changed conversation {} status from {} to LOCKED after unblock", 
                         conversation.getId(), conversation.getStatus());
             }
         }
