@@ -146,5 +146,33 @@ public class BaseServiceClient {
             return null;
         }
     }
+
+    public com.QhomeBase.assetmaintenanceservice.client.dto.ResidentDto getResidentByUserId(UUID userId) {
+        try {
+            return baseServiceWebClient
+                    .get()
+                    .uri("/api/residents/by-user/{userId}", userId)
+                    .retrieve()
+                    .bodyToMono(com.QhomeBase.assetmaintenanceservice.client.dto.ResidentDto.class)
+                    .block();
+        } catch (Exception e) {
+            log.error("Error calling base service to get resident by user ID {}: {}", userId, e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch resident from base service: " + userId, e);
+        }
+    }
+
+    public java.util.List<UnitDto> getUnitsByResidentId(UUID residentId) {
+        try {
+            return baseServiceWebClient
+                    .get()
+                    .uri("/api/residents/{residentId}/units", residentId)
+                    .retrieve()
+                    .bodyToMono(new org.springframework.core.ParameterizedTypeReference<java.util.List<UnitDto>>() {})
+                    .block();
+        } catch (Exception e) {
+            log.error("Error calling base service to get units by resident ID {}: {}", residentId, e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch units from base service for resident: " + residentId, e);
+        }
+    }
 }
 

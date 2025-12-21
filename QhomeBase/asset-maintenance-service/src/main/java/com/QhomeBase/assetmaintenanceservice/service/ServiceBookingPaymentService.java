@@ -18,7 +18,10 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -37,6 +40,8 @@ public class ServiceBookingPaymentService {
     private final VnpayService vnpayService;
     private final NotificationEmailService emailService;
     private final VnpayProperties vnpayProperties;
+    private final com.QhomeBase.assetmaintenanceservice.client.BaseServiceClient baseServiceClient;
+    private final com.QhomeBase.assetmaintenanceservice.client.FinanceBillingClient financeBillingClient;
 
     private final ConcurrentMap<Long, UUID> orderIdToBookingId = new ConcurrentHashMap<>();
 
@@ -111,6 +116,15 @@ public class ServiceBookingPaymentService {
             }
 
             emailService.sendBookingPaymentSuccess(booking, txnRef);
+
+            // Create invoice after successful payment
+            try {
+                createInvoiceForServiceBooking(booking);
+                log.info("✅ [ServiceBooking] Invoice created for booking {}", booking.getId());
+            } catch (Exception e) {
+                log.error("❌ [ServiceBooking] Failed to create invoice for booking {}: {}", booking.getId(), e.getMessage(), e);
+                // Don't throw exception - payment is already completed, invoice can be created manually later
+            }
 
             removeOrderMapping(txnRef);
             log.info("✅ [ServiceBooking] Thanh toán VNPAY thành công: bookingId={}, txnRef={}", booking.getId(), txnRef);
@@ -210,6 +224,66 @@ public class ServiceBookingPaymentService {
             return forwardedFor.split(",")[0].trim();
         }
         return request.getRemoteAddr();
+    }
+
+    /**
+     * Create invoice for paid service booking
+     */
+    private void createInvoiceForServiceBooking(ServiceBooking booking) {
+        try {
+            // Get resident from userId
+            com.QhomeBase.assetmaintenanceservice.client.dto.ResidentDto resident = baseServiceClient.getResidentByUserId(booking.getUserId());
+            if (resident == null) {
+                log.warn("Cannot create invoice: Resident not found for userId {}", booking.getUserId());
+                return;
+            }
+
+            // Get units for this resident (take the first one)
+            List<com.QhomeBase.assetmaintenanceservice.client.dto.UnitDto> units = baseServiceClient.getUnitsByResidentId(resident.id());
+            if (units == null || units.isEmpty()) {
+                log.warn("Cannot create invoice: No units found for resident {}", resident.id());
+                return;
+            }
+            com.QhomeBase.assetmaintenanceservice.client.dto.UnitDto unit = units.get(0);
+
+            // Build invoice lines
+            List<Map<String, Object>> lines = new ArrayList<>();
+            
+            // Main service booking line
+            Map<String, Object> mainLine = new java.util.HashMap<>();
+            mainLine.put("serviceDate", booking.getBookingDate().toString());
+            mainLine.put("description", String.format("Đặt dịch vụ %s - %s", 
+                    booking.getService() != null ? booking.getService().getName() : "Dịch vụ",
+                    booking.getBookingDate().toString()));
+            mainLine.put("quantity", BigDecimal.ONE);
+            mainLine.put("unit", "Lần");
+            mainLine.put("unitPrice", booking.getTotalAmount() != null ? booking.getTotalAmount() : BigDecimal.ZERO);
+            mainLine.put("taxRate", BigDecimal.ZERO);
+            mainLine.put("serviceCode", booking.getService() != null && booking.getService().getCode() != null 
+                    ? booking.getService().getCode() : "SERVICE_BOOKING");
+            mainLine.put("externalRefType", "SERVICE_BOOKING");
+            mainLine.put("externalRefId", booking.getId().toString());
+            lines.add(mainLine);
+
+            // Build invoice request
+            Map<String, Object> invoiceRequest = new java.util.HashMap<>();
+            invoiceRequest.put("dueDate", LocalDate.now().plusDays(7).toString()); // Due in 7 days (already paid, but for record)
+            invoiceRequest.put("currency", "VND");
+            invoiceRequest.put("billToName", resident.fullName() != null ? resident.fullName() : "Cư dân");
+            invoiceRequest.put("billToAddress", unit.code() != null ? unit.code() : "Unit " + unit.id());
+            invoiceRequest.put("billToContact", resident.phone() != null ? resident.phone() : "");
+            invoiceRequest.put("payerUnitId", unit.id().toString());
+            invoiceRequest.put("payerResidentId", resident.id().toString());
+            invoiceRequest.put("status", "PAID"); // Already paid via VNPAY
+            invoiceRequest.put("lines", lines);
+
+            // Call finance service to create invoice
+            financeBillingClient.createInvoiceSync(invoiceRequest);
+            log.info("✅ [ServiceBooking] Invoice created successfully for booking {}", booking.getId());
+        } catch (Exception e) {
+            log.error("❌ [ServiceBooking] Error creating invoice for booking {}: {}", booking.getId(), e.getMessage(), e);
+            throw new RuntimeException("Failed to create invoice for service booking: " + e.getMessage(), e);
+        }
     }
 }
 
