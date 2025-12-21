@@ -42,21 +42,13 @@ public class AssetInspectionService {
         ContractDetailDto contract = contractClient.getContractById(request.contractId())
                 .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + request.contractId()));
 
-        // Allow creating inspection for EXPIRED or CANCELLED contracts
-        // Note: When called from inter-service (data-docs-service during contract cancellation),
-        // the contract status might still appear as ACTIVE due to transaction isolation/caching.
-        // Since this endpoint is only accessible via permitAll (inter-service calls),
-        // we allow creating inspection regardless of status to avoid race conditions.
         String contractStatus = contract.status();
         if (!"EXPIRED".equalsIgnoreCase(contractStatus) 
                 && !"CANCELLED".equalsIgnoreCase(contractStatus)
                 && !"ACTIVE".equalsIgnoreCase(contractStatus)) {
-            // Only reject if status is something other than ACTIVE, EXPIRED, or CANCELLED
-            // (e.g., PENDING, INACTIVE, etc.)
             throw new IllegalArgumentException("Can only create inspection for active, expired, or cancelled contracts. Contract status: " + contractStatus);
         }
         
-        // Log if creating inspection for ACTIVE contract (likely being cancelled)
         if ("ACTIVE".equalsIgnoreCase(contractStatus)) {
             log.info("Creating inspection for ACTIVE contract {} (likely being cancelled by data-docs-service)", request.contractId());
         }
@@ -72,16 +64,10 @@ public class AssetInspectionService {
             }
         }
 
-        // When contract is cancelled, the selected date is stored in inspectionDate
-        // scheduledDate is optional and can be set later by staff
-        // If scheduledDate is provided, use it; otherwise, set to contract endDate (not end of month)
         LocalDate scheduledDate = request.scheduledDate();
         if (scheduledDate == null) {
-            // If scheduledDate is not provided, default to contract endDate (not end of month)
             scheduledDate = contract.endDate();
         }
-        // Note: For cancelled contracts, the selected date is already in inspectionDate
-        // scheduledDate defaults to contract endDate if not provided
 
         AssetInspection inspection = AssetInspection.builder()
                 .contractId(request.contractId())
@@ -196,10 +182,8 @@ public class AssetInspectionService {
         AssetInspection inspection = inspectionRepository.findById(inspectionId)
                 .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
 
-        // Update total damage cost before completing
         updateTotalDamageCost(inspection);
         
-        // Reload inspection to get the updated totalDamageCost
         inspection = inspectionRepository.findById(inspectionId)
                 .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
 
@@ -367,10 +351,6 @@ public class AssetInspectionService {
         return toDto(inspection);
     }
 
-    /**
-     * Update scheduled date for inspection
-     * Allows multiple updates (no restriction on how many times)
-     */
     @Transactional
     public AssetInspectionDto updateScheduledDate(UUID inspectionId, LocalDate scheduledDate) {
         AssetInspection inspection = inspectionRepository.findById(inspectionId)
@@ -380,7 +360,6 @@ public class AssetInspectionService {
             throw new IllegalArgumentException("Scheduled date cannot be null");
         }
         
-        // Allow updating scheduledDate multiple times - no restriction
         inspection.setScheduledDate(scheduledDate);
         inspection = inspectionRepository.save(inspection);
         
@@ -415,7 +394,6 @@ public class AssetInspectionService {
             throw new IllegalArgumentException("Can only generate invoice for completed inspections");
         }
         
-        // Recalculate total damage cost before generating invoice to ensure accuracy
         updateTotalDamageCost(inspection);
         inspection = inspectionRepository.findById(inspectionId)
                 .orElseThrow(() -> new IllegalArgumentException("Inspection not found: " + inspectionId));
@@ -461,94 +439,111 @@ public class AssetInspectionService {
                 .externalRefId(inspectionId)
                 .build();
 
-        // Get water and electricity invoices for this unit
         List<CreateInvoiceLineRequest> invoiceLines = new java.util.ArrayList<>(List.of(invoiceLine));
         
         try {
-            log.info("Attempting to get invoices for unit {} when generating asset inspection invoice", unitId);
-            List<com.QhomeBase.baseservice.dto.finance.InvoiceDto> unitInvoices = 
+            log.info("Attempting to get invoices for unit {} when generating asset inspection invoice (inspection date: {})", 
+                    unitId, inspection.getInspectionDate());
+            List<com.QhomeBase.baseservice.dto.finance.InvoiceDto> allUnitInvoices = 
                     financeBillingClient.getInvoicesByUnitSync(unitId);
             
-            log.info("Found {} invoices for unit {} when generating asset inspection invoice", unitInvoices.size(), unitId);
+            log.info("Found {} total invoices for unit {}", allUnitInvoices.size(), unitId);
             
-            // Log raw invoice data to debug serialization issues
-            if (unitInvoices.isEmpty()) {
-                log.warn("No invoices found for unit {} - this might be expected if water/electric invoices haven't been created yet", unitId);
-            }
+            String inspectionMarker = "Đo cùng với kiểm tra thiết bị";
+            LocalDate inspectionDate = inspection.getInspectionDate();
             
-            // Log all invoice details for debugging
-            for (com.QhomeBase.baseservice.dto.finance.InvoiceDto inv : unitInvoices) {
-                if (inv.getLines() != null && !inv.getLines().isEmpty()) {
-                    List<String> serviceCodes = new java.util.ArrayList<>();
-                    for (com.QhomeBase.baseservice.dto.finance.InvoiceLineDto line : inv.getLines()) {
-                        if (line != null) {
-                            String code = line.getServiceCode();
-                            if (code != null) {
-                                serviceCodes.add(code);
-                            } else {
-                                log.warn("Invoice {} has line with null serviceCode. lineId={}, description={}", 
-                                        inv.getId(), line.getId(), line.getDescription());
-                            }
+          
+            List<com.QhomeBase.baseservice.dto.finance.InvoiceDto> relevantInvoices = allUnitInvoices.stream()
+                    .filter(inv -> "PUBLISHED".equals(inv.getStatus()) || "PAID".equals(inv.getStatus()))
+                    .filter(inv -> inv.getLines() != null && !inv.getLines().isEmpty())
+                    .filter(inv -> {
+                        return inv.getLines().stream()
+                                .anyMatch(line -> line != null 
+                                        && line.getServiceCode() != null
+                                        && ("WATER".equals(line.getServiceCode()) || "ELECTRIC".equals(line.getServiceCode()))
+                                        && line.getDescription() != null
+                                        && line.getDescription().contains(inspectionMarker));
+                    })
+                    .filter(inv -> {
+                        if (inv.getIssuedAt() != null && inspectionDate != null) {
+                            LocalDate issuedDate = inv.getIssuedAt().toLocalDate();
+                            long daysDiff = java.time.temporal.ChronoUnit.DAYS.between(inspectionDate, issuedDate);
+                            return Math.abs(daysDiff) <= 30;
                         }
-                    }
-                    log.info("Invoice {}: status={}, serviceCodes={}, totalAmount={}, linesCount={}", 
-                            inv.getId(), inv.getStatus(), serviceCodes, inv.getTotalAmount(), inv.getLines().size());
-                } else {
-                    log.warn("Invoice {} has no lines or lines is null. status={}, totalAmount={}", 
-                            inv.getId(), inv.getStatus(), inv.getTotalAmount());
-                }
+                        return true;
+                    })
+                    .collect(java.util.stream.Collectors.toList());
+            
+            log.info("Filtered to {} relevant invoices (with WATER/ELECTRIC lines from this inspection) out of {} total invoices", 
+                    relevantInvoices.size(), allUnitInvoices.size());
+            
+            if (relevantInvoices.isEmpty()) {
+                log.warn("No relevant invoices found for unit {} with inspection marker - this might be expected if water/electric invoices haven't been created yet", unitId);
             }
             
-            // Filter for WATER and ELECTRIC invoices that are PUBLISHED or PAID
             int waterElectricCount = 0;
-            for (com.QhomeBase.baseservice.dto.finance.InvoiceDto invoice : unitInvoices) {
-                if (invoice.getLines() != null && !invoice.getLines().isEmpty()) {
-                    // Check if invoice has WATER or ELECTRIC service code
-                    boolean hasWaterOrElectric = invoice.getLines().stream()
-                            .filter(line -> line != null && line.getServiceCode() != null)
-                            .anyMatch(line -> "WATER".equals(line.getServiceCode()) || 
-                                            "ELECTRIC".equals(line.getServiceCode()));
+            
+            java.util.Map<String, java.math.BigDecimal> waterConsumptions = new java.util.HashMap<>();
+            java.util.Map<String, java.math.BigDecimal> electricConsumptions = new java.util.HashMap<>();
+            
+            for (com.QhomeBase.baseservice.dto.finance.InvoiceDto invoice : relevantInvoices) {
+                List<com.QhomeBase.baseservice.dto.finance.InvoiceLineDto> relevantLines = invoice.getLines().stream()
+                        .filter(line -> line != null && line.getServiceCode() != null)
+                        .filter(line -> "WATER".equals(line.getServiceCode()) || "ELECTRIC".equals(line.getServiceCode()))
+                        .filter(line -> line.getDescription() != null && line.getDescription().contains(inspectionMarker))
+                        .collect(java.util.stream.Collectors.toList());
+                
+                if (relevantLines.isEmpty()) {
+                    continue;
+                }
+                
+                log.info("Invoice {} has {} relevant water/electric lines from this inspection (status: {}, totalLines: {})", 
+                        invoice.getId(), relevantLines.size(), invoice.getStatus(), invoice.getLines().size());
+                
+                for (com.QhomeBase.baseservice.dto.finance.InvoiceLineDto line : relevantLines) {
+                    String serviceCode = line.getServiceCode();
                     
-                    log.info("Invoice {} has status: {}, hasWaterOrElectric: {}, linesCount: {}", 
-                            invoice.getId(), invoice.getStatus(), hasWaterOrElectric, invoice.getLines().size());
+                    BigDecimal lineAmount = line.getUnitPrice() != null && line.getQuantity() != null
+                            ? line.getUnitPrice().multiply(line.getQuantity())
+                            : BigDecimal.ZERO;
                     
-                    // Include PUBLISHED or PAID invoices (PAID invoices might have been paid but we still want to include them in the combined invoice)
-                    // This ensures we capture water/electric costs even if invoices were already paid
-                    if (hasWaterOrElectric && ("PUBLISHED".equals(invoice.getStatus()) || "PAID".equals(invoice.getStatus()))) {
-                        // Get the first line with WATER or ELECTRIC service code
-                        com.QhomeBase.baseservice.dto.finance.InvoiceLineDto firstLine = invoice.getLines().stream()
-                                .filter(line -> line != null && line.getServiceCode() != null)
-                                .filter(line -> "WATER".equals(line.getServiceCode()) || "ELECTRIC".equals(line.getServiceCode()))
-                                .findFirst()
-                                .orElse(null);
-                        
-                        if (firstLine == null) {
-                            log.warn("Could not find WATER or ELECTRIC line in invoice {}", invoice.getId());
-                            continue;
-                        }
-                        
-                        String serviceCode = firstLine.getServiceCode();
-                        
-                        // Create invoice line for water/electricity
-                        CreateInvoiceLineRequest waterElectricLine = CreateInvoiceLineRequest.builder()
-                                .serviceDate(firstLine.getServiceDate() != null ? firstLine.getServiceDate() : inspection.getInspectionDate())
-                                .description(String.format("Tiền %s - %s", 
-                                        "WATER".equals(serviceCode) ? "nước" : "điện",
-                                        firstLine.getDescription() != null ? firstLine.getDescription() : ""))
-                                .quantity(BigDecimal.ONE)
-                                .unit("hóa đơn")
-                                .unitPrice(invoice.getTotalAmount() != null ? invoice.getTotalAmount() : BigDecimal.ZERO)
-                                .taxRate(BigDecimal.ZERO)
-                                .serviceCode(serviceCode)
-                                .externalRefType("WATER_ELECTRIC_INVOICE")
-                                .externalRefId(invoice.getId())
-                                .build();
-                        
-                        invoiceLines.add(waterElectricLine);
-                        waterElectricCount++;
-                        log.info("Including {} invoice {} (amount: {}) in asset inspection invoice", 
-                                serviceCode, invoice.getId(), invoice.getTotalAmount());
+                    String originalDescription = line.getDescription() != null ? line.getDescription() : "";
+                    String serviceName = "WATER".equals(serviceCode) ? "nước" : "điện";
+                    String finalDescription;
+                    if (originalDescription.trim().startsWith("Tiền " + serviceName)) {
+                        finalDescription = originalDescription;
+                    } else {
+                        finalDescription = String.format("Tiền %s - %s", serviceName, originalDescription);
                     }
+                    
+                    CreateInvoiceLineRequest waterElectricLine = CreateInvoiceLineRequest.builder()
+                            .serviceDate(line.getServiceDate() != null ? line.getServiceDate() : inspection.getInspectionDate())
+                            .description(finalDescription)
+                            .quantity(line.getQuantity() != null ? line.getQuantity() : BigDecimal.ONE)
+                            .unit(line.getUnit() != null ? line.getUnit() : "hóa đơn")
+                            .unitPrice(lineAmount)
+                            .taxRate(BigDecimal.ZERO)
+                            .serviceCode(serviceCode)
+                            .externalRefType("WATER_ELECTRIC_INVOICE")
+                            .externalRefId(invoice.getId())
+                            .build();
+                    
+                    invoiceLines.add(waterElectricLine);
+                    waterElectricCount++;
+                    
+                    java.math.BigDecimal consumption = line.getQuantity() != null ? line.getQuantity() : java.math.BigDecimal.ZERO;
+                    if ("WATER".equals(serviceCode)) {
+                        String meterCode = extractMeterCodeFromDescription(line.getDescription());
+                        waterConsumptions.put(meterCode != null ? meterCode : "UNKNOWN", 
+                                waterConsumptions.getOrDefault(meterCode != null ? meterCode : "UNKNOWN", java.math.BigDecimal.ZERO).add(consumption));
+                    } else if ("ELECTRIC".equals(serviceCode)) {
+                        String meterCode = extractMeterCodeFromDescription(line.getDescription());
+                        electricConsumptions.put(meterCode != null ? meterCode : "UNKNOWN", 
+                                electricConsumptions.getOrDefault(meterCode != null ? meterCode : "UNKNOWN", java.math.BigDecimal.ZERO).add(consumption));
+                    }
+                    
+                    log.info("Including {} line from invoice {} (amount: {}, quantity: {}) in asset inspection invoice", 
+                            serviceCode, invoice.getId(), lineAmount, consumption);
                 }
             }
             
@@ -557,6 +552,26 @@ public class AssetInspectionService {
                         "This might be because invoices haven't been created yet from meter readings.", unitId);
             } else {
                 log.info("Added {} water/electric invoice lines to asset inspection invoice", waterElectricCount);
+                
+                if (!waterConsumptions.isEmpty()) {
+                    log.info("=== SỐ NƯỚC ĐÃ ĐO TRONG LẦN KIỂM TRA NÀY (Unit: {}) ===", unitId);
+                    waterConsumptions.forEach((meterCode, total) -> {
+                        log.info("Đồng hồ nước {}: {}", meterCode, total);
+                    });
+                    java.math.BigDecimal totalWater = waterConsumptions.values().stream()
+                            .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+                    log.info("TỔNG SỐ NƯỚC: {}", totalWater);
+                }
+                
+                if (!electricConsumptions.isEmpty()) {
+                    log.info("=== SỐ ĐIỆN ĐÃ ĐO TRONG LẦN KIỂM TRA NÀY (Unit: {}) ===", unitId);
+                    electricConsumptions.forEach((meterCode, total) -> {
+                        log.info("Đồng hồ điện {}: {}", meterCode, total);
+                    });
+                    java.math.BigDecimal totalElectric = electricConsumptions.values().stream()
+                            .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+                    log.info("TỔNG SỐ ĐIỆN: {}", totalElectric);
+                }
             }
         } catch (Exception e) {
             log.warn("Failed to get water/electricity invoices for unit {}: {}. Proceeding with damage cost only.", 
@@ -653,6 +668,25 @@ public class AssetInspectionService {
     }
 
 
+    private String extractMeterCodeFromDescription(String description) {
+        if (description == null || description.trim().isEmpty()) {
+            return null;
+        }
+        int meterIndex = description.indexOf("Meter: ");
+        if (meterIndex >= 0) {
+            int start = meterIndex + "Meter: ".length();
+            int end = description.indexOf(" - ", start);
+            if (end < 0) {
+                end = description.indexOf(" (", start);
+            }
+            if (end < 0) {
+                end = description.length();
+            }
+            return description.substring(start, end).trim();
+        }
+        return null;
+    }
+
     @Transactional
     public int createInspectionsForExpiredContracts(LocalDate endOfMonth) {
         log.info("Creating inspections for contracts expired in month ending: {}", endOfMonth);
@@ -690,14 +724,13 @@ public class AssetInspectionService {
                     
                     try {
                         LocalDate inspectionDate = contractEndDate;
-                        // scheduledDate = null sẽ được set thành endDate trong createInspection
                         CreateAssetInspectionRequest request = new CreateAssetInspectionRequest(
                                 contract.id(),
                                 unit.getId(),
                                 inspectionDate,
-                                null, // scheduledDate = null -> sẽ dùng endDate của contract
-                                null, // inspectorName
-                                null  // inspectorId
+                                null,
+                                null,
+                                null
                         );
                         
                         createInspection(request, null);
