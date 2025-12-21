@@ -1,6 +1,7 @@
 package com.QhomeBase.baseservice.service;
 
 import com.QhomeBase.baseservice.client.ContractClient;
+import com.QhomeBase.baseservice.dto.ContractDetailDto;
 import com.QhomeBase.baseservice.dto.ContractSummary;
 import com.QhomeBase.baseservice.dto.CreateResidentAccountDto;
 import com.QhomeBase.baseservice.dto.PrimaryResidentProvisionRequest;
@@ -121,12 +122,31 @@ public class AccountProvideService {
             household.setUpdatedAt(OffsetDateTime.now());
             householdRepository.save(household);
 
+           
+            ContractSummary contract = null;
+            if (household.getContractId() != null) {
+                contract = fetchContractSummary(household.getContractId());
+            }
+
+          
+            LocalDate joinedAt = null;
+            if (contract != null && contract.startDate() != null) {
+                joinedAt = contract.startDate();
+            }
+
+            
+            LocalDate leftAt = null;
+            if (contract != null && contract.endDate() != null) {
+                leftAt = contract.endDate();
+            }
+
             HouseholdMember householdMember = HouseholdMember.builder()
                     .householdId(household.getId())
                     .residentId(resident.getId())
                     .relation(resolveRelation(request))
                     .isPrimary(true)
-                    .joinedAt(LocalDate.now())
+                    .joinedAt(joinedAt)  // From contract.startDate only
+                    .leftAt(leftAt)  // From contract.endDate only
                     .build();
 
             householdMember = householdMemberRepository.save(householdMember);
@@ -247,5 +267,32 @@ public class AccountProvideService {
             return "Chủ hộ";
         }
         return relation;
+    }
+
+    /**
+     * Fetch contract summary by contract ID
+     * @param contractId The contract ID
+     * @return ContractSummary or null if not found or error occurs
+     */
+    private ContractSummary fetchContractSummary(UUID contractId) {
+        if (contractId == null) {
+            return null;
+        }
+        try {
+            return contractClient.getContractById(contractId)
+                    .map(contractDetail -> new ContractSummary(
+                            contractDetail.id(),
+                            contractDetail.unitId(),
+                            contractDetail.contractNumber(),
+                            contractDetail.contractType(),
+                            contractDetail.startDate(),
+                            contractDetail.endDate(),
+                            contractDetail.status()
+                    ))
+                    .orElse(null);
+        } catch (Exception e) {
+            log.warn("Failed to fetch contract {} for primary resident provisioning: {}", contractId, e.getMessage());
+            return null; // Return null if contract service is unavailable or contract not found
+        }
     }
 }

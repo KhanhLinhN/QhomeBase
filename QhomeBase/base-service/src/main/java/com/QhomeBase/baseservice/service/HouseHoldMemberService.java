@@ -1,5 +1,7 @@
 package com.QhomeBase.baseservice.service;
 
+import com.QhomeBase.baseservice.client.ContractClient;
+import com.QhomeBase.baseservice.dto.ContractSummary;
 import com.QhomeBase.baseservice.dto.HouseholdMemberCreateDto;
 import com.QhomeBase.baseservice.dto.HouseholdMemberDto;
 import com.QhomeBase.baseservice.dto.HouseholdMemberUpdateDto;
@@ -31,6 +33,7 @@ public class HouseHoldMemberService {
     private final HouseholdRepository householdRepository;
     private final ResidentRepository residentRepository;
     private final UnitRepository unitRepository;
+    private final ContractClient contractClient;
 
     @Transactional
     public HouseholdMemberDto createHouseholdMember(HouseholdMemberCreateDto createDto) {
@@ -59,7 +62,23 @@ public class HouseHoldMemberService {
 
         validateHouseholdCapacity(household);
 
-        LocalDate joinedAt = createDto.joinedAt() != null ? createDto.joinedAt() : LocalDate.now();
+        // Fetch contract - required for setting joinedAt and leftAt
+        ContractSummary contract = null;
+        if (household.getContractId() != null) {
+            contract = fetchContractSummary(household.getContractId());
+        }
+
+        // Set joinedAt ONLY from contract.startDate (no fallback)
+        LocalDate joinedAt = null;
+        if (contract != null && contract.startDate() != null) {
+            joinedAt = contract.startDate();
+        }
+
+        // Set leftAt ONLY from contract.endDate (no fallback)
+        LocalDate leftAt = null;
+        if (contract != null && contract.endDate() != null) {
+            leftAt = contract.endDate();
+        }
 
         HouseholdMember member = HouseholdMember.builder()
                 .householdId(createDto.householdId())
@@ -67,11 +86,13 @@ public class HouseHoldMemberService {
                 .relation(createDto.relation())
                 .proofOfRelationImageUrl(createDto.proofOfRelationImageUrl())
                 .isPrimary(createDto.isPrimary() != null ? createDto.isPrimary() : false)
-                .joinedAt(joinedAt)
+                .joinedAt(joinedAt)  
+                .leftAt(leftAt)  
                 .build();
 
         HouseholdMember savedMember = householdMemberRepository.save(member);
-        log.info("Created household member {} for household {}", savedMember.getId(), createDto.householdId());
+        log.info("Created household member {} for household {} (joinedAt: {} from contract/household, leftAt: {} from contract/household)", 
+                savedMember.getId(), createDto.householdId(), joinedAt, leftAt);
 
         return toDto(savedMember);
     }
@@ -178,6 +199,20 @@ public class HouseHoldMemberService {
     public List<HouseholdMemberDto> getActiveMembersByHouseholdId(UUID householdId) {
         List<HouseholdMember> members = householdMemberRepository
                 .findActiveMembersByHouseholdId(householdId);
+        return members.stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Get all members by household ID (including inactive members)
+     * @param householdId The household ID
+     * @return List of all household member DTOs
+     */
+    @Transactional(readOnly = true)
+    public List<HouseholdMemberDto> getAllMembersByHouseholdId(UUID householdId) {
+        List<HouseholdMember> members = householdMemberRepository
+                .findAllMembersByHouseholdId(householdId);
         return members.stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
@@ -355,5 +390,32 @@ public class HouseHoldMemberService {
                 member.getCreatedAt(),
                 member.getUpdatedAt()
         );
+    }
+
+    /**
+     * Fetch contract summary by contract ID
+     * @param contractId The contract ID
+     * @return ContractSummary or null if not found or error occurs
+     */
+    private ContractSummary fetchContractSummary(UUID contractId) {
+        if (contractId == null) {
+            return null;
+        }
+        try {
+            return contractClient.getContractById(contractId)
+                    .map(contractDetail -> new ContractSummary(
+                            contractDetail.id(),
+                            contractDetail.unitId(),
+                            contractDetail.contractNumber(),
+                            contractDetail.contractType(),
+                            contractDetail.startDate(),
+                            contractDetail.endDate(),
+                            contractDetail.status()
+                    ))
+                    .orElse(null);
+        } catch (Exception e) {
+            log.warn("Failed to fetch contract {} for household member: {}", contractId, e.getMessage());
+            return null; // Return null if contract service is unavailable or contract not found
+        }
     }
 }

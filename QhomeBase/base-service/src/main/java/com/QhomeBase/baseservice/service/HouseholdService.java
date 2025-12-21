@@ -95,12 +95,9 @@ public class HouseholdService {
             if (resolvedContract.startDate() != null && startDate.isBefore(resolvedContract.startDate())) {
                 throw new IllegalArgumentException("Household start date cannot be before contract start date");
             }
+            // Always use contract endDate if available (household endDate should match contract endDate)
             if (resolvedContract.endDate() != null) {
-                if (endDate == null) {
-                    endDate = resolvedContract.endDate();
-                } else if (endDate.isAfter(resolvedContract.endDate())) {
-                    throw new IllegalArgumentException("Household end date cannot be after contract end date");
-                }
+                endDate = resolvedContract.endDate();
             }
         }
 
@@ -191,29 +188,60 @@ public class HouseholdService {
         log.info("Deactivated household {} (endDate set to {} - 2 days ago to account for timezone differences)", 
                 householdId, deactivationDate);
         
-        // IMPORTANT: Also deactivate all household members to ensure they are no longer associated with this unit
-        // This ensures queries like findAllUnitsByUserId() won't return this unit
-        // because they check: hm.leftAt IS NULL OR hm.leftAt >= CURRENT_DATE
-        // By setting leftAt = deactivationDate (2 days ago), we ensure leftAt < CURRENT_DATE
-        deactivateHouseholdMembers(householdId, deactivationDate);
+        // Determine leftAt date for members: use contract endDate if available, otherwise use household endDate
+        LocalDate membersLeftAt = determineMembersLeftAt(household);
+        
+       
+        // By setting leftAt = contract.endDate (or household.endDate), we ensure leftAt < CURRENT_DATE
+        deactivateHouseholdMembers(householdId, membersLeftAt);
     }
     
-    private void deactivateHouseholdMembers(UUID householdId, LocalDate deactivationDate) {
+    private LocalDate determineMembersLeftAt(Household household) {
+        // Try to get contract endDate first
+        if (household.getContractId() != null) {
+            try {
+                ContractSummary contract = fetchContractSummary(household.getContractId());
+                if (contract != null && contract.endDate() != null) {
+                    log.info("Using contract endDate {} as members leftAt for household {}", 
+                            contract.endDate(), household.getId());
+                    return contract.endDate();
+                }
+            } catch (Exception e) {
+                log.warn("Failed to fetch contract {} for household {}: {}", 
+                        household.getContractId(), household.getId(), e.getMessage());
+            }
+        }
+        
+        // Fallback to household endDate if available
+        if (household.getEndDate() != null) {
+            log.info("Using household endDate {} as members leftAt for household {}", 
+                    household.getEndDate(), household.getId());
+            return household.getEndDate();
+        }
+        
+        // Final fallback: use 2 days ago (same as household deactivationDate)
+        LocalDate fallbackDate = LocalDate.now().minusDays(2);
+        log.info("Using fallback date {} (2 days ago) as members leftAt for household {}", 
+                fallbackDate, household.getId());
+        return fallbackDate;
+    }
+    
+    private void deactivateHouseholdMembers(UUID householdId, LocalDate leftAtDate) {
         // Find all active household members (where leftAt IS NULL or leftAt >= CURRENT_DATE)
         // We use findActiveMembersByHouseholdId which checks: leftAt IS NULL OR leftAt >= CURRENT_DATE
-        // After setting leftAt = deactivationDate (2 days ago), the query won't find them anymore
+        // After setting leftAt = leftAtDate (contract.endDate or household.endDate), the query won't find them anymore
         List<HouseholdMember> activeMembers = 
                 householdMemberRepository.findActiveMembersByHouseholdId(householdId);
         
         for (com.QhomeBase.baseservice.model.HouseholdMember member : activeMembers) {
-            member.setLeftAt(deactivationDate);
+            member.setLeftAt(leftAtDate);
             householdMemberRepository.save(member);
-            log.debug("Deactivated household member {} (leftAt set to {})", member.getId(), deactivationDate);
+            log.debug("Deactivated household member {} (leftAt set to {})", member.getId(), leftAtDate);
         }
         
         if (!activeMembers.isEmpty()) {
-            log.info("Deactivated {} household member(s) for household {} (leftAt set to {} - 2 days ago)", 
-                    activeMembers.size(), householdId, deactivationDate);
+            log.info("Deactivated {} household member(s) for household {} (leftAt set to {} - contract endDate or household endDate)", 
+                    activeMembers.size(), householdId, leftAtDate);
         }
     }
 
