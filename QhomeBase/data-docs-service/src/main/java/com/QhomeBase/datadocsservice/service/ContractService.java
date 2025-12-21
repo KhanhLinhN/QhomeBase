@@ -112,6 +112,20 @@ public class ContractService {
                 .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
 
         if (request.getContractNumber() != null && !request.getContractNumber().equals(contract.getContractNumber())) {
+            // Prevent editing contract number if:
+            // 1. Contract has been renewed (renewedContractId != null) - this is the old contract
+            // 2. Contract number contains "Gia hạn lần" - this is a renewed contract (new format)
+            // 3. Contract number contains "-RENEW-" - this is a renewed contract (old format, for backward compatibility)
+            if (contract.getRenewedContractId() != null) {
+                throw new IllegalArgumentException("Không thể chỉnh sửa tên hợp đồng đã được gia hạn. Hợp đồng này đã được gia hạn thành công.");
+            }
+            if (contract.getContractNumber() != null && contract.getContractNumber().contains("Gia hạn lần")) {
+                throw new IllegalArgumentException("Không thể chỉnh sửa tên hợp đồng sau khi gia hạn. Tên hợp đồng đã được hệ thống tự động sinh và không thể thay đổi.");
+            }
+            if (contract.getContractNumber() != null && contract.getContractNumber().contains("-RENEW-")) {
+                throw new IllegalArgumentException("Không thể chỉnh sửa tên hợp đồng sau khi gia hạn. Tên hợp đồng đã được hệ thống tự động sinh và không thể thay đổi.");
+            }
+            
             contractRepository.findByContractNumber(request.getContractNumber())
                     .ifPresent(existing -> {
                         throw new IllegalArgumentException("Contract number already exists: " + request.getContractNumber());
@@ -184,6 +198,7 @@ public class ContractService {
         if (request.getNotes() != null) {
             contract.setNotes(request.getNotes());
         }
+        String oldStatus = contract.getStatus();
         if (request.getStatus() != null) {
             contract.setStatus(request.getStatus());
         }
@@ -200,6 +215,21 @@ public class ContractService {
 
         contract.setUpdatedBy(updatedBy);
         contract = contractRepository.save(contract);
+        
+        // If contract status changed to CANCELLED or EXPIRED, handle contract end
+        // This ensures household is deactivated when contract is cancelled/expired via updateContract
+        String newStatus = contract.getStatus();
+        if (oldStatus != null && !oldStatus.equals(newStatus) && 
+            ("CANCELLED".equals(newStatus) || "EXPIRED".equals(newStatus)) &&
+            "RENTAL".equals(currentType) &&
+            contract.getUnitId() != null) {
+            log.info("Contract {} status changed from {} to {} via updateContract, handling contract end", 
+                    contractId, oldStatus, newStatus);
+            // Flush to ensure status change is committed before calling base-service
+            entityManager.flush();
+            handleContractEnd(contract.getUnitId());
+        }
+        
         log.info("Updated contract: {}", contractId);
 
         return toDto(contract);
@@ -666,6 +696,15 @@ public class ContractService {
             }
         }
 
+        LocalDate inspectionDate = null;
+        try {
+            Optional<LocalDate> inspectionDateOpt = baseServiceClient.getInspectionDateByContractId(contract.getId());
+            inspectionDate = inspectionDateOpt.orElse(null);
+        } catch (Exception e) {
+            log.debug("Could not fetch inspection date for contract {}: {}", contract.getId(), e.getMessage());
+            // Don't fail if inspection date cannot be fetched
+        }
+
         return ContractDto.builder()
                 .id(contract.getId())
                 .unitId(contract.getUnitId())
@@ -699,10 +738,21 @@ public class ContractService {
                 .canCancel(canCancel)
                 .canExtend(canExtend)
                 .permissionMessage(permissionMessage)
+                .inspectionDate(inspectionDate)
                 .build();
     }
 
     private ContractDto toDtoSummary(Contract contract) {
+        
+        LocalDate inspectionDate = null;
+        try {
+            Optional<LocalDate> inspectionDateOpt = baseServiceClient.getInspectionDateByContractId(contract.getId());
+            inspectionDate = inspectionDateOpt.orElse(null);
+        } catch (Exception e) {
+            log.debug("Could not fetch inspection date for contract {} in summary: {}", contract.getId(), e.getMessage());
+       
+        }
+
         return ContractDto.builder()
                 .id(contract.getId())
                 .unitId(contract.getUnitId())
@@ -727,6 +777,7 @@ public class ContractService {
                 .renewalStatus(contract.getRenewalStatus())
                 .renewedContractId(contract.getRenewedContractId())
                 .files(null)
+                .inspectionDate(inspectionDate)
                 .build();
     }
 
@@ -910,6 +961,108 @@ public class ContractService {
         }
     }
 
+    /**
+     * Set third reminder sent timestamp when third reminder is sent
+     */
+    @Transactional
+    public void setThirdReminderSentAt(UUID contractId) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+
+        if (!"RENTAL".equals(contract.getContractType())) {
+            throw new IllegalArgumentException("Only RENTAL contracts can have third reminder timestamp");
+        }
+
+        contract.setThirdReminderSentAt(OffsetDateTime.now());
+        contractRepository.save(contract);
+        log.info("Set third reminder sent timestamp for contract: {}", contractId);
+    }
+
+    /**
+     * Auto-cancel contract after 24 hours from third reminder if user hasn't taken action
+     * This method is called by scheduled task
+     */
+    @Transactional
+    public int autoCancelContractsAfterThirdReminder() {
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime twentyFourHoursAgo = now.minusHours(24);
+        
+        // Find contracts that:
+        // 1. Are RENTAL type
+        // 2. Are ACTIVE status
+        // 3. Have thirdReminderSentAt set (third reminder was sent)
+        // 4. thirdReminderSentAt was more than 24 hours ago
+        // 5. Still in REMINDED status (user hasn't taken action)
+        // 6. Not already renewed (renewedContractId is null)
+        List<Contract> contractsToCancel = contractRepository.findAll().stream()
+                .filter(c -> "RENTAL".equals(c.getContractType()))
+                .filter(c -> "ACTIVE".equals(c.getStatus()))
+                .filter(c -> "REMINDED".equals(c.getRenewalStatus()))
+                .filter(c -> c.getThirdReminderSentAt() != null)
+                .filter(c -> c.getThirdReminderSentAt().isBefore(twentyFourHoursAgo))
+                .filter(c -> c.getRenewedContractId() == null)
+                .filter(c -> c.getEndDate() != null)
+                .toList();
+
+        int cancelledCount = 0;
+        for (Contract contract : contractsToCancel) {
+            try {
+                log.info("🔄 Auto-cancelling contract {} after 24 hours from third reminder (thirdReminderSentAt: {})", 
+                        contract.getContractNumber(), contract.getThirdReminderSentAt());
+                
+                // Auto-cancel contract without permission check (system action)
+                autoCancelContractWithoutPermissionCheck(contract.getId(), contract.getEndDate());
+                cancelledCount++;
+                
+                log.info("✅ Auto-cancelled contract {} (inspectionDate set to endDate: {})", 
+                        contract.getContractNumber(), contract.getEndDate());
+            } catch (Exception e) {
+                log.error("❌ Error auto-cancelling contract {}: {}", contract.getId(), e.getMessage(), e);
+            }
+        }
+
+        return cancelledCount;
+    }
+
+    /**
+     * Auto-cancel contract without permission check (for system scheduled tasks)
+     * Sets inspectionDate to the contract's endDate
+     */
+    @Transactional
+    private void autoCancelContractWithoutPermissionCheck(UUID contractId, LocalDate inspectionDate) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new IllegalArgumentException("Contract not found: " + contractId));
+        
+        if (!"RENTAL".equals(contract.getContractType())) {
+            throw new IllegalArgumentException("Only RENTAL contracts can be auto-cancelled");
+        }
+        
+        if (!"ACTIVE".equals(contract.getStatus())) {
+            throw new IllegalArgumentException("Only ACTIVE contracts can be auto-cancelled");
+        }
+        
+        contract.setStatus("CANCELLED");
+        contract.setRenewalStatus("DECLINED");
+        contract.setRenewalDeclinedAt(OffsetDateTime.now());
+        contract.setUpdatedBy(null); // System action, no user
+        contract = contractRepository.save(contract);
+        
+        // Flush to ensure the status change is committed to database before calling base-service
+        entityManager.flush();
+        
+        log.info("Auto-cancelled contract: {} (renewalStatus set to DECLINED)", contractId);
+        
+        // Create asset inspection with endDate as inspectionDate
+        LocalDate inspectionDateToUse = inspectionDate != null ? inspectionDate : contract.getEndDate();
+        if (inspectionDateToUse == null) {
+            inspectionDateToUse = LocalDate.now();
+        }
+        baseServiceClient.createAssetInspection(contractId, contract.getUnitId(), inspectionDateToUse, null);
+        
+        // Delete household or clear primaryResidentId when contract is cancelled
+        handleContractEnd(contract.getUnitId());
+    }
+
     @Transactional(readOnly = true)
     public List<Contract> findContractsNeedingSecondReminder() {
         OffsetDateTime sevenDaysAgo = OffsetDateTime.now().minusDays(7);
@@ -1074,6 +1227,26 @@ public class ContractService {
                 .filter(c -> "REMINDED".equals(c.getRenewalStatus())) // Đang trong giai đoạn nhắc gia hạn
                 .filter(c -> c.getRenewalReminderSentAt() != null) // Đã gửi reminder
                 .filter(c -> {
+                    // ✅ Kiểm tra nếu contract đã được gia hạn thành công
+                    // Nếu renewedContractId != null, nghĩa là contract đã được gia hạn thành công
+                    if (c.getRenewedContractId() != null) {
+                        log.debug("🚫 Skipping reminder for contract {}: already renewed (renewedContractId={})", 
+                                c.getContractNumber(), c.getRenewedContractId());
+                        return false;
+                    }
+                    return true;
+                })
+                .filter(c -> {
+                    // ✅ Kiểm tra nếu contract đã hủy gia hạn thành công
+                    // Nếu renewalStatus = "DECLINED", nghĩa là user đã hủy gia hạn hợp đồng
+                    if ("DECLINED".equals(c.getRenewalStatus())) {
+                        log.debug("🚫 Skipping reminder for contract {}: renewal declined", 
+                                c.getContractNumber());
+                        return false;
+                    }
+                    return true;
+                })
+                .filter(c -> {
                     // ✅ Check if user has dismissed this reminder
                     // Only show reminder if currentReminderCount > lastDismissedReminderCount
                     int currentReminderCount = calculateReminderCount(c);
@@ -1089,6 +1262,8 @@ public class ContractService {
                 })
                 // Reminder chỉ hiển thị khi contract vẫn ACTIVE và renewalStatus = REMINDED
                 // Nếu status đã chuyển sang RENEWED hoặc CANCELLED, contract sẽ không có trong list này
+                // Nếu contract đã được gia hạn (renewedContractId != null) hoặc đã hủy (renewalStatus = DECLINED), 
+                // contract sẽ không được hiển thị popup reminder nữa
                 .map(c -> toDto(c, userId, accessToken))
                 .collect(Collectors.toList());
     }
@@ -1221,8 +1396,13 @@ public class ContractService {
         
         // Always create asset inspection when contract is cancelled
         // Use the selected date (scheduledDate) as inspectionDate instead of scheduledDate
-        // If scheduledDate is null, use today as inspectionDate
-        java.time.LocalDate inspectionDate = scheduledDate != null ? scheduledDate : java.time.LocalDate.now();
+        // If scheduledDate is null, use contract endDate as inspectionDate (not today, not last day of month)
+        java.time.LocalDate inspectionDate = scheduledDate != null ? scheduledDate : contract.getEndDate();
+        if (inspectionDate == null) {
+            // Fallback to today only if contract has no endDate (should not happen for RENTAL contracts)
+            inspectionDate = java.time.LocalDate.now();
+            log.warn("Contract {} has no endDate, using today as inspectionDate", contractId);
+        }
         // The selected date is now stored in inspectionDate, not scheduledDate
         // Pass null for scheduledDate since we're using inspectionDate instead
         baseServiceClient.createAssetInspection(contractId, contract.getUnitId(), inspectionDate, null);
@@ -1682,6 +1862,204 @@ public class ContractService {
     }
 
     /**
+     * Map contract type to Vietnamese name
+     */
+    private String mapContractTypeToVietnamese(String contractType) {
+        if (contractType == null) {
+            return "THUÊ";
+        }
+        String upperType = contractType.toUpperCase();
+        return switch (upperType) {
+            case "RENTAL" -> "THUÊ";
+            case "PURCHASE" -> "MUA";
+            case "SERVICE" -> "DỊCH VỤ";
+            case "PARKING" -> "GIỮ XE";
+            default -> upperType;
+        };
+    }
+
+    /**
+     * Find the original contract (not a renewal) from a given contract
+     * Traces back through the renewal chain to find the root contract
+     */
+    private Contract findOriginalContract(Contract contract) {
+        if (contract == null) {
+            return null;
+        }
+        
+        // Check if this contract is already the original (not a renewal)
+        String contractNumber = contract.getContractNumber();
+        boolean isRenewal = (contractNumber != null && contractNumber.contains("Gia hạn lần")) ||
+                           (contractNumber != null && contractNumber.contains("-RENEW-"));
+        
+        if (!isRenewal && contract.getRenewedContractId() == null) {
+            // This is the original contract
+            return contract;
+        }
+        
+        // Find the original contract by looking for contracts in the same unit that:
+        // 1. Don't have "Gia hạn lần" in their name
+        // 2. Don't have "-RENEW-" in their name (old format)
+        // 3. Don't have renewedContractId set (not a renewal)
+        // 4. Have the earliest created date (the first contract)
+        List<Contract> allContracts = contractRepository.findByUnitId(contract.getUnitId());
+        List<Contract> originalCandidates = allContracts.stream()
+                .filter(c -> {
+                    String cn = c.getContractNumber();
+                    return cn != null && 
+                           !cn.contains("Gia hạn lần") && 
+                           !cn.contains("-RENEW-") &&
+                           c.getRenewedContractId() == null;
+                })
+                .collect(Collectors.toList());
+        
+        if (originalCandidates.isEmpty()) {
+            // No original found, return the contract itself
+            return contract;
+        }
+        
+        // Return the one with earliest created date
+        return originalCandidates.stream()
+                .min((a, b) -> {
+                    if (a.getCreatedAt() == null && b.getCreatedAt() == null) return 0;
+                    if (a.getCreatedAt() == null) return 1;
+                    if (b.getCreatedAt() == null) return -1;
+                    return a.getCreatedAt().compareTo(b.getCreatedAt());
+                })
+                .orElse(contract);
+    }
+
+    /**
+     * Count the number of renewals from the original contract
+     * Returns the renewal count (0 = original, 1 = first renewal, 2 = second renewal, etc.)
+     */
+    private int countRenewalSequence(Contract contract) {
+        if (contract == null) {
+            return 0;
+        }
+        
+        Contract originalContract = findOriginalContract(contract);
+        if (originalContract == null) {
+            return 0;
+        }
+        
+        // If this is the original contract itself, return 0
+        if (originalContract.getId().equals(contract.getId())) {
+            return 0;
+        }
+        
+        // Count renewals by following the chain from original to current
+        // The chain: original -> renewal1 (renewedContractId = original.id) -> renewal2 (renewedContractId = renewal1.id) -> ...
+        int renewalCount = 0;
+        Contract current = originalContract;
+        
+        while (current != null && !current.getId().equals(contract.getId())) {
+            // Store current contract ID in final variable for use in lambda
+            final UUID currentContractId = current.getId();
+            final UUID currentUnitId = current.getUnitId();
+            
+            // Find the contract that was renewed from current (where renewedContractId = current.id)
+            List<Contract> renewals = contractRepository.findByUnitId(currentUnitId).stream()
+                    .filter(c -> currentContractId.equals(c.getRenewedContractId()))
+                    .collect(Collectors.toList());
+            
+            if (renewals.isEmpty()) {
+                // No renewal found, we've reached the end of the chain
+                // If we haven't found the target contract, it means it's not in the chain
+                break;
+            }
+            
+            // Should only be one renewal per contract, but if there are multiple, use the first one
+            current = renewals.get(0);
+            renewalCount++;
+            
+            // Safety check to avoid infinite loop
+            if (renewalCount > 100) {
+                log.warn("Renewal chain too long for contract {}, stopping at count {}", contract.getId(), renewalCount);
+                break;
+            }
+        }
+        
+        // If we found the contract in the chain, return the count
+        // Otherwise, count all renewals for this unit (fallback)
+        if (current != null && current.getId().equals(contract.getId())) {
+            return renewalCount;
+        } else {
+            // Fallback: count all contracts with "Gia hạn lần" for this unit
+            List<Contract> allRenewals = contractRepository.findByUnitId(contract.getUnitId()).stream()
+                    .filter(c -> {
+                        String cn = c.getContractNumber();
+                        return cn != null && cn.contains("Gia hạn lần");
+                    })
+                    .collect(Collectors.toList());
+            return allRenewals.size();
+        }
+    }
+
+    /**
+     * Generate a standardized contract number for renewal contracts
+     * Format: HĐ-{LOẠI_HỢP_ĐỒNG}-{MÃ_CĂN} – Gia hạn lần {N}
+     * Example: HĐ-THUÊ-A1---01 – Gia hạn lần 1
+     */
+    private String generateRenewalContractNumber(UUID unitId, String contractType, LocalDate startDate, Contract oldContract) {
+        // Get unit code
+        Optional<String> unitCodeOpt = baseServiceClient.getUnitCodeByUnitId(unitId);
+        String unitCode = unitCodeOpt.orElse("UNKNOWN");
+        
+        // Map contract type to Vietnamese
+        String contractTypeVi = mapContractTypeToVietnamese(contractType);
+        
+        // Find original contract
+        Contract originalContract = findOriginalContract(oldContract);
+        
+        // Count how many renewals have been made from the original contract
+        int renewalSequence = 0;
+        
+        if (originalContract != null) {
+            // Count all contracts that are renewals of the original contract
+            // These are contracts where we can trace back to the original through renewedContractId chain
+            List<Contract> allContracts = contractRepository.findByUnitId(unitId);
+            List<Contract> renewals = allContracts.stream()
+                    .filter(c -> {
+                        // Check if this contract is a renewal (has "Gia hạn lần" in name)
+                        String cn = c.getContractNumber();
+                        if (cn == null) return false;
+                        return cn.contains("Gia hạn lần") || cn.contains("-RENEW-");
+                    })
+                    .collect(Collectors.toList());
+            
+            renewalSequence = renewals.size() + 1; // Next renewal number
+        } else {
+            // Fallback: count all renewals for this unit
+            List<Contract> allRenewals = contractRepository.findByUnitId(unitId).stream()
+                    .filter(c -> {
+                        String cn = c.getContractNumber();
+                        return cn != null && (cn.contains("Gia hạn lần") || cn.contains("-RENEW-"));
+                    })
+                    .collect(Collectors.toList());
+            renewalSequence = allRenewals.size() + 1;
+        }
+        
+        // Format: HĐ-{LOẠI}-{MÃ_CĂN} – Gia hạn lần {N}
+        String contractNumber = String.format("HĐ-%s-%s – Gia hạn lần %d", contractTypeVi, unitCode, renewalSequence);
+        
+        // Ensure uniqueness (retry if needed)
+        int retryCount = 0;
+        while (contractRepository.findByContractNumber(contractNumber).isPresent() && retryCount < 10) {
+            renewalSequence++;
+            contractNumber = String.format("HĐ-%s-%s – Gia hạn lần %d", contractTypeVi, unitCode, renewalSequence);
+            retryCount++;
+        }
+        
+        if (retryCount >= 10) {
+            // Fallback: use timestamp if too many retries
+            contractNumber = String.format("HĐ-%s-%s – Gia hạn lần %d-%d", contractTypeVi, unitCode, renewalSequence, System.currentTimeMillis());
+        }
+        
+        return contractNumber;
+    }
+
+    /**
      * Complete contract renewal after successful payment
      */
     @Transactional
@@ -1696,6 +2074,61 @@ public class ContractService {
         // Get unit code
         Optional<String> unitCodeOpt = baseServiceClient.getUnitCodeByUnitId(newContract.getUnitId());
         String unitCode = unitCodeOpt.orElse("N/A");
+        
+        // Save old contract number before generating new one (to find old contract later)
+        String oldContractNumber = null;
+        Contract oldContract = null;
+        String tempContractNumber = newContract.getContractNumber();
+        if (tempContractNumber != null && tempContractNumber.contains("-RENEW-")) {
+            // Extract old contract number from temporary format: {oldContractNumber}-RENEW-{timestamp}
+            oldContractNumber = tempContractNumber.substring(0, tempContractNumber.indexOf("-RENEW-"));
+            // Find the old contract
+            Optional<Contract> oldContractOpt = contractRepository.findByContractNumber(oldContractNumber);
+            if (oldContractOpt.isPresent()) {
+                oldContract = oldContractOpt.get();
+            }
+        }
+
+        // If we couldn't find old contract by number, try to find it by tracing back through renewedContractId
+        if (oldContract == null) {
+            // Store newContract properties in final variables for use in lambda
+            final UUID newContractUnitId = newContract.getUnitId();
+            final UUID currentContractId = newContract.getId();
+            
+            // Try to find contracts that might be renewed into this one
+            List<Contract> possibleOldContracts = contractRepository.findByUnitId(newContractUnitId).stream()
+                    .filter(c -> !c.getId().equals(currentContractId))
+                    .filter(c -> c.getContractNumber() != null && !c.getContractNumber().contains("Gia hạn lần"))
+                    .filter(c -> c.getContractNumber() != null && !c.getContractNumber().contains("-RENEW-"))
+                    .collect(Collectors.toList());
+            
+            // If there's only one possible old contract, use it
+            if (possibleOldContracts.size() == 1) {
+                oldContract = possibleOldContracts.get(0);
+            } else if (!possibleOldContracts.isEmpty()) {
+                // Use the most recent one (by created date)
+                oldContract = possibleOldContracts.stream()
+                        .max((a, b) -> {
+                            if (a.getCreatedAt() == null && b.getCreatedAt() == null) return 0;
+                            if (a.getCreatedAt() == null) return -1;
+                            if (b.getCreatedAt() == null) return 1;
+                            return a.getCreatedAt().compareTo(b.getCreatedAt());
+                        })
+                        .orElse(null);
+            }
+        }
+
+        // Generate new standardized contract number for renewal
+        // This replaces the temporary "-RENEW-{timestamp}" format with a proper standardized name
+        String newContractNumber = generateRenewalContractNumber(
+                newContract.getUnitId(),
+                newContract.getContractType(),
+                newContract.getStartDate(),
+                oldContract != null ? oldContract : newContract // Use newContract as fallback
+        );
+        newContract.setContractNumber(newContractNumber);
+        log.info("Generated new contract number for renewal: {} (replacing temporary number: {})", 
+                newContractNumber, tempContractNumber);
         
         // Calculate total amount
         BigDecimal totalAmount = calculateTotalRent(newContract);
@@ -1728,24 +2161,31 @@ public class ContractService {
         newContract = contractRepository.save(newContract);
         
         // Find and update the old contract to mark it as renewed
-        // The new contract number format is: {oldContractNumber}-RENEW-{timestamp}
-        String newContractNumber = newContract.getContractNumber();
-        if (newContractNumber != null && newContractNumber.contains("-RENEW-")) {
-            String oldContractNumber = newContractNumber.substring(0, newContractNumber.indexOf("-RENEW-"));
+        if (oldContractNumber != null && oldContract == null) {
+            // Try to find old contract by number if we haven't found it yet
             Optional<Contract> oldContractOpt = contractRepository.findByContractNumber(oldContractNumber);
             if (oldContractOpt.isPresent()) {
-                Contract oldContract = oldContractOpt.get();
-                oldContract.setRenewedContractId(newContract.getId());
-                contractRepository.save(oldContract);
-                log.info("Marked old contract {} as renewed with new contract {}", 
-                        oldContract.getId(), newContract.getId());
-            } else {
-                log.warn("Could not find old contract with number: {}", oldContractNumber);
+                oldContract = oldContractOpt.get();
             }
         }
         
-        log.info("Completed contract renewal payment: contractId={}, invoiceId={}, vnpayTxnRef={}", 
-                newContract.getId(), invoiceId, vnpayTransactionRef);
+        if (oldContract != null) {
+            oldContract.setRenewedContractId(newContract.getId());
+            contractRepository.save(oldContract);
+            log.info("Marked old contract {} ({}) as renewed with new contract {} ({})", 
+                    oldContract.getId(), oldContract.getContractNumber(), 
+                    newContract.getId(), newContract.getContractNumber());
+        } else {
+            if (oldContractNumber != null) {
+                log.warn("Could not find old contract with number: {} to mark as renewed", oldContractNumber);
+            } else {
+                log.warn("Could not extract old contract number from temporary number: {} for new contract {}", 
+                        tempContractNumber, newContractId);
+            }
+        }
+        
+        log.info("Completed contract renewal payment: contractId={}, contractNumber={}, invoiceId={}, vnpayTxnRef={}", 
+                newContract.getId(), newContract.getContractNumber(), invoiceId, vnpayTransactionRef);
         
         return toDto(newContract);
     }

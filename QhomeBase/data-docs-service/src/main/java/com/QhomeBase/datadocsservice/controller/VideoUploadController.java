@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.CrossOrigin;
 
-import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
@@ -46,14 +45,17 @@ public class VideoUploadController {
             @RequestParam(value = "resolution", required = false) String resolution,
             @RequestParam(value = "durationSeconds", required = false) Integer durationSeconds,
             @RequestParam(value = "width", required = false) Integer width,
-            @RequestParam(value = "height", required = false) Integer height) {
+            @RequestParam(value = "height", required = false) Integer height,
+            HttpServletRequest request) {
         
         try {
             log.info("🔍 [VideoUploadController] Received upload request: category={}, ownerId={}, uploadedBy={}, fileName={}, size={} MB",
                     category, ownerId, uploadedBy, file.getOriginalFilename(), file.getSize() / (1024.0 * 1024.0));
             
+            // Store relative path - Flutter app will prepend base URL from app_config.dart
+            // This allows easy URL updates without database changes
             VideoStorage videoStorage = videoStorageService.uploadVideo(
-                    file, category, ownerId, uploadedBy, resolution, durationSeconds, width, height);
+                    file, category, ownerId, uploadedBy, resolution, durationSeconds, width, height, null);
             
             // Only log essential info - no spam logging
             if (log.isDebugEnabled()) {
@@ -70,27 +72,115 @@ public class VideoUploadController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
+    
 
     @GetMapping("/{videoId}")
-    @Operation(summary = "Get video metadata", description = "Get video metadata by ID")
+    @Operation(summary = "Get video metadata", description = "Get video metadata by ID. Returns relative path - client should prepend base URL.")
     public ResponseEntity<VideoUploadResponse> getVideo(@PathVariable UUID videoId) {
         try {
             VideoStorage video = videoStorageService.getVideoById(videoId);
-            return ResponseEntity.ok(VideoUploadResponse.from(video));
+            // Return relative path - Flutter app will prepend base URL from app_config.dart
+            // If stored URL is full URL, normalize to relative path
+            String videoUrl = normalizeToRelativePath(video.getFileUrl(), video.getId());
+            VideoUploadResponse response = VideoUploadResponse.from(video);
+            VideoUploadResponse responseWithRelativeUrl = new VideoUploadResponse(
+                    response.id(),
+                    response.fileName(),
+                    response.originalFileName(),
+                    videoUrl, // Use relative path
+                    response.contentType(),
+                    response.fileSize(),
+                    response.category(),
+                    response.ownerId(),
+                    response.resolution(),
+                    response.durationSeconds(),
+                    response.width(),
+                    response.height(),
+                    response.uploadedBy()
+            );
+            return ResponseEntity.ok(responseWithRelativeUrl);
         } catch (FileStorageException e) {
             return ResponseEntity.notFound().build();
         }
     }
+    
+    /**
+     * Normalize video URL to relative path
+     * If URL is full URL (contains http:// or https://), extract relative path
+     * Otherwise return as-is (already relative)
+     */
+    private String normalizeToRelativePath(String fileUrl, UUID videoId) {
+        if (fileUrl == null || fileUrl.isEmpty()) {
+            return String.format("/api/videos/stream/%s", videoId.toString());
+        }
+        
+        // If URL contains /api/videos/stream/, extract relative path
+        if (fileUrl.contains("/api/videos/stream/")) {
+            String[] parts = fileUrl.split("/api/videos/stream/");
+            if (parts.length > 1) {
+                String videoIdStr = parts[1].split("\\?")[0]; // Remove query params if any
+                // Validate that videoIdStr matches the actual videoId
+                if (videoIdStr.equals(videoId.toString())) {
+                    return "/api/videos/stream/" + videoIdStr;
+                }
+            }
+        }
+        
+        // If it's a full URL (starts with http:// or https://), extract path
+        if (fileUrl.startsWith("http://") || fileUrl.startsWith("https://")) {
+            try {
+                java.net.URL url = new java.net.URL(fileUrl);
+                String path = url.getPath();
+                if (path != null && !path.isEmpty() && path.contains("/api/videos/stream/")) {
+                    // Extract relative path from full URL
+                    String[] parts = path.split("/api/videos/stream/");
+                    if (parts.length > 1) {
+                        String videoIdStr = parts[1].split("\\?")[0];
+                        return "/api/videos/stream/" + videoIdStr;
+                    }
+                }
+            } catch (Exception e) {
+                // If URL parsing fails, fall through to use videoId
+            }
+        }
+        
+        // If already relative path (starts with /), return as-is
+        if (fileUrl.startsWith("/")) {
+            return fileUrl;
+        }
+        
+        // Fallback: return relative path with videoId
+        return String.format("/api/videos/stream/%s", videoId.toString());
+    }
 
     @GetMapping("/category/{category}/owner/{ownerId}")
-    @Operation(summary = "Get videos by category and owner", description = "Get all videos for a specific category and owner")
+    @Operation(summary = "Get videos by category and owner", description = "Get all videos for a specific category and owner. Returns relative paths - client should prepend base URL.")
     public ResponseEntity<List<VideoUploadResponse>> getVideosByCategoryAndOwner(
             @PathVariable String category,
             @PathVariable UUID ownerId) {
         try {
             List<VideoStorage> videos = videoStorageService.getVideosByCategoryAndOwner(category, ownerId);
             List<VideoUploadResponse> responses = videos.stream()
-                    .map(VideoUploadResponse::from)
+                    .map(video -> {
+                        // Normalize to relative path - Flutter app will prepend base URL from app_config.dart
+                        String relativeUrl = normalizeToRelativePath(video.getFileUrl(), video.getId());
+                        VideoUploadResponse original = VideoUploadResponse.from(video);
+                        return new VideoUploadResponse(
+                                original.id(),
+                                original.fileName(),
+                                original.originalFileName(),
+                                relativeUrl, // Use relative path
+                                original.contentType(),
+                                original.fileSize(),
+                                original.category(),
+                                original.ownerId(),
+                                original.resolution(),
+                                original.durationSeconds(),
+                                original.width(),
+                                original.height(),
+                                original.uploadedBy()
+                        );
+                    })
                     .collect(Collectors.toList());
             return ResponseEntity.ok(responses);
         } catch (Exception e) {

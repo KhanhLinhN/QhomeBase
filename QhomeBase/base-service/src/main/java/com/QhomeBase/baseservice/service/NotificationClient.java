@@ -39,6 +39,9 @@ public class NotificationClient {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
+            log.info("📤 [NotificationClient] Sending notification to {} | Payload: residentId={}, type={}, title={}, referenceType={}", 
+                    uri, payload.get("residentId"), payload.get("type"), payload.get("title"), payload.get("referenceType"));
+
             ResponseEntity<Void> response = restTemplate.exchange(
                     uri,
                     HttpMethod.POST,
@@ -46,13 +49,16 @@ public class NotificationClient {
                     Void.class
             );
 
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                log.warn("❌ [NotificationClient] Failed to push notification: status={}", response.getStatusCode());
+            if (response.getStatusCode().is2xxSuccessful()) {
+                log.info("✅ [NotificationClient] Successfully sent notification to notification service | ResidentId: {} | Type: {} | ReferenceType: {}", 
+                        payload.get("residentId"), payload.get("type"), payload.get("referenceType"));
             } else {
-                log.info("✅ [NotificationClient] Notification sent successfully");
+                log.warn("❌ [NotificationClient] Failed to push notification to notification service | Status: {} | ResidentId: {} | Type: {} | ReferenceType: {}", 
+                        response.getStatusCode(), payload.get("residentId"), payload.get("type"), payload.get("referenceType"));
             }
         } catch (Exception ex) {
-            log.error("❌ [NotificationClient] Error sending notification", ex);
+            log.error("❌ [NotificationClient] Error sending notification to notification service | ResidentId: {} | Type: {} | ReferenceType: {} | Error: {}", 
+                    payload.get("residentId"), payload.get("type"), payload.get("referenceType"), ex.getMessage(), ex);
         }
     }
 

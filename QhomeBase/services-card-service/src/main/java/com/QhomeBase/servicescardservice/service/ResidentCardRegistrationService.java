@@ -344,17 +344,6 @@ public class ResidentCardRegistrationService {
 
     private void sendCardApprovalNotification(ResidentCardRegistration registration, String issueMessage, OffsetDateTime issueTime) {
         try {
-            // Check if already approved - don't send notification if already approved to avoid duplicate
-            if (STATUS_APPROVED.equalsIgnoreCase(registration.getStatus()) 
-                    && registration.getApprovedAt() != null 
-                    && registration.getApprovedBy() != null) {
-                // Double-check: if approvedAt was set before this call, skip notification
-                // This prevents duplicate notifications if method is called multiple times
-                log.warn("⚠️ [ResidentCard] Registration {} already approved. Skipping notification to avoid duplicate FCM push.", 
-                        registration.getId());
-                return;
-            }
-            
             // CARD_APPROVED is PRIVATE - only resident who created the request can see
             // Get residentId from userId (người tạo request) instead of residentId (người được đăng ký thẻ)
             UUID requesterResidentId = residentUnitLookupService.resolveByUser(
@@ -1053,6 +1042,8 @@ public class ResidentCardRegistrationService {
             
             // Query để lấy danh sách thành viên và check xem họ đã có thẻ được approve chưa
             // Thêm thông tin về household kind để Flutter có thể verify
+            // Chỉ lấy những household members đã được admin approve (có request với status APPROVED)
+            // OWNER (primary member) luôn được phép, không cần request
             List<Map<String, Object>> members = jdbcTemplate.query("""
                     SELECT DISTINCT
                         r.id AS resident_id,
@@ -1085,6 +1076,21 @@ public class ResidentCardRegistrationService {
                     WHERE h.unit_id = :unitId
                       AND (hm.left_at IS NULL OR hm.left_at >= CURRENT_DATE)
                       AND (h.end_date IS NULL OR h.end_date >= CURRENT_DATE)
+                      AND (
+                          -- OWNER (primary member) luôn được phép
+                          hm.is_primary = true
+                          OR
+                          -- Hoặc có request đã được approve
+                          EXISTS (
+                              SELECT 1 FROM data.household_member_requests hmr
+                              WHERE hmr.household_id = hm.household_id
+                                AND (hmr.resident_id = r.id 
+                                     OR (hmr.resident_id IS NULL 
+                                         AND hmr.resident_national_id = r.national_id
+                                         AND hmr.resident_phone = r.phone))
+                                AND hmr.status = 'APPROVED'
+                          )
+                      )
                     ORDER BY r.full_name
                     """, params, (rs, rowNum) -> {
                 Map<String, Object> member = new HashMap<>();

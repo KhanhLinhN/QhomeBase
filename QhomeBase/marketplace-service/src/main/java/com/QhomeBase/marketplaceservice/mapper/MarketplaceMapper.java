@@ -70,7 +70,7 @@ public class MarketplaceMapper {
                 .images(images != null ? images.stream()
                         .map(this::toPostImageResponse)
                         .collect(Collectors.toList()) : new java.util.ArrayList<>())
-                .videoUrl(post.getVideoUrl())
+                .videoUrl(normalizeVideoUrl(post.getVideoUrl())) // Normalize to relative path
                 .author(author)
                 .createdAt(post.getCreatedAt())
                 .updatedAt(post.getUpdatedAt())
@@ -164,8 +164,50 @@ public class MarketplaceMapper {
                 .updatedAt(comment.getUpdatedAt())
                 .isDeleted(comment.isDeleted())
                 .imageUrl(comment.getImageUrl())
-                .videoUrl(comment.getVideoUrl())
+                .videoUrl(normalizeVideoUrl(comment.getVideoUrl())) // Normalize to relative path
                 .build();
+    }
+
+    /**
+     * Normalize video URL to relative path
+     * If URL is full URL (contains http:// or https://), extract relative path
+     * Otherwise return as-is (already relative or null)
+     */
+    private String normalizeVideoUrl(String videoUrl) {
+        if (videoUrl == null || videoUrl.isEmpty()) {
+            return null;
+        }
+        
+        // If URL contains /api/videos/stream/, extract relative path
+        if (videoUrl.contains("/api/videos/stream/")) {
+            String[] parts = videoUrl.split("/api/videos/stream/");
+            if (parts.length > 1) {
+                String videoIdStr = parts[1].split("\\?")[0]; // Remove query params if any
+                return "/api/videos/stream/" + videoIdStr;
+            }
+        }
+        
+        // If already relative path (starts with /), return as-is
+        if (videoUrl.startsWith("/")) {
+            return videoUrl;
+        }
+        
+        // If it's a full URL (starts with http:// or https://), try to extract path
+        if (videoUrl.startsWith("http://") || videoUrl.startsWith("https://")) {
+            try {
+                java.net.URL url = new java.net.URL(videoUrl);
+                String path = url.getPath();
+                if (path != null && !path.isEmpty()) {
+                    return path;
+                }
+            } catch (Exception e) {
+                // If URL parsing fails, return null
+                return null;
+            }
+        }
+        
+        // Fallback: return as-is (might be invalid, but let client handle it)
+        return videoUrl;
     }
 
     public CategoryResponse toCategoryResponse(MarketplaceCategory category) {

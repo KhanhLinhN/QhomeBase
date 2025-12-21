@@ -8,9 +8,11 @@ import com.QhomeBase.baseservice.dto.HouseholdDto;
 import com.QhomeBase.baseservice.dto.HouseholdUpdateDto;
 import com.QhomeBase.baseservice.model.Household;
 import com.QhomeBase.baseservice.model.HouseholdKind;
+import com.QhomeBase.baseservice.model.HouseholdMember;
 import com.QhomeBase.baseservice.model.Resident;
 import com.QhomeBase.baseservice.model.Unit;
 import com.QhomeBase.baseservice.repository.HouseholdRepository;
+import com.QhomeBase.baseservice.repository.HouseholdMemberRepository;
 import com.QhomeBase.baseservice.repository.ResidentRepository;
 import com.QhomeBase.baseservice.repository.UnitRepository;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,7 @@ import java.util.stream.Collectors;
 public class HouseholdService {
     
     private final HouseholdRepository householdRepository;
+    private final HouseholdMemberRepository householdMemberRepository;
     private final UnitRepository unitRepository;
     private final ResidentRepository residentRepository;
     private final ContractClient contractClient;
@@ -178,9 +181,40 @@ public class HouseholdService {
         Household household = householdRepository.findById(householdId)
                 .orElseThrow(() -> new IllegalArgumentException("Household not found"));
 
-        household.setEndDate(LocalDate.now());
+        // Set endDate to 2 days ago to ensure household is no longer "current"
+        // This accounts for potential timezone differences between Java LocalDate.now() and PostgreSQL CURRENT_DATE
+        // findCurrentHouseholdByUnitId() checks: endDate IS NULL OR endDate >= CURRENT_DATE
+        // By setting endDate = 2 days ago, we ensure endDate < CURRENT_DATE even with timezone differences
+        LocalDate deactivationDate = LocalDate.now().minusDays(2);
+        household.setEndDate(deactivationDate);
         householdRepository.save(household);
-        log.info("Deactivated household {}", householdId);
+        log.info("Deactivated household {} (endDate set to {} - 2 days ago to account for timezone differences)", 
+                householdId, deactivationDate);
+        
+        // IMPORTANT: Also deactivate all household members to ensure they are no longer associated with this unit
+        // This ensures queries like findAllUnitsByUserId() won't return this unit
+        // because they check: hm.leftAt IS NULL OR hm.leftAt >= CURRENT_DATE
+        // By setting leftAt = deactivationDate (2 days ago), we ensure leftAt < CURRENT_DATE
+        deactivateHouseholdMembers(householdId, deactivationDate);
+    }
+    
+    private void deactivateHouseholdMembers(UUID householdId, LocalDate deactivationDate) {
+        // Find all active household members (where leftAt IS NULL or leftAt >= CURRENT_DATE)
+        // We use findActiveMembersByHouseholdId which checks: leftAt IS NULL OR leftAt >= CURRENT_DATE
+        // After setting leftAt = deactivationDate (2 days ago), the query won't find them anymore
+        List<HouseholdMember> activeMembers = 
+                householdMemberRepository.findActiveMembersByHouseholdId(householdId);
+        
+        for (com.QhomeBase.baseservice.model.HouseholdMember member : activeMembers) {
+            member.setLeftAt(deactivationDate);
+            householdMemberRepository.save(member);
+            log.debug("Deactivated household member {} (leftAt set to {})", member.getId(), deactivationDate);
+        }
+        
+        if (!activeMembers.isEmpty()) {
+            log.info("Deactivated {} household member(s) for household {} (leftAt set to {} - 2 days ago)", 
+                    activeMembers.size(), householdId, deactivationDate);
+        }
     }
 
     @Transactional(readOnly = true)

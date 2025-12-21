@@ -3,6 +3,7 @@ package com.QhomeBase.baseservice.controller;
 import com.QhomeBase.baseservice.dto.HouseholdMemberRequestCreateDto;
 import com.QhomeBase.baseservice.dto.HouseholdMemberRequestDecisionDto;
 import com.QhomeBase.baseservice.dto.HouseholdMemberRequestDto;
+import com.QhomeBase.baseservice.dto.HouseholdMemberRequestResendDto;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import com.QhomeBase.baseservice.service.HouseholdMemberRequestService;
 import jakarta.validation.Valid;
@@ -86,6 +87,27 @@ public class HouseholdMemberRequestController {
             return ResponseEntity.ok(dto);
         } catch (IllegalArgumentException e) {
             log.warn("Failed to process household member request {}: {}", id, e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{id}/resend")
+    @PreAuthorize("hasRole('RESIDENT')")
+    public ResponseEntity<?> resendRequest(
+            @PathVariable UUID id,
+            @Valid @RequestBody(required = false) HouseholdMemberRequestResendDto resendDto,
+            Authentication authentication
+    ) {
+        try {
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            // If resendDto is null, create empty DTO (will use original request values)
+            HouseholdMemberRequestResendDto requestDto = resendDto != null 
+                    ? resendDto 
+                    : new HouseholdMemberRequestResendDto(null, null, null, null, null, null, null, null);
+            HouseholdMemberRequestDto dto = requestService.resendRequest(id, requestDto, principal);
+            return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to resend household member request {}: {}", id, e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
     }

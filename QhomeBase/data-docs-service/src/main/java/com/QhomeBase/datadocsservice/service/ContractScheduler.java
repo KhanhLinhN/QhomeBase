@@ -5,8 +5,6 @@ import com.QhomeBase.datadocsservice.client.NotificationClient;
 import com.QhomeBase.datadocsservice.model.Contract;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -163,8 +161,8 @@ public class ContractScheduler {
                         } else {
                             log.debug("⏭️ Skipping reminder 2 for contract {}: firstReminderDate={}, today={}", 
                                     contract.getContractNumber(), firstReminderDate, today);
-                        }
-                    }
+                }
+            }
                     // Lần 3: 10 ngày trước khi hết hạn hợp đồng - BẮT BUỘC
                     // Chỉ gửi nếu:
                     // - Đã gửi lần 1 (renewalReminderSentAt != null)
@@ -176,6 +174,8 @@ public class ContractScheduler {
                         // Đảm bảo lần 1 đã được gửi trước đó (ít nhất 1 ngày)
                         if (firstReminderDate.isBefore(today)) {
                             contractService.sendRenewalReminder(contract.getId());
+                            // Set thirdReminderSentAt to track when third reminder was sent
+                            contractService.setThirdReminderSentAt(contract.getId());
                             sendReminderNotificationToAllResidents(contract, 3, true);
                             thirdReminderCount++;
                             log.info("✅ Sent THIRD (FINAL) renewal reminder for contract {} (expires on {}, {} days until end date - BẮT BUỘC HỦY HOẶC GIA HẠN)", 
@@ -272,6 +272,21 @@ public class ContractScheduler {
             log.info("Scheduled task completed: Marked {} contract(s) as renewal declined", declinedCount);
         } catch (Exception e) {
             log.error("Error in scheduled task to mark renewal declined", e);
+        }
+    }
+
+    /**
+     * Auto-cancel contracts after 24 hours from third reminder if user hasn't taken action
+     * Runs every hour to check contracts that need to be auto-cancelled
+     */
+    @Scheduled(cron = "0 0 * * * ?")
+    public void autoCancelContractsAfterThirdReminder() {
+        try {
+            log.info("Starting scheduled task: Auto-cancel contracts after 24 hours from third reminder");
+            int cancelledCount = contractService.autoCancelContractsAfterThirdReminder();
+            log.info("Scheduled task completed: Auto-cancelled {} contract(s)", cancelledCount);
+        } catch (Exception e) {
+            log.error("Error in scheduled task to auto-cancel contracts after third reminder", e);
         }
     }
 

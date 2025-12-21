@@ -132,5 +132,19 @@ public class BaseServiceClient {
             return null;
         }
     }
+
+    public String getUserEmail(UUID userId) {
+        try {
+            return baseServiceWebClient
+                    .get()
+                    .uri("/api/users/{userId}/email", userId)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+        } catch (Exception e) {
+            log.warn("Could not fetch user email for ID {}: {}", userId, e.getMessage());
+            return null;
+        }
+    }
 }
 

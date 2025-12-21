@@ -92,7 +92,8 @@ public class VideoStorageService {
             String resolution,
             Integer durationSeconds,
             Integer width,
-            Integer height) {
+            Integer height,
+            String gatewayBaseUrl) { // Not used anymore - we store relative path
         
         validateVideoFile(file);
         
@@ -138,29 +139,17 @@ public class VideoStorageService {
             
             VideoStorage saved = videoStorageRepository.save(videoStorage);
             
-            // Update fileUrl to point to stream endpoint via API Gateway
-            // Use gateway URL for public access (ExoPlayer cannot send auth headers)
-            String gatewayBaseUrl = fileStorageProperties.getGatewayUrl();
-            if (gatewayBaseUrl == null || gatewayBaseUrl.isEmpty()) {
-                // Fallback: extract from baseUrl and replace port with gateway port
-                String baseUrl = fileStorageProperties.getBaseUrl();
-                if (baseUrl.endsWith("/api/files")) {
-                    baseUrl = baseUrl.substring(0, baseUrl.length() - "/api/files".length());
-                } else if (baseUrl.endsWith("/api/files/")) {
-                    baseUrl = baseUrl.substring(0, baseUrl.length() - "/api/files/".length());
-                }
-                gatewayBaseUrl = baseUrl.replace(":8082", ":8989");
-            }
-            String fileUrl = String.format("%s/api/videos/stream/%s",
-                    gatewayBaseUrl,
-                    saved.getId().toString());
+            // Store relative path instead of full URL to avoid hardcoded IP issues
+            // Client (Flutter app) will prepend base URL from app_config.dart
+            // This allows easy URL updates without database changes
+            String fileUrl = String.format("/api/videos/stream/%s", saved.getId().toString());
             saved.setFileUrl(fileUrl);
             saved = videoStorageRepository.save(saved);
             
             // Only log essential info - no spam logging
             if (log.isDebugEnabled()) {
-                log.debug("Video uploaded: videoId={}, category={}, size={} MB", 
-                        saved.getId(), category, file.getSize() / (1024.0 * 1024.0));
+                log.debug("Video uploaded: videoId={}, category={}, size={} MB, url={}", 
+                        saved.getId(), category, file.getSize() / (1024.0 * 1024.0), fileUrl);
             }
             
             return saved;

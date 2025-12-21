@@ -27,6 +27,7 @@ public class MarketplaceCommentService {
     private final MarketplacePostRepository postRepository;
     private final MarketplaceNotificationService notificationService;
     private final ChatServiceClient chatServiceClient;
+    private final ResidentInfoService residentInfoService;
 
     /**
      * Get comments for a post (all comments, no pagination)
@@ -253,8 +254,23 @@ public class MarketplaceCommentService {
         // Get post owner residentId for notification
         UUID postOwnerResidentId = post.getResidentId();
         
-        // Get comment author name for notification (optional, can be "User" if not available)
-        String authorName = "User"; // Default name, can be enhanced later to fetch from resident info
+        // Get comment author name for notification - fetch from resident info
+        String authorName = "User"; // Default fallback
+        if (accessToken != null && !accessToken.isEmpty()) {
+            try {
+                var residentInfo = residentInfoService.getResidentInfo(residentId, accessToken);
+                if (residentInfo != null && residentInfo.getName() != null && !residentInfo.getName().trim().isEmpty()) {
+                    authorName = residentInfo.getName();
+                    log.debug("✅ [MarketplaceCommentService] Fetched author name for comment: {} -> {}", residentId, authorName);
+                } else {
+                    log.warn("⚠️ [MarketplaceCommentService] Resident info not found or name is empty for residentId: {}", residentId);
+                }
+            } catch (Exception e) {
+                log.error("❌ [MarketplaceCommentService] Error fetching resident info for notification (residentId: {}): {}", 
+                        residentId, e.getMessage());
+                // Continue with default "User" name
+            }
+        }
         
         // Get parentCommentId if this is a reply
         // Notify post owner and viewers (both WebSocket and FCM push)
@@ -267,7 +283,7 @@ public class MarketplaceCommentService {
      * Update comment
      */
     @Transactional
-    public MarketplaceComment updateComment(@NonNull UUID commentId, @NonNull UUID residentId, String content) {
+    public MarketplaceComment updateComment(@NonNull UUID commentId, @NonNull UUID residentId, String content, String imageUrl, String videoUrl) {
         log.info("Updating comment: {} by user: {}", commentId, residentId);
 
         MarketplaceComment comment = commentRepository.findById(commentId)
@@ -277,7 +293,25 @@ public class MarketplaceCommentService {
             throw new RuntimeException("Not authorized to update this comment");
         }
 
-        comment.setContent(content);
+        // Validate: content, imageUrl, or videoUrl must be provided
+        String trimmedContent = content != null ? content.trim() : "";
+        boolean hasContent = !trimmedContent.isEmpty();
+        boolean hasImage = imageUrl != null && !imageUrl.trim().isEmpty();
+        boolean hasVideo = videoUrl != null && !videoUrl.trim().isEmpty();
+        
+        if (!hasContent && !hasImage && !hasVideo) {
+            throw new IllegalArgumentException("Comment must have content, image, or video");
+        }
+
+        // Update content (set to null if empty)
+        comment.setContent(hasContent ? trimmedContent : null);
+        
+        // Update imageUrl
+        comment.setImageUrl(hasImage ? imageUrl.trim() : null);
+        
+        // Update videoUrl
+        comment.setVideoUrl(hasVideo ? videoUrl.trim() : null);
+        
         MarketplaceComment saved = commentRepository.save(comment);
         
         // ✅ FIX LazyInitializationException: Initialize replies collection within transaction

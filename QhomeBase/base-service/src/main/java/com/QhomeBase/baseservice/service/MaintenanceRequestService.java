@@ -524,13 +524,29 @@ public class MaintenanceRequestService {
         if (residentId == null) {
             return;
         }
-        boolean hasPending = maintenanceRequestRepository
-                .existsByResidentIdAndStatusIgnoreCase(residentId, STATUS_PENDING);
-        boolean hasInProgress = maintenanceRequestRepository
-                .existsByResidentIdAndStatusIgnoreCase(residentId, STATUS_IN_PROGRESS);
-        if (hasPending || hasInProgress) {
-            throw new IllegalStateException(
-                    "Bạn đang có yêu cầu sửa chữa chưa hoàn tất. Vui lòng chờ đơn hiện tại sang trạng thái DONE trước khi tạo thêm.");
+        
+        // Check if resident has any active request (status not DONE or CANCELLED)
+        // This includes: NEW, PENDING, IN_PROGRESS, DENIED, etc.
+        boolean hasActiveRequest = maintenanceRequestRepository.existsActiveRequestByResidentId(residentId);
+        
+        if (hasActiveRequest) {
+            // Get the active request to show more details
+            List<MaintenanceRequest> activeRequests = maintenanceRequestRepository
+                    .findByResidentIdOrderByCreatedAtDesc(residentId)
+                    .stream()
+                    .filter(r -> !STATUS_DONE.equals(r.getStatus()) && !STATUS_CANCELLED.equals(r.getStatus()))
+                    .limit(1)
+                    .toList();
+            
+            if (!activeRequests.isEmpty()) {
+                MaintenanceRequest activeRequest = activeRequests.get(0);
+                throw new IllegalStateException(
+                        String.format("Bạn đang có yêu cầu sửa chữa chưa xử lý (trạng thái: %s). Vui lòng chờ yêu cầu hiện tại chuyển sang trạng thái DONE hoặc CANCELLED trước khi tạo yêu cầu mới.",
+                                activeRequest.getStatus()));
+            } else {
+                throw new IllegalStateException(
+                        "Bạn đang có yêu cầu sửa chữa chưa xử lý. Vui lòng chờ yêu cầu hiện tại chuyển sang trạng thái DONE hoặc CANCELLED trước khi tạo yêu cầu mới.");
+            }
         }
     }
 
@@ -656,25 +672,17 @@ public class MaintenanceRequestService {
             return;
         }
 
-        Unit unit = null;
-        UUID unitId = request.getUnitId();
-        if (unitId != null) {
-            unit = unitRepository.findById(unitId).orElse(null);
-        }
-
         Map<String, String> data = new HashMap<>();
         data.put("entity", "MAINTENANCE_REQUEST");
         data.put("requestId", request.getId().toString());
         data.put("status", status);
         data.put("category", request.getCategory());
 
-        UUID buildingId = (unit != null && unit.getBuilding() != null)
-                ? unit.getBuilding().getId()
-                : null;
-
+        // Maintenance request notifications are PRIVATE - only the resident who created the request should see them
+        // Set buildingId = null to ensure notification is sent to resident-specific channel only
         notificationClient.sendResidentNotification(
                 request.getResidentId(),
-                buildingId,
+                null, // buildingId = null for private notification (riêng tư)
                 "REQUEST",
                 title,
                 body,

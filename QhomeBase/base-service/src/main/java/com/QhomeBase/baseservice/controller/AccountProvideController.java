@@ -2,6 +2,7 @@ package com.QhomeBase.baseservice.controller;
 
 import com.QhomeBase.baseservice.dto.PrimaryResidentProvisionRequest;
 import com.QhomeBase.baseservice.dto.PrimaryResidentProvisionResponse;
+import com.QhomeBase.baseservice.exception.GlobalExceptionHandler;
 import com.QhomeBase.baseservice.security.UserPrincipal;
 import com.QhomeBase.baseservice.service.AccountProvideService;
 import jakarta.validation.Valid;

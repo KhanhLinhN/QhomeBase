@@ -100,6 +100,16 @@ public class ServiceBookingPaymentService {
             booking.setPaymentDate(OffsetDateTime.now());
             bookingRepository.save(booking);
 
+            // Load lazy associations for email notification
+            // Force initialization of service (LAZY)
+            if (booking.getService() != null) {
+                booking.getService().getName();
+            }
+            // Force initialization of booking items (LAZY)
+            if (booking.getBookingItems() != null) {
+                booking.getBookingItems().size();
+            }
+
             emailService.sendBookingPaymentSuccess(booking, txnRef);
 
             removeOrderMapping(txnRef);

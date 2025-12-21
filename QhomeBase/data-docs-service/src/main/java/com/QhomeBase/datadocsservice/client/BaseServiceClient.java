@@ -356,6 +356,49 @@ public class BaseServiceClient {
         }
     }
 
+   
+    public Optional<LocalDate> getInspectionDateByContractId(UUID contractId) {
+        try {
+            String url = baseServiceBaseUrl + "/api/asset-inspections/contract/" + contractId;
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Void> request = new HttpEntity<>(headers);
+            
+            try {
+                ResponseEntity<Map> response = restTemplate.exchange(url, org.springframework.http.HttpMethod.GET, request, Map.class);
+                
+                if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                    Map<String, Object> body = response.getBody();
+                    Object inspectionDateObj = body.get("inspectionDate");
+                    if (inspectionDateObj != null) {
+                        String inspectionDateStr = inspectionDateObj.toString();
+                        LocalDate inspectionDate = LocalDate.parse(inspectionDateStr);
+                        log.debug("✅ [BaseServiceClient] Found inspection date for contract {}: {}", contractId, inspectionDate);
+                        return Optional.of(inspectionDate);
+                    }
+                }
+            } catch (HttpClientErrorException.NotFound e) {
+                // Inspection not found - this is normal, return empty
+                log.debug("ℹ️ [BaseServiceClient] No inspection found for contract {}", contractId);
+                return Optional.empty();
+            }
+            
+            return Optional.empty();
+        } catch (ResourceAccessException ex) {
+            // Connection refused or service unavailable - log as WARN, not ERROR
+            if (ex.getCause() instanceof ConnectException) {
+                log.debug("⚠️ [BaseServiceClient] Base-service unavailable when getting inspection for contract: {}", contractId);
+            } else {
+                log.debug("⚠️ [BaseServiceClient] Network error getting inspection for contract: {}", contractId);
+            }
+            return Optional.empty();
+        } catch (Exception ex) {
+            log.debug("⚠️ [BaseServiceClient] Error getting inspection date for contract {}: {}", contractId, ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
     /**
      * Create asset inspection for cancelled contract
      */

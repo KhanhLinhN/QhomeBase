@@ -4,6 +4,7 @@ import com.QhomeBase.baseservice.dto.HouseholdMemberCreateDto;
 import com.QhomeBase.baseservice.dto.HouseholdMemberRequestCreateDto;
 import com.QhomeBase.baseservice.dto.HouseholdMemberRequestDecisionDto;
 import com.QhomeBase.baseservice.dto.HouseholdMemberRequestDto;
+import com.QhomeBase.baseservice.dto.HouseholdMemberRequestResendDto;
 import com.QhomeBase.baseservice.dto.ResidentAccountDto;
 import com.QhomeBase.baseservice.model.Household;
 import com.QhomeBase.baseservice.model.HouseholdMemberRequest;
@@ -26,6 +27,7 @@ import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -163,6 +165,188 @@ public class HouseholdMemberRequestService {
 
         HouseholdMemberRequest saved = requestRepository.save(request);
         log.info("Household member request {} cancelled by {}", requestId, requesterUserId);
+        return toDto(saved);
+    }
+
+    /**
+     * Resend a rejected household member request.
+     * Creates a new request with PENDING status based on the rejected request.
+     * The original request remains REJECTED for audit purposes.
+     * Only the Owner who created the original request can resend it.
+     */
+    @Transactional
+    public HouseholdMemberRequestDto resendRequest(UUID requestId, HouseholdMemberRequestResendDto resendDto, UserPrincipal principal) {
+        HouseholdMemberRequest originalRequest = requestRepository.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Household member request not found"));
+
+        // Check permission: only the Owner who created the request can resend it
+        if (!principal.uid().equals(originalRequest.getRequestedBy())) {
+            throw new IllegalArgumentException("Bạn không có quyền gửi lại yêu cầu này. Chỉ chủ căn hộ tạo yêu cầu ban đầu mới có quyền gửi lại.");
+        }
+
+        // Check that original request is REJECTED
+        if (originalRequest.getStatus() != RequestStatus.REJECTED) {
+            if (originalRequest.getStatus() == RequestStatus.APPROVED) {
+                throw new IllegalArgumentException("Không thể gửi lại yêu cầu này vì yêu cầu đã được duyệt");
+            }
+            throw new IllegalArgumentException("Chỉ có thể gửi lại các yêu cầu đã bị từ chối. Trạng thái hiện tại: " + originalRequest.getStatus());
+        }
+
+        Household household = householdRepository.findById(originalRequest.getHouseholdId())
+                .orElseThrow(() -> new IllegalArgumentException("Household not found"));
+
+        Resident requesterResident = residentRepository.findByUserId(principal.uid())
+                .orElseThrow(() -> new IllegalArgumentException("Requester is not linked to any resident"));
+
+        if (!isPrimaryResident(household, requesterResident.getId())) {
+            throw new IllegalArgumentException("Chỉ chủ căn hộ mới được gửi lại yêu cầu đăng ký thành viên");
+        }
+
+        // Use updated values from resendDto if provided, otherwise use original request values
+        String residentFullName = resendDto.residentFullName() != null && !resendDto.residentFullName().isBlank()
+                ? resendDto.residentFullName()
+                : originalRequest.getResidentFullName();
+        String residentPhone = resendDto.residentPhone() != null && !resendDto.residentPhone().isBlank()
+                ? resendDto.residentPhone()
+                : originalRequest.getResidentPhone();
+        String residentEmail = resendDto.residentEmail() != null && !resendDto.residentEmail().isBlank()
+                ? resendDto.residentEmail()
+                : originalRequest.getResidentEmail();
+        String residentNationalId = resendDto.residentNationalId() != null && !resendDto.residentNationalId().isBlank()
+                ? resendDto.residentNationalId()
+                : originalRequest.getResidentNationalId();
+        java.time.LocalDate residentDob = resendDto.residentDob() != null
+                ? resendDto.residentDob()
+                : originalRequest.getResidentDob();
+        String relation = resendDto.relation() != null && !resendDto.relation().isBlank()
+                ? resendDto.relation()
+                : originalRequest.getRelation();
+        String proofOfRelationImageUrl = resendDto.proofOfRelationImageUrl() != null && !resendDto.proofOfRelationImageUrl().isBlank()
+                ? resendDto.proofOfRelationImageUrl()
+                : originalRequest.getProofOfRelationImageUrl();
+        String note = resendDto.note() != null && !resendDto.note().isBlank()
+                ? resendDto.note()
+                : originalRequest.getNote();
+
+        // Create new DTO with merged values for validation
+        HouseholdMemberRequestCreateDto createDto = new HouseholdMemberRequestCreateDto(
+                originalRequest.getHouseholdId(),
+                residentFullName,
+                residentPhone,
+                residentEmail,
+                residentNationalId,
+                residentDob,
+                relation,
+                proofOfRelationImageUrl,
+                note
+        );
+
+        // Validate uniqueness (email, nationalId, phone) if changed
+        validateEmailUniqueness(createDto, requesterResident, principal);
+        validateNationalIdUniqueness(createDto);
+        validatePhoneUniqueness(createDto);
+
+        // IMPORTANT: Check for existing pending requests BEFORE creating new one
+        // This prevents multiple resends of the same rejected request
+        // Check based on original request's resident info first (before resolving new resident)
+        boolean hasPendingRequest = false;
+        
+        // First, check if there's already a PENDING request for the same household + resident info
+        // (This prevents resending the same rejected request multiple times)
+        if (originalRequest.getResidentId() != null) {
+            Optional<HouseholdMemberRequest> existingPending = requestRepository
+                    .findFirstByHouseholdIdAndResidentIdAndStatusIn(
+                            originalRequest.getHouseholdId(),
+                            originalRequest.getResidentId(),
+                            List.of(RequestStatus.PENDING)
+                    );
+            if (existingPending.isPresent() && !existingPending.get().getId().equals(originalRequest.getId())) {
+                hasPendingRequest = true;
+            }
+        }
+        
+        // Also check by national ID if available
+        if (!hasPendingRequest && originalRequest.getResidentNationalId() != null 
+                && !originalRequest.getResidentNationalId().isBlank()) {
+            Optional<HouseholdMemberRequest> existingPending = requestRepository
+                    .findFirstByHouseholdIdAndResidentNationalIdAndStatusIn(
+                            originalRequest.getHouseholdId(),
+                            originalRequest.getResidentNationalId(),
+                            List.of(RequestStatus.PENDING)
+                    );
+            if (existingPending.isPresent() && !existingPending.get().getId().equals(originalRequest.getId())) {
+                hasPendingRequest = true;
+            }
+        }
+        
+        // Also check by name + phone if available
+        if (!hasPendingRequest && originalRequest.getResidentPhone() != null 
+                && !originalRequest.getResidentPhone().isBlank()
+                && originalRequest.getResidentFullName() != null
+                && !originalRequest.getResidentFullName().isBlank()) {
+            Optional<HouseholdMemberRequest> existingPending = requestRepository
+                    .findFirstByHouseholdIdAndResidentFullNameIgnoreCaseAndResidentPhoneAndStatusIn(
+                            originalRequest.getHouseholdId(),
+                            originalRequest.getResidentFullName(),
+                            originalRequest.getResidentPhone(),
+                            List.of(RequestStatus.PENDING)
+                    );
+            if (existingPending.isPresent() && !existingPending.get().getId().equals(originalRequest.getId())) {
+                hasPendingRequest = true;
+            }
+        }
+        
+        if (hasPendingRequest) {
+            throw new IllegalArgumentException("Không thể gửi yêu cầu này vì đã có yêu cầu đang chờ duyệt cho thành viên này");
+        }
+
+        // Check for existing pending requests with the NEW/updated information
+        UUID resolvedResidentId = resolveExistingResident(createDto);
+        if (resolvedResidentId != null) {
+            requestRepository.findFirstByHouseholdIdAndResidentIdAndStatusIn(
+                    originalRequest.getHouseholdId(),
+                    resolvedResidentId,
+                    List.of(RequestStatus.PENDING)
+            ).ifPresent(existing -> {
+                throw new IllegalArgumentException("Không thể gửi yêu cầu này vì đã có yêu cầu đang chờ duyệt cho thành viên này");
+            });
+
+            householdMemberRepository.findActiveMemberByResidentAndHousehold(resolvedResidentId, originalRequest.getHouseholdId())
+                    .ifPresent(member -> {
+                        throw new IllegalArgumentException("Thành viên đã là thành viên của căn hộ này");
+                    });
+        } else if (residentPhone != null && !residentPhone.isBlank()) {
+            requestRepository.findFirstByHouseholdIdAndResidentFullNameIgnoreCaseAndResidentPhoneAndStatusIn(
+                    originalRequest.getHouseholdId(),
+                    residentFullName,
+                    residentPhone,
+                    List.of(RequestStatus.PENDING)
+            ).ifPresent(existing -> {
+                throw new IllegalArgumentException("Không thể gửi yêu cầu này vì đã có yêu cầu đang chờ duyệt cho thành viên này");
+            });
+        }
+
+        ensureHouseholdHasCapacity(household);
+
+        // Create new request with PENDING status
+        HouseholdMemberRequest newRequest = HouseholdMemberRequest.builder()
+                .householdId(originalRequest.getHouseholdId())
+                .residentId(resolvedResidentId)
+                .requestedBy(principal.uid())
+                .residentFullName(residentFullName)
+                .residentPhone(residentPhone)
+                .residentEmail(residentEmail)
+                .residentNationalId(residentNationalId)
+                .residentDob(residentDob)
+                .relation(relation)
+                .proofOfRelationImageUrl(proofOfRelationImageUrl)
+                .note(note)
+                .status(RequestStatus.PENDING)
+                .build();
+
+        HouseholdMemberRequest saved = requestRepository.save(newRequest);
+        log.info("Household member request {} resent by {} (original request: {})", saved.getId(), principal.uid(), requestId);
+
         return toDto(saved);
     }
 
@@ -451,14 +635,19 @@ public class HouseholdMemberRequestService {
             return;
         }
 
-        // Validate: không có khoảng trắng
+        // Validate: không được có dấu cách
         if (normalizedId.contains(" ")) {
-            throw new IllegalArgumentException("CCCD không được chứa khoảng trắng");
+            throw new IllegalArgumentException("CCCD không được chứa dấu cách");
         }
 
-        // Validate: không có ký tự đặc biệt (chỉ cho phép chữ và số)
-        if (!normalizedId.matches("^[a-zA-Z0-9]+$")) {
-            throw new IllegalArgumentException("CCCD không được chứa ký tự đặc biệt");
+        // Validate: không được có ký tự đặc biệt (chỉ cho phép số)
+        if (!normalizedId.matches("^[0-9]+$")) {
+            throw new IllegalArgumentException("CCCD chỉ được chứa chữ số, không được có ký tự đặc biệt");
+        }
+
+        // Validate: phải có đúng 12 chữ số
+        if (!normalizedId.matches("^[0-9]{12}$")) {
+            throw new IllegalArgumentException("CCCD phải có đúng 12 chữ số");
         }
 
         // Validate: không trùng với CCCD khác trong database
@@ -475,6 +664,21 @@ public class HouseholdMemberRequestService {
         String normalizedPhone = createDto.residentPhone().trim();
         if (normalizedPhone.isEmpty()) {
             return;
+        }
+
+        // Validate: không được có dấu cách
+        if (normalizedPhone.contains(" ")) {
+            throw new IllegalArgumentException("Số điện thoại không được chứa dấu cách");
+        }
+
+        // Validate: không được có ký tự đặc biệt (chỉ cho phép số)
+        if (!normalizedPhone.matches("^[0-9]+$")) {
+            throw new IllegalArgumentException("Số điện thoại chỉ được chứa chữ số, không được có ký tự đặc biệt");
+        }
+
+        // Validate: phải có đúng 10 số và bắt đầu từ số 0
+        if (!normalizedPhone.matches("^0[0-9]{9}$")) {
+            throw new IllegalArgumentException("Số điện thoại phải có đúng 10 số và bắt đầu từ số 0");
         }
 
         if (residentRepository.existsByPhone(normalizedPhone)) {

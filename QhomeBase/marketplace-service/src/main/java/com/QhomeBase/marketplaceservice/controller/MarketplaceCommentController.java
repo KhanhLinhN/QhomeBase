@@ -118,14 +118,8 @@ public class MarketplaceCommentController {
                 post.getViewCount()
         );
         
-        // Get comment author name (optional, can be enhanced later)
-        String authorName = "User";
-        
-        // Get parentCommentId if this is a reply
-        UUID parentCommentId = comment.getParentComment() != null ? comment.getParentComment().getId() : null;
-        
-        // Send new comment notification (both WebSocket and FCM push to post owner)
-        notificationService.notifyNewComment(postId, comment.getId(), userId, authorName, post.getResidentId(), parentCommentId);
+        // Note: New comment notification (WebSocket + FCM push) is already sent by MarketplaceCommentService.addComment
+        // with the actual author name fetched from ResidentInfoService
 
         CommentResponse response = mapper.toCommentResponse(comment);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -151,7 +145,9 @@ public class MarketplaceCommentController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
 
-        MarketplaceComment comment = commentService.updateComment(commentId, residentId, request.getContent());
+        MarketplaceComment comment = commentService.updateComment(
+                commentId, residentId, request.getContent(), 
+                request.getImageUrl(), request.getVideoUrl());
         CommentResponse response = mapper.toCommentResponse(comment);
         return ResponseEntity.ok(response);
     }

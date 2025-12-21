@@ -100,6 +100,15 @@ public class DirectChatService {
                         return false;
                     }
                     
+                    // IMPORTANT: Only show ACTIVE and BLOCKED conversations
+                    // - ACTIVE: Both users are friends and invitation accepted
+                    // - BLOCKED: User has blocked the other participant (still visible to show unblock option)
+                    // - PENDING conversations should NOT appear in chat list until invitation is accepted
+                    if (!"ACTIVE".equals(conv.getStatus()) && !"BLOCKED".equals(conv.getStatus())) {
+                        log.debug("❌ [DirectChatService] Filtered out conversation with status {}: {}", conv.getStatus(), conv.getId());
+                        return false;
+                    }
+                    
                     // Filter out conversations hidden by current user
                     ConversationParticipant participant = participantRepository
                             .findByConversationIdAndResidentId(conv.getId(), residentId)
@@ -107,7 +116,7 @@ public class DirectChatService {
                     
                     if (participant == null) {
                         log.warn("⚠️ [DirectChatService] Participant not found for conversation: {}, residentId: {}", conv.getId(), residentId);
-                        return true; // Include if participant not found (shouldn't happen normally)
+                        return false; // Don't include if participant not found
                     }
                     
                     boolean isHidden = Boolean.TRUE.equals(participant.getIsHidden());

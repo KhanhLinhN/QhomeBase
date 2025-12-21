@@ -74,10 +74,14 @@ public class AssetInspectionService {
 
         // When contract is cancelled, the selected date is stored in inspectionDate
         // scheduledDate is optional and can be set later by staff
-        // If scheduledDate is provided, use it; otherwise, set to null (can be updated later)
+        // If scheduledDate is provided, use it; otherwise, set to contract endDate (not end of month)
         LocalDate scheduledDate = request.scheduledDate();
+        if (scheduledDate == null) {
+            // If scheduledDate is not provided, default to contract endDate (not end of month)
+            scheduledDate = contract.endDate();
+        }
         // Note: For cancelled contracts, the selected date is already in inspectionDate
-        // scheduledDate can remain null and be set later by staff when scheduling the actual inspection
+        // scheduledDate defaults to contract endDate if not provided
 
         AssetInspection inspection = AssetInspection.builder()
                 .contractId(request.contractId())
