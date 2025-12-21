@@ -80,5 +80,20 @@ public class HouseholdMemberController {
             return ResponseEntity.badRequest().build();
         }
     }
+
+    @GetMapping("/households/{householdId}/all")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RESIDENT')")
+    public ResponseEntity<List<HouseholdMemberDto>> getAllMembersByHouseholdId(@PathVariable UUID householdId) {
+        try {
+            List<HouseholdMemberDto> result = householdMemberService.getAllMembersByHouseholdId(householdId);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid household ID {}: {}", householdId, e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Failed to get all members for household {}: {}", householdId, e.getMessage(), e);
+            return ResponseEntity.status(500).build();
+        }
+    }
 }
 

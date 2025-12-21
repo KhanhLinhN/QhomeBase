@@ -71,6 +71,11 @@ public interface HouseholdMemberRepository extends JpaRepository<HouseholdMember
            "AND r.userId IS NOT NULL")
     long countActiveMembersWithAccount(@Param("householdId") UUID householdId);
 
+    @Query("SELECT hm FROM HouseholdMember hm " +
+           "WHERE hm.householdId = :householdId " +
+           "ORDER BY hm.joinedAt ASC, hm.isPrimary DESC")
+    List<HouseholdMember> findAllMembersByHouseholdId(@Param("householdId") UUID householdId);
+
 }
 
 
