@@ -21,6 +21,15 @@ public class WebClientConfig {
                 .build();
     }
 
+    @Bean
+    public WebClient financeWebClient(@Value("${finance.billing.service.url:http://localhost:8085}") String financeBillingServiceUrl) {
+        return WebClient.builder()
+                .baseUrl(financeBillingServiceUrl)
+                .defaultHeader("Content-Type", "application/json")
+                .filter(addJwtTokenFilter())
+                .build();
+    }
+
     private ExchangeFilterFunction addJwtTokenFilter() {
         return ExchangeFilterFunction.ofRequestProcessor(clientRequest -> {
             try {

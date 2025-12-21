@@ -1,6 +1,7 @@
 package com.QhomeBase.assetmaintenanceservice.client;
 
 import com.QhomeBase.assetmaintenanceservice.client.dto.BuildingDto;
+import com.QhomeBase.assetmaintenanceservice.client.dto.ResidentDto;
 import com.QhomeBase.assetmaintenanceservice.client.dto.UnitDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -130,6 +131,34 @@ public class BaseServiceClient {
         } catch (Exception e) {
             log.warn("Could not fetch user name for ID {}: {}", userId, e.getMessage());
             return null;
+        }
+    }
+
+    public ResidentDto getResidentByUserId(UUID userId) {
+        try {
+            return baseServiceWebClient
+                    .get()
+                    .uri("/api/residents/by-user/{userId}", userId)
+                    .retrieve()
+                    .bodyToMono(ResidentDto.class)
+                    .block();
+        } catch (Exception e) {
+            log.error("Error calling base service to get resident by user ID {}: {}", userId, e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch resident from base service for user: " + userId, e);
+        }
+    }
+
+    public List<UnitDto> getUnitsByResidentId(UUID residentId) {
+        try {
+            return baseServiceWebClient
+                    .get()
+                    .uri("/api/residents/{residentId}/units", residentId)
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<List<UnitDto>>() {})
+                    .block();
+        } catch (Exception e) {
+            log.error("Error calling base service to get units by resident ID {}: {}", residentId, e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch units from base service for resident: " + residentId, e);
         }
     }
 }
