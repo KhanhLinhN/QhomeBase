@@ -242,12 +242,12 @@ public class UserController {
                             request.residentId()
                     );
                 } else {
-                    user = userService.createUserForResident(
-                            request.username(),
-                            request.email(),
-                            request.password(),
-                            request.residentId()
-                    );
+                user = userService.createUserForResident(
+                        request.username(),
+                        request.email(),
+                        request.password(),
+                        request.residentId()
+                );
                 }
             }
             

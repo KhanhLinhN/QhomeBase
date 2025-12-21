@@ -63,6 +63,14 @@ public class ContractService {
             if (request.getMonthlyRent() == null) {
                 throw new IllegalArgumentException("Monthly rent is required for RENTAL contracts");
             }
+            // Validate minimum 3 months for rental contracts
+            if (request.getEndDate() != null && request.getStartDate() != null) {
+                int months = (request.getEndDate().getYear() - request.getStartDate().getYear()) * 12
+                        + (request.getEndDate().getMonthValue() - request.getStartDate().getMonthValue());
+                if (months < 3) {
+                    throw new IllegalArgumentException("Hợp đồng thuê phải tối thiểu 3 tháng");
+                }
+            }
         } else if ("PURCHASE".equals(contractType)) {
             if (request.getEndDate() != null) {
                 throw new IllegalArgumentException("Purchase contracts cannot have end date");
@@ -831,42 +839,12 @@ public class ContractService {
             return BigDecimal.ZERO;
         }
         
-        BigDecimal totalRent = BigDecimal.ZERO;
+        // Since endDate always has the same day as startDate, we can simply calculate months
+        // Calculate the difference in months
+        int months = (endDate.getYear() - startDate.getYear()) * 12 + (endDate.getMonthValue() - startDate.getMonthValue());
         
-      
-        if (startDate.getYear() == endDate.getYear() && startDate.getMonth() == endDate.getMonth()) {
-         
-            int daysInMonth = startDate.lengthOfMonth();
-            long actualDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
-            BigDecimal dailyRate = monthlyRent.divide(BigDecimal.valueOf(daysInMonth), 10, RoundingMode.HALF_UP);
-            totalRent = dailyRate.multiply(BigDecimal.valueOf(actualDays));
-        } else {
-          
-            int daysInFirstMonth = startDate.lengthOfMonth();
-            LocalDate endOfFirstMonth = startDate.withDayOfMonth(daysInFirstMonth);
-            long daysInFirstPeriod = ChronoUnit.DAYS.between(startDate, endOfFirstMonth) + 1;
-            BigDecimal dailyRateFirstMonth = monthlyRent.divide(BigDecimal.valueOf(daysInFirstMonth), 10, RoundingMode.HALF_UP);
-            BigDecimal firstMonthRent = dailyRateFirstMonth.multiply(BigDecimal.valueOf(daysInFirstPeriod));
-            totalRent = totalRent.add(firstMonthRent);
-            
-          
-            LocalDate firstDayOfSecondMonth = startDate.plusMonths(1).withDayOfMonth(1);
-            LocalDate firstDayOfLastMonth = endDate.withDayOfMonth(1);
-            
-            if (firstDayOfSecondMonth.isBefore(firstDayOfLastMonth)) {
-                long middleMonths = ChronoUnit.MONTHS.between(firstDayOfSecondMonth, firstDayOfLastMonth);
-                BigDecimal middleMonthsRent = monthlyRent.multiply(BigDecimal.valueOf(middleMonths));
-                totalRent = totalRent.add(middleMonthsRent);
-            }
-            
-          
-            int daysInLastMonth = endDate.lengthOfMonth();
-            LocalDate firstDayOfLastMonthActual = endDate.withDayOfMonth(1);
-            long daysInLastPeriod = ChronoUnit.DAYS.between(firstDayOfLastMonthActual, endDate) + 1;
-            BigDecimal dailyRateLastMonth = monthlyRent.divide(BigDecimal.valueOf(daysInLastMonth), 10, RoundingMode.HALF_UP);
-            BigDecimal lastMonthRent = dailyRateLastMonth.multiply(BigDecimal.valueOf(daysInLastPeriod));
-            totalRent = totalRent.add(lastMonthRent);
-        }
+        // Total rent = number of months * monthly rent
+        BigDecimal totalRent = monthlyRent.multiply(BigDecimal.valueOf(months));
         
         return totalRent.setScale(2, RoundingMode.HALF_UP);
     }

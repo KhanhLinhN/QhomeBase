@@ -356,9 +356,21 @@ public class ReadingCycleService {
         UUID serviceId = readingCycle.getService().getId();
 
         Set<UUID> assignedUnits = new HashSet<>();
-        assignmentRepository.findByCycleId(cycleId).stream()
+        List<MeterReadingAssignment> allAssignments = assignmentRepository.findByCycleId(cycleId);
+        log.debug("Total assignments for cycle {}: {}", cycleId, allAssignments.size());
+        
+        List<MeterReadingAssignment> filteredAssignments = allAssignments.stream()
                 .filter(a -> a.getService() != null && Objects.equals(a.getService().getId(), serviceId))
-                .forEach(assignment -> collectAssignedUnits(assignment, assignedUnits));
+                .collect(Collectors.toList());
+        log.debug("Filtered assignments for service {}: {}", serviceId, filteredAssignments.size());
+        
+        for (MeterReadingAssignment assignment : filteredAssignments) {
+            int beforeSize = assignedUnits.size();
+            collectAssignedUnits(assignment, assignedUnits);
+            int afterSize = assignedUnits.size();
+            log.debug("Assignment {}: collected {} units (total: {})", assignment.getId(), afterSize - beforeSize, afterSize);
+        }
+        log.debug("Total assigned units collected: {}", assignedUnits.size());
 
         Set<UUID> unitsWithMeters = meterRepository.findByServiceId(serviceId).stream()
                 .filter(meter -> Boolean.TRUE.equals(meter.getActive()))
@@ -371,6 +383,19 @@ public class ReadingCycleService {
         Set<UUID> unassignedUnits = unitsWithMeters.stream()
                 .filter(unitId -> !assignedUnits.contains(unitId))
                 .collect(Collectors.toSet());
+        log.debug("Units with meters: {}, Assigned units: {}, Unassigned units: {}", 
+                unitsWithMeters.size(), assignedUnits.size(), unassignedUnits.size());
+        if (!unassignedUnits.isEmpty()) {
+            log.debug("Unassigned unit IDs: {}", unassignedUnits);
+            for (UUID unitId : unassignedUnits) {
+                unitRepository.findById(unitId).ifPresent(unit -> {
+                    log.debug("Unassigned unit: {} (code: {}, building: {}, floor: {})", 
+                            unitId, unit.getCode(), 
+                            unit.getBuilding() != null ? unit.getBuilding().getCode() : "null",
+                            unit.getFloor());
+                });
+            }
+        }
 
         List<UnitWithoutMeterDto> missingMeterUnits = meterService.getUnitsDoNotHaveMeter(serviceId, null);
 
@@ -425,8 +450,9 @@ public class ReadingCycleService {
             return new ReadingCycleUnassignedInfoDto(cycleId, serviceId, totalUnassignedForValidation, List.of(), "", filteredMissingMeterUnits);
         }
 
+        // Group units for display - only show units with meters in the message since those are what matter for validation
         Map<FloorGroup, List<String>> groupedUnits = new HashMap<>();
-        for (UnassignedUnit candidate : collectedUnits) {
+        for (UnassignedUnit candidate : collectedUnitsWithMeter) {
             FloorGroup floorGroup = new FloorGroup(
                     candidate.buildingId,
                     candidate.buildingCode,
@@ -434,9 +460,7 @@ public class ReadingCycleService {
                     candidate.floor);
             List<String> unitCodes = groupedUnits.computeIfAbsent(floorGroup, group -> new ArrayList<>());
             String label = candidate.unitCode != null ? candidate.unitCode : candidate.unitId.toString();
-            if (candidate.missingMeter) {
-                label += " (chưa có công tơ)";
-            }
+            // Units in collectedUnitsWithMeter always have meters, so no need to check missingMeter flag
             unitCodes.add(label);
         }
 
@@ -460,32 +484,45 @@ public class ReadingCycleService {
                 })
                 .collect(Collectors.toList());
 
-        String message = buildUnassignedMessage(collectedUnits.size(), floorDtos);
+        // Build message using only units with meters for validation count, but include all units for display
+        String message = buildUnassignedMessage(totalUnassignedForValidation, floorDtos);
         return new ReadingCycleUnassignedInfoDto(cycleId, serviceId, totalUnassignedForValidation, floorDtos, message, filteredMissingMeterUnits);
     }
 
     private void collectAssignedUnits(MeterReadingAssignment assignment, Set<UUID> assignedUnits) {
+        // First, collect units from explicit unitIds list if present
         if (assignment.getUnitIds() != null && !assignment.getUnitIds().isEmpty()) {
             assignedUnits.addAll(assignment.getUnitIds());
-            return;
+            log.debug("Assignment {}: collected {} units from unitIds", assignment.getId(), assignment.getUnitIds().size());
+            // Even if unitIds exist, also check building/floor to ensure we don't miss any units
+            // This handles cases where assignment might have both unitIds and building/floor info
         }
-        if (assignment.getBuilding() == null) {
-            return;
-        }
-        if (assignment.getFloor() != null) {
-            List<Unit> unitsInFloor = unitRepository.findByBuildingIdAndFloorNumber(
-                    assignment.getBuilding().getId(), assignment.getFloor());
-            unitsInFloor.stream()
-                    .map(Unit::getId)
-                    .filter(Objects::nonNull)
-                    .forEach(assignedUnits::add);
-        } else {
-            List<Unit> unitsInBuilding = unitRepository.findAllByBuildingId(
-                    assignment.getBuilding().getId());
-            unitsInBuilding.stream()
-                    .map(Unit::getId)
-                    .filter(Objects::nonNull)
-                    .forEach(assignedUnits::add);
+        
+        // Then, collect units from building/floor if present
+        if (assignment.getBuilding() != null) {
+            if (assignment.getFloor() != null) {
+                List<Unit> unitsInFloor = unitRepository.findByBuildingIdAndFloorNumber(
+                        assignment.getBuilding().getId(), assignment.getFloor());
+                int floorUnitsCollected = 0;
+                for (Unit unit : unitsInFloor) {
+                    if (unit.getId() != null && assignedUnits.add(unit.getId())) {
+                        floorUnitsCollected++;
+                    }
+                }
+                log.debug("Assignment {}: collected {} additional units from building {} floor {}", 
+                        assignment.getId(), floorUnitsCollected, assignment.getBuilding().getId(), assignment.getFloor());
+            } else {
+                List<Unit> unitsInBuilding = unitRepository.findAllByBuildingId(
+                        assignment.getBuilding().getId());
+                int buildingUnitsCollected = 0;
+                for (Unit unit : unitsInBuilding) {
+                    if (unit.getId() != null && assignedUnits.add(unit.getId())) {
+                        buildingUnitsCollected++;
+                    }
+                }
+                log.debug("Assignment {}: collected {} additional units from building {}", 
+                        assignment.getId(), buildingUnitsCollected, assignment.getBuilding().getId());
+            }
         }
     }
 
