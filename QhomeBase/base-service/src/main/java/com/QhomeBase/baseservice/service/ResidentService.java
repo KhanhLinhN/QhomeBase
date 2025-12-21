@@ -57,11 +57,14 @@ public class ResidentService {
         // Normalize phone: remove all non-digit characters
         String normalizedPhone = phonePrefix.replaceAll("[^0-9]", "");
         
-        if (normalizedPhone.length() < 3) {
+        // Only search if exactly 10 digits (full phone number)
+        // This ensures users enter complete phone numbers before seeing suggestions
+        if (normalizedPhone.length() != 10) {
+            log.debug("Phone prefix length is not 10, skipping search. Length: {}, prefix: '{}'", normalizedPhone.length(), normalizedPhone);
             return Collections.emptyList();
         }
         
-        log.debug("Searching residents by phone prefix - original: '{}', normalized: '{}'", phonePrefix, normalizedPhone);
+        log.debug("Searching residents by exact phone number - original: '{}', normalized: '{}'", phonePrefix, normalizedPhone);
         
         List<Resident> residents = new java.util.ArrayList<>();
         
