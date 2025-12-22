@@ -124,9 +124,9 @@ public class ElevatorCardRegistrationService {
                 boolean hasAccount = baseServiceClient.isResidentMemberApproved(dto.residentId(), accessToken);
                 if (!hasAccount) {
                     log.warn("⚠️ [ElevatorCard] Resident {} không phải primary member, không có request APPROVED, và chưa có account", dto.residentId());
-                    throw new IllegalStateException(
-                        "Cư dân chưa được duyệt thành thành viên. Vui lòng đợi admin duyệt yêu cầu tạo tài khoản trước khi đăng ký thẻ thang máy."
-                    );
+                throw new IllegalStateException(
+                    "Cư dân chưa được duyệt thành thành viên. Vui lòng đợi admin duyệt yêu cầu tạo tài khoản trước khi đăng ký thẻ thang máy."
+                );
                 }
             } else {
                 log.info("✅ [ElevatorCard] Resident {} là primary member hoặc có request APPROVED, không cần check account", dto.residentId());
@@ -557,7 +557,7 @@ public class ElevatorCardRegistrationService {
             log.info("📤 [ElevatorCard] ReferenceId: {}", registration.getId());
             log.info("📤 [ElevatorCard] ReferenceType: ELEVATOR_CARD_REGISTRATION");
             log.info("📤 [ElevatorCard] Data: {}", data);
-            
+
             // Send PRIVATE notification to requester (người tạo request) only
             // buildingId = null for private notification
             notificationClient.sendResidentNotification(

@@ -446,8 +446,9 @@ public class ReadingCycleService {
         // For validation: only count units with meters (not missingMeterUnits)
         int totalUnassignedForValidation = collectedUnitsWithMeter.size();
 
-        if (collectedUnits.isEmpty()) {
-            return new ReadingCycleUnassignedInfoDto(cycleId, serviceId, totalUnassignedForValidation, List.of(), "", filteredMissingMeterUnits);
+        // If no unassigned units at all (neither with meters nor missing meters), return empty result
+        if (collectedUnitsWithMeter.isEmpty() && filteredMissingMeterUnits.isEmpty()) {
+            return new ReadingCycleUnassignedInfoDto(cycleId, serviceId, 0, List.of(), "", filteredMissingMeterUnits);
         }
 
         // Group units for display - only show units with meters in the message since those are what matter for validation
@@ -462,6 +463,15 @@ public class ReadingCycleService {
             String label = candidate.unitCode != null ? candidate.unitCode : candidate.unitId.toString();
             // Units in collectedUnitsWithMeter always have meters, so no need to check missingMeter flag
             unitCodes.add(label);
+        }
+        
+        log.debug("Grouped {} units with meters into {} floor groups for cycle {}", 
+                collectedUnitsWithMeter.size(), groupedUnits.size(), cycleId);
+        
+        if (collectedUnitsWithMeter.size() > 0 && groupedUnits.isEmpty()) {
+            log.warn("⚠️ [ReadingCycleService] Found {} unassigned units but groupedUnits is empty for cycle {}. " +
+                    "This may indicate an issue with building/floor grouping.", 
+                    collectedUnitsWithMeter.size(), cycleId);
         }
 
         Comparator<Map.Entry<FloorGroup, List<String>>> entryComparator =
@@ -484,8 +494,43 @@ public class ReadingCycleService {
                 })
                 .collect(Collectors.toList());
 
-        // Build message using only units with meters for validation count, but include all units for display
-        String message = buildUnassignedMessage(totalUnassignedForValidation, floorDtos);
+        // Build message using only units with meters for validation count
+        // Always build message if there are unassigned units with meters (for validation errors)
+        String message = "";
+        if (totalUnassignedForValidation > 0) {
+            if (!floorDtos.isEmpty()) {
+                message = buildUnassignedMessage(totalUnassignedForValidation, floorDtos);
+                log.debug("Built unassigned message for cycle {}: {} units across {} floors", 
+                        cycleId, totalUnassignedForValidation, floorDtos.size());
+            } else {
+                // Fallback message if floorDtos is empty (should not happen, but handle gracefully)
+                log.warn("⚠️ [ReadingCycleService] Found {} unassigned units but floorDtos is empty for cycle {}. " +
+                        "Using fallback message. This may indicate an issue with unit grouping.", 
+                        totalUnassignedForValidation, cycleId);
+                // Build a more detailed fallback message using collectedUnitsWithMeter directly
+                if (!collectedUnitsWithMeter.isEmpty()) {
+                    Map<String, Integer> buildingCounts = new LinkedHashMap<>();
+                    for (UnassignedUnit unit : collectedUnitsWithMeter) {
+                        String buildingKey = unit.buildingCode != null ? unit.buildingCode :
+                                (unit.buildingLabel != null ? unit.buildingLabel : "Unknown");
+                        buildingCounts.merge(buildingKey, 1, Integer::sum);
+                    }
+                    StringBuilder fallbackMsg = new StringBuilder();
+                    fallbackMsg.append("Còn ").append(totalUnassignedForValidation).append(" căn hộ/phòng chưa được assign:");
+                    for (Map.Entry<String, Integer> entry : buildingCounts.entrySet()) {
+                        fallbackMsg.append("\n").append(entry.getKey()).append(": ").append(entry.getValue()).append(" căn hộ");
+                    }
+                    message = fallbackMsg.toString();
+                } else {
+                    message = String.format("Còn %d căn hộ/phòng chưa được assign", totalUnassignedForValidation);
+                }
+            }
+        }
+        
+        log.debug("Returning unassigned info for cycle {}: totalUnassigned={}, floors={}, missingMeterUnits={}, messageLength={}", 
+                cycleId, totalUnassignedForValidation, floorDtos.size(), filteredMissingMeterUnits.size(), 
+                message.length());
+        
         return new ReadingCycleUnassignedInfoDto(cycleId, serviceId, totalUnassignedForValidation, floorDtos, message, filteredMissingMeterUnits);
     }
 
@@ -586,8 +631,9 @@ public class ReadingCycleService {
                                   String buildingCode, String buildingLabel, boolean missingMeter) {}
 
     private void validateAllAssigned(UUID cycleId) {
-        // For validation, we want to check all units (not just those with owner)
-        ReadingCycleUnassignedInfoDto info = getUnassignedUnitsInfo(cycleId, false);
+        // For validation, we only check units with primary resident (owner) and meters
+        // Units without owner cannot have invoices, so they should not block COMPLETED status
+        ReadingCycleUnassignedInfoDto info = getUnassignedUnitsInfo(cycleId, true);
         if (info.totalUnassigned() > 0) {
             throw new IllegalStateException(info.message());
         }

@@ -272,8 +272,10 @@ logging:
     # Disable Netty logs (connection pool, HTTP client)
     reactor.netty: WARN
     io.netty: WARN
-    # Disable Reactor logs
+    # Disable Reactor logs - suppress WebSocket connection reset errors
     reactor.core: WARN
+    # Suppress "default onErrorDropped" errors for WebSocket connections
+    reactor.core.publisher.Operators: ERROR
     # Disable WebSocket logs
     org.springframework.web.socket: WARN
     org.springframework.messaging: WARN

@@ -333,12 +333,15 @@ public class PricingTierService {
                         tier.getMinQuantity(),
                         maxQtyStr);
                 
+                // Ensure unitPrice is from tier, not calculated amount
+                BigDecimal unitPrice = tier.getUnitPrice();
+                
                 CreateInvoiceLineRequest line = CreateInvoiceLineRequest.builder()
                         .serviceDate(serviceDate)
                         .description(tierDescription)
                         .quantity(applicableQuantity)
                         .unit("kWh")
-                        .unitPrice(tier.getUnitPrice())
+                        .unitPrice(unitPrice) // Use tier.getUnitPrice() directly, not tierAmount
                         .taxRate(BigDecimal.ZERO)
                         .serviceCode(serviceCode)
                         .externalRefType("METER_READING_GROUP")
@@ -349,8 +352,8 @@ public class PricingTierService {
                 previousMax = tierEffectiveMax;
                 lastTier = tier;
                 
-                log.debug("Tier {}: {} kWh × {} VND/kWh = {} VND", 
-                        tier.getTierOrder(), applicableQuantity, tier.getUnitPrice(), tierAmount);
+                log.info("✅ [PricingTierService] Created invoice line - Tier {}: quantity={} kWh, unitPrice={} VND/kWh, lineTotal={} VND", 
+                        tier.getTierOrder(), applicableQuantity, unitPrice, tierAmount);
             }
         }
         

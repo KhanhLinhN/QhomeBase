@@ -68,7 +68,7 @@ public class BaseServiceClient {
                 if (userIdObj != null && !userIdObj.toString().isEmpty() && !"null".equalsIgnoreCase(userIdObj.toString())) {
                     log.info("✅ [BaseServiceClient] Resident {} đã có userId (account), đã được approve | userId: {}", 
                             residentId, userIdObj);
-                    return true;
+                return true;
                 } else {
                     log.warn("⚠️ [BaseServiceClient] Resident {} chưa có userId (chưa có account), chưa được approve", residentId);
                     return false;

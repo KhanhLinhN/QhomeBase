@@ -121,9 +121,9 @@ public class ResidentCardRegistrationService {
                 boolean hasAccount = baseServiceClient.isResidentMemberApproved(dto.residentId(), accessToken);
                 if (!hasAccount) {
                     log.warn("⚠️ [ResidentCard] Resident {} không phải primary member, không có request APPROVED, và chưa có account", dto.residentId());
-                    throw new IllegalStateException(
-                        "Cư dân chưa được duyệt thành thành viên. Vui lòng đợi admin duyệt yêu cầu tạo tài khoản trước khi đăng ký thẻ cư dân."
-                    );
+                throw new IllegalStateException(
+                    "Cư dân chưa được duyệt thành thành viên. Vui lòng đợi admin duyệt yêu cầu tạo tài khoản trước khi đăng ký thẻ cư dân."
+                );
                 }
             } else {
                 log.info("✅ [ResidentCard] Resident {} là primary member hoặc có request APPROVED, không cần check account", dto.residentId());
@@ -490,7 +490,7 @@ public class ResidentCardRegistrationService {
             log.info("📤 [ResidentCard] ReferenceId: {}", registration.getId());
             log.info("📤 [ResidentCard] ReferenceType: RESIDENT_CARD_REGISTRATION");
             log.info("📤 [ResidentCard] Data: {}", data);
-            
+
             // Send PRIVATE notification to requester (người tạo request) only
             // buildingId = null for private notification
             notificationClient.sendResidentNotification(
