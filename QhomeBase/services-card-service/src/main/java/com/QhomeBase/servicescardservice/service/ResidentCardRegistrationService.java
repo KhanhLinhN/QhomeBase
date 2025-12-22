@@ -67,34 +67,66 @@ public class ResidentCardRegistrationService {
     public ResidentCardRegistrationDto createRegistration(UUID userId, ResidentCardRegistrationCreateDto dto, String accessToken) {
         validatePayload(dto);
 
-        // Kiểm tra quyền OWNER: chỉ OWNER mới được đăng ký thẻ cho thành viên khác
-        // Thành viên chỉ được đăng ký cho chính mình
+        // Kiểm tra user có phải là thành viên household không
+        // Chỉ cần là thành viên household (có trong household_members với left_at IS NULL) thì có thể đăng ký thẻ
         UUID requesterResidentId = residentUnitLookupService.resolveByUser(userId, dto.unitId())
                 .map(info -> info.residentId())
                 .orElse(null);
         
+        // Nếu không tìm thấy residentId từ household_members, thử tìm từ bảng residents
         if (requesterResidentId == null) {
+            log.debug("🔍 [ResidentCard] User {} not found in household_members, trying to find residentId from residents table", userId);
+            requesterResidentId = baseServiceClient.findResidentIdByUserId(userId, accessToken);
+            if (requesterResidentId != null) {
+                log.info("✅ [ResidentCard] Found residentId {} for userId {}", requesterResidentId, userId);
+            }
+        }
+        
+        // Nếu vẫn không tìm thấy residentId, throw error
+        if (requesterResidentId == null) {
+            log.warn("⚠️ [ResidentCard] Cannot find residentId for userId {} in unit {}", userId, dto.unitId());
             throw new IllegalStateException("Không tìm thấy thông tin cư dân của bạn. Vui lòng thử lại sau.");
         }
         
-        // Kiểm tra xem user có phải OWNER không
-        boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, dto.unitId(), accessToken);
+        // Kiểm tra user có phải là thành viên household của unit này không
+        if (!isHouseholdMember(requesterResidentId, dto.unitId())) {
+            log.warn("⚠️ [ResidentCard] User {} (residentId: {}) is not a household member of unit {}", userId, requesterResidentId, dto.unitId());
+            throw new IllegalStateException("Bạn không phải là thành viên của căn hộ này. Chỉ thành viên hộ gia đình mới được đăng ký thẻ.");
+        }
         
-        // Nếu không phải OWNER, chỉ được đăng ký cho chính mình
-        if (!isOwner && !requesterResidentId.equals(dto.residentId())) {
-            throw new IllegalStateException(
-                "Chỉ chủ căn hộ (OWNER) mới được đăng ký thẻ cư dân cho thành viên khác. " +
-                "Thành viên chỉ được đăng ký thẻ cho chính mình."
-            );
+        // Nếu đăng ký cho người khác, kiểm tra người đó có thuộc cùng household không
+        if (!requesterResidentId.equals(dto.residentId())) {
+            if (!isHouseholdMember(dto.residentId(), dto.unitId())) {
+                throw new IllegalStateException(
+                    "Chỉ được đăng ký thẻ cho thành viên trong cùng hộ gia đình. " +
+                    "Cư dân này không thuộc căn hộ này."
+                );
+            }
+            // Kiểm tra cả 2 có cùng household không
+            if (!areInSameHousehold(requesterResidentId, dto.residentId(), dto.unitId())) {
+                throw new IllegalStateException(
+                    "Chỉ được đăng ký thẻ cho thành viên trong cùng hộ gia đình. " +
+                    "Cư dân này không thuộc cùng hộ gia đình với bạn."
+                );
+            }
         }
 
         // Kiểm tra xem cư dân đã được duyệt thành thành viên chưa
+        // OWNER (primary member) hoặc có household_member_requests APPROVED thì không cần account
+        // Chỉ check account nếu không phải OWNER và không có request APPROVED
         if (dto.residentId() != null) {
-            boolean isApproved = baseServiceClient.isResidentMemberApproved(dto.residentId(), accessToken);
-            if (!isApproved) {
-                throw new IllegalStateException(
-                    "Cư dân chưa được duyệt thành thành viên. Vui lòng đợi admin duyệt yêu cầu tạo tài khoản trước khi đăng ký thẻ cư dân."
-                );
+            boolean isPrimaryOrApproved = isPrimaryMemberOrHasApprovedRequest(dto.residentId(), dto.unitId());
+            if (!isPrimaryOrApproved) {
+                // Nếu không phải primary member và không có request APPROVED, thì cần có account
+                boolean hasAccount = baseServiceClient.isResidentMemberApproved(dto.residentId(), accessToken);
+                if (!hasAccount) {
+                    log.warn("⚠️ [ResidentCard] Resident {} không phải primary member, không có request APPROVED, và chưa có account", dto.residentId());
+                    throw new IllegalStateException(
+                        "Cư dân chưa được duyệt thành thành viên. Vui lòng đợi admin duyệt yêu cầu tạo tài khoản trước khi đăng ký thẻ cư dân."
+                    );
+                }
+            } else {
+                log.info("✅ [ResidentCard] Resident {} là primary member hoặc có request APPROVED, không cần check account", dto.residentId());
             }
         }
 
@@ -344,18 +376,47 @@ public class ResidentCardRegistrationService {
 
     private void sendCardApprovalNotification(ResidentCardRegistration registration, String issueMessage, OffsetDateTime issueTime) {
         try {
+            log.info("🔔 [ResidentCard] ========== SENDING APPROVAL NOTIFICATION ==========");
+            log.info("🔔 [ResidentCard] Registration ID: {}", registration.getId());
+            log.info("🔔 [ResidentCard] UserId: {}", registration.getUserId());
+            log.info("🔔 [ResidentCard] UnitId: {}", registration.getUnitId());
+            
             // CARD_APPROVED is PRIVATE - only resident who created the request can see
             // Get residentId from userId (người tạo request) instead of residentId (người được đăng ký thẻ)
+            log.info("🔔 [ResidentCard] Resolving residentId from userId and unitId...");
             UUID requesterResidentId = residentUnitLookupService.resolveByUser(
                     registration.getUserId(), 
                     registration.getUnitId()
             ).map(ResidentUnitLookupService.AddressInfo::residentId).orElse(null);
             
+            // Fallback: Nếu không tìm thấy từ household_members, query trực tiếp từ residents table
             if (requesterResidentId == null) {
-                log.warn("⚠️ [ResidentCard] Không thể tìm thấy residentId cho userId={}, không thể gửi notification cho registrationId: {}", 
-                        registration.getUserId(), registration.getId());
+                log.warn("⚠️ [ResidentCard] Không tìm thấy residentId từ household_members, thử query trực tiếp từ residents table...");
+                log.warn("⚠️ [ResidentCard] UserId: {}, UnitId: {}", registration.getUserId(), registration.getUnitId());
+                
+                // Query trực tiếp từ residents table bằng userId
+                try {
+                    requesterResidentId = baseServiceClient.findResidentIdByUserId(registration.getUserId(), null);
+                    if (requesterResidentId != null) {
+                        log.info("✅ [ResidentCard] Tìm thấy residentId từ residents table: {}", requesterResidentId);
+                    } else {
+                        log.error("❌ [ResidentCard] Không tìm thấy residentId trong residents table");
+                    }
+                } catch (Exception e) {
+                    log.error("❌ [ResidentCard] Lỗi khi query residentId từ base-service: {}", e.getMessage());
+                }
+            }
+            
+            if (requesterResidentId == null) {
+                log.error("❌ [ResidentCard] ========== RESIDENT ID RESOLUTION FAILED ==========");
+                log.error("❌ [ResidentCard] Không thể tìm thấy residentId cho userId={}, unitId={}", 
+                        registration.getUserId(), registration.getUnitId());
+                log.error("❌ [ResidentCard] Không thể gửi notification cho registrationId: {}", registration.getId());
+                log.error("❌ [ResidentCard] Notification sẽ không được gửi đến resident!");
                 return;
             }
+            
+            log.info("✅ [ResidentCard] ResidentId resolved successfully: {}", requesterResidentId);
 
             // Get payment amount (use actual payment amount if available, otherwise use current price)
             BigDecimal paymentAmount = registration.getPaymentAmount();
@@ -382,8 +443,15 @@ public class ResidentCardRegistrationService {
             }
             
             String message;
+            // Ưu tiên: issueMessage > adminNote (note) > message tự động
             if (issueMessage != null && !issueMessage.isBlank()) {
+                // Admin đã ghi issueMessage riêng cho notification
                 message = issueMessage;
+                log.info("📝 [ResidentCard] Sử dụng issueMessage từ admin: {}", message);
+            } else if (registration.getAdminNote() != null && !registration.getAdminNote().isBlank()) {
+                // Admin đã ghi note nhưng không ghi issueMessage, dùng note làm notification message
+                message = registration.getAdminNote();
+                log.info("📝 [ResidentCard] Sử dụng adminNote (note) từ admin: {}", message);
             } else {
                 // Tự động tạo message: "Thẻ cư dân của (họ và tên) đã chấp nhận và cư dân sẽ nhận vào (ngày giờ)"
                 if (issueTimeFormatted.isEmpty()) {
@@ -392,6 +460,7 @@ public class ResidentCardRegistrationService {
                     message = String.format("Thẻ cư dân của %s đã chấp nhận và cư dân sẽ nhận vào %s.", 
                             residentFullName, issueTimeFormatted);
                 }
+                log.info("📝 [ResidentCard] Sử dụng message tự động: {}", message);
             }
 
             Map<String, String> data = new HashMap<>();
@@ -412,6 +481,16 @@ public class ResidentCardRegistrationService {
                 data.put("issueTimeTimestamp", timeToUse.toString());
             }
 
+            log.info("📤 [ResidentCard] ========== CALLING NOTIFICATION CLIENT ==========");
+            log.info("📤 [ResidentCard] ResidentId: {}", requesterResidentId);
+            log.info("📤 [ResidentCard] BuildingId: null (private notification)");
+            log.info("📤 [ResidentCard] Type: CARD_APPROVED");
+            log.info("📤 [ResidentCard] Title: {}", title);
+            log.info("📤 [ResidentCard] Message: {}", message);
+            log.info("📤 [ResidentCard] ReferenceId: {}", registration.getId());
+            log.info("📤 [ResidentCard] ReferenceType: RESIDENT_CARD_REGISTRATION");
+            log.info("📤 [ResidentCard] Data: {}", data);
+            
             // Send PRIVATE notification to requester (người tạo request) only
             // buildingId = null for private notification
             notificationClient.sendResidentNotification(
@@ -425,27 +504,64 @@ public class ResidentCardRegistrationService {
                     data
             );
 
-            log.info("✅ [ResidentCard] Đã gửi notification approval riêng tư cho requester residentId: {} (userId: {})", 
+            log.info("✅ [ResidentCard] ========== NOTIFICATION CLIENT CALLED ==========");
+            log.info("✅ [ResidentCard] Đã gọi notificationClient.sendResidentNotification()");
+            log.info("✅ [ResidentCard] Requester residentId: {} (userId: {})", 
                     requesterResidentId, registration.getUserId());
         } catch (Exception e) {
+            log.error("❌ [ResidentCard] ========== EXCEPTION IN APPROVAL NOTIFICATION ==========");
             log.error("❌ [ResidentCard] Không thể gửi notification approval cho registrationId: {}", registration.getId(), e);
+            log.error("❌ [ResidentCard] Exception type: {}", e.getClass().getName());
+            log.error("❌ [ResidentCard] Exception message: {}", e.getMessage());
+            if (e.getCause() != null) {
+                log.error("❌ [ResidentCard] Caused by: {}", e.getCause().getMessage());
+            }
         }
     }
 
     private void sendCardRejectionNotification(ResidentCardRegistration registration, String rejectionReason) {
         try {
+            log.info("🔔 [ResidentCard] ========== SENDING REJECTION NOTIFICATION ==========");
+            log.info("🔔 [ResidentCard] Registration ID: {}", registration.getId());
+            log.info("🔔 [ResidentCard] UserId: {}", registration.getUserId());
+            log.info("🔔 [ResidentCard] UnitId: {}", registration.getUnitId());
+            
             // CARD_REJECTED is PRIVATE - only resident who created the request can see
             // Get residentId from userId (người tạo request) instead of residentId (người được đăng ký thẻ)
+            log.info("🔔 [ResidentCard] Resolving residentId from userId and unitId...");
             UUID requesterResidentId = residentUnitLookupService.resolveByUser(
                     registration.getUserId(), 
                     registration.getUnitId()
             ).map(ResidentUnitLookupService.AddressInfo::residentId).orElse(null);
             
+            // Fallback: Nếu không tìm thấy từ household_members, query trực tiếp từ residents table
             if (requesterResidentId == null) {
-                log.warn("⚠️ [ResidentCard] Không thể tìm thấy residentId cho userId={}, không thể gửi notification cho registrationId: {}", 
-                        registration.getUserId(), registration.getId());
+                log.warn("⚠️ [ResidentCard] Không tìm thấy residentId từ household_members, thử query trực tiếp từ residents table...");
+                log.warn("⚠️ [ResidentCard] UserId: {}, UnitId: {}", registration.getUserId(), registration.getUnitId());
+                
+                // Query trực tiếp từ residents table bằng userId
+                try {
+                    requesterResidentId = baseServiceClient.findResidentIdByUserId(registration.getUserId(), null);
+                    if (requesterResidentId != null) {
+                        log.info("✅ [ResidentCard] Tìm thấy residentId từ residents table: {}", requesterResidentId);
+                    } else {
+                        log.error("❌ [ResidentCard] Không tìm thấy residentId trong residents table");
+                    }
+                } catch (Exception e) {
+                    log.error("❌ [ResidentCard] Lỗi khi query residentId từ base-service: {}", e.getMessage());
+                }
+            }
+            
+            if (requesterResidentId == null) {
+                log.error("❌ [ResidentCard] ========== RESIDENT ID RESOLUTION FAILED ==========");
+                log.error("❌ [ResidentCard] Không thể tìm thấy residentId cho userId={}, unitId={}", 
+                        registration.getUserId(), registration.getUnitId());
+                log.error("❌ [ResidentCard] Không thể gửi notification cho registrationId: {}", registration.getId());
+                log.error("❌ [ResidentCard] Notification sẽ không được gửi đến resident!");
                 return;
             }
+            
+            log.info("✅ [ResidentCard] ResidentId resolved successfully: {}", requesterResidentId);
 
             // Get payment amount (use actual payment amount if available, otherwise use current price)
             BigDecimal paymentAmount = registration.getPaymentAmount();
@@ -682,22 +798,125 @@ public class ResidentCardRegistrationService {
 
     @Transactional(readOnly = true)
     public ResidentCardRegistrationDto getRegistration(UUID userId, UUID registrationId) {
-        ResidentCardRegistration registration = repository.findByIdAndUserId(registrationId, userId)
+        // Get registration without userId check first (to check permission)
+        ResidentCardRegistration registration = repository.findById(registrationId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký thẻ cư dân"));
+        
+        // Check permission: Owner can view any household member's registration, household members can only view their own
+        if (registration.getUnitId() != null) {
+            boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, registration.getUnitId(), null);
+            
+            if (!isOwner) {
+                // Not Owner - household member can only view their own registration
+                // Check by userId first
+                boolean canView = userId.equals(registration.getUserId());
+                
+                // If userId doesn't match, check by residentId (Owner might have created registration for household member)
+                if (!canView && registration.getResidentId() != null) {
+                    UUID currentUserResidentId = baseServiceClient.findResidentIdByUserId(userId, null);
+                    if (currentUserResidentId != null && currentUserResidentId.equals(registration.getResidentId())) {
+                        canView = true;
+                        log.debug("✅ [ResidentCard] Household member {} can view registration {} (matched by residentId: {})", 
+                                userId, registrationId, currentUserResidentId);
+                    }
+                }
+                
+                if (!canView) {
+                    log.warn("⚠️ [ResidentCard] User {} không phải Owner và không phải chủ sở hữu đăng ký {}, không được phép xem", 
+                            userId, registrationId);
+                    throw new IllegalArgumentException("Không tìm thấy đăng ký thẻ cư dân");
+                }
+            }
+        } else {
+            // Fallback: if no unitId, only allow viewing own registration
+            // Check by userId first
+            boolean canView = userId.equals(registration.getUserId());
+            
+            // If userId doesn't match, check by residentId
+            if (!canView && registration.getResidentId() != null) {
+                UUID currentUserResidentId = baseServiceClient.findResidentIdByUserId(userId, null);
+                if (currentUserResidentId != null && currentUserResidentId.equals(registration.getResidentId())) {
+                    canView = true;
+                    log.debug("✅ [ResidentCard] User {} can view registration {} (matched by residentId: {})", 
+                            userId, registrationId, currentUserResidentId);
+                }
+            }
+            
+            if (!canView) {
+                throw new IllegalArgumentException("Không tìm thấy đăng ký thẻ cư dân");
+            }
+        }
+        
         return toDto(registration);
     }
 
     @Transactional
     public void cancelRegistration(UUID userId, UUID registrationId) {
-        ResidentCardRegistration registration = repository.findByIdAndUserId(registrationId, userId)
+        // Get registration without userId check first (to check permission)
+        ResidentCardRegistration registration = repository.findById(registrationId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký thẻ cư dân"));
+        
+        // Check permission: Owner can cancel any household member's card, household members can only cancel their own
+        if (registration.getUnitId() != null) {
+            boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, registration.getUnitId(), null);
+            
+            if (isOwner) {
+                // Owner can cancel any household member's card in the same unit
+                log.info("✅ [ResidentCard] Owner {} đã hủy đăng ký {} của household member trong unit {}", 
+                        userId, registrationId, registration.getUnitId());
+            } else {
+                // Not Owner - household member can only cancel their own card
+                // Check by userId first
+                boolean canCancel = userId.equals(registration.getUserId());
+                
+                // If userId doesn't match, check by residentId (Owner might have created registration for household member)
+                if (!canCancel && registration.getResidentId() != null) {
+                    UUID currentUserResidentId = baseServiceClient.findResidentIdByUserId(userId, null);
+                    if (currentUserResidentId != null && currentUserResidentId.equals(registration.getResidentId())) {
+                        canCancel = true;
+                        log.debug("✅ [ResidentCard] Household member {} can cancel registration {} (matched by residentId: {})", 
+                                userId, registrationId, currentUserResidentId);
+                    }
+                }
+                
+                if (!canCancel) {
+                    log.warn("⚠️ [ResidentCard] User {} không phải Owner và không phải người tạo đăng ký {}, không được phép hủy", 
+                            userId, registrationId);
+                    log.warn("⚠️ [ResidentCard] Registration userId: {}, current userId: {}, registration residentId: {}", 
+                            registration.getUserId(), userId, registration.getResidentId());
+                    throw new IllegalStateException("Chỉ chủ căn hộ mới được quyền hủy thẻ của các thành viên. Bạn chỉ có thể hủy thẻ của chính mình.");
+                }
+                log.info("✅ [ResidentCard] Household member {} đã hủy đăng ký {} của chính mình", userId, registrationId);
+            }
+        } else {
+            // Fallback: if no unitId, only allow canceling own registration
+            // Check by userId first
+            boolean canCancel = userId.equals(registration.getUserId());
+            
+            // If userId doesn't match, check by residentId
+            if (!canCancel && registration.getResidentId() != null) {
+                UUID currentUserResidentId = baseServiceClient.findResidentIdByUserId(userId, null);
+                if (currentUserResidentId != null && currentUserResidentId.equals(registration.getResidentId())) {
+                    canCancel = true;
+                    log.debug("✅ [ResidentCard] User {} can cancel registration {} (matched by residentId: {})", 
+                            userId, registrationId, currentUserResidentId);
+                }
+            }
+            
+            if (!canCancel) {
+                throw new IllegalStateException("Bạn chỉ có thể hủy thẻ của chính mình.");
+            }
+        }
+        
         if (STATUS_CANCELLED.equalsIgnoreCase(registration.getStatus())) {
+            log.info("ℹ️ [ResidentCard] Đăng ký {} đã được hủy trước đó", registrationId);
             return;
         }
+        
         registration.setStatus(STATUS_CANCELLED);
         registration.setUpdatedAt(OffsetDateTime.now());
         repository.save(registration);
-        log.info("✅ [ResidentCard] User {} đã hủy đăng ký {}", userId, registrationId);
+        log.info("✅ [ResidentCard] Đăng ký {} đã được hủy thành công", registrationId);
     }
 
     @Transactional
@@ -1016,6 +1235,7 @@ public class ResidentCardRegistrationService {
 
     /**
      * Lấy danh sách thành viên trong căn hộ (bao gồm citizenId và fullName)
+     * Chỉ cần là thành viên household thì có thể xem danh sách
      */
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getHouseholdMembersByUnit(UUID unitId, UUID userId, String accessToken) {
@@ -1024,27 +1244,63 @@ public class ResidentCardRegistrationService {
             return List.of();
         }
         
-        // Kiểm tra quyền OWNER: chỉ OWNER mới được xem danh sách thành viên để đăng ký cho nhiều người
-        boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, unitId, accessToken);
-        if (!isOwner) {
-            log.warn("⚠️ [ResidentCard] User {} is not OWNER of unit {}, cannot get household members list", userId, unitId);
-            throw new IllegalStateException("Chỉ chủ căn hộ (OWNER) mới được xem danh sách thành viên để đăng ký thẻ. Thành viên chỉ được đăng ký thẻ cho chính mình.");
+        // Kiểm tra user có phải là thành viên household không
+        UUID requesterResidentId = residentUnitLookupService.resolveByUser(userId, unitId)
+                .map(info -> info.residentId())
+                .orElse(null);
+        
+        if (requesterResidentId == null) {
+            requesterResidentId = baseServiceClient.findResidentIdByUserId(userId, accessToken);
         }
         
-        // Log để debug: xác nhận user là OWNER
-        log.info("✅ [ResidentCard] User {} được xác nhận là OWNER/TENANT của unit {}", userId, unitId);
+        if (requesterResidentId == null || !isHouseholdMember(requesterResidentId, unitId)) {
+            log.warn("⚠️ [ResidentCard] User {} is not a household member of unit {}, cannot get household members list", userId, unitId);
+            throw new IllegalStateException("Bạn không phải là thành viên của căn hộ này. Chỉ thành viên hộ gia đình mới được xem danh sách thành viên.");
+        }
+        
+        log.info("✅ [ResidentCard] User {} (residentId: {}) là thành viên household của unit {}", userId, requesterResidentId, unitId);
+        
+        // Kiểm tra xem user có phải Owner không (dựa trên is_primary)
+        boolean isOwner = false;
+        try {
+            MapSqlParameterSource checkParams = new MapSqlParameterSource()
+                    .addValue("residentId", requesterResidentId)
+                    .addValue("unitId", unitId);
+            
+            Long primaryCount = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*)
+                    FROM data.household_members hm
+                    JOIN data.households h ON h.id = hm.household_id
+                    WHERE hm.resident_id = :residentId
+                      AND h.unit_id = :unitId
+                      AND hm.is_primary = true
+                      AND (hm.left_at IS NULL OR hm.left_at >= CURRENT_DATE)
+                      AND (h.end_date IS NULL OR h.end_date >= CURRENT_DATE)
+                    """, checkParams, Long.class);
+            
+            isOwner = primaryCount != null && primaryCount > 0;
+            log.debug("🔍 [ResidentCard] User {} isOwner of unit {}: {}", userId, unitId, isOwner);
+        } catch (Exception e) {
+            log.warn("⚠️ [ResidentCard] Lỗi check Owner status: {}", e.getMessage());
+        }
         
         try {
             MapSqlParameterSource params = new MapSqlParameterSource()
                     .addValue("unitId", unitId);
             
-            log.debug("🔍 [ResidentCard] Đang lấy danh sách thành viên trong căn hộ unitId: {}", unitId);
+            if (!isOwner && requesterResidentId != null) {
+                // Nếu không phải Owner, chỉ lấy thông tin của chính user đó
+                params.addValue("requesterResidentId", requesterResidentId);
+            }
+            
+            log.debug("🔍 [ResidentCard] Đang lấy danh sách thành viên trong căn hộ unitId: {} (isOwner: {})", unitId, isOwner);
             
             // Query để lấy danh sách thành viên và check xem họ đã có thẻ được approve chưa
             // Thêm thông tin về household kind để Flutter có thể verify
             // Chỉ lấy những household members đã được admin approve (có request với status APPROVED)
             // OWNER (primary member) luôn được phép, không cần request
-            List<Map<String, Object>> members = jdbcTemplate.query("""
+            // Nếu không phải Owner, chỉ lấy thông tin của chính user đó
+            String query = """
                     SELECT DISTINCT
                         r.id AS resident_id,
                         r.full_name AS full_name,
@@ -1052,7 +1308,7 @@ public class ResidentCardRegistrationService {
                         r.phone AS phone_number,
                         r.email AS email,
                         r.dob AS date_of_birth,
-                        h.kind AS household_kind,
+                        hm.is_primary AS is_primary,
                         CASE 
                             WHEN EXISTS (
                                 SELECT 1 FROM card.resident_card_registration rcr
@@ -1091,8 +1347,16 @@ public class ResidentCardRegistrationService {
                                 AND hmr.status = 'APPROVED'
                           )
                       )
-                    ORDER BY r.full_name
-                    """, params, (rs, rowNum) -> {
+            """;
+            
+            // Nếu không phải Owner, chỉ lấy thông tin của chính user đó
+            if (!isOwner && requesterResidentId != null) {
+                query += " AND r.id = :requesterResidentId";
+            }
+            
+            query += " ORDER BY r.full_name";
+            
+            List<Map<String, Object>> members = jdbcTemplate.query(query, params, (rs, rowNum) -> {
                 Map<String, Object> member = new HashMap<>();
                 member.put("residentId", rs.getObject("resident_id", UUID.class).toString());
                 member.put("fullName", rs.getString("full_name"));
@@ -1103,16 +1367,21 @@ public class ResidentCardRegistrationService {
                     ? rs.getDate("date_of_birth").toString() : null);
                 member.put("hasApprovedCard", rs.getBoolean("has_approved_card"));
                 member.put("waitingForApproval", rs.getBoolean("waiting_for_approval"));
-                // Thêm household kind vào response để Flutter có thể verify
-                String householdKind = rs.getString("household_kind");
+                // Phân biệt Owner và household member dựa trên is_primary
+                boolean isPrimary = rs.getBoolean("is_primary");
+                String householdKind = isPrimary ? "OWNER" : "HOUSEHOLD_MEMBER";
                 member.put("householdKind", householdKind);
                 return member;
             });
             
-            // Log household kind để debug
+            // Log để debug
             if (!members.isEmpty()) {
-                String householdKind = (String) members.get(0).get("householdKind");
-                log.info("✅ [ResidentCard] Căn hộ {} có {} thành viên, household kind: {}", unitId, members.size(), householdKind);
+                long ownerCount = members.stream()
+                    .filter(m -> "OWNER".equals(m.get("householdKind")))
+                    .count();
+                long memberCount = members.size() - ownerCount;
+                log.info("✅ [ResidentCard] Căn hộ {} có {} thành viên ({} Owner, {} Household Member)", 
+                    unitId, members.size(), ownerCount, memberCount);
             } else {
                 log.warn("⚠️ [ResidentCard] Căn hộ {} không có thành viên nào trong household_members", unitId);
             }
@@ -1166,6 +1435,128 @@ public class ResidentCardRegistrationService {
             case "REPLACE_CARD", "NEW_CARD" -> normalized;
             default -> "NEW_CARD";
         };
+    }
+
+    /**
+     * Kiểm tra resident có phải là thành viên household của unit không
+     */
+    private boolean isHouseholdMember(UUID residentId, UUID unitId) {
+        if (residentId == null || unitId == null) {
+            return false;
+        }
+        
+        try {
+            MapSqlParameterSource params = new MapSqlParameterSource()
+                    .addValue("residentId", residentId)
+                    .addValue("unitId", unitId);
+            
+            Long count = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(DISTINCT hm.resident_id)
+                    FROM data.household_members hm
+                    JOIN data.households h ON h.id = hm.household_id
+                    WHERE hm.resident_id = :residentId
+                      AND h.unit_id = :unitId
+                      AND (hm.left_at IS NULL OR hm.left_at >= CURRENT_DATE)
+                      AND (h.end_date IS NULL OR h.end_date >= CURRENT_DATE)
+                    """, params, Long.class);
+            
+            return count != null && count > 0;
+        } catch (Exception e) {
+            log.error("❌ [ResidentCard] Error checking if resident {} is household member of unit {}: {}", 
+                    residentId, unitId, e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Kiểm tra xem resident có phải là primary member hoặc có household_member_requests APPROVED không
+     * Nếu có thì không cần check account
+     */
+    private boolean isPrimaryMemberOrHasApprovedRequest(UUID residentId, UUID unitId) {
+        if (residentId == null || unitId == null) {
+            return false;
+        }
+        
+        try {
+            MapSqlParameterSource params = new MapSqlParameterSource()
+                    .addValue("residentId", residentId)
+                    .addValue("unitId", unitId);
+            
+            Long count = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(DISTINCT hm.resident_id)
+                    FROM data.household_members hm
+                    JOIN data.households h ON h.id = hm.household_id
+                    JOIN data.residents r ON r.id = hm.resident_id
+                    WHERE hm.resident_id = :residentId
+                      AND h.unit_id = :unitId
+                      AND (hm.left_at IS NULL OR hm.left_at >= CURRENT_DATE)
+                      AND (h.end_date IS NULL OR h.end_date >= CURRENT_DATE)
+                      AND (
+                          -- OWNER (primary member) luôn được phép
+                          hm.is_primary = true
+                          OR
+                          -- Hoặc có request đã được approve
+                          EXISTS (
+                              SELECT 1 FROM data.household_member_requests hmr
+                              WHERE hmr.household_id = hm.household_id
+                                AND (hmr.resident_id = r.id 
+                                     OR (hmr.resident_id IS NULL 
+                                         AND hmr.resident_national_id = r.national_id
+                                         AND hmr.resident_phone = r.phone))
+                                AND hmr.status = 'APPROVED'
+                          )
+                      )
+                    """, params, Long.class);
+            
+            boolean result = count != null && count > 0;
+            log.debug("🔍 [ResidentCard] Resident {} isPrimaryMemberOrHasApprovedRequest in unit {}: {}", 
+                    residentId, unitId, result);
+            return result;
+        } catch (Exception e) {
+            log.error("❌ [ResidentCard] Error checking if resident {} is primary member or has approved request in unit {}: {}", 
+                    residentId, unitId, e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Kiểm tra 2 resident có thuộc cùng household không
+     */
+    private boolean areInSameHousehold(UUID residentId1, UUID residentId2, UUID unitId) {
+        if (residentId1 == null || residentId2 == null || unitId == null) {
+            return false;
+        }
+        
+        // Nếu cùng một người thì return true
+        if (residentId1.equals(residentId2)) {
+            return true;
+        }
+        
+        try {
+            MapSqlParameterSource params = new MapSqlParameterSource()
+                    .addValue("residentId1", residentId1)
+                    .addValue("residentId2", residentId2)
+                    .addValue("unitId", unitId);
+            
+            Long count = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(DISTINCT h.id)
+                    FROM data.household_members hm1
+                    JOIN data.household_members hm2 ON hm1.household_id = hm2.household_id
+                    JOIN data.households h ON h.id = hm1.household_id
+                    WHERE hm1.resident_id = :residentId1
+                      AND hm2.resident_id = :residentId2
+                      AND h.unit_id = :unitId
+                      AND (hm1.left_at IS NULL OR hm1.left_at >= CURRENT_DATE)
+                      AND (hm2.left_at IS NULL OR hm2.left_at >= CURRENT_DATE)
+                      AND (h.end_date IS NULL OR h.end_date >= CURRENT_DATE)
+                    """, params, Long.class);
+            
+            return count != null && count > 0;
+        } catch (Exception e) {
+            log.error("❌ [ResidentCard] Error checking if residents {} and {} are in same household: {}", 
+                    residentId1, residentId2, e.getMessage());
+            return false;
+        }
     }
 
     private String normalize(String value) {

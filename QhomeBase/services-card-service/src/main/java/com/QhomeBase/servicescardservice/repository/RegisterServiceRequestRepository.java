@@ -20,6 +20,8 @@ public interface RegisterServiceRequestRepository extends JpaRepository<Register
     List<RegisterServiceRequest> findByUserId(UUID userId);
 
     List<RegisterServiceRequest> findByUserIdAndUnitId(UUID userId, UUID unitId);
+    
+    List<RegisterServiceRequest> findByUnitId(UUID unitId);
 
     @Query("""
             SELECT DISTINCT r
@@ -69,15 +71,8 @@ public interface RegisterServiceRequestRepository extends JpaRepository<Register
             """)
     List<RegisterServiceRequest> findActivePaidCards(@Param("serviceType") String serviceType);
 
-    /**
-     * Tìm các thẻ đã duyệt và đã thanh toán để cập nhật trạng thái (NEEDS_RENEWAL, SUSPENDED)
-     */
     List<RegisterServiceRequest> findByStatusAndPaymentStatus(String status, String paymentStatus);
 
-    /**
-     * Tìm registration theo biển số xe và service type
-     * Chỉ tìm các registration đã được approve hoặc đã thanh toán (không bị reject/cancel)
-     */
     @Query("""
             SELECT r FROM RegisterServiceRequest r
             WHERE r.serviceType = :serviceType
@@ -90,9 +85,7 @@ public interface RegisterServiceRequestRepository extends JpaRepository<Register
             @Param("licensePlate") String licensePlate
     );
 
-    /**
-     * Tìm registration theo biển số xe, service type và exclude một registration ID (dùng khi update)
-     */
+
     @Query("""
             SELECT r FROM RegisterServiceRequest r
             WHERE r.serviceType = :serviceType
@@ -107,11 +100,7 @@ public interface RegisterServiceRequestRepository extends JpaRepository<Register
             @Param("excludeId") UUID excludeId
     );
 
-    /**
-     * Tìm các vehicle card registrations có VNPay payment đang in-progress quá thời gian timeout
-     * @param threshold Thời điểm threshold (hiện tại - 10 phút)
-     * @return Danh sách registrations cần expire
-     */
+
     @Query("""
             SELECT r FROM RegisterServiceRequest r
             WHERE UPPER(r.paymentStatus) = 'PAYMENT_IN_PROGRESS'
@@ -119,4 +108,21 @@ public interface RegisterServiceRequestRepository extends JpaRepository<Register
               AND r.vnpayInitiatedAt < :threshold
             """)
     List<RegisterServiceRequest> findExpiredVnpayPayments(@Param("threshold") OffsetDateTime threshold);
+
+    @Query("""
+            SELECT COUNT(r) > 0 FROM RegisterServiceRequest r
+            WHERE r.reissuedFromCardId = :originalCardId
+              AND UPPER(r.status) NOT IN ('REJECTED', 'CANCELLED')
+            """)
+    boolean existsReissuedCard(@Param("originalCardId") UUID originalCardId);
+
+
+    @Query("""
+            SELECT r FROM RegisterServiceRequest r
+            LEFT JOIN FETCH r.images
+            WHERE r.reissuedFromCardId = :originalCardId
+              AND UPPER(r.status) NOT IN ('REJECTED', 'CANCELLED')
+            ORDER BY r.createdAt DESC
+            """)
+    List<RegisterServiceRequest> findReissuedCards(@Param("originalCardId") UUID originalCardId);
 }

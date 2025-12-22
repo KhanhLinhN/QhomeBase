@@ -23,7 +23,8 @@ public record CardRegistrationSummaryDto(
         String buildingName,
         String note,
         OffsetDateTime approvedAt,
-        OffsetDateTime vnpayInitiatedAt
+        OffsetDateTime vnpayInitiatedAt,
+        Boolean canReissue
 ) {
 }
 

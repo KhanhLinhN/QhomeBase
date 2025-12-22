@@ -33,6 +33,8 @@ public class ApprovedCardQueryService {
     private final ResidentCardRegistrationRepository residentCardRepository;
     private final ElevatorCardRegistrationRepository elevatorCardRepository;
     private final RegisterServiceRequestRepository vehicleRegistrationRepository;
+    
+    private static final String STATUS_CANCELLED = "CANCELLED";
 
     @Transactional(readOnly = true)
     public List<CardRegistrationSummaryDto> getApprovedCards(UUID buildingId, UUID unitId) {
@@ -88,7 +90,8 @@ public class ApprovedCardQueryService {
                 entity.getBuildingName(),
                 entity.getNote(),
                 entity.getApprovedAt(),
-                entity.getVnpayInitiatedAt()
+                entity.getVnpayInitiatedAt(),
+                null // canReissue only applies to vehicle cards
         );
     }
 
@@ -112,12 +115,27 @@ public class ApprovedCardQueryService {
                 entity.getBuildingName(),
                 entity.getNote(),
                 entity.getApprovedAt(),
-                entity.getVnpayInitiatedAt()
+                entity.getVnpayInitiatedAt(),
+                null // canReissue only applies to vehicle cards
         );
     }
 
     private CardRegistrationSummaryDto mapVehicleCard(RegisterServiceRequest entity) {
         BigDecimal amount = entity.getPaymentAmount();
+        String normalizedStatus = normalize(entity.getStatus());
+        String normalizedPaymentStatus = normalize(entity.getPaymentStatus());
+        
+        // Calculate canReissue: only if card is CANCELLED, PAID, and hasn't been reissued yet
+        Boolean canReissue = null;
+        if (STATUS_CANCELLED.equals(normalizedStatus) 
+                && "PAID".equals(normalizedPaymentStatus)
+                && entity.getReissuedFromCardId() == null) { // Not already a reissued card
+            // Check if this card has already been reissued
+            canReissue = !vehicleRegistrationRepository.existsReissuedCard(entity.getId());
+        } else {
+            canReissue = false;
+        }
+        
         return new CardRegistrationSummaryDto(
                 entity.getId(),
                 CARD_TYPE_VEHICLE,
@@ -125,8 +143,8 @@ public class ApprovedCardQueryService {
                 null,
                 entity.getUnitId(),
                 normalize(entity.getRequestType()),
-                normalize(entity.getStatus()),
-                normalize(entity.getPaymentStatus()),
+                normalizedStatus,
+                normalizedPaymentStatus,
                 amount,
                 entity.getPaymentDate(),
                 entity.getCreatedAt(),
@@ -137,7 +155,8 @@ public class ApprovedCardQueryService {
                 entity.getBuildingName(),
                 entity.getNote(),
                 entity.getApprovedAt(),
-                entity.getVnpayInitiatedAt()
+                entity.getVnpayInitiatedAt(),
+                canReissue
         );
     }
 

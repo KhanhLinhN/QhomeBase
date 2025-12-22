@@ -102,8 +102,46 @@ public class ResidentUnitLookupService {
 
         if (rowSet.next()) {
             AddressInfo info = mapRow(rowSet);
+            // If we found a residentId, return it even if apartmentNumber/buildingName is null
+            // This handles cases where Owner creates request but is not in household_members of that unit
+            if (info.residentId() != null) {
+                return Optional.of(info);
+            }
+            // If no residentId but has address info, return it
             if (info.apartmentNumber() != null || info.buildingName() != null) {
                 return Optional.of(info);
+            }
+        }
+
+        // Fallback: If no result from household_members join, query directly from residents table
+        // This handles cases where Owner is not in household_members but exists in residents table
+        if (userId != null) {
+            MapSqlParameterSource fallbackParams = new MapSqlParameterSource();
+            fallbackParams.addValue("userId", userId);
+            
+            SqlRowSet fallbackRowSet = jdbcTemplate.queryForRowSet("""
+                    SELECT r.id AS resident_id,
+                           r.full_name,
+                           NULL AS apartment_number,
+                           NULL AS building_name,
+                           NULL AS building_id
+                    FROM data.residents r
+                    WHERE r.user_id = :userId
+                    LIMIT 1
+                    """, fallbackParams);
+            
+            if (fallbackRowSet.next()) {
+                UUID residentId = getUuid(fallbackRowSet, "resident_id");
+                if (residentId != null) {
+                    log.debug("✅ [ResidentUnitLookupService] Found residentId {} directly from residents table for userId {}", residentId, userId);
+                    return Optional.of(new AddressInfo(
+                            null, // apartmentNumber
+                            null, // buildingName
+                            residentId, // residentId
+                            getString(fallbackRowSet, "full_name"), // residentFullName
+                            null // buildingId
+                    ));
+                }
             }
         }
 

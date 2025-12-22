@@ -92,6 +92,10 @@ public class RegisterServiceRequest {
     @Column(name = "vnpay_initiated_at")
     private OffsetDateTime vnpayInitiatedAt;
 
+
+    @Column(name = "reissued_from_card_id")
+    private UUID reissuedFromCardId;
+
     @OneToMany(mappedBy = "registerServiceRequest", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<RegisterServiceImage> images = new ArrayList<>();
