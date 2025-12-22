@@ -38,17 +38,29 @@ public class BuildingImportController {
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             log.warn("[ImportBuilding] Bad request: {}", e.getMessage());
-            return ResponseEntity.badRequest()
-                    .body(java.util.Map.of("message", e.getMessage(), "error", e.getMessage()));
+            // Tạo response với lỗi validation
+            BuildingImportResponse errorResponse = BuildingImportResponse.builder()
+                    .hasValidationErrors(true)
+                    .validationErrors(java.util.List.of(e.getMessage()))
+                    .build();
+            return ResponseEntity.badRequest().body(errorResponse);
         } catch (IllegalStateException e) {
             log.warn("[ImportBuilding] Illegal state: {}", e.getMessage());
-            return ResponseEntity.badRequest()
-                    .body(java.util.Map.of("message", e.getMessage(), "error", e.getMessage()));
+            // Tạo response với lỗi validation
+            BuildingImportResponse errorResponse = BuildingImportResponse.builder()
+                    .hasValidationErrors(true)
+                    .validationErrors(java.util.List.of(e.getMessage()))
+                    .build();
+            return ResponseEntity.badRequest().body(errorResponse);
         } catch (Exception e) {
             log.error("[ImportBuilding] Unexpected error", e);
             String errorMessage = e.getMessage() != null ? e.getMessage() : "Đã xảy ra lỗi không xác định khi import tòa nhà";
-            return ResponseEntity.internalServerError()
-                    .body(java.util.Map.of("message", errorMessage, "error", errorMessage));
+            // Tạo response với lỗi
+            BuildingImportResponse errorResponse = BuildingImportResponse.builder()
+                    .hasValidationErrors(true)
+                    .validationErrors(java.util.List.of(errorMessage))
+                    .build();
+            return ResponseEntity.internalServerError().body(errorResponse);
         }
     }
 

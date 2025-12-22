@@ -43,22 +43,47 @@ public class UnitImportService {
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
             Sheet sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
             if (sheet == null) {
-                throw new IllegalArgumentException("Không tìm thấy sheet");
+                response.getValidationErrors().add("Không tìm thấy sheet trong file Excel");
+                response.setHasValidationErrors(true);
+                return response;
             }
             if (sheet.getLastRowNum() < 1) {
+                response.getValidationErrors().add("File Excel không có dữ liệu (chỉ có header hoặc file trống)");
+                response.setHasValidationErrors(true);
                 return response;
             }
             response.setTotalRows(sheet.getLastRowNum());
             Row header = sheet.getRow(0);
+            if (header == null) {
+                response.getValidationErrors().add("Không tìm thấy dòng header (dòng đầu tiên)");
+                response.setHasValidationErrors(true);
+                return response;
+            }
+            
             int idxBuildingCode = findColumnIndex(header, "buildingCode");
             int idxFloor = findColumnIndex(header, "floor");
             int idxArea = findColumnIndex(header, "areaM2");
             int idxBedrooms = findColumnIndex(header, "bedrooms");
+            
+            // Kiểm tra và thu thập tất cả lỗi thiếu cột
             if (idxBuildingCode < 0) {
-                throw new IllegalArgumentException("Thiếu cột buildingCode");
+                response.getValidationErrors().add("Thiếu cột 'buildingCode' (bắt buộc)");
             }
-            if (idxFloor < 0 || idxArea < 0 || idxBedrooms < 0) {
-                throw new IllegalArgumentException("Thiếu các cột bắt buộc: floor, areaM2, bedrooms");
+            if (idxFloor < 0) {
+                response.getValidationErrors().add("Thiếu cột 'floor' (bắt buộc)");
+            }
+            if (idxArea < 0) {
+                response.getValidationErrors().add("Thiếu cột 'areaM2' (bắt buộc)");
+            }
+            if (idxBedrooms < 0) {
+                response.getValidationErrors().add("Thiếu cột 'bedrooms' (bắt buộc)");
+            }
+            
+            // Nếu có lỗi validation, dừng lại và trả về response với lỗi
+            if (!response.getValidationErrors().isEmpty()) {
+                response.setHasValidationErrors(true);
+                response.getValidationErrors().add(0, "Template không đúng định dạng. Vui lòng tải template mẫu và kiểm tra lại.");
+                return response;
             }
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row r = sheet.getRow(i);

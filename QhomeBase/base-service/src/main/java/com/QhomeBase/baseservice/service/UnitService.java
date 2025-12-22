@@ -51,6 +51,9 @@ public class UnitService {
     @Transactional
     public UnitDto updateUnit(UnitUpdateDto unit, UUID id) {
         Unit existingUnit = unitRepository.findByIdWithBuilding(id);
+        if (existingUnit == null) {
+            throw new IllegalArgumentException("Unit not found: " + id);
+        }
         validateUnitUpdateDto(unit, id);
 
         if (unit.floor() != null) {
@@ -81,6 +84,9 @@ public class UnitService {
     
     public UnitDto getUnitById(UUID id) {
         Unit unit = unitRepository.findByIdWithBuilding(id);
+        if (unit == null) {
+            throw new IllegalArgumentException("Unit not found: " + id);
+        }
         return toDto(unit);
     }
     
@@ -212,6 +218,10 @@ public class UnitService {
     }
 
     public UnitDto toDto(Unit unit) {
+        if (unit == null) {
+            return null;
+        }
+        
         String buildingId = null;
         String buildingCode = null;
         String buildingName = null;
@@ -291,6 +301,9 @@ public class UnitService {
         }
         
         Unit existingUnit = unitRepository.findByIdWithBuilding(unitId);
+        if (existingUnit == null) {
+            throw new IllegalArgumentException("Unit not found: " + unitId);
+        }
         Building building = existingUnit.getBuilding();
         if (building.getNumberOfFloors() != null && dto.floor() > building.getNumberOfFloors()) {
             throw new IllegalArgumentException(

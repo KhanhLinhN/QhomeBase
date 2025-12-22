@@ -21,6 +21,10 @@ public class BuildingImportResponse {
     private int errorCount = 0;
     @Builder.Default
     private List<BuildingImportRowResult> rows = new ArrayList<>();
+    @Builder.Default
+    private List<String> validationErrors = new ArrayList<>(); // Lỗi validation template/header
+    @Builder.Default
+    private boolean hasValidationErrors = false; // Có lỗi validation không
 }
 
 

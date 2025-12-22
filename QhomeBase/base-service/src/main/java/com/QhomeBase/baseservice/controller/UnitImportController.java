@@ -31,17 +31,29 @@ public class UnitImportController {
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             log.warn("[ImportUnit] Bad request: {}", e.getMessage());
-            return ResponseEntity.badRequest()
-                    .body(java.util.Map.of("message", e.getMessage(), "error", e.getMessage()));
+            // Tạo response với lỗi validation
+            UnitImportResponse errorResponse = UnitImportResponse.builder()
+                    .hasValidationErrors(true)
+                    .validationErrors(java.util.List.of(e.getMessage()))
+                    .build();
+            return ResponseEntity.badRequest().body(errorResponse);
         } catch (IllegalStateException e) {
             log.warn("[ImportUnit] Illegal state: {}", e.getMessage());
-            return ResponseEntity.badRequest()
-                    .body(java.util.Map.of("message", e.getMessage(), "error", e.getMessage()));
+            // Tạo response với lỗi validation
+            UnitImportResponse errorResponse = UnitImportResponse.builder()
+                    .hasValidationErrors(true)
+                    .validationErrors(java.util.List.of(e.getMessage()))
+                    .build();
+            return ResponseEntity.badRequest().body(errorResponse);
         } catch (Exception e) {
             log.error("[ImportUnit] Unexpected error", e);
             String errorMessage = e.getMessage() != null ? e.getMessage() : "Đã xảy ra lỗi không xác định khi import căn hộ";
-            return ResponseEntity.internalServerError()
-                    .body(java.util.Map.of("message", errorMessage, "error", errorMessage));
+            // Tạo response với lỗi
+            UnitImportResponse errorResponse = UnitImportResponse.builder()
+                    .hasValidationErrors(true)
+                    .validationErrors(java.util.List.of(errorMessage))
+                    .build();
+            return ResponseEntity.internalServerError().body(errorResponse);
         }
     }
 

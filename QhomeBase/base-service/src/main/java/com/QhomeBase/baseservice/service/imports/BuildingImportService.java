@@ -39,25 +39,44 @@ public class BuildingImportService {
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
             Sheet sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
             if (sheet == null) {
-                throw new IllegalArgumentException("Không tìm thấy sheet");
+                response.getValidationErrors().add("Không tìm thấy sheet trong file Excel");
+                response.setHasValidationErrors(true);
+                return response;
             }
             if (sheet.getLastRowNum() < 1) {
+                response.getValidationErrors().add("File Excel không có dữ liệu (chỉ có header hoặc file trống)");
+                response.setHasValidationErrors(true);
                 return response;
             }
 
             response.setTotalRows(sheet.getLastRowNum());
             Row header = sheet.getRow(0);
+            if (header == null) {
+                response.getValidationErrors().add("Không tìm thấy dòng header (dòng đầu tiên)");
+                response.setHasValidationErrors(true);
+                return response;
+            }
+            
             int idxName = findColumnIndex(header, "name");
             int idxAddress = findColumnIndex(header, "address");
             int idxNumberOfFloors = findColumnIndex(header, "numberOfFloors");
+            
+            // Kiểm tra và thu thập tất cả lỗi thiếu cột
             if (idxName < 0) {
-                throw new IllegalArgumentException("Thiếu cột name (bắt buộc)");
+                response.getValidationErrors().add("Thiếu cột 'name' (bắt buộc)");
             }
             if (idxAddress < 0) {
-                throw new IllegalArgumentException("Thiếu cột address (bắt buộc)");
+                response.getValidationErrors().add("Thiếu cột 'address' (bắt buộc)");
             }
             if (idxNumberOfFloors < 0) {
-                throw new IllegalArgumentException("Thiếu cột numberOfFloors (bắt buộc)");
+                response.getValidationErrors().add("Thiếu cột 'numberOfFloors' (bắt buộc)");
+            }
+            
+            // Nếu có lỗi validation, dừng lại và trả về response với lỗi
+            if (!response.getValidationErrors().isEmpty()) {
+                response.setHasValidationErrors(true);
+                response.getValidationErrors().add(0, "Template không đúng định dạng. Vui lòng tải template mẫu và kiểm tra lại.");
+                return response;
             }
 
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
