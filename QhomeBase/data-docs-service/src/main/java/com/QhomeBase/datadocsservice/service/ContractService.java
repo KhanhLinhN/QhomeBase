@@ -1421,10 +1421,6 @@ public class ContractService {
         return cancelContract(contractId, updatedBy, null, null, null);
     }
 
-    /**
-     * Renew contract - create new contract based on old contract
-     * This will be called from the controller which will handle VNPay payment
-     */
     @Transactional
     public ContractDto renewContract(UUID oldContractId, LocalDate newStartDate, LocalDate newEndDate, UUID createdBy, UUID userId, String accessToken) {
         Contract oldContract = contractRepository.findById(oldContractId)
@@ -1996,11 +1992,7 @@ public class ContractService {
         }
     }
 
-    /**
-     * Generate a standardized contract number for renewal contracts
-     * Format: HĐ-{LOẠI_HỢP_ĐỒNG}-{MÃ_CĂN} – Gia hạn lần {N}
-     * Example: HĐ-THUÊ-A1---01 – Gia hạn lần 1
-     */
+
     private String generateRenewalContractNumber(UUID unitId, String contractType, LocalDate startDate, Contract oldContract) {
         // Get unit code
         Optional<String> unitCodeOpt = baseServiceClient.getUnitCodeByUnitId(unitId);

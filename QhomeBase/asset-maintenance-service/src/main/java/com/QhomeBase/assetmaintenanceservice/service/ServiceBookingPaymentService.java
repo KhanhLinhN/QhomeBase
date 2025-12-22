@@ -246,12 +246,17 @@ public class ServiceBookingPaymentService {
           
             List<Map<String, Object>> lines = new ArrayList<>();
             
-           
+            // Get booking date (already LocalDate)
+            LocalDate serviceDate = booking.getBookingDate() != null 
+                    ? booking.getBookingDate() 
+                    : LocalDate.now();
+            
+            // Build invoice line
             Map<String, Object> mainLine = new java.util.HashMap<>();
-            mainLine.put("serviceDate", booking.getBookingDate().toString());
+            mainLine.put("serviceDate", serviceDate.toString()); // ISO format: YYYY-MM-DD
             mainLine.put("description", String.format("Đặt dịch vụ %s - %s", 
                     booking.getService() != null ? booking.getService().getName() : "Dịch vụ",
-                    booking.getBookingDate().toString()));
+                    serviceDate.toString()));
             mainLine.put("quantity", BigDecimal.ONE);
             mainLine.put("unit", "Lần");
             mainLine.put("unitPrice", booking.getTotalAmount() != null ? booking.getTotalAmount() : BigDecimal.ZERO);
@@ -259,20 +264,24 @@ public class ServiceBookingPaymentService {
             mainLine.put("serviceCode", booking.getService() != null && booking.getService().getCode() != null 
                     ? booking.getService().getCode() : "SERVICE_BOOKING");
             mainLine.put("externalRefType", "SERVICE_BOOKING");
-            mainLine.put("externalRefId", booking.getId()); // UUID object, Spring will serialize to JSON
+            mainLine.put("externalRefId", booking.getId().toString()); // UUID as string for JSON
             lines.add(mainLine);
 
             // Build invoice request
             Map<String, Object> invoiceRequest = new java.util.HashMap<>();
-            invoiceRequest.put("dueDate", LocalDate.now().plusDays(7).toString()); // Due in 7 days (already paid, but for record)
+            invoiceRequest.put("dueDate", LocalDate.now().plusDays(7).toString()); // ISO format: YYYY-MM-DD
             invoiceRequest.put("currency", "VND");
             invoiceRequest.put("billToName", resident.fullName() != null ? resident.fullName() : "Cư dân");
             invoiceRequest.put("billToAddress", unit.code() != null ? unit.code() : "Unit " + unit.id());
             invoiceRequest.put("billToContact", resident.phone() != null ? resident.phone() : "");
-            invoiceRequest.put("payerUnitId", unit.id()); // UUID object, Spring will serialize to JSON
-            invoiceRequest.put("payerResidentId", resident.id()); // UUID object, Spring will serialize to JSON
-            invoiceRequest.put("status", "PAID"); // Already paid via VNPAY (Spring will convert to InvoiceStatus enum)
+            // Use UUID objects - Spring WebClient will serialize them correctly to JSON
+            invoiceRequest.put("payerUnitId", unit.id());
+            invoiceRequest.put("payerResidentId", resident.id());
+            invoiceRequest.put("status", "PAID"); // Enum value as string - Spring will convert to InvoiceStatus enum
             invoiceRequest.put("lines", lines);
+            
+            log.debug("📋 [ServiceBooking] Invoice request payload: payerUnitId={}, payerResidentId={}, status={}, lines={}", 
+                    unit.id(), resident.id(), "PAID", lines.size());
 
             // Call finance service to create invoice
             financeBillingClient.createInvoiceSync(invoiceRequest);

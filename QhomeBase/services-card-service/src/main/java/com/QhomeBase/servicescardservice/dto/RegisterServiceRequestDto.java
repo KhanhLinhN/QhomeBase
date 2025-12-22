@@ -31,6 +31,8 @@ public record RegisterServiceRequestDto(
         String rejectionReason,
         List<RegisterServiceImageDto> images,
         OffsetDateTime createdAt,
-        OffsetDateTime updatedAt
+        OffsetDateTime updatedAt,
+        UUID reissuedFromCardId,
+        Boolean canReissue
 ) {}
 

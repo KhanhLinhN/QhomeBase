@@ -35,7 +35,11 @@ public class NotificationClient {
                     .build()
                     .toUri();
 
-            log.info("📤 [NotificationClient] Sending notification to: {} | Payload: {}", uri, payload);
+            log.info("📤 [NotificationClient] ========== HTTP REQUEST ==========");
+            log.info("📤 [NotificationClient] URL: {}", uri);
+            log.info("📤 [NotificationClient] Method: POST");
+            log.info("📤 [NotificationClient] Payload size: {} keys", payload.size());
+            log.info("📤 [NotificationClient] Payload: {}", payload);
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -47,13 +51,24 @@ public class NotificationClient {
                     Void.class
             );
 
+            log.info("📤 [NotificationClient] ========== HTTP RESPONSE ==========");
+            log.info("📤 [NotificationClient] Status Code: {}", response.getStatusCode());
+            log.info("📤 [NotificationClient] Status Value: {}", response.getStatusCode().value());
+
             if (!response.getStatusCode().is2xxSuccessful()) {
-                log.warn("❌ [NotificationClient] Failed to push notification: status={}", response.getStatusCode());
+                log.error("❌ [NotificationClient] FAILED to push notification: status={}", response.getStatusCode());
             } else {
-                log.info("✅ [NotificationClient] Notification sent successfully to notification service (will trigger WebSocket realtime)");
+                log.info("✅ [NotificationClient] SUCCESS - Notification sent to notification service");
+                log.info("✅ [NotificationClient] Next steps: NotificationService will process and send FCM + WebSocket");
             }
         } catch (Exception ex) {
+            log.error("❌ [NotificationClient] ========== EXCEPTION ==========");
             log.error("❌ [NotificationClient] Error sending notification to notification service", ex);
+            log.error("❌ [NotificationClient] Exception type: {}", ex.getClass().getName());
+            log.error("❌ [NotificationClient] Exception message: {}", ex.getMessage());
+            if (ex.getCause() != null) {
+                log.error("❌ [NotificationClient] Caused by: {}", ex.getCause().getMessage());
+            }
             // Re-throw để caller biết có lỗi (optional, tùy vào yêu cầu)
             // throw new RuntimeException("Failed to send notification", ex);
         }
@@ -74,15 +89,28 @@ public class NotificationClient {
             return;
         }
         
-        log.info("📨 [NotificationClient] Preparing notification: type={}, title={}, residentId={}, referenceId={}", 
-                type, title, residentId, referenceId);
+        log.info("📨 [NotificationClient] ========== PREPARING NOTIFICATION ==========");
+        log.info("📨 [NotificationClient] Type: {}", type);
+        log.info("📨 [NotificationClient] Title: {}", title);
+        log.info("📨 [NotificationClient] Message: {}", message);
+        log.info("📨 [NotificationClient] ResidentId: {}", residentId);
+        log.info("📨 [NotificationClient] BuildingId: {}", buildingId);
+        log.info("📨 [NotificationClient] ReferenceId: {}", referenceId);
+        log.info("📨 [NotificationClient] ReferenceType: {}", referenceType);
+        log.info("📨 [NotificationClient] Data: {}", data);
         
         Map<String, Object> payload = new HashMap<>();
         if (residentId != null) {
             payload.put("residentId", residentId.toString());
+            log.info("✅ [NotificationClient] Added residentId to payload: {}", residentId);
+        } else {
+            log.warn("⚠️ [NotificationClient] residentId is NULL - notification may not be delivered!");
         }
         if (buildingId != null) {
             payload.put("buildingId", buildingId.toString());
+            log.info("✅ [NotificationClient] Added buildingId to payload: {}", buildingId);
+        } else {
+            log.info("ℹ️ [NotificationClient] buildingId is null (expected for private notifications)");
         }
         payload.put("type", type != null ? type : "SYSTEM");
         payload.put("title", title);
@@ -97,9 +125,13 @@ public class NotificationClient {
             payload.put("data", data);
         }
         
-        log.info("📤 [NotificationClient] Sending notification (will trigger FCM + WebSocket realtime): type={}, residentId={}", 
-                type, residentId);
+        log.info("📤 [NotificationClient] ========== SENDING NOTIFICATION ==========");
+        log.info("📤 [NotificationClient] Full payload: {}", payload);
+        log.info("📤 [NotificationClient] Target: notificationServiceBaseUrl={}", notificationServiceBaseUrl);
+        log.info("📤 [NotificationClient] Endpoint: /api/notifications/internal");
+        log.info("📤 [NotificationClient] This will trigger FCM push + WebSocket realtime for residentId: {}", residentId);
         sendNotification(payload);
+        log.info("📤 [NotificationClient] ========== NOTIFICATION SENT ==========");
     }
 }
 

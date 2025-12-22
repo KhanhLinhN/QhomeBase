@@ -420,6 +420,8 @@ public class VehicleRegistrationController {
         body.put("imageUrls", dto.images() != null
                 ? dto.images().stream().map(RegisterServiceImageDto::imageUrl).toList()
                 : List.of());
+        body.put("reissuedFromCardId", dto.reissuedFromCardId() != null ? dto.reissuedFromCardId().toString() : null);
+        body.put("canReissue", dto.canReissue() != null ? dto.canReissue() : false);
         return body;
     }
 }

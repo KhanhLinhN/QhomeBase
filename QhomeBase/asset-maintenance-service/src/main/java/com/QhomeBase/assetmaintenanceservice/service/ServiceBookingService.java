@@ -665,6 +665,24 @@ public class ServiceBookingService {
         if (service.getPricingType() == ServicePricingType.SESSION) {
             validateSlotWithinAvailability(service, date, start, end);
         }
+        
+        // Check for duplicate slot before creating (unique constraint: service_id, slot_date, start_time, end_time)
+        // Only check for exact match when creating new booking (currentBookingId == null)
+        if (currentBookingId == null) {
+            List<ServiceBookingSlot> existingSlots = serviceBookingSlotRepository
+                    .findAllByServiceIdAndSlotDateOrderByStartTimeAsc(service.getId(), date);
+            boolean exactMatch = existingSlots.stream()
+                    .anyMatch(s -> s.getService().getId().equals(service.getId())
+                            && s.getSlotDate().equals(date)
+                            && s.getStartTime().equals(start)
+                            && s.getEndTime().equals(end));
+            if (exactMatch) {
+                throw new IllegalStateException(
+                        String.format("Slot đã tồn tại cho dịch vụ này: %s - %s đến %s", 
+                                date, start, end));
+            }
+        }
+        
         ServiceBookingSlot slot = new ServiceBookingSlot();
         slot.setBooking(booking);
         slot.setService(service);

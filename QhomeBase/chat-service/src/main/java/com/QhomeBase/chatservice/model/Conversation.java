@@ -36,7 +36,7 @@ public class Conversation {
 
     @Column(name = "status", nullable = false, length = 50)
     @Builder.Default
-    private String status = "PENDING"; // PENDING, ACTIVE, BLOCKED, CLOSED
+    private String status = "PENDING"; // PENDING, ACTIVE, BLOCKED, LOCKED, DELETED
 
     @Column(name = "created_by", nullable = false)
     private UUID createdBy; // Who initiated the conversation

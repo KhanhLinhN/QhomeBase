@@ -25,20 +25,25 @@ public class FinanceBillingClient {
     }
 
     public Mono<Map<String, Object>> createInvoice(Map<String, Object> request) {
-        log.debug("Calling finance service to create invoice for service booking");
         return financeWebClient
                 .post()
                 .uri("/api/invoices")
                 .bodyValue(request)
                 .retrieve()
+                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(), response -> {
+                    log.error("❌ [FinanceBillingClient] Finance service returned error status: {}", response.statusCode());
+                    return response.bodyToMono(String.class)
+                            .doOnNext(body -> log.error("❌ [FinanceBillingClient] Error response body: {}", body))
+                            .flatMap(body -> Mono.error(new RuntimeException("Finance service error: " + response.statusCode() + " - " + body)));
+                })
                 .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
                 .retryWhen(Retry.backoff(3, Duration.ofSeconds(2))
                         .filter(throwable -> throwable instanceof WebClientRequestException)
                         .doBeforeRetry(retrySignal -> 
-                            log.warn("Retrying finance service invoice creation (attempt {}/3): {}", 
+                            log.warn("🔄 [FinanceBillingClient] Retrying finance service invoice creation (attempt {}/3): {}", 
                                 retrySignal.totalRetries() + 1, retrySignal.failure().getMessage())))
-                .doOnSuccess(result -> log.debug("Finance returned invoice {}", result != null ? result.get("id") : "null"))
-                .doOnError(error -> log.error("Finance invoice creation failed after retries", error));
+                .doOnSuccess(result -> log.info("✅ [FinanceBillingClient] Finance returned invoice {}", result != null ? result.get("id") : "null"))
+                .doOnError(error -> log.error("❌ [FinanceBillingClient] Finance invoice creation failed: {}", error.getMessage(), error));
     }
 
     public Map<String, Object> createInvoiceSync(Map<String, Object> request) {

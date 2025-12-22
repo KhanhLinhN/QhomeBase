@@ -26,6 +26,8 @@ public record RegisterServiceRequestCreateDto(
         
         String buildingName,
         
-        List<String> imageUrls
+        List<String> imageUrls,
+        
+        UUID originalCardId
 ) {}
 

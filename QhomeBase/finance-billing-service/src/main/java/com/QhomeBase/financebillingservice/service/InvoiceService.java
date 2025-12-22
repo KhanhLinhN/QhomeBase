@@ -674,8 +674,49 @@ public class InvoiceService {
         
         for (Invoice invoice : invoices) {
             List<InvoiceLine> lines = invoiceLineRepository.findByInvoiceId(invoice.getId());
+            // Check permission once per invoice (not per line) - message will be shown at invoice level
+            boolean isOwner = false;
+            boolean canPay = false;
+            String permissionMessage = null;
+            
+            if (userId != null && invoice.getPayerUnitId() != null) {
+                try {
+                    isOwner = baseServiceClient.isOwnerOfUnit(userId, invoice.getPayerUnitId());
+                    
+                    if (isOwner) {
+                        // OWNER/TENANT can pay if invoice is not already paid
+                        canPay = invoice.getStatus() != InvoiceStatus.PAID && invoice.getStatus() != InvoiceStatus.VOID;
+                    } else {
+                        // Not OWNER/TENANT - household member
+                        canPay = false;
+                        // Set permission message - will be shown at invoice level, not per line
+                        permissionMessage = "Chỉ chủ căn hộ mới được quyền thanh toán hóa đơn này";
+                    }
+                } catch (Exception e) {
+                    log.warn("⚠️ [InvoiceService] Error checking permission for invoice {}: {}", 
+                            invoice.getId(), e.getMessage());
+                    // If check fails, default to no permission
+                    permissionMessage = "Chỉ chủ căn hộ mới được quyền thanh toán hóa đơn này";
+                }
+            }
+            
+            // Add lines - only set permissionMessage for first line (invoice level)
+            boolean isFirstLine = true;
             for (InvoiceLine line : lines) {
-                result.add(toInvoiceLineResponseDto(invoice, line, userId));
+                InvoiceLineResponseDto dto = toInvoiceLineResponseDto(invoice, line, userId);
+                // Only set permission message for first line of each invoice (to display at invoice level)
+                if (isFirstLine) {
+                    dto.setIsOwner(isOwner);
+                    dto.setCanPay(canPay);
+                    dto.setPermissionMessage(permissionMessage);
+                    isFirstLine = false;
+                } else {
+                    // For other lines, set permissionMessage to null (message will be shown at invoice level only)
+                    dto.setIsOwner(isOwner);
+                    dto.setCanPay(canPay);
+                    dto.setPermissionMessage(null);
+                }
+                result.add(dto);
             }
         }
         
@@ -951,8 +992,49 @@ public class InvoiceService {
                 continue;
             }
             
+            // Check permission once per invoice (not per line) - message will be shown at invoice level
+            boolean isOwner = false;
+            boolean canPay = false;
+            String permissionMessage = null;
+            
+            if (userId != null && invoice.getPayerUnitId() != null) {
+                try {
+                    isOwner = baseServiceClient.isOwnerOfUnit(userId, invoice.getPayerUnitId());
+                    
+                    if (isOwner) {
+                        // OWNER/TENANT can pay if invoice is not already paid
+                        canPay = invoice.getStatus() != InvoiceStatus.PAID && invoice.getStatus() != InvoiceStatus.VOID;
+                    } else {
+                        // Not OWNER/TENANT - household member
+                        canPay = false;
+                        // Set permission message - will be shown at invoice level, not per line
+                        permissionMessage = "Chỉ chủ căn hộ mới được quyền thanh toán hóa đơn này";
+                    }
+                } catch (Exception e) {
+                    log.warn("⚠️ [InvoiceService] Error checking permission for invoice {}: {}", 
+                            invoice.getId(), e.getMessage());
+                    // If check fails, default to no permission
+                    permissionMessage = "Chỉ chủ căn hộ mới được quyền thanh toán hóa đơn này";
+                }
+            }
+            
+            // Add lines - only set permissionMessage for first line (invoice level)
+            boolean isFirstLine = true;
             for (InvoiceLine line : lines) {
                 InvoiceLineResponseDto dto = toInvoiceLineResponseDto(invoice, line, userId);
+                // Only set permission message for first line of each invoice (to display at invoice level)
+                if (isFirstLine) {
+                    dto.setIsOwner(isOwner);
+                    dto.setCanPay(canPay);
+                    dto.setPermissionMessage(permissionMessage);
+                    isFirstLine = false;
+                } else {
+                    // For other lines, set permissionMessage to null (message will be shown at invoice level only)
+                    dto.setIsOwner(isOwner);
+                    dto.setCanPay(canPay);
+                    dto.setPermissionMessage(null);
+                }
+                
                 // Include UNPAID invoices - they need to be shown with warning
                 // Only exclude PAID invoices
                 if ("PAID".equalsIgnoreCase(dto.getStatus())) {
@@ -1366,13 +1448,14 @@ public class InvoiceService {
                 } else {
                     // Not OWNER/TENANT - household member
                     canPay = false;
-                    permissionMessage = "Bạn không được phép thanh toán hóa đơn này";
+                    // Set permission message - will be shown at invoice level, not per line
+                    permissionMessage = "Chỉ chủ căn hộ mới được quyền thanh toán hóa đơn này";
                 }
             } catch (Exception e) {
                 log.warn("⚠️ [InvoiceService] Error checking permission for invoice {}: {}", 
                         invoice.getId(), e.getMessage());
                 // If check fails, default to no permission
-                permissionMessage = "Bạn không được phép thanh toán hóa đơn này";
+                permissionMessage = "Chỉ chủ căn hộ mới được quyền thanh toán hóa đơn này";
             }
         }
         

@@ -40,9 +40,9 @@ public class BaseServiceClient {
         }
 
         try {
-            // Kiểm tra xem resident đã có account chưa (có userId)
-            // Nếu đã có account thì có nghĩa là đã được approve
-            String url = baseServiceUrl + "/residents/" + residentId + "/account";
+            // Sử dụng endpoint /api/residents/{residentId} thay vì /account để tránh vấn đề authentication
+            // Endpoint này không yêu cầu role RESIDENT và có thể được gọi từ service-to-service
+            String url = baseServiceUrl + "/residents/" + residentId;
             
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -52,7 +52,7 @@ public class BaseServiceClient {
             
             HttpEntity<Void> request = new HttpEntity<>(headers);
             
-            log.debug("🔍 [BaseServiceClient] Checking account approval for residentId: {}", residentId);
+            log.info("🔍 [BaseServiceClient] Checking account approval for residentId: {} | URL: {}", residentId, url);
             ResponseEntity<Map> response = restTemplate.exchange(
                     url,
                     HttpMethod.GET,
@@ -60,15 +60,22 @@ public class BaseServiceClient {
                     Map.class
             );
             
-            // Nếu có account (status 200 và có body) thì có nghĩa là đã được approve và có account
+            // Kiểm tra xem resident có userId không (có userId = đã có account = đã được approve)
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                log.debug("✅ [BaseServiceClient] Resident {} đã có account, đã được approve", residentId);
-                return true;
+                Map<String, Object> resident = response.getBody();
+                Object userIdObj = resident.get("userId");
+                
+                if (userIdObj != null && !userIdObj.toString().isEmpty() && !"null".equalsIgnoreCase(userIdObj.toString())) {
+                    log.info("✅ [BaseServiceClient] Resident {} đã có userId (account), đã được approve | userId: {}", 
+                            residentId, userIdObj);
+                    return true;
+                } else {
+                    log.warn("⚠️ [BaseServiceClient] Resident {} chưa có userId (chưa có account), chưa được approve", residentId);
+                    return false;
+                }
             } else if (response.getStatusCode().value() == 404) {
-                // Không có account, kiểm tra xem có AccountCreationRequest với status = APPROVED không
-                // Tuy nhiên, endpoint này không tồn tại, nên ta sẽ kiểm tra bằng cách khác
-                // Nếu không có account và không có request approved thì return false
-                log.warn("⚠️ [BaseServiceClient] Resident {} chưa có account", residentId);
+                // Resident không tồn tại
+                log.warn("⚠️ [BaseServiceClient] Resident {} không tồn tại (404)", residentId);
                 return false;
             } else {
                 log.warn("⚠️ [BaseServiceClient] Unexpected response status: {} for residentId: {}", 
@@ -76,8 +83,13 @@ public class BaseServiceClient {
                 return false;
             }
         } catch (RestClientException e) {
+            log.error("❌ [BaseServiceClient] ========== ERROR CHECKING ACCOUNT APPROVAL ==========");
             log.error("❌ [BaseServiceClient] Error checking account approval for residentId {}: {}", 
                     residentId, e.getMessage());
+            log.error("❌ [BaseServiceClient] Exception type: {}", e.getClass().getName());
+            if (e.getCause() != null) {
+                log.error("❌ [BaseServiceClient] Caused by: {}", e.getCause().getMessage());
+            }
             // Nếu không thể kiểm tra được (service down, network error), 
             // thì để an toàn, không cho phép đăng ký
             return false;
@@ -171,6 +183,61 @@ public class BaseServiceClient {
             log.error("❌ [BaseServiceClient] Error checking if user {} is OWNER of unit {}: {}", 
                     userId, unitId, e.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Tìm residentId từ userId
+     * @param userId ID của user
+     * @param accessToken Access token để authenticate với base-service
+     * @return UUID của resident nếu tìm thấy, null nếu không tìm thấy
+     */
+    public UUID findResidentIdByUserId(UUID userId, String accessToken) {
+        if (userId == null) {
+            log.warn("⚠️ [BaseServiceClient] userId is null");
+            return null;
+        }
+
+        try {
+            String residentUrl = baseServiceUrl + "/residents/by-user/" + userId;
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            if (accessToken != null && !accessToken.isEmpty()) {
+                headers.setBearerAuth(accessToken);
+            }
+            
+            HttpEntity<Void> request = new HttpEntity<>(headers);
+            
+            log.debug("🔍 [BaseServiceClient] Finding residentId for userId: {}", userId);
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    residentUrl,
+                    HttpMethod.GET,
+                    request,
+                    Map.class
+            );
+            
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Map<String, Object> resident = response.getBody();
+                Object residentIdObj = resident.get("id");
+                
+                if (residentIdObj != null) {
+                    UUID residentId = UUID.fromString(residentIdObj.toString());
+                    log.debug("✅ [BaseServiceClient] Found residentId {} for userId {}", residentId, userId);
+                    return residentId;
+                }
+            }
+            
+            log.warn("⚠️ [BaseServiceClient] No resident found for userId: {}", userId);
+            return null;
+        } catch (RestClientException e) {
+            log.error("❌ [BaseServiceClient] Error finding residentId for userId {}: {}", 
+                    userId, e.getMessage());
+            return null;
+        } catch (Exception e) {
+            log.error("❌ [BaseServiceClient] Unexpected error finding residentId for userId {}: {}", 
+                    userId, e.getMessage());
+            return null;
         }
     }
 }

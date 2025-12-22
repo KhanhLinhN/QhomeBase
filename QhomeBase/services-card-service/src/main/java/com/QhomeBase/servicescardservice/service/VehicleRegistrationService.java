@@ -64,6 +64,7 @@ public class VehicleRegistrationService {
     private final NotificationClient notificationClient;
     private final CardFeeReminderService cardFeeReminderService;
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final BaseServiceClient baseServiceClient;
     private final ConcurrentMap<Long, UUID> orderIdToRegistrationId = new ConcurrentHashMap<>();
 
     private Path ensureUploadDir() throws IOException {
@@ -127,10 +128,52 @@ public class VehicleRegistrationService {
         validatePayload(dto);
         validateLicensePlateNotDuplicate(dto.licensePlate(), null);
 
+        String requestType = resolveRequestType(dto.requestType());
+        
+        // Validate REPLACE_CARD request
+        if ("REPLACE_CARD".equalsIgnoreCase(requestType)) {
+            if (dto.originalCardId() == null) {
+                throw new IllegalArgumentException("Yêu cầu cấp lại thẻ phải có ID thẻ gốc (originalCardId)");
+            }
+            
+            // Validate thẻ gốc
+            RegisterServiceRequest originalCard = requestRepository.findById(dto.originalCardId())
+                    .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy thẻ gốc với ID: " + dto.originalCardId()));
+            
+            // Thẻ gốc phải ở trạng thái CANCELLED
+            if (!STATUS_CANCELLED.equalsIgnoreCase(originalCard.getStatus())) {
+                throw new IllegalStateException(
+                    String.format("Thẻ gốc phải ở trạng thái CANCELLED trước khi yêu cầu cấp lại. Trạng thái hiện tại: %s", 
+                        originalCard.getStatus())
+                );
+            }
+            
+            // Thẻ gốc chưa được cấp lại (chưa có thẻ nào có reissuedFromCardId = originalCardId)
+            if (requestRepository.existsReissuedCard(dto.originalCardId())) {
+                throw new IllegalStateException("Thẻ gốc đã được cấp lại rồi. Mỗi thẻ chỉ được phép cấp lại đúng 1 lần.");
+            }
+            
+            // Kiểm tra quyền: Owner hoặc chủ sở hữu thẻ gốc
+            if (originalCard.getUnitId() != null) {
+                boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, originalCard.getUnitId(), null);
+                if (!isOwner && !userId.equals(originalCard.getUserId())) {
+                    throw new IllegalStateException("Chỉ chủ căn hộ hoặc chủ sở hữu thẻ mới được yêu cầu cấp lại thẻ này.");
+                }
+            } else {
+                // Fallback: chỉ chủ sở hữu
+                if (!userId.equals(originalCard.getUserId())) {
+                    throw new IllegalStateException("Chỉ chủ sở hữu thẻ mới được yêu cầu cấp lại thẻ này.");
+                }
+            }
+            
+            log.info("✅ [VehicleRegistration] Validated REPLACE_CARD request: originalCardId={}, userId={}", 
+                    dto.originalCardId(), userId);
+        }
+
         RegisterServiceRequest request = RegisterServiceRequest.builder()
                 .userId(userId)
                 .serviceType(Optional.ofNullable(dto.serviceType()).orElse(SERVICE_TYPE))
-                .requestType(resolveRequestType(dto.requestType()))
+                .requestType(requestType)
                 .note(dto.note())
                 .unitId(dto.unitId())
                 .vehicleType(resolveVehicleType(dto.vehicleType()))
@@ -142,6 +185,7 @@ public class VehicleRegistrationService {
                 .status(STATUS_READY_FOR_PAYMENT)
                 .paymentStatus("UNPAID")
                 .paymentAmount(cardPricingService.getPrice("VEHICLE"))
+                .reissuedFromCardId("REPLACE_CARD".equalsIgnoreCase(requestType) ? dto.originalCardId() : null)
                 .build();
 
         applyResolvedAddressForUser(
@@ -152,17 +196,28 @@ public class VehicleRegistrationService {
                 dto.buildingName() != null ? dto.buildingName() : request.getBuildingName()
         );
 
-        if (dto.imageUrls() != null) {
-            dto.imageUrls().stream()
-                    .filter(Objects::nonNull)
-                    .map(String::trim)
-                    .filter(s -> !s.isEmpty())
-                    .limit(MAX_IMAGES)
-                    .map(url -> RegisterServiceImage.builder().imageUrl(url).registerServiceRequest(request).build())
-                    .forEach(request::addImage);
+        if (dto.imageUrls() != null && !dto.imageUrls().isEmpty()) {
+            int imageCount = 0;
+            for (String url : dto.imageUrls()) {
+                if (url != null && !url.trim().isEmpty() && imageCount < MAX_IMAGES) {
+                    RegisterServiceImage image = RegisterServiceImage.builder()
+                            .imageUrl(url.trim())
+                            .registerServiceRequest(request)
+                            .build();
+                    request.addImage(image);
+                    imageCount++;
+                }
+            }
+            log.info("✅ [VehicleRegistration] Đã thêm {} ảnh vào registration mới (requestType: {})", 
+                    imageCount, dto.requestType());
+        } else {
+            log.warn("⚠️ [VehicleRegistration] Không có ảnh trong request (requestType: {})", 
+                    dto.requestType());
         }
 
         RegisterServiceRequest saved = requestRepository.save(request);
+        log.info("✅ [VehicleRegistration] Đã tạo registration mới với ID: {}, có {} ảnh", 
+                saved.getId(), saved.getImages().size());
         return toDto(saved);
     }
 
@@ -277,8 +332,30 @@ public class VehicleRegistrationService {
 
     @Transactional(readOnly = true)
     public RegisterServiceRequestDto getRegistration(UUID userId, UUID registrationId) {
-        RegisterServiceRequest registration = requestRepository.findByIdAndUserIdWithImages(registrationId, userId)
+        // Get registration without userId check first (to check permission)
+        RegisterServiceRequest registration = requestRepository.findByIdWithImages(registrationId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
+        
+        // Check permission: Owner can view any household member's registration, household members can only view their own
+        if (registration.getUnitId() != null) {
+            boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, registration.getUnitId(), null);
+            
+            if (!isOwner) {
+                // Not Owner - household member can only view their own registration
+                // Check by userId (RegisterServiceRequest doesn't have residentId field)
+                if (!userId.equals(registration.getUserId())) {
+                    log.warn("⚠️ [VehicleRegistration] User {} không phải Owner và không phải chủ sở hữu đăng ký {}, không được phép xem", 
+                            userId, registrationId);
+                    throw new IllegalArgumentException("Không tìm thấy đăng ký xe");
+                }
+            }
+        } else {
+            // Fallback: if no unitId, only allow viewing own registration
+            if (!userId.equals(registration.getUserId())) {
+                throw new IllegalArgumentException("Không tìm thấy đăng ký xe");
+            }
+        }
+        
         return toDto(registration);
     }
 
@@ -315,15 +392,51 @@ public class VehicleRegistrationService {
 
     @Transactional
     public void cancelRegistration(UUID userId, UUID registrationId) {
-        RegisterServiceRequest registration = requestRepository.findByIdAndUserId(registrationId, userId)
+        // Get registration without userId check first (to check permission)
+        RegisterServiceRequest registration = requestRepository.findById(registrationId)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy đăng ký xe"));
+        
+        // Check permission: Owner can cancel any household member's card, household members can only cancel their own
+        if (registration.getUnitId() != null) {
+            boolean isOwner = baseServiceClient.isOwnerOfUnit(userId, registration.getUnitId(), null);
+            
+            if (isOwner) {
+                // Owner can cancel any household member's card in the same unit
+                log.info("✅ [VehicleRegistration] Owner {} đã hủy đăng ký {} của household member trong unit {}", 
+                        userId, registrationId, registration.getUnitId());
+            } else {
+                // Not Owner - household member can only cancel their own card
+                // Check by userId first
+                boolean canCancel = userId.equals(registration.getUserId());
+                
+                // Note: RegisterServiceRequest doesn't have residentId field, so we can only check by userId
+                // If userId doesn't match, cannot cancel
+                if (!canCancel) {
+                    log.warn("⚠️ [VehicleRegistration] User {} không phải Owner và không phải người tạo đăng ký {}, không được phép hủy", 
+                            userId, registrationId);
+                    log.warn("⚠️ [VehicleRegistration] Registration userId: {}, current userId: {}", 
+                            registration.getUserId(), userId);
+                    throw new IllegalStateException("Chỉ chủ căn hộ mới được quyền hủy thẻ của các thành viên. Bạn chỉ có thể hủy thẻ của chính mình.");
+                }
+                log.info("✅ [VehicleRegistration] Household member {} đã hủy đăng ký {} của chính mình", userId, registrationId);
+            }
+        } else {
+            // Fallback: if no unitId, only allow canceling own registration
+            // Check by userId (RegisterServiceRequest doesn't have residentId field)
+            if (!userId.equals(registration.getUserId())) {
+                throw new IllegalStateException("Bạn chỉ có thể hủy thẻ của chính mình.");
+            }
+        }
+        
         if (STATUS_CANCELLED.equalsIgnoreCase(registration.getStatus())) {
+            log.info("ℹ️ [VehicleRegistration] Đăng ký {} đã được hủy trước đó", registrationId);
             return;
         }
+        
         registration.setStatus(STATUS_CANCELLED);
         registration.setUpdatedAt(OffsetDateTime.now());
         requestRepository.save(registration);
-        log.info("✅ [VehicleRegistration] User {} đã hủy đăng ký {}", userId, registrationId);
+        log.info("✅ [VehicleRegistration] Đăng ký {} đã được hủy thành công", registrationId);
     }
 
     @Transactional
@@ -454,16 +567,45 @@ public class VehicleRegistrationService {
 
     private void sendVehicleCardApprovalNotification(RegisterServiceRequest registration, String issueMessage, OffsetDateTime issueTime) {
         try {
+            log.info("🔔 [VehicleRegistration] ========== SENDING APPROVAL NOTIFICATION ==========");
+            log.info("🔔 [VehicleRegistration] Registration ID: {}", registration.getId());
+            log.info("🔔 [VehicleRegistration] UserId: {}", registration.getUserId());
+            log.info("🔔 [VehicleRegistration] UnitId: {}", registration.getUnitId());
+            
             // Resolve residentId from userId and unitId - CARD_APPROVED is PRIVATE (only resident who created the request can see)
+            log.info("🔔 [VehicleRegistration] Resolving residentId from userId and unitId...");
             UUID residentId = residentUnitLookupService.resolveByUser(registration.getUserId(), registration.getUnitId())
                     .map(ResidentUnitLookupService.AddressInfo::residentId)
                     .orElse(null);
 
+            // Fallback: Nếu không tìm thấy từ household_members, query trực tiếp từ residents table
             if (residentId == null) {
-                log.warn("⚠️ [VehicleRegistration] Không thể tìm thấy residentId cho userId={}, unitId={}, bỏ qua notification", 
+                log.warn("⚠️ [VehicleRegistration] Không tìm thấy residentId từ household_members, thử query trực tiếp từ residents table...");
+                log.warn("⚠️ [VehicleRegistration] UserId: {}, UnitId: {}", registration.getUserId(), registration.getUnitId());
+                
+                // Query trực tiếp từ residents table bằng userId
+                try {
+                    residentId = baseServiceClient.findResidentIdByUserId(registration.getUserId(), null);
+                    if (residentId != null) {
+                        log.info("✅ [VehicleRegistration] Tìm thấy residentId từ residents table: {}", residentId);
+                    } else {
+                        log.error("❌ [VehicleRegistration] Không tìm thấy residentId trong residents table");
+                    }
+                } catch (Exception e) {
+                    log.error("❌ [VehicleRegistration] Lỗi khi query residentId từ base-service: {}", e.getMessage());
+                }
+            }
+
+            if (residentId == null) {
+                log.error("❌ [VehicleRegistration] ========== RESIDENT ID RESOLUTION FAILED ==========");
+                log.error("❌ [VehicleRegistration] Không thể tìm thấy residentId cho userId={}, unitId={}", 
                         registration.getUserId(), registration.getUnitId());
+                log.error("❌ [VehicleRegistration] Không thể gửi notification cho registrationId: {}", registration.getId());
+                log.error("❌ [VehicleRegistration] Notification sẽ không được gửi đến resident!");
                 return;
             }
+            
+            log.info("✅ [VehicleRegistration] ResidentId resolved successfully: {}", residentId);
 
             // Get current card price from database
             BigDecimal currentPrice = cardPricingService.getPrice("VEHICLE");
@@ -484,8 +626,15 @@ public class VehicleRegistrationService {
             String licensePlate = registration.getLicensePlate() != null ? registration.getLicensePlate() : "";
             
             String message;
+            // Ưu tiên: issueMessage > adminNote (note) > message tự động
             if (issueMessage != null && !issueMessage.isBlank()) {
+                // Admin đã ghi issueMessage riêng cho notification
                 message = issueMessage;
+                log.info("📝 [VehicleRegistration] Sử dụng issueMessage từ admin: {}", message);
+            } else if (registration.getAdminNote() != null && !registration.getAdminNote().isBlank()) {
+                // Admin đã ghi note nhưng không ghi issueMessage, dùng note làm notification message
+                message = registration.getAdminNote();
+                log.info("📝 [VehicleRegistration] Sử dụng adminNote (note) từ admin: {}", message);
             } else {
                 // Tự động tạo message: "Thẻ xe với biển số (biển số) được tạo thành công và sẽ nhận vào (ngày giờ)"
                 if (issueTimeFormatted.isEmpty()) {
@@ -494,6 +643,7 @@ public class VehicleRegistrationService {
                     message = String.format("Thẻ xe với biển số %s được tạo thành công và sẽ nhận vào %s.", 
                             licensePlate, issueTimeFormatted);
                 }
+                log.info("📝 [VehicleRegistration] Sử dụng message tự động: {}", message);
             }
 
             Map<String, String> data = new HashMap<>();
@@ -514,6 +664,16 @@ public class VehicleRegistrationService {
                 data.put("issueTimeTimestamp", timeToUse.toString());
             }
 
+            log.info("📤 [VehicleRegistration] ========== CALLING NOTIFICATION CLIENT ==========");
+            log.info("📤 [VehicleRegistration] ResidentId: {}", residentId);
+            log.info("📤 [VehicleRegistration] BuildingId: null (private notification)");
+            log.info("📤 [VehicleRegistration] Type: CARD_APPROVED");
+            log.info("📤 [VehicleRegistration] Title: {}", title);
+            log.info("📤 [VehicleRegistration] Message: {}", message);
+            log.info("📤 [VehicleRegistration] ReferenceId: {}", registration.getId());
+            log.info("📤 [VehicleRegistration] ReferenceType: VEHICLE_CARD_REGISTRATION");
+            log.info("📤 [VehicleRegistration] Data: {}", data);
+            
             // Send PRIVATE notification to specific resident (residentId = residentId, buildingId = null)
             notificationClient.sendResidentNotification(
                     residentId, // residentId for private notification
@@ -526,25 +686,62 @@ public class VehicleRegistrationService {
                     data
             );
 
-            log.info("✅ [VehicleRegistration] Đã gửi notification approval riêng tư cho residentId: {}", residentId);
+            log.info("✅ [VehicleRegistration] ========== NOTIFICATION CLIENT CALLED ==========");
+            log.info("✅ [VehicleRegistration] Đã gọi notificationClient.sendResidentNotification()");
+            log.info("✅ [VehicleRegistration] ResidentId: {}", residentId);
         } catch (Exception e) {
+            log.error("❌ [VehicleRegistration] ========== EXCEPTION IN APPROVAL NOTIFICATION ==========");
             log.error("❌ [VehicleRegistration] Không thể gửi notification approval cho registrationId: {}", 
                     registration.getId(), e);
+            log.error("❌ [VehicleRegistration] Exception type: {}", e.getClass().getName());
+            log.error("❌ [VehicleRegistration] Exception message: {}", e.getMessage());
+            if (e.getCause() != null) {
+                log.error("❌ [VehicleRegistration] Caused by: {}", e.getCause().getMessage());
+            }
         }
     }
 
     private void sendVehicleCardRejectionNotification(RegisterServiceRequest registration, String rejectionReason) {
         try {
+            log.info("🔔 [VehicleRegistration] ========== SENDING REJECTION NOTIFICATION ==========");
+            log.info("🔔 [VehicleRegistration] Registration ID: {}", registration.getId());
+            log.info("🔔 [VehicleRegistration] UserId: {}", registration.getUserId());
+            log.info("🔔 [VehicleRegistration] UnitId: {}", registration.getUnitId());
+            
             // Resolve residentId from userId and unitId - CARD_REJECTED is PRIVATE (only resident who created the request can see)
+            log.info("🔔 [VehicleRegistration] Resolving residentId from userId and unitId...");
             UUID residentId = residentUnitLookupService.resolveByUser(registration.getUserId(), registration.getUnitId())
                     .map(ResidentUnitLookupService.AddressInfo::residentId)
                     .orElse(null);
 
+            // Fallback: Nếu không tìm thấy từ household_members, query trực tiếp từ residents table
             if (residentId == null) {
-                log.warn("⚠️ [VehicleRegistration] Không thể tìm thấy residentId cho userId={}, unitId={}, bỏ qua notification", 
+                log.warn("⚠️ [VehicleRegistration] Không tìm thấy residentId từ household_members, thử query trực tiếp từ residents table...");
+                log.warn("⚠️ [VehicleRegistration] UserId: {}, UnitId: {}", registration.getUserId(), registration.getUnitId());
+                
+                // Query trực tiếp từ residents table bằng userId
+                try {
+                    residentId = baseServiceClient.findResidentIdByUserId(registration.getUserId(), null);
+                    if (residentId != null) {
+                        log.info("✅ [VehicleRegistration] Tìm thấy residentId từ residents table: {}", residentId);
+                    } else {
+                        log.error("❌ [VehicleRegistration] Không tìm thấy residentId trong residents table");
+                    }
+                } catch (Exception e) {
+                    log.error("❌ [VehicleRegistration] Lỗi khi query residentId từ base-service: {}", e.getMessage());
+                }
+            }
+
+            if (residentId == null) {
+                log.error("❌ [VehicleRegistration] ========== RESIDENT ID RESOLUTION FAILED ==========");
+                log.error("❌ [VehicleRegistration] Không thể tìm thấy residentId cho userId={}, unitId={}", 
                         registration.getUserId(), registration.getUnitId());
+                log.error("❌ [VehicleRegistration] Không thể gửi notification cho registrationId: {}", registration.getId());
+                log.error("❌ [VehicleRegistration] Notification sẽ không được gửi đến resident!");
                 return;
             }
+            
+            log.info("✅ [VehicleRegistration] ResidentId resolved successfully: {}", residentId);
 
             // Get current card price from database
             BigDecimal currentPrice = cardPricingService.getPrice("VEHICLE");
@@ -934,6 +1131,15 @@ public class VehicleRegistrationService {
         
         String approvedByName = resolveUsernameById(entity.getApprovedBy());
 
+        // Calculate canReissue: only if card is CANCELLED, PAID, and hasn't been reissued yet
+        boolean canReissue = false;
+        if (STATUS_CANCELLED.equalsIgnoreCase(normalizedStatus) 
+                && "PAID".equalsIgnoreCase(entity.getPaymentStatus())
+                && entity.getReissuedFromCardId() == null) { // Not already a reissued card
+            // Check if this card has already been reissued
+            canReissue = !requestRepository.existsReissuedCard(entity.getId());
+        }
+
         return new RegisterServiceRequestDto(
                 entity.getId(),
                 entity.getUserId(),
@@ -960,7 +1166,9 @@ public class VehicleRegistrationService {
                 entity.getRejectionReason(),
                 images,
                 entity.getCreatedAt(),
-                entity.getUpdatedAt()
+                entity.getUpdatedAt(),
+                entity.getReissuedFromCardId(),
+                canReissue
         );
     }
 

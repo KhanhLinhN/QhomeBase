@@ -26,6 +26,7 @@ public class ConversationResponse {
     private Boolean isBlockedByOther; // True if current user is blocked by the other participant
     private Boolean isBlockedByMe; // True if current user has blocked the other participant
     private Boolean areFriends; // True if current user and other participant are friends (active friendship)
+    private Boolean canSendMessage; // True if current user can send messages (status=ACTIVE, areFriends=true, not blocked)
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 }

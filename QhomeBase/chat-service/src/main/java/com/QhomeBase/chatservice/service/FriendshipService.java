@@ -1,6 +1,9 @@
 package com.QhomeBase.chatservice.service;
 
+import com.QhomeBase.chatservice.model.Conversation;
 import com.QhomeBase.chatservice.model.Friendship;
+import com.QhomeBase.chatservice.repository.BlockRepository;
+import com.QhomeBase.chatservice.repository.ConversationRepository;
 import com.QhomeBase.chatservice.repository.FriendshipRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -8,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -16,6 +20,8 @@ import java.util.UUID;
 public class FriendshipService {
 
     private final FriendshipRepository friendshipRepository;
+    private final ConversationRepository conversationRepository;
+    private final BlockRepository blockRepository;
 
     /**
      * Compare two UUIDs in the same order as PostgreSQL (byte order comparison).
@@ -107,7 +113,8 @@ public class FriendshipService {
     }
 
     /**
-     * Deactivate friendship (when one user blocks the other)
+     * Deactivate friendship (when one user blocks the other or unfriends)
+     * If not blocked, conversation status becomes LOCKED (can view history, cannot send messages)
      */
     @Transactional
     public void deactivateFriendship(UUID userId1, UUID userId2) {
@@ -127,7 +134,28 @@ public class FriendshipService {
                     if (Boolean.TRUE.equals(friendship.getIsActive())) {
                         friendship.setIsActive(false);
                         friendshipRepository.save(friendship);
-                        log.info("Deactivated friendship between {} and {} (user blocked)", user1Id, user2Id);
+                        log.info("Deactivated friendship between {} and {}", user1Id, user2Id);
+                        
+                        // Update conversation status if not blocked
+                        // If blocked, conversation status is already BLOCKED (handled by BlockService)
+                        // If not blocked, set conversation to LOCKED (can view history, cannot send)
+                        Optional<Conversation> conversationOpt = conversationRepository
+                                .findConversationBetweenParticipants(user1Id, user2Id);
+                        
+                        if (conversationOpt.isPresent()) {
+                            Conversation conversation = conversationOpt.get();
+                            // Check if either user has blocked the other
+                            boolean isBlocked = blockRepository.findByBlockerIdAndBlockedId(user1Id, user2Id).isPresent()
+                                    || blockRepository.findByBlockerIdAndBlockedId(user2Id, user1Id).isPresent();
+                            
+                            if (!isBlocked && "ACTIVE".equals(conversation.getStatus())) {
+                                // Not blocked but friendship deactivated -> LOCKED
+                                conversation.setStatus("LOCKED");
+                                conversationRepository.save(conversation);
+                                log.info("Changed conversation {} status from ACTIVE to LOCKED after friendship deactivation", 
+                                        conversation.getId());
+                            }
+                        }
                     }
                 });
     }

@@ -267,15 +267,22 @@ public class VideoUploadController {
                     .header(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, "*");
             
             // Handle range requests for video streaming
+            // HTTP Range requests are critical for video seeking - player requests specific byte ranges
             if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
                 try {
                     long fileSize = resource.contentLength();
+                    if (fileSize <= 0) {
+                        // File size unknown, return full resource
+                        return responseBuilder.body(resource);
+                    }
+                    
                     String[] ranges = rangeHeader.replace("bytes=", "").split("-");
                     long start = Long.parseLong(ranges[0]);
                     long end = ranges.length > 1 && !ranges[1].isEmpty() 
                             ? Long.parseLong(ranges[1]) 
                             : fileSize - 1;
                     
+                    // Validate range
                     if (start > end || start < 0 || end >= fileSize) {
                         return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
                                 .header(HttpHeaders.CONTENT_RANGE, "bytes */" + fileSize)
@@ -284,9 +291,8 @@ public class VideoUploadController {
                     
                     long contentLength = end - start + 1;
                     
-                    // Range request handling - no logging needed (too frequent)
-                    
-                    // Return partial content response
+                    // Return partial content response (206 Partial Content)
+                    // This allows video player to seek to any position without downloading entire file
                     return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
                             .contentType(MediaType.parseMediaType(contentType))
                             .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + video.getOriginalFileName() + "\"")
@@ -302,10 +308,16 @@ public class VideoUploadController {
                             .body(resource);
                 } catch (Exception e) {
                     log.warn("⚠️ [VideoUploadController] Invalid range header: {}", rangeHeader);
+                    // Fall through to return full resource if range parsing fails
                 }
             }
             
-            return responseBuilder.body(resource);
+            // No range header - return full resource with proper headers for streaming
+            // Spring Boot will handle Range requests automatically if ACCEPT_RANGES is set
+            long fileSize = resource.contentLength();
+            return responseBuilder
+                    .contentLength(fileSize > 0 ? fileSize : -1)
+                    .body(resource);
         } catch (FileStorageException e) {
             log.error("❌ [VideoUploadController] Video not found: {}", e.getMessage());
             return ResponseEntity.notFound().build();
