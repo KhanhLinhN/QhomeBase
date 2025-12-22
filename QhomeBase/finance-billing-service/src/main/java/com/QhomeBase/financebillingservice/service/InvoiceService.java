@@ -384,13 +384,37 @@ public class InvoiceService {
                         lineRequest.getTaxRate()
                 );
                 
+                // Validate unitPrice is reasonable (not accidentally set to lineTotal)
+                BigDecimal unitPrice = lineRequest.getUnitPrice();
+                BigDecimal quantity = lineRequest.getQuantity();
+                BigDecimal calculatedLineTotal = quantity.multiply(unitPrice);
+                
+                // Validate unitPrice for electricity/water - should be reasonable (typically < 100,000 VND/kWh)
+                if (lineRequest.getServiceCode() != null && 
+                    (lineRequest.getServiceCode().contains("ELECTRIC") || 
+                     lineRequest.getServiceCode().contains("WATER"))) {
+                    
+                    // Check if unitPrice seems too high (might be accidentally set to lineTotal)
+                    BigDecimal maxReasonableUnitPrice = new BigDecimal("100000"); // 100,000 VND/kWh
+                    if (unitPrice.compareTo(maxReasonableUnitPrice) > 0) {
+                        log.error("⚠️ [InvoiceService] SUSPICIOUS unitPrice detected - serviceCode={}, quantity={}, unitPrice={}, calculatedLineTotal={}, description={}. " +
+                                "UnitPrice seems too high - might be accidentally set to lineTotal instead of unitPrice!", 
+                                lineRequest.getServiceCode(), quantity, unitPrice, calculatedLineTotal, 
+                                lineRequest.getDescription());
+                    }
+                    
+                    log.info("💡 [InvoiceService] Creating invoice line - serviceCode={}, quantity={}, unitPrice={}, calculatedLineTotal={}, description={}", 
+                            lineRequest.getServiceCode(), quantity, unitPrice, calculatedLineTotal, 
+                            lineRequest.getDescription());
+                }
+                
                 InvoiceLine line = InvoiceLine.builder()
                         .invoiceId(savedInvoice.getId())
                         .serviceDate(lineRequest.getServiceDate())
                         .description(lineRequest.getDescription())
-                        .quantity(lineRequest.getQuantity())
+                        .quantity(quantity)
                         .unit(lineRequest.getUnit())
-                        .unitPrice(lineRequest.getUnitPrice())
+                        .unitPrice(unitPrice) // Ensure we use the unitPrice from request, not calculated total
                         .taxRate(lineRequest.getTaxRate() != null ? lineRequest.getTaxRate() : BigDecimal.ZERO)
                         .taxAmount(taxAmount)
                         .serviceCode(lineRequest.getServiceCode())
@@ -399,6 +423,13 @@ public class InvoiceService {
                         .build();
                 
                 invoiceLineRepository.save(line);
+                
+                // Verify saved data
+                BigDecimal savedUnitPrice = line.getUnitPrice();
+                BigDecimal savedQuantity = line.getQuantity();
+                BigDecimal actualLineTotal = savedQuantity.multiply(savedUnitPrice);
+                log.debug("✅ [InvoiceService] Saved invoice line - unitPrice={}, quantity={}, lineTotal={}", 
+                        savedUnitPrice, savedQuantity, actualLineTotal);
             }
             log.info("Created {} invoice lines for invoice: {}", request.getLines().size(), savedInvoice.getId());
         }
@@ -488,7 +519,8 @@ public class InvoiceService {
             }
             
             if (residentIds.isEmpty()) {
-                log.warn(" [InvoiceService] No residents found for unit {}, cannot send notification", invoice.getPayerUnitId());
+                log.debug(" [InvoiceService] No residents found for unit {}, cannot send notification", 
+                        invoice.getPayerUnitId());
                 return;
             }
             

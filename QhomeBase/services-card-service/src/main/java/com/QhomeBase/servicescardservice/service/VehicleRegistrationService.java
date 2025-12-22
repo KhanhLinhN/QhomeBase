@@ -673,7 +673,7 @@ public class VehicleRegistrationService {
             log.info("📤 [VehicleRegistration] ReferenceId: {}", registration.getId());
             log.info("📤 [VehicleRegistration] ReferenceType: VEHICLE_CARD_REGISTRATION");
             log.info("📤 [VehicleRegistration] Data: {}", data);
-            
+
             // Send PRIVATE notification to specific resident (residentId = residentId, buildingId = null)
             notificationClient.sendResidentNotification(
                     residentId, // residentId for private notification

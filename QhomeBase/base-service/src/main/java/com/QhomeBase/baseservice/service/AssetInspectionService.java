@@ -503,9 +503,51 @@ public class AssetInspectionService {
                 for (com.QhomeBase.baseservice.dto.finance.InvoiceLineDto line : relevantLines) {
                     String serviceCode = line.getServiceCode();
                     
-                    BigDecimal lineAmount = line.getUnitPrice() != null && line.getQuantity() != null
-                            ? line.getUnitPrice().multiply(line.getQuantity())
-                            : BigDecimal.ZERO;
+                    // Get unitPrice and quantity separately - DO NOT multiply them!
+                    BigDecimal unitPrice = line.getUnitPrice() != null ? line.getUnitPrice() : BigDecimal.ZERO;
+                    BigDecimal quantity = line.getQuantity() != null ? line.getQuantity() : BigDecimal.ONE;
+                    BigDecimal invoiceLineTotal = line.getLineTotal() != null ? line.getLineTotal() : BigDecimal.ZERO;
+                    BigDecimal taxAmount = line.getTaxAmount() != null ? line.getTaxAmount() : BigDecimal.ZERO;
+                    
+                    // Log original values for debugging
+                    log.debug("🔍 [AssetInspectionService] Processing {} line - unitPrice: {}, quantity: {}, lineTotal: {}, taxAmount: {}",
+                            serviceCode, unitPrice, quantity, invoiceLineTotal, taxAmount);
+                    
+                    // FIX: Detect and correct unitPrice if it seems wrong
+                    // If unitPrice is unreasonably high (> 100,000 VND/kWh), it's likely set to lineTotal by mistake
+                    // Note: We can't use lineTotal mismatch check because lineTotal is calculated from unitPrice,
+                    // so if unitPrice is wrong, lineTotal will also be wrong and they'll still match
+                    BigDecimal maxReasonableUnitPrice = new BigDecimal("100000"); // 100,000 VND/kWh
+                    
+                    if (unitPrice.compareTo(maxReasonableUnitPrice) > 0 && quantity.compareTo(BigDecimal.ZERO) > 0) {
+                        // Recalculate unitPrice from lineTotal and quantity
+                        // Since lineTotal might also be wrong (calculated from wrong unitPrice),
+                        // we need to reverse-calculate: if unitPrice looks like lineTotal, divide by quantity
+                        // But first, try to get correct lineTotal by checking if unitPrice equals lineTotal
+                        BigDecimal recalculatedUnitPrice;
+                        
+                        // If unitPrice equals lineTotal (or very close), it was definitely set wrong
+                        BigDecimal tolerance = new BigDecimal("1.0"); // Allow 1 VND difference
+                        if (unitPrice.subtract(invoiceLineTotal).abs().compareTo(tolerance) < 0) {
+                            // unitPrice was set to lineTotal - recalculate from lineTotal
+                            BigDecimal subtotal = invoiceLineTotal.subtract(taxAmount);
+                            recalculatedUnitPrice = subtotal.divide(quantity, 4, java.math.RoundingMode.HALF_UP);
+                            
+                            log.warn("⚠️ [AssetInspectionService] Detected unitPrice {} equals lineTotal {} for {} line. " +
+                                    "Recalculating from lineTotal {} - taxAmount {} / quantity {} = {} VND/kWh",
+                                    unitPrice, invoiceLineTotal, serviceCode, invoiceLineTotal, taxAmount, quantity, recalculatedUnitPrice);
+                        } else {
+                            // unitPrice is too high but not equal to lineTotal - might be tierAmount (quantity × unitPrice)
+                            // Try dividing by quantity to get unitPrice
+                            recalculatedUnitPrice = unitPrice.divide(quantity, 4, java.math.RoundingMode.HALF_UP);
+                            
+                            log.warn("⚠️ [AssetInspectionService] Detected suspicious unitPrice {} for {} line (quantity: {}). " +
+                                    "Recalculating by dividing by quantity: {} / {} = {} VND/kWh",
+                                    unitPrice, serviceCode, quantity, unitPrice, quantity, recalculatedUnitPrice);
+                        }
+                        
+                        unitPrice = recalculatedUnitPrice;
+                    }
                     
                     String originalDescription = line.getDescription() != null ? line.getDescription() : "";
                     String serviceName = "WATER".equals(serviceCode) ? "nước" : "điện";
@@ -519,9 +561,9 @@ public class AssetInspectionService {
                     CreateInvoiceLineRequest waterElectricLine = CreateInvoiceLineRequest.builder()
                             .serviceDate(line.getServiceDate() != null ? line.getServiceDate() : inspection.getInspectionDate())
                             .description(finalDescription)
-                            .quantity(line.getQuantity() != null ? line.getQuantity() : BigDecimal.ONE)
-                            .unit(line.getUnit() != null ? line.getUnit() : "hóa đơn")
-                            .unitPrice(lineAmount)
+                            .quantity(quantity)
+                            .unit(line.getUnit() != null ? line.getUnit() : "kWh")
+                            .unitPrice(unitPrice) // Use corrected unitPrice
                             .taxRate(BigDecimal.ZERO)
                             .serviceCode(serviceCode)
                             .externalRefType("WATER_ELECTRIC_INVOICE")
@@ -531,7 +573,7 @@ public class AssetInspectionService {
                     invoiceLines.add(waterElectricLine);
                     waterElectricCount++;
                     
-                    java.math.BigDecimal consumption = line.getQuantity() != null ? line.getQuantity() : java.math.BigDecimal.ZERO;
+                    java.math.BigDecimal consumption = quantity;
                     if ("WATER".equals(serviceCode)) {
                         String meterCode = extractMeterCodeFromDescription(line.getDescription());
                         waterConsumptions.put(meterCode != null ? meterCode : "UNKNOWN", 
@@ -542,8 +584,10 @@ public class AssetInspectionService {
                                 electricConsumptions.getOrDefault(meterCode != null ? meterCode : "UNKNOWN", java.math.BigDecimal.ZERO).add(consumption));
                     }
                     
-                    log.info("Including {} line from invoice {} (amount: {}, quantity: {}) in asset inspection invoice", 
-                            serviceCode, invoice.getId(), lineAmount, consumption);
+                    // Calculate lineTotal for logging
+                    java.math.BigDecimal lineTotal = unitPrice.multiply(quantity);
+                    log.info("Including {} line from invoice {} (unitPrice: {}, quantity: {}, lineTotal: {}) in asset inspection invoice", 
+                            serviceCode, invoice.getId(), unitPrice, quantity, lineTotal);
                 }
             }
             

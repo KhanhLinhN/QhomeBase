@@ -142,8 +142,21 @@ public class MeterReadingImportService {
                     serviceCode = ServiceCode.ELECTRIC;
                 }
                 
-                String description = Optional.ofNullable(head.getDescription())
+                // Build description - add inspection marker if cycle is OPEN (from asset inspection)
+                String baseDescription = Optional.ofNullable(head.getDescription())
                         .orElse(getDefaultDescription(serviceCode));
+                
+                String description = baseDescription;
+                String inspectionMarker = "Đo cùng với kiểm tra thiết bị";
+                
+                // If cycle status is OPEN, this is likely from asset inspection - add marker
+                String cycleStatus = readingCycle.status();
+                if (cycleStatus != null && "OPEN".equalsIgnoreCase(cycleStatus)) {
+                    if (!description.contains(inspectionMarker)) {
+                        description = description + " - " + inspectionMarker;
+                        log.info("Added inspection marker to description for OPEN cycle {}: {}", readingCycleId, description);
+                    }
+                }
 
                 UUID billingCycleId = findOrCreateBillingCycle(readingCycleId, serviceDate);
 
@@ -312,12 +325,15 @@ public class MeterReadingImportService {
                         tier.getMinQuantity(),
                         maxQtyStr);
                 
+                // Ensure unitPrice is from tier, not calculated amount
+                BigDecimal unitPrice = tier.getUnitPrice();
+                
                 CreateInvoiceLineRequest line = CreateInvoiceLineRequest.builder()
                         .serviceDate(serviceDate)
                         .description(tierDescription)
                         .quantity(applicableQuantity)
                         .unit("kWh")
-                        .unitPrice(tier.getUnitPrice())
+                        .unitPrice(unitPrice) // Use tier.getUnitPrice() directly, not tierAmount
                         .taxRate(BigDecimal.ZERO)
                         .serviceCode(serviceCode)
                         .externalRefType("METER_READING_GROUP")
@@ -327,8 +343,8 @@ public class MeterReadingImportService {
                 lines.add(line);
                 previousMax = tierEffectiveMax;
                 
-                log.debug("Tier {}: {} kWh × {} VND/kWh = {} VND", 
-                        tier.getTierOrder(), applicableQuantity, tier.getUnitPrice(), tierAmount);
+                log.info("✅ [MeterReadingImportService] Created invoice line - Tier {}: quantity={} kWh, unitPrice={} VND/kWh, lineTotal={} VND", 
+                        tier.getTierOrder(), applicableQuantity, unitPrice, tierAmount);
             }
         }
         
@@ -441,7 +457,8 @@ public class MeterReadingImportService {
     private void sendInvoiceNotification(UUID residentId, UUID unitId, InvoiceDto invoice, 
                                          String serviceCode, BigDecimal totalUsage) {
         if (residentId == null) {
-            log.warn("Cannot send notification: residentId is null for invoice {}", invoice.getId());
+            log.debug("Cannot send notification: residentId is null for invoice {} (unit={})", 
+                    invoice.getId(), unitId);
             return;
         }
 
