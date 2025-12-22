@@ -99,7 +99,7 @@ public class AccountProvideService {
                 resident = residentRepository.save(resident);
             }
         } else {
-            // No national ID provided - create new resident and validate unique phone/email
+           
             validateUniqueContact(request);
             Resident.ResidentBuilder builder = Resident.builder()
                     .fullName(request.resident().fullName())
@@ -269,11 +269,7 @@ public class AccountProvideService {
         return relation;
     }
 
-    /**
-     * Fetch contract summary by contract ID
-     * @param contractId The contract ID
-     * @return ContractSummary or null if not found or error occurs
-     */
+ 
     private ContractSummary fetchContractSummary(UUID contractId) {
         if (contractId == null) {
             return null;
