@@ -201,13 +201,23 @@ public class ResidentAccountService {
             throw new IllegalArgumentException("Email already exists: " + email);
         }
         
+        // Get building name for email
+        String buildingName = null;
+        if (household.getUnitId() != null) {
+            Unit unit = unitRepository.findById(household.getUnitId()).orElse(null);
+            if (unit != null && unit.getBuilding() != null) {
+                buildingName = unit.getBuilding().getName();
+            }
+        }
+        
         ResidentAccountDto accountDto = iamClientService.createUserForResident(
                 username,
                 email,
                 password,
                 request.autoGenerate(),
                 residentId,
-                token
+                token,
+                buildingName
         );
         
         resident.setUserId(accountDto.userId());

@@ -29,7 +29,7 @@ public class IamClientService {
             String password, 
             boolean autoGenerate,
             UUID residentId) {
-        return createUserForResident(username, email, password, autoGenerate, residentId, null);
+        return createUserForResident(username, email, password, autoGenerate, residentId, null, null);
     }
     
     public ResidentAccountDto createUserForResident(
@@ -39,13 +39,25 @@ public class IamClientService {
             boolean autoGenerate,
             UUID residentId,
             String token) {
+        return createUserForResident(username, email, password, autoGenerate, residentId, token, null);
+    }
+    
+    public ResidentAccountDto createUserForResident(
+            String username, 
+            String email, 
+            String password, 
+            boolean autoGenerate,
+            UUID residentId,
+            String token,
+            String buildingName) {
         
         CreateUserRequest request = new CreateUserRequest(
                 username,
                 email,
                 password,
                 autoGenerate,
-                residentId
+                residentId,
+                buildingName
         );
         
         try {
@@ -71,7 +83,7 @@ public class IamClientService {
                         .bodyValue(request)
                         .retrieve()
                         .bodyToMono(UserAccountResponse.class)
-                        .timeout(java.time.Duration.ofSeconds(30)) // 30 seconds timeout
+//                        .timeout(java.time.Duration.ofSeconds(30)) // 30 seconds timeout
                         .doOnError(error -> log.error("Error in WebClient call to IAM service: {}", error.getMessage(), error))
                         .block();
             }
@@ -263,7 +275,8 @@ public class IamClientService {
             String email,
             String password,
             boolean autoGenerate,
-            UUID residentId
+            UUID residentId,
+            String buildingName
     ) {}
     
     private record UserAccountResponse(

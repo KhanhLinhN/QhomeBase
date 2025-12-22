@@ -166,7 +166,7 @@ class UserControllerTest {
         void shouldCreateUserForResident_whenAdminRole() throws Exception {
                 UUID residentId = UUID.randomUUID();
                 var req = new CreateUserForResidentDto("newresident", "res@example.com", "Password123", false,
-                                residentId);
+                                residentId, null);
                 User created = User.builder()
                                 .id(UUID.randomUUID())
                                 .username("newresident")
@@ -176,7 +176,7 @@ class UserControllerTest {
                                 .roles(List.of(UserRole.RESIDENT))
                                 .build();
                 Mockito.when(userService.createUserForResident("newresident", "res@example.com", "Password123",
-                                residentId))
+                                residentId, null))
                                 .thenReturn(created);
 
                 String body = objectMapper.writeValueAsString(req);

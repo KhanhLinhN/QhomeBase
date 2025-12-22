@@ -17,6 +17,8 @@ public record CreateUserForResidentDto(
         
         boolean autoGenerate,
         
-        UUID residentId
+        UUID residentId,
+        
+        String buildingName
 ) {}
 

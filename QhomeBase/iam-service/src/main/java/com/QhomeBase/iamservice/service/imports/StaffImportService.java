@@ -283,15 +283,6 @@ public class StaffImportService {
     }
 
     private void validateUsername(String username, int rowNumber) {
-        final int MIN_LENGTH = 6;
-        final int MAX_LENGTH = 16;
-        
-        if (username.length() < MIN_LENGTH || username.length() > MAX_LENGTH) {
-            throw new IllegalArgumentException(
-                    String.format("Username (row %d) phải có độ dài từ %d đến %d ký tự", rowNumber, MIN_LENGTH, MAX_LENGTH)
-            );
-        }
-        
         if (username.contains(" ")) {
             throw new IllegalArgumentException(
                     String.format("Username (row %d) không được chứa khoảng trắng", rowNumber)

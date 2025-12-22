@@ -47,7 +47,7 @@ public class AccountProvideController {
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (IllegalArgumentException | IllegalStateException e) {
             log.warn("Failed to provision primary resident for unit {}: {}", unitId, e.getMessage());
-            // Return error message in response body so frontend can display it
+
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("status", HttpStatus.BAD_REQUEST.value());
             errorResponse.put("message", e.getMessage());

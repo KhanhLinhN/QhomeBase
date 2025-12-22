@@ -50,7 +50,7 @@ public class EmailService {
         log.info("Sent credentials email to {}", recipientEmail);
     }
 
-    public void sendResidentAccountCredentials(String recipientEmail, String username, String rawPassword) {
+    public void sendResidentAccountCredentials(String recipientEmail, String username, String rawPassword, String buildingName) {
         if (!StringUtils.hasText(recipientEmail)) {
             log.warn("Recipient email is blank; skip sending resident credentials email");
             return;
@@ -59,7 +59,7 @@ public class EmailService {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(recipientEmail);
         message.setSubject("Your Qhome Base resident account");
-        message.setText(buildResidentAccountBody(username, rawPassword));
+        message.setText(buildResidentAccountBody(username, recipientEmail, rawPassword, buildingName));
         if (StringUtils.hasText(defaultFromAddress)) {
             message.setFrom(defaultFromAddress);
         }
@@ -91,9 +91,11 @@ public class EmailService {
         );
     }
 
-    private String buildResidentAccountBody(String username, String rawPassword) {
+    private String buildResidentAccountBody(String username, String email, String rawPassword, String buildingName) {
         String safeUsername = StringUtils.hasText(username) ? username : "resident";
+        String safeEmail = StringUtils.hasText(email) ? email : (safeUsername + "@qhome.local");
         String safePassword = StringUtils.hasText(rawPassword) ? rawPassword : "(password unavailable)";
+        String buildingInfo = StringUtils.hasText(buildingName) ? "\n- Tòa nhà: " + buildingName : "";
 
         return String.format(
                 """
@@ -101,7 +103,8 @@ public class EmailService {
 
                 Tài khoản cư dân của bạn trên Qhome Base đã được khởi tạo.
                 - Tên đăng nhập: %s
-                - Mật khẩu tạm thời: %s
+                - Email đăng nhập: %s
+                - Mật khẩu tạm thời: %s%s
 
                 Vui lòng đăng nhập và đổi mật khẩu ngay sau khi truy cập lần đầu.
 
@@ -110,7 +113,9 @@ public class EmailService {
                 """,
                 safeUsername,
                 safeUsername,
-                safePassword
+                safeEmail,
+                safePassword,
+                buildingInfo
         );
     }
 }
