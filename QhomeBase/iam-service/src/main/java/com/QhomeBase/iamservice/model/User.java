@@ -74,9 +74,6 @@ public class User {
     @Column(name = "last_login_at")
     private LocalDateTime lastLogin;
     
-    @Column(name = "locked_until")
-    private LocalDateTime accountLockedUntil;
-    
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -99,19 +96,15 @@ public class User {
     
 
     public boolean isAccountLocked() {
-        return accountLockedUntil != null && accountLockedUntil.isAfter(LocalDateTime.now());
+        return false;
     }
     
     public void incrementFailedLoginAttempts() {
         this.failedLoginAttempts++;
-        if (this.failedLoginAttempts >= 5) {
-            this.accountLockedUntil = LocalDateTime.now().plusMinutes(30);
-        }
     }
     
     public void resetFailedLoginAttempts() {
         this.failedLoginAttempts = 0;
-        this.accountLockedUntil = null;
     }
     
     public void updateLastLogin() {

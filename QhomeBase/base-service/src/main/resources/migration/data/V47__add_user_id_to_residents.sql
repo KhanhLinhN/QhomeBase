@@ -1,6 +1,17 @@
 -- V47: Add user_id column to residents table to link with iam.users
 -- This allows residents to have user accounts for login
 
+-- Create iam schema if it doesn't exist (for new database clones)
+CREATE SCHEMA IF NOT EXISTS iam;
+
+-- Create iam.users table if it doesn't exist (for new database clones)
+-- This is a minimal structure - iam-service will have the full schema
+CREATE TABLE IF NOT EXISTS iam.users (
+    id UUID PRIMARY KEY,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Add user_id column (nullable, can be null if resident doesn't have account yet)
 ALTER TABLE data.residents
     ADD COLUMN IF NOT EXISTS user_id UUID;

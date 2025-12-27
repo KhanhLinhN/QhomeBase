@@ -1,7 +1,18 @@
-
-DELETE FROM iam.role_permissions WHERE role NOT IN ('admin', 'tenant_owner', 'technician', 'supporter', 'account');
-DELETE FROM iam.user_roles WHERE role NOT IN ('admin', 'tenant_owner', 'technician', 'supporter', 'account');
-DELETE FROM iam.roles WHERE role NOT IN ('admin', 'tenant_owner', 'technician', 'supporter', 'account');
+-- Delete invalid roles only if tables exist (for new database clones, tables may not exist yet)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'iam' AND table_name = 'role_permissions') THEN
+        DELETE FROM iam.role_permissions WHERE role NOT IN ('admin', 'tenant_owner', 'technician', 'supporter', 'account');
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'iam' AND table_name = 'user_roles') THEN
+        DELETE FROM iam.user_roles WHERE role NOT IN ('admin', 'tenant_owner', 'technician', 'supporter', 'account');
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'iam' AND table_name = 'roles') THEN
+        DELETE FROM iam.roles WHERE role NOT IN ('admin', 'tenant_owner', 'technician', 'supporter', 'account');
+    END IF;
+END $$;
 
 
 INSERT INTO iam.roles (role, description) VALUES 

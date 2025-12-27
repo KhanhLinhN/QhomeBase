@@ -1,5 +1,13 @@
 -- Create notification_views table to track individual user reads
 
+-- Create viewer_type enum if it doesn't exist
+DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type t WHERE t.typname='viewer_type' AND t.typnamespace=to_regnamespace('content')) THEN
+            EXECUTE 'CREATE TYPE content.viewer_type AS ENUM (''RESIDENT'',''USER'')';
+        END IF;
+    END$$;
+
 CREATE TABLE IF NOT EXISTS content.notification_views (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     notification_id UUID NOT NULL,

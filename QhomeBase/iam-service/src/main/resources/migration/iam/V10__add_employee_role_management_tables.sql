@@ -68,22 +68,5 @@ INSERT INTO iam.role_permissions (role, permission_code) VALUES
 ('supporter', 'iam.permission.read')
 ON CONFLICT (role, permission_code) DO NOTHING;
 
-INSERT INTO iam.users (id, username, email, password_hash, active, last_login_at, failed_attempts, locked_until) VALUES
-('dd0e8400-e29b-41d4-a716-446655440008', 'staff_member', 'staff@qhomebase.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', true, now(), 0, null),
-('ee0e8400-e29b-41d4-a716-446655440009', 'account_manager', 'account@qhomebase.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', true, now(), 0, null),
-('ff0e8400-e29b-41d4-a716-446655440010', 'tech_specialist', 'tech@qhomebase.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', true, now(), 0, null),
-('000e8400-e29b-41d4-a716-446655440011', 'support_agent', 'support@qhomebase.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', true, now(), 0, null)
-ON CONFLICT (email) DO NOTHING;
-
-INSERT INTO iam.user_roles (user_id, role, granted_at, granted_by)
-SELECT u.id, r.role, now(), 'system'
-FROM iam.users u
-CROSS JOIN (VALUES 
-    ('dd0e8400-e29b-41d4-a716-446655440008', 'staff'),
-    ('ee0e8400-e29b-41d4-a716-446655440009', 'account'),
-    ('ff0e8400-e29b-41d4-a716-446655440010', 'technician'),
-    ('000e8400-e29b-41d4-a716-446655440011', 'supporter')
-) AS r(user_id, role)
-WHERE u.id = r.user_id::uuid
-ON CONFLICT (user_id, role) DO NOTHING;
+-- Test user insertions removed for new database clones
 
